@@ -39,6 +39,10 @@ MAX_BATCH_SIZE = 100000
 # XGBoost version requirements
 MIN_XGBOOST_VERSION = "2.0.0"
 
+# Retry limits for iterator
+MAX_EMPTY_BATCHES = 10  # Maximum consecutive empty batches before failing
+MAX_ERROR_RETRIES = 5  # Maximum consecutive errors before failing
+
 
 def create_external_memory_dmatrix(
     dataset_shard,
@@ -254,6 +258,7 @@ def create_external_memory_dmatrix(
             self._batch_index = 0
             self._total_batches = 0
             self._error_count = 0
+            self._empty_batch_count = 0
             super().__init__(cache_prefix=cache_dir)
 
         def next(self, input_data):
@@ -266,7 +271,7 @@ def create_external_memory_dmatrix(
                 1 if data was successfully loaded, 0 if iteration is complete.
 
             Raises:
-                RuntimeError: If too many consecutive errors occur during iteration.
+                RuntimeError: If too many consecutive errors or empty batches occur.
             """
             if self._iterator is None:
                 # Initialize iterator on first call
@@ -280,6 +285,7 @@ def create_external_memory_dmatrix(
                     )
                     self._batch_index = 0
                     self._error_count = 0
+                    self._empty_batch_count = 0
                 except Exception as e:
                     logger.error(f"Failed to initialize batch iterator: {e}")
                     raise RuntimeError(
@@ -287,103 +293,114 @@ def create_external_memory_dmatrix(
                         "Ensure the dataset is properly configured."
                     ) from e
 
-            try:
-                batch_df = next(self._iterator)
-                self._batch_index += 1
-
-                # Validate batch data
-                if batch_df.empty:
-                    logger.warning(
-                        f"Batch {self._batch_index} is empty. Skipping."
-                    )
-                    return self.next(input_data)  # Skip to next batch
-
-                # Separate features and labels
+            # Use a loop to handle empty batches and retries instead of recursion
+            while True:
                 try:
-                    if isinstance(self.label_column, str):
-                        if self.label_column not in batch_df.columns:
-                            raise KeyError(
-                                f"Label column '{self.label_column}' not found "
-                                f"in dataset. Available columns: {list(batch_df.columns)}"
-                            )
-                        labels = batch_df[self.label_column].values
-                        features = batch_df.drop(columns=[self.label_column])
-                    else:
-                        # Multiple label columns
-                        missing_labels = [
-                            col
-                            for col in self.label_column
-                            if col not in batch_df.columns
-                        ]
-                        if missing_labels:
-                            raise KeyError(
-                                f"Label columns {missing_labels} not found "
-                                f"in dataset. Available: {list(batch_df.columns)}"
-                            )
-                        labels = batch_df[self.label_column].values
-                        features = batch_df.drop(columns=self.label_column)
+                    batch_df = next(self._iterator)
+                    self._batch_index += 1
 
-                    # Handle feature columns selection
-                    if self.feature_columns is not None:
-                        missing_features = [
-                            col
-                            for col in self.feature_columns
-                            if col not in features.columns
-                        ]
-                        if missing_features:
-                            raise KeyError(
-                                f"Feature columns {missing_features} not found. "
-                                f"Available: {list(features.columns)}"
-                            )
-                        features = features[self.feature_columns]
-
-                    # Validate data types
-                    if not all(features.dtypes.apply(lambda x: x.kind in "biufc")):
+                    # Validate batch data
+                    if batch_df.empty:
+                        self._empty_batch_count += 1
                         logger.warning(
-                            "Some feature columns have non-numeric types. "
-                            "This may cause training errors. "
-                            "Consider converting to numeric types."
+                            f"Batch {self._batch_index} is empty. Skipping "
+                            f"(empty batch count: {self._empty_batch_count})"
                         )
+                        if self._empty_batch_count > MAX_EMPTY_BATCHES:
+                            raise RuntimeError(
+                                f"Too many consecutive empty batches ({self._empty_batch_count}). "
+                                "Check dataset content and filtering logic."
+                            )
+                        continue  # Skip to next batch
 
-                    # Log progress periodically
-                    if self._batch_index % 100 == 0:
-                        logger.info(
-                            f"Processed {self._batch_index} batches "
-                            f"({self._batch_index * self.batch_size} samples)"
-                        )
+                    # Separate features and labels
+                    try:
+                        if isinstance(self.label_column, str):
+                            if self.label_column not in batch_df.columns:
+                                raise KeyError(
+                                    f"Label column '{self.label_column}' not found "
+                                    f"in dataset. Available columns: {list(batch_df.columns)}"
+                                )
+                            labels = batch_df[self.label_column].values
+                            features = batch_df.drop(columns=[self.label_column])
+                        else:
+                            # Multiple label columns
+                            missing_labels = [
+                                col
+                                for col in self.label_column
+                                if col not in batch_df.columns
+                            ]
+                            if missing_labels:
+                                raise KeyError(
+                                    f"Label columns {missing_labels} not found "
+                                    f"in dataset. Available: {list(batch_df.columns)}"
+                                )
+                            labels = batch_df[self.label_column].values
+                            features = batch_df.drop(columns=self.label_column)
 
-                    # Return data to XGBoost
-                    input_data(data=features.values, label=labels)
-                    self._error_count = 0  # Reset error count on success
-                    return 1
+                        # Handle feature columns selection
+                        if self.feature_columns is not None:
+                            missing_features = [
+                                col
+                                for col in self.feature_columns
+                                if col not in features.columns
+                            ]
+                            if missing_features:
+                                raise KeyError(
+                                    f"Feature columns {missing_features} not found. "
+                                    f"Available: {list(features.columns)}"
+                                )
+                            features = features[self.feature_columns]
 
-                except KeyError as e:
-                    logger.error(f"Column error in batch {self._batch_index}: {e}")
-                    raise RuntimeError(
-                        f"Data schema error: {e}. "
-                        "Ensure label_column and feature_columns are correct."
-                    ) from e
+                        # Validate data types
+                        if not all(features.dtypes.apply(lambda x: x.kind in "biufc")):
+                            logger.warning(
+                                "Some feature columns have non-numeric types. "
+                                "This may cause training errors. "
+                                "Consider converting to numeric types."
+                            )
 
-            except StopIteration:
-                # End of iteration
-                logger.info(
-                    f"Completed iteration over {self._batch_index} batches "
-                    f"({self._batch_index * self.batch_size} total samples)"
-                )
-                return 0
-            except Exception as e:
-                self._error_count += 1
-                logger.error(
-                    f"Error in batch {self._batch_index}: {e} "
-                    f"(error count: {self._error_count})"
-                )
-                if self._error_count > 5:
-                    raise RuntimeError(
-                        f"Too many consecutive errors ({self._error_count}). "
-                        f"Last error: {e}. Check data format and quality."
-                    ) from e
-                # Try to continue with next batch
-                return self.next(input_data)
+                        # Log progress periodically
+                        if self._batch_index % 100 == 0:
+                            logger.info(
+                                f"Processed {self._batch_index} batches "
+                                f"({self._batch_index * self.batch_size} samples)"
+                            )
+
+                        # Return data to XGBoost
+                        input_data(data=features.values, label=labels)
+                        # Reset counters on success
+                        self._error_count = 0
+                        self._empty_batch_count = 0
+                        return 1
+
+                    except KeyError as e:
+                        logger.error(f"Column error in batch {self._batch_index}: {e}")
+                        raise RuntimeError(
+                            f"Data schema error: {e}. "
+                            "Ensure label_column and feature_columns are correct."
+                        ) from e
+
+                except StopIteration:
+                    # End of iteration
+                    logger.info(
+                        f"Completed iteration over {self._batch_index} batches "
+                        f"({self._batch_index * self.batch_size} total samples)"
+                    )
+                    return 0
+                except Exception as e:
+                    self._error_count += 1
+                    logger.error(
+                        f"Error in batch {self._batch_index}: {e} "
+                        f"(error count: {self._error_count})"
+                    )
+                    if self._error_count > MAX_ERROR_RETRIES:
+                        raise RuntimeError(
+                            f"Too many consecutive errors ({self._error_count}). "
+                            f"Last error: {e}. Check data format and quality."
+                        ) from e
+                    # Continue to next batch instead of recursion
+                    continue
 
         def reset(self):
             """Reset the iterator to the beginning."""
@@ -537,7 +554,7 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
         Dictionary containing recommended configuration settings and best practices.
 
     Examples:
-        .. code-block:: python
+        .. testcode::
 
             recommendations = get_external_memory_recommendations()
             print("Recommended parameters:", recommendations["parameters"])
