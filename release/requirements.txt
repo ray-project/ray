@@ -2,7 +2,8 @@
 click
 # Copy anyscale pin to requirements_buildkite.txt and util.py
 anyscale
-azure-storage-file-datalake
+azure-identity
+azure-storage-blob
 msal
 slackclient
 boto3

@@ -19,6 +19,8 @@ setup(
         "azure-storage-blob",
         "azure-identity",
         "aws_requests_auth",
+        "azure-identity",
+        "azure-storage-blob",
         "bazel-runfiles",
         "boto3",
         "click",

@@ -2,7 +2,8 @@
 # Copy anyscale pin to requirements.txt and util.py
 aioboto3
 anyscale >= 0.26.14
-azure-storage-file-datalake
+azure-identity
+azure-storage-blob
 bazel-runfiles
 boto3
 click
