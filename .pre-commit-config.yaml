@@ -227,3 +227,14 @@ repos:
         language: python
         files: '^src/ray/'
         types: [c++]
+
+  - repo: local
+    hooks:
+    - id: check-train-circular-imports
+      name: Check Ray Train circular imports
+      entry: python python/ray/train/lint/check_circular_imports.py
+      language: system
+      types: [python]
+      files: '^python/ray/train/.*\.py$'
+      pass_filenames: false
+      args: ["--patch_dir", "ray/train/v2"]
