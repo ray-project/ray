@@ -124,16 +124,23 @@ class TestSegmentTree(unittest.TestCase):
 
         assert sum_segment.capacity >= buffer_size
 
+        # standard cases
         for sample in np.linspace(0, sum_segment.sum(), 50):
             prefixsum_idx = sum_segment.find_prefixsum_idx(sample)
-            assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+            assert (
+                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+            ), f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}"
 
-        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum() - 0.00001)
-        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
-        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum())
-        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
-        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum() + 0.00001)
-        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+        # edge cases
+        for sample in [
+            sum_segment.sum() - 0.00001,
+            sum_segment.sum(),
+            sum_segment.sum() + 0.00001,
+        ]:
+            prefixsum_idx = sum_segment.find_prefixsum_idx(sample)
+            assert (
+                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+            ), f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}"
 
 
 if __name__ == "__main__":

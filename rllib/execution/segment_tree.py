@@ -194,8 +194,8 @@ class SumSegmentTree(SegmentTree):
 
         # Edge case when prefixsum can clip into the invalid regions
         #   https://github.com/ray-project/ray/issues/54284
-        if prefixsum >= self.value[idx * 2]:
-            prefixsum -= 0.0001
+        if prefixsum >= self.value[idx]:
+            prefixsum = self.value[idx] - 1e-5
 
         # While non-leaf (first half of tree).
         while idx < self.capacity:
