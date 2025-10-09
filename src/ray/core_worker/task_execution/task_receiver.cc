@@ -155,9 +155,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         } else {
           accepted_send_reply_callback(status, nullptr, nullptr);
         }
-      } else if (status.IsTimedOut()) {
-        // Don't signal that the worker is shutting down, but do propogate the error
-        accepted_send_reply_callback(status, nullptr, nullptr);
       } else {
         RAY_CHECK_OK(status);
         RAY_CHECK(objects_valid)
