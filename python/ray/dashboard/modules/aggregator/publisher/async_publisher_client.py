@@ -91,8 +91,8 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
                 message_to_dict(
                     e,
                     always_print_fields_with_no_presence=True,
-                    preserving_proto_field_name=True,
-                    use_integers_for_enums=False,
+                    preserving_proto_field_name=False,
+                    use_integers_for_enums=True,
                 )
                 for e in filtered
             ],
