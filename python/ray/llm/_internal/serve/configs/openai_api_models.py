@@ -6,80 +6,41 @@ they will be upstreamed to vLLM.
 
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-)
+from pydantic import BaseModel, ConfigDict
 from vllm.entrypoints.openai.protocol import (
-    ChatCompletionRequest as vLLMChatCompletionRequest,
-    ChatCompletionResponse as vLLMChatCompletionResponse,
-    ChatCompletionStreamResponse as vLLMChatCompletionStreamResponse,
-    CompletionRequest as vLLMCompletionRequest,
-    CompletionResponse as vLLMCompletionResponse,
-    CompletionStreamResponse as vLLMCompletionStreamResponse,
-    EmbeddingChatRequest as vLLMEmbeddingChatRequest,
-    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
-    EmbeddingResponse as vLLMEmbeddingResponse,
-    ErrorInfo as vLLMErrorInfo,
-    ErrorResponse as vLLMErrorResponse,
-    ScoreRequest as vLLMScoreRequest,
-    ScoreResponse as vLLMScoreResponse,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionStreamResponse,
+    CompletionRequest,
+    CompletionResponse,
+    CompletionStreamResponse,
+    EmbeddingChatRequest,
+    EmbeddingCompletionRequest,
+    EmbeddingResponse,
+    ErrorInfo,
+    ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
+
+__all__ = [
+    "ChatCompletionRequest",
+    "ChatCompletionResponse",
+    "ChatCompletionStreamResponse",
+    "CompletionRequest",
+    "CompletionResponse",
+    "CompletionStreamResponse",
+    "EmbeddingChatRequest",
+    "EmbeddingCompletionRequest",
+    "EmbeddingResponse",
+    "ErrorInfo",
+    "ErrorResponse",
+    "ScoreRequest",
+    "ScoreResponse",
+]
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig
-
-
-class ChatCompletionRequest(vLLMChatCompletionRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ChatCompletionResponse(vLLMChatCompletionResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ErrorInfo(vLLMErrorInfo):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ErrorResponse(vLLMErrorResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class CompletionRequest(vLLMCompletionRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class CompletionResponse(vLLMCompletionResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class CompletionStreamResponse(vLLMCompletionStreamResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class EmbeddingResponse(vLLMEmbeddingResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ScoreRequest(vLLMScoreRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ScoreResponse(vLLMScoreResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
