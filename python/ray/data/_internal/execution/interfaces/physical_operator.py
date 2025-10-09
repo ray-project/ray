@@ -181,6 +181,10 @@ class DataOpTask(OpTask):
                     break
 
             try:
+                # The timeout for `ray.get` includes the time required to ship the
+                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
+                # will timeout and possible cancel the download. To avoid this issue,
+                # we set the timeout to a small non-zero value.
                 meta_with_schema: "BlockMetadataWithSchema" = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
