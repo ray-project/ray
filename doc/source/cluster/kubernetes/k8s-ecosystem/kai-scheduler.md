@@ -27,7 +27,7 @@ RayCluster "distributed-training":
 └── Worker Group: 4 × 0.5 GPU = 2 GPUs
 Total Group Requirement: 3 GPUs
 
-PodGrouper ensures all 5 pods (1 head + 4 workers) are scheduled together or none at all.
+PodGrouper schedules all 5 pods (1 head + 4 workers) together or none at all.
 ```
 
 2. **Queues**: Queues enforce fairness in resource distribution using:
