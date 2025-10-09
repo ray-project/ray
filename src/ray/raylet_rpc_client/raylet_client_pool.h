@@ -43,10 +43,6 @@ class RayletClientPool {
       rpc::RayletClientPool *raylet_client_pool,
       const rpc::Address &addr);
 
-  /// Return an existing RayletClient if exists or nullptr if it does not.
-  /// The returned pointer is expected to be used briefly.
-  std::shared_ptr<ray::RayletClientInterface> GetByID(ray::NodeID id);
-
   /// Return an existing RayletClient if exists or connect to one if it does
   /// not. The returned pointer is expected to be used briefly.
   /// The function is guaranteed to return the non-nullptr.
