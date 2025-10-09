@@ -84,31 +84,31 @@ class _ExprVisitor(ABC):
 
     @abstractmethod
     def visit_column(self, expr: "ColumnExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_literal(self, expr: "LiteralExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_binary(self, expr: "BinaryExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_unary(self, expr: "UnaryExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_alias(self, expr: "AliasExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_udf(self, expr: "UDFExpr") -> Any:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> Any:
-        raise NotImplementedError
+        pass
 
 
 class _PyArrowExpressionVisitor(_ExprVisitor):
