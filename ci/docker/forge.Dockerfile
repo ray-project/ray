@@ -18,11 +18,15 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git
+apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-transport-https lsb-release
 
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# Download and install Microsoft signing key
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
@@ -32,12 +36,24 @@ echo \
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
+AZ_VER=2.72.0
+AZ_DIST="$(lsb_release -cs)"
+
+# Add Azure CLI repository
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: ${AZ_DIST}
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+
 # Install packages
 
 apt-get update
 apt-get install -y \
   awscli docker-ce-cli nodejs build-essential python-is-python3 \
-  python3-pip openjdk-8-jre wget jq
+  python3-pip openjdk-8-jre wget jq \
+  azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
@@ -83,4 +99,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-07-11
+# last update: 2025-10-08
