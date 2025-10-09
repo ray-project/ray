@@ -64,7 +64,6 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
@@ -72,7 +71,6 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
-      reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)),
       fetch_batch_size_(fetch_batch_size) {
   if (get_current_call_site != nullptr) {
@@ -180,11 +178,12 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
 Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
     const std::vector<ObjectID> &batch_ids,
+    const std::vector<rpc::Address> &batch_owner_addresses,
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses));
+  RAY_RETURN_NOT_OK(
+      raylet_ipc_client_->AsyncGetObjects(batch_ids, batch_owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
@@ -271,25 +270,31 @@ Status UnblockIfNeeded(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const absl::flat_hash_set<ObjectID> &object_ids,
+    const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  std::vector<ObjectID> batch_ids;
-  absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  absl::flat_hash_set<ObjectID> remaining;
 
   // Send initial requests to pull all objects in parallel.
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<std::pair<ObjectID, rpc::Address>> id_vector(object_ids.begin(),
+                                                           object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
-    batch_ids.clear();
+    std::vector<ObjectID> batch_ids;
+    std::vector<rpc::Address> batch_owner_addresses;
     for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
-      batch_ids.push_back(id_vector[i]);
+      // Construct remaining set a batch at a time
+      remaining.insert(id_vector[i].first);
+
+      batch_ids.push_back(id_vector[i].first);
+      batch_owner_addresses.push_back(id_vector[i].second);
     }
     RAY_RETURN_NOT_OK(
         PullObjectsAndGetFromPlasmaStore(remaining,
                                          batch_ids,
+                                         batch_owner_addresses,
                                          /*timeout_ms=*/0,
                                          // Mutable objects must be local before ray.get.
                                          results,
@@ -310,12 +315,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   int64_t remaining_timeout = timeout_ms;
   auto fetch_start_time_ms = current_time_ms();
   while (!remaining.empty() && !should_break) {
-    batch_ids.clear();
+    std::vector<ObjectID> batch_ids;
+    std::vector<rpc::Address> batch_owner_addresses;
     for (const auto &id : remaining) {
       if (static_cast<int64_t>(batch_ids.size()) == fetch_batch_size_) {
         break;
       }
       batch_ids.push_back(id);
+      batch_owner_addresses.push_back(object_ids.find(id)->second);
     }
 
     int64_t batch_timeout =
@@ -328,8 +335,12 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
-    RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(
-        remaining, batch_ids, batch_timeout, results, got_exception));
+    RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(remaining,
+                                                       batch_ids,
+                                                       batch_owner_addresses,
+                                                       batch_timeout,
+                                                       results,
+                                                       got_exception));
     should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
@@ -369,12 +380,18 @@ Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
-    const absl::flat_hash_set<ObjectID> &object_ids,
+    const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
     int num_objects,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_set<ObjectID> *ready) {
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  // Construct object ids vector and owner addresses vector
+  std::vector<ObjectID> object_id_vector;
+  std::vector<rpc::Address> owner_addresses;
+  for (const auto &[object_id, owner_address] : object_ids) {
+    object_id_vector.push_back(object_id);
+    owner_addresses.push_back(owner_address);
+  }
 
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
@@ -387,10 +404,10 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       should_break = remaining_timeout <= 0;
     }
 
-    const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
     RAY_ASSIGN_OR_RETURN(
         ready_in_plasma,
-        raylet_ipc_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout));
+        raylet_ipc_client_->Wait(
+            object_id_vector, owner_addresses, num_objects, call_timeout));
 
     if (ready_in_plasma.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

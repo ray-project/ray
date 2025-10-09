@@ -982,7 +982,9 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
   return Status::OK();
 }
 
@@ -993,7 +995,7 @@ Status CoreWorker::Put(const RayObject &object,
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
   if (options_.is_local_mode) {
     RAY_LOG(DEBUG).WithField(object_id) << "Put object in memory store";
-    memory_store_->Put(object, object_id);
+    memory_store_->Put(object, object_id, reference_counter_->HasReference(object_id));
     return Status::OK();
   }
   return PutInLocalPlasmaStore(object, object_id, pin_object);
@@ -1092,7 +1094,9 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
       // client will check the plasma store.
-      memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id);
+      memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                         *object_id,
+                         reference_counter_->HasReference(*object_id));
     }
   }
   return Status::OK();
@@ -1189,7 +1193,9 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
   }
-  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
   return Status::OK();
 }
 
@@ -1361,13 +1367,18 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
+
+    // Resolve owner addresses of plasma ids
+    absl::flat_hash_map<ObjectID, rpc::Address> plasma_object_ids_map =
+        GetObjectIdToOwnerAddressMap(plasma_object_ids);
+
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids,
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids_map,
                                                   local_timeout_ms,
                                                   *worker_context_,
                                                   &result_map,
@@ -1515,8 +1526,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // num_objects ready since we want to at least make the request to start pulling
     // these objects.
     if (!plasma_object_ids.empty()) {
+      // Prepare object ids map
+      absl::flat_hash_map<ObjectID, rpc::Address> plasma_object_ids_map =
+          GetObjectIdToOwnerAddressMap(plasma_object_ids);
+
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids,
+          plasma_object_ids_map,
           std::min(static_cast<int>(plasma_object_ids.size()),
                    num_objects - static_cast<int>(ready.size())),
           timeout_ms,
@@ -3003,8 +3018,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
+  // Resolve owner address of return id
+  absl::flat_hash_map<ObjectID, rpc::Address> return_id_map =
+      GetObjectIdToOwnerAddressMap({return_id});
+
   auto status = plasma_store_provider_->Get(
-      {return_id}, 0, *worker_context_, &result_map, &got_exception);
+      return_id_map, 0, *worker_context_, &result_map, &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3222,7 +3241,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // otherwise, the put is a no-op.
       if (!options_.is_local_mode) {
         memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                           task.ArgObjectId(i));
+                           task.ArgObjectId(i),
+                           reference_counter_->HasReference(task.ArgObjectId(i)));
       }
     } else {
       // A pass-by-value argument.
@@ -3271,8 +3291,11 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     RAY_RETURN_NOT_OK(memory_store_->Get(
         by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
   } else {
+    // Resolve owner addresses of by-ref ids
+    absl::flat_hash_map<ObjectID, rpc::Address> by_ref_ids_map =
+        GetObjectIdToOwnerAddressMap(by_ref_ids);
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
+        by_ref_ids_map, -1, *worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -3461,6 +3484,17 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
     }
     reply->set_object_size(locality_data.value().object_size);
   }
+}
+
+absl::flat_hash_map<ObjectID, rpc::Address> CoreWorker::GetObjectIdToOwnerAddressMap(
+    const absl::flat_hash_set<ObjectID> &object_ids) {
+  std::vector<ObjectID> object_ids_vector(object_ids.begin(), object_ids.end());
+  const auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids_vector);
+  absl::flat_hash_map<ObjectID, rpc::Address> object_id_map;
+  for (size_t i = 0; i < object_ids_vector.size(); i++) {
+    object_id_map[object_ids_vector[i]] = owner_addresses[i];
+  }
+  return object_id_map;
 }
 
 void CoreWorker::HandleWaitForActorRefDeleted(
@@ -4103,7 +4137,9 @@ Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool loca
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
-    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id);
+    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
+                       object_id,
+                       reference_counter_->HasReference(object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
@@ -4253,7 +4289,9 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       /*add_local_ref=*/false,
       /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
-  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

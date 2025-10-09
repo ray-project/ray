@@ -822,15 +822,15 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
+  CoreWorkerMemoryStore store(io_context.GetIoService(), rc != nullptr);
 
   // Tests putting an object with no references is ignored.
-  store.Put(buffer, id2);
+  store.Put(buffer, id2, rc->HasReference(id2));
   ASSERT_EQ(store.Size(), 0);
 
-  // Tests ref counting overrides remove after get option.
+  // Tests that objects with references remain in the store after Get.
   rc->AddLocalReference(id1, "");
-  store.Put(buffer, id1);
+  store.Put(buffer, id1, rc->HasReference(id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
@@ -838,7 +838,6 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
                          /*num_objects*/ 1,
                          /*timeout_ms*/ -1,
                          ctx,
-                         /*remove_after_get*/ true,
                          &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(store.Size(), 1);

@@ -126,8 +126,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
-        memory_store_(
-            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+        memory_store_(std::make_shared<CoreWorkerMemoryStore>(
+            io_context_.GetIoService(), /*reference_counting=*/true)),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
             [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),
@@ -159,7 +159,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-              memory_store_->Put(data, object_id);
+              memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
