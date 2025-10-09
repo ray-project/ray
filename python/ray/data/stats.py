@@ -1,17 +1,18 @@
+"""Statistical aggregation utilities for Ray Data.
+
+This module provides type-aware aggregation functionality for computing
+statistics on Ray Data datasets based on column data types.
+"""
+
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 from pandas.core.arrays.masked import BaseMaskedDtype
 
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorType,
-    ArrowTensorTypeV2,
-    ArrowVariableShapedTensorType,
-)
 from ray.data.aggregate import (
     AggregateFnV2,
     Count,
@@ -25,9 +26,15 @@ from ray.data.aggregate import (
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
+    from ray.data.datatype import DataType
 
 
 logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# Section 1: Type Conversion Utilities
+# ==============================================================================
 
 
 def _convert_to_pa_type(
@@ -51,213 +58,442 @@ def _convert_to_pa_type(
     return pa.from_numpy_dtype(dtype)
 
 
-def _get_underlying_type(ftype: pa.DataType) -> pa.DataType:
-    """Get the underlying Arrow type, handling dictionary and run-end encoding."""
-    if pa.types.is_dictionary(ftype):
-        return ftype.value_type
-    elif pa.types.is_run_end_encoded(ftype):
-        return ftype.value_type
-    return ftype
+# ==============================================================================
+# Section 3: Aggregator Creation and Management
+# ==============================================================================
+
+# Placeholder used in template aggregators that will be replaced with actual column names
+_COLUMN_PLACEHOLDER = "<column>"
 
 
-def _is_numerical_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is numerical (supports arithmetic operations).
+def _create_numerical_aggregators(column: str) -> List[AggregateFnV2]:
+    """Create aggregators for numerical columns.
 
-    Includes: integers, floats, decimals, booleans
+    Args:
+        column: Column name or placeholder
+
+    Returns:
+        List of aggregators suitable for numerical data
     """
-    underlying = _get_underlying_type(dtype)
-    return (
-        pa.types.is_integer(underlying)
-        or pa.types.is_floating(underlying)
-        or pa.types.is_decimal(underlying)
-        or pa.types.is_boolean(underlying)
-    )
+    return [
+        Count(on=column, ignore_nulls=False),
+        Mean(on=column, ignore_nulls=True),
+        Min(on=column, ignore_nulls=True),
+        Max(on=column, ignore_nulls=True),
+        Std(on=column, ignore_nulls=True, ddof=0),
+        MissingValuePercentage(on=column),
+        ZeroPercentage(on=column, ignore_nulls=True),
+    ]
 
 
-def _is_string_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is string-like.
+def _create_temporal_aggregators(column: str) -> List[AggregateFnV2]:
+    """Create aggregators for temporal columns.
 
-    Includes: string, large_string, string_view
+    Args:
+        column: Column name or placeholder
+
+    Returns:
+        List of aggregators suitable for temporal data
     """
-    underlying = _get_underlying_type(dtype)
-    return (
-        pa.types.is_string(underlying)
-        or pa.types.is_large_string(underlying)
-        or pa.types.is_string_view(underlying)
-    )
+    return [
+        Count(on=column, ignore_nulls=False),
+        Min(on=column, ignore_nulls=True),
+        Max(on=column, ignore_nulls=True),
+        MissingValuePercentage(on=column),
+    ]
 
 
-def _is_binary_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is binary.
+def _create_basic_aggregators(column: str) -> List[AggregateFnV2]:
+    """Create basic aggregators for non-numerical, non-temporal columns.
 
-    Includes: binary, large_binary, binary_view, fixed_size_binary
+    Args:
+        column: Column name or placeholder
+
+    Returns:
+        List of basic aggregators
     """
-    underlying = _get_underlying_type(dtype)
-    return (
-        pa.types.is_binary(underlying)
-        or pa.types.is_large_binary(underlying)
-        or pa.types.is_binary_view(underlying)
-        or pa.types.is_fixed_size_binary(underlying)
-    )
+    return [
+        Count(on=column, ignore_nulls=False),
+        MissingValuePercentage(on=column),
+    ]
 
 
-def _is_temporal_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is temporal.
+def default_dtype_aggregators() -> Dict["DataType", List[AggregateFnV2]]:
+    """Get default mapping from Ray Data DataType to aggregators.
 
-    Includes: date, time, timestamp, duration, interval
+    This function returns the default aggregators that will be applied to columns
+    of different data types during summary operations.
+
+    Returns:
+        Dict mapping DataType to list of AggregateFnV2 functions to apply.
+        The aggregators use placeholders (column="<column>") that will be replaced
+        with actual column names when applied.
+
+    Note:
+        The aggregators returned use a placeholder column name "<column>" which
+        should be replaced with the actual column name before use.
+
+    Examples:
+        >>> from ray.data.datatype import DataType
+        >>> from ray.data.stats import default_dtype_aggregators
+        >>> mapping = default_dtype_aggregators()
+        >>> int_aggs = mapping.get(DataType.int32())
     """
-    underlying = _get_underlying_type(dtype)
-    return pa.types.is_temporal(underlying)
+    from ray.data.datatype import DataType
+
+    mapping = {}
+
+    # Numerical types
+    numerical_aggs = _create_numerical_aggregators(_COLUMN_PLACEHOLDER)
+    for dtype_factory in [
+        DataType.int8,
+        DataType.int16,
+        DataType.int32,
+        DataType.int64,
+        DataType.uint8,
+        DataType.uint16,
+        DataType.uint32,
+        DataType.uint64,
+        DataType.float32,
+        DataType.float64,
+        DataType.bool,
+    ]:
+        mapping[dtype_factory()] = numerical_aggs
+
+    # String and binary types
+    basic_aggs = _create_basic_aggregators(_COLUMN_PLACEHOLDER)
+    mapping[DataType.string()] = basic_aggs
+    mapping[DataType.binary()] = basic_aggs
+
+    # Temporal types
+    temporal_aggs = _create_temporal_aggregators(_COLUMN_PLACEHOLDER)
+    mapping[DataType.from_arrow(pa.timestamp("us"))] = temporal_aggs
+    mapping[DataType.from_arrow(pa.date32())] = temporal_aggs
+    mapping[DataType.from_arrow(pa.date64())] = temporal_aggs
+    mapping[DataType.from_arrow(pa.time32("s"))] = temporal_aggs
+    mapping[DataType.from_arrow(pa.time64("us"))] = temporal_aggs
+    mapping[DataType.from_arrow(pa.duration("us"))] = temporal_aggs
+
+    # Note: Complex types like lists, structs, maps use fallback logic
+    # in _get_aggregators_for_dtype since they can't be easily enumerated
+
+    return mapping
 
 
-def _is_list_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is list-like.
+# ==============================================================================
+# Section 4: Type Pattern Matching
+# ==============================================================================
 
-    Includes: list, large_list, fixed_size_list, list_view, large_list_view
+
+def _matches_dtype(column_dtype: "DataType", mapping_key: "DataType") -> bool:
+    """Check if a column dtype matches a mapping key.
+
+    Supports both exact matching and pattern matching using DataType.ANY sentinel.
+
+    Args:
+        column_dtype: The dtype of the column
+        mapping_key: The dtype key from the mapping (may be a pattern)
+
+    Returns:
+        True if they match according to the matching rules
+
+    Matching Rules:
+        - Exact match: column_dtype == mapping_key
+        - Pattern match: mapping_key uses ANY and column_dtype fits the pattern category
     """
-    underlying = _get_underlying_type(dtype)
-    return (
-        pa.types.is_list(underlying)
-        or pa.types.is_large_list(underlying)
-        or pa.types.is_fixed_size_list(underlying)
-        or pa.types.is_list_view(underlying)
-        or pa.types.is_large_list_view(underlying)
-        or isinstance(
-            dtype, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)
+    from ray.data.datatype import DataType
+
+    # Exact match always works
+    if column_dtype == mapping_key:
+        return True
+
+    # Check if mapping_key is a pattern (uses ANY sentinel)
+    if not isinstance(mapping_key._internal_type, DataType._AnyType):
+        return False
+
+    # Pattern matching based on category
+    pattern_category = mapping_key._pattern_category
+
+    if pattern_category == "temporal":
+        return column_dtype.is_temporal_type()
+    elif pattern_category == "list":
+        return column_dtype.is_list_type()
+    elif pattern_category == "struct":
+        return column_dtype.is_struct_type()
+    elif pattern_category == "map":
+        return column_dtype.is_map_type()
+    elif pattern_category is None:
+        # Generic ANY pattern - matches everything
+        return True
+    else:
+        # Unknown category - don't match
+        logger.warning(f"Unknown pattern category: {pattern_category}")
+        return False
+
+
+# ==============================================================================
+# Section 5: Aggregator Cloning and Column Binding
+# ==============================================================================
+
+
+def _is_template_aggregator(agg: AggregateFnV2) -> bool:
+    """Check if an aggregator is a template (uses placeholder column name).
+
+    Args:
+        agg: An aggregator instance
+
+    Returns:
+        True if the aggregator uses the placeholder column name
+    """
+    if not hasattr(agg, "get_target_column"):
+        return False
+    return agg.get_target_column() == _COLUMN_PLACEHOLDER
+
+
+def _clone_aggregator_with_column(
+    agg: AggregateFnV2, column: str
+) -> Optional[AggregateFnV2]:
+    """Clone an aggregator with a specific column name, preserving all other parameters.
+
+    Uses introspection to automatically extract all constructor parameters
+    from the existing aggregator and pass them to the new instance.
+
+    Args:
+        agg: Template aggregator to clone
+        column: Target column name for the cloned aggregator
+
+    Returns:
+        Cloned aggregator with the new column name, or None if cloning failed
+    """
+    import inspect
+
+    agg_class = type(agg)
+    sig = inspect.signature(agg_class.__init__)
+    kwargs = {}
+
+    # Extract constructor parameters from the instance
+    for param_name, param in sig.parameters.items():
+        if param_name in ("self", "on"):
+            continue  # Skip self and on (we'll override on)
+
+        # Convention: most params are stored as _param_name
+        attr_name = f"_{param_name}"
+        if hasattr(agg, attr_name):
+            kwargs[param_name] = getattr(agg, attr_name)
+        elif param.default != inspect.Parameter.empty:
+            # Use default if attribute not found and default exists
+            pass
+
+    # Set the new column name
+    kwargs["on"] = column
+
+    try:
+        return agg_class(**kwargs)
+    except Exception as e:
+        logger.warning(
+            f"Could not clone aggregator {agg_class.__name__} for column '{column}': {e}"
         )
-    )
+        return None
 
 
-def _is_union_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is union (dense or sparse)."""
-    underlying = _get_underlying_type(dtype)
-    return pa.types.is_union(underlying)
+def _bind_aggregators_to_column(
+    template_aggs: List[AggregateFnV2], column: str
+) -> List[AggregateFnV2]:
+    """Bind template aggregators to a specific column.
 
+    Args:
+        template_aggs: List of aggregators (may use placeholder or actual column)
+        column: Target column name
 
-def _is_nested_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is nested.
-
-    Includes: list, struct, map, union
+    Returns:
+        List of aggregators bound to the specific column
     """
-    underlying = _get_underlying_type(dtype)
-    return pa.types.is_nested(underlying)
+    bound_aggs = []
+    for agg in template_aggs:
+        if _is_template_aggregator(agg):
+            cloned = _clone_aggregator_with_column(agg, column)
+            if cloned is not None:
+                bound_aggs.append(cloned)
+        else:
+            # Not a template, use as-is
+            bound_aggs.append(agg)
+    return bound_aggs
 
 
-def _is_null_dtype(dtype: pa.DataType) -> bool:
-    """Check if Arrow dtype is null."""
-    underlying = _get_underlying_type(dtype)
-    return pa.types.is_null(underlying)
+# ==============================================================================
+# Section 6: Aggregator Selection Logic
+# ==============================================================================
 
 
-def _aggregators_for_dtype(column: str, dtype: pa.DataType) -> List[AggregateFnV2]:
-    """Get appropriate aggregators for a given arrow dtype.
+def _get_aggregators_for_dtype(
+    column: str,
+    dtype: "DataType",
+    dtype_agg_mapping: Dict["DataType", List[AggregateFnV2]],
+) -> List[AggregateFnV2]:
+    """Get aggregators for a specific column based on its DataType.
+
+    Attempts to match the dtype against the provided mapping first, then
+    falls back to heuristic-based selection if no match is found.
 
     Args:
         column: Column name
-        dtype: Arrow dtype
+        dtype: Ray Data DataType for the column
+        dtype_agg_mapping: Mapping from DataType to list of aggregators
 
     Returns:
-        List of aggregators appropriate for this dtype
+        List of aggregators with the column name properly set
     """
-    # Check types in order of specificity, with most common types first for performance
+    # Try to find a match in the mapping
+    template_aggs = None
+    for mapping_key, aggs in dtype_agg_mapping.items():
+        if _matches_dtype(dtype, mapping_key):
+            template_aggs = aggs
+            break
 
-    if _is_null_dtype(dtype):
-        # Null dtype: only count (everything is null)
-        return [
-            Count(on=column, ignore_nulls=False),
-        ]
-    elif _is_numerical_dtype(dtype):
-        # Numerical dtypes: compute comprehensive statistics
-        # Includes: integers, floats, decimals, booleans
-        return [
-            Count(on=column, ignore_nulls=False),
-            Mean(on=column, ignore_nulls=True),
-            Min(on=column, ignore_nulls=True),
-            Max(on=column, ignore_nulls=True),
-            Std(on=column, ignore_nulls=True, ddof=0),
-            MissingValuePercentage(on=column),
-            ZeroPercentage(on=column, ignore_nulls=True),
-        ]
-    elif _is_string_dtype(dtype):
-        # String dtypes: count and missing values
-        # Includes: string, large_string, string_view
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
-    elif _is_temporal_dtype(dtype):
-        # Temporal dtypes: count, min, max, missing values
-        # Includes: date, time, timestamp, duration, interval
-        # Can compute min/max since temporal types are orderable
-        return [
-            Count(on=column, ignore_nulls=False),
-            Min(on=column, ignore_nulls=True),
-            Max(on=column, ignore_nulls=True),
-            MissingValuePercentage(on=column),
-        ]
-    elif _is_binary_dtype(dtype):
-        # Binary dtypes: count and missing values
-        # Includes: binary, large_binary, binary_view, fixed_size_binary
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
-    elif _is_list_dtype(dtype):
-        # List dtypes: count and missing values
-        # Includes: list, large_list, fixed_size_list, list_view, large_list_view
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
-    elif _is_union_dtype(dtype):
-        # Union dtypes (dense or sparse): count and missing values
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
-    elif _is_nested_dtype(dtype):
-        # Catch-all for any nested types not explicitly handled above
-        # Nested includes: list, struct, map, union variants
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
-    else:
-        # Other/unknown types (e.g., extension types): basic statistics
-        # Includes: fixed_shape_tensor, opaque, json, uuid, bool8
-        logger.info(
-            f"Dtype {dtype} for column {column} is not a standard Arrow type, "
-            f"computing basic statistics only"
+    # If match found, bind templates to column
+    if template_aggs is not None:
+        return _bind_aggregators_to_column(template_aggs, column)
+
+    # Fallback: Use heuristic-based selection
+    return _get_fallback_aggregators(column, dtype)
+
+
+def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateFnV2]:
+    """Get aggregators using heuristic-based type detection.
+
+    This is a fallback when no explicit mapping is found for the dtype.
+
+    Args:
+        column: Column name
+        dtype: Ray Data DataType for the column
+
+    Returns:
+        List of aggregators suitable for the column type
+    """
+    try:
+        # Check for null type first (DataType doesn't have is_null_type yet)
+        if dtype.is_arrow_type() and pa.types.is_null(dtype._internal_type):
+            return [Count(on=column, ignore_nulls=False)]
+        elif dtype.is_numerical_type():
+            return _create_numerical_aggregators(column)
+        elif dtype.is_temporal_type():
+            return _create_temporal_aggregators(column)
+        else:
+            # Default for strings, binary, lists, nested types, etc.
+            return _create_basic_aggregators(column)
+
+    except Exception as e:
+        logger.warning(
+            f"Could not determine aggregators for column '{column}' with dtype {dtype}: {e}. "
+            f"Using basic aggregators."
         )
-        return [
-            Count(on=column, ignore_nulls=False),
-            MissingValuePercentage(on=column),
-        ]
+        return _create_basic_aggregators(column)
+
+
+# ==============================================================================
+# Section 7: Public API and Main Orchestration
+# ==============================================================================
 
 
 @dataclass
 class DtypeAggregators:
-    """Container for columns grouped by arrow dtype and their aggregators."""
+    """Container for columns and their aggregators.
 
-    column_to_dtype: Dict[str, str]  # column name -> arrow dtype string
+    Attributes:
+        column_to_dtype: Mapping from column name to dtype string representation
+        aggregators: List of all aggregators to apply
+    """
+
+    column_to_dtype: Dict[str, str]
     aggregators: List[AggregateFnV2]
 
 
+def _prepare_user_mapping(
+    user_mapping: Dict["DataType", List[AggregateFnV2]]
+) -> Dict["DataType", List[AggregateFnV2]]:
+    """Process user-provided dtype mapping to ensure aggregators have placeholders.
+
+    Args:
+        user_mapping: User-provided mapping from DataType to aggregators
+
+    Returns:
+        Processed mapping with all aggregators using placeholder columns
+    """
+    processed_mapping = {}
+    for dtype_key, aggs in user_mapping.items():
+        processed_aggs = []
+        for agg in aggs:
+            if hasattr(agg, "get_target_column"):
+                col = agg.get_target_column()
+                if col is None or col == "":
+                    # Clone with placeholder
+                    cloned = _clone_aggregator_with_column(agg, _COLUMN_PLACEHOLDER)
+                    processed_aggs.append(cloned if cloned else agg)
+                else:
+                    processed_aggs.append(agg)
+            else:
+                processed_aggs.append(agg)
+        processed_mapping[dtype_key] = processed_aggs
+    return processed_mapping
+
+
+def _convert_to_ray_datatype(field_name: str, field_type: Any) -> Optional["DataType"]:
+    """Convert various type formats to Ray Data DataType.
+
+    Args:
+        field_name: Name of the field (for logging)
+        field_type: Type to convert (PyArrow, NumPy, Pandas, or DataType)
+
+    Returns:
+        Ray Data DataType, or None if conversion failed
+    """
+    from ray.data.datatype import DataType
+
+    if isinstance(field_type, DataType):
+        return field_type
+
+    try:
+        if isinstance(field_type, pa.DataType):
+            return DataType.from_arrow(field_type)
+        elif isinstance(field_type, (np.dtype, pd.ArrowDtype, BaseMaskedDtype)):
+            pa_type = _convert_to_pa_type(field_type)
+            return DataType.from_arrow(pa_type)
+        else:
+            logger.warning(
+                f"Skipping field '{field_name}': unsupported type {type(field_type)}"
+            )
+            return None
+    except Exception as e:
+        logger.warning(
+            f"Skipping field '{field_name}': could not convert type {field_type} to DataType: {e}"
+        )
+        return None
+
+
 def _dtype_aggregators_for_dataset(
-    schema: Optional["Schema"], columns: Optional[List[str]] = None
+    schema: Optional["Schema"],
+    columns: Optional[List[str]] = None,
+    dtype_agg_mapping: Optional[Dict["DataType", List[AggregateFnV2]]] = None,
 ) -> DtypeAggregators:
-    """Generate aggregators for all columns in a dataset, grouped by arrow dtype.
+    """Generate aggregators for columns in a dataset based on their DataTypes.
 
     Args:
         schema: A Ray Schema instance
-        columns: A list of columns to include in the summary. If None, all columns will be included.
+        columns: List of columns to include. If None, all columns will be included.
+        dtype_agg_mapping: Optional user-provided mapping from DataType to aggregators.
+            This will be merged with the default mapping (user mapping takes precedence).
 
     Returns:
         DtypeAggregators containing column-to-dtype mapping and aggregators
+
+    Raises:
+        ValueError: If schema is None or if specified columns don't exist in schema
     """
+
     if not schema:
         raise ValueError("Dataset must have a schema to determine column types")
 
+    # Determine columns to process
     if columns is None:
         columns = schema.names
 
@@ -266,38 +502,35 @@ def _dtype_aggregators_for_dataset(
     if missing_cols:
         raise ValueError(f"Columns {missing_cols} not found in dataset schema")
 
-    # Get column types - Ray's Schema provides names and types as lists
-    column_names = schema.names
-    column_types = schema.types
+    # Build final mapping: default + user overrides
+    final_mapping = default_dtype_aggregators()
+    if dtype_agg_mapping:
+        processed_user_mapping = _prepare_user_mapping(dtype_agg_mapping)
+        final_mapping.update(processed_user_mapping)
 
-    # Create a mapping of column names to types
-    name_to_type = dict(zip(column_names, column_types))
+    # Create column name to type mapping
+    name_to_type = dict(zip(schema.names, schema.types))
 
+    # Generate aggregators for each column
     column_to_dtype = {}
     all_aggs = []
 
     for name in columns:
-        ftype = name_to_type.get(name)
-        if ftype is None:
-            logger.warning(f"Skipping field {name}: type is None")
+        field_type = name_to_type.get(name)
+        if field_type is None:
+            logger.warning(f"Skipping field '{name}': type is None")
             continue
 
-        # Convert pandas/numpy dtype to PyArrow dtype if necessary
-        if not isinstance(ftype, pa.DataType):
-            try:
-                ftype = _convert_to_pa_type(ftype)
-            except Exception as e:
-                logger.warning(
-                    f"Skipping field {name}: could not convert type {ftype} to PyArrow DataType: {e}"
-                )
-                continue
+        # Convert to Ray Data DataType
+        ray_dtype = _convert_to_ray_datatype(name, field_type)
+        if ray_dtype is None:
+            continue
 
-        # Store the arrow dtype string representation
-        dtype_str = str(ftype)
-        column_to_dtype[name] = dtype_str
+        # Store dtype string representation
+        column_to_dtype[name] = str(ray_dtype)
 
-        # Get aggregators based on the dtype
-        aggs = _aggregators_for_dtype(name, ftype)
+        # Get aggregators for this column
+        aggs = _get_aggregators_for_dtype(name, ray_dtype, final_mapping)
         all_aggs.extend(aggs)
 
     return DtypeAggregators(

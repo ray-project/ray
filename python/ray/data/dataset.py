@@ -98,6 +98,7 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import (
     AggregateFn,
+    AggregateFnV2,
     Max,
     Mean,
     Min,
@@ -120,6 +121,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -5993,16 +5995,26 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
-    def summary(self, columns: Optional[List[str]] = None) -> "Dataset":
-        """Generate a statistical summary of the dataset, organized by arrow dtype.
+    def summary(
+        self,
+        columns: Optional[List[str]] = None,
+        override_dtype_agg_mapping: Optional[
+            Dict[DataType, List[AggregateFnV2]]
+        ] = None,
+    ) -> "Dataset":
+        """Generate a statistical summary of the dataset, organized by data type.
 
         This method computes various statistics for different column dtypes:
 
         - For numerical dtypes (int*, float*, decimal, bool): count, mean, min, max, std, missing%, zero%
         - For string dtypes: count, missing%
-        - For list dtypes: count, missing%
+        - For temporal dtypes: count, min, max, missing%
+        - For other dtypes: count, missing%
 
-        The resulting Ray Data Dataset where each row represents a column with its arrow dtype and computed statistics.
+        You can customize the aggregations performed for specific data types using the
+        `override_dtype_agg_mapping` parameter.
+
+        The resulting Ray Data Dataset where each row represents a column with its dtype and computed statistics.
 
         Examples:
             >>> import ray
@@ -6013,17 +6025,32 @@ class Dataset:
             ... ])
             >>> summary = ds.summary()
             >>> summary.to_pandas()  # doctest: +SKIP
-               column  count          mean      min      max          std  missing_pct   zero_pct
+            column  count          mean      min      max          std  missing_pct   zero_pct
             0     age      3     18.333333      0.0     30.0    13.123346     0.000000  33.333333
             1  salary      3  55000.000000  50000.0  60000.0  5000.000000    33.333333   0.000000
             2    name      3           NaN      NaN      NaN          NaN    33.333333        NaN
             3    city      3           NaN      NaN      NaN          NaN    33.333333        NaN
+
+            Custom aggregations for specific types:
+
+            >>> from ray.data import DataType
+            >>> from ray.data.aggregate import Sum, Count
+            >>> # Override aggregations for int64 columns
+            >>> custom_mapping = {
+            ...     DataType.int64(): [Count(on="<column>"), Sum(on="<column>")]
+            ... }
+            >>> summary = ds.summary(override_dtype_agg_mapping=custom_mapping)
+
         Args:
             columns: Optional list of column names to include in the summary.
                 If None, all columns will be included.
+            override_dtype_agg_mapping: Optional mapping from DataType to list of
+                aggregators. This will be merged with the default mapping, with
+                user-provided mappings taking precedence. Use "<column>" as the
+                placeholder column name in aggregators.
 
         Returns:
-            A Ray Data Dataset with statistics per column, organized by arrow dtype.
+            A Ray Data Dataset with statistics per column, organized by data type.
         """
         import pyarrow as pa
 
@@ -6033,7 +6060,11 @@ class Dataset:
         )
 
         # Get aggregators and compute results
-        dtype_aggs = _dtype_aggregators_for_dataset(self.schema(), columns=columns)
+        dtype_aggs = _dtype_aggregators_for_dataset(
+            self.schema(),
+            columns=columns,
+            dtype_agg_mapping=override_dtype_agg_mapping,
+        )
         results = self.aggregate(*dtype_aggs.aggregators)
 
         if not results:
