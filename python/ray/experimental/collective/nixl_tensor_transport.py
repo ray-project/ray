@@ -160,5 +160,6 @@ class NixlTensorTransport(TensorTransportManager):
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
         descs = tensor_transport_meta.nixl_reg_descs
-        nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
-        nixl_backend.deregister_memory(descs)
+        if descs is not None:
+            nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
+            nixl_backend.deregister_memory(descs)
