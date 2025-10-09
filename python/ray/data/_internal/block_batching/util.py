@@ -235,6 +235,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
         while True:
             try:
                 blocks_to_wait = []
+
                 with self._condition:
                     if len(self._blocks) > 0:
                         blocks_to_wait, self._blocks = self._blocks[:], []
@@ -243,8 +244,16 @@ class WaitBlockPrefetcher(BlockPrefetcher):
                             return
                         blocks_to_wait = []
                         self._condition.wait()
+
                 if len(blocks_to_wait) > 0:
-                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
+                    ray.wait(
+                        blocks_to_wait,
+                        num_returns=1,
+                        # NOTE: We deliberately setting timeout to 0 to avoid
+                        #       blocking the fetching thread unnecessarily
+                        timeout=0,
+                        fetch_local=True,
+                    )
             except Exception:
                 logger.exception("Error in prefetcher thread.")
 
