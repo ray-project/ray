@@ -815,6 +815,34 @@ py_test(
 )
 
 py_test(
+    name = "test_map_batches",
+    size = "enormous",
+    srcs = ["tests/test_map_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_with_column",
+    size = "enormous",
+    srcs = ["tests/test_with_column.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_filter",
     size = "medium",
     srcs = ["tests/test_filter.py"],
