@@ -114,7 +114,6 @@ py_test_module_list(
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
-        "test_target_capacity.py",
         "test_task_processor.py",
         "test_telemetry.py",
     ],
@@ -163,6 +162,7 @@ py_test_module_list(
         "test_logging.py",
         "test_standalone.py",
         "test_standalone_3.py",
+        "test_target_capacity.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
@@ -243,7 +243,42 @@ py_test_module_list(
     size = "large",
     files = [
         "test_api.py",
+    ],
+    tags = [
+        "exclusive",
+        "minimal",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# API tests that run faster
+py_test_module_list(
+    size = "small",
+    files = [
         "test_api_2.py",
+    ],
+    tags = [
+        "exclusive",
+        "minimal",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Model composition test that needs medium size
+py_test_module_list(
+    size = "medium",
+    timeout = "moderate",
+    files = [
         "test_model_composition.py",
     ],
     tags = [
@@ -266,6 +301,7 @@ py_test_module_list(
         "test_runtime_env_2.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
         "team:serve",
@@ -304,6 +340,7 @@ py_test(
     size = "medium",
     srcs = ["test_serve_ha.py"],
     tags = [
+        "custom_setup",
         "exclusive",
         "ha_integration",
         "team:serve",
@@ -318,40 +355,40 @@ py_test(
 # ----- TEST FEATURE FLAGS -----
 
 # Test autoscaling with different metric collection configurations
+AUTOSCALING_METRIC_ENV_VARIANTS = {
+    "metr_disab": {
+        "env": {
+            "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+            # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        },
+        "name_suffix": "_metr_disab",
+    },
+    "metr_agg_at_controller": {
+        "env": {
+            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+            # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        },
+        "name_suffix": "_metr_agg_at_controller",
+    },
+    "metr_agg_at_controller_and_replicas": {
+        "env": {
+            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+            "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+            # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        },
+        "name_suffix": "_metr_agg_at_controller_and_replicas",
+    },
+}
+
 py_test_module_list_with_env_variants(
     size = "large",
-    env_variants = {
-        "with_metr_disab": {
-            "env": {
-                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                # Make sure queued metrics are cleared out quickly.
-                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
-            },
-            "name_suffix": "_with_metr_disab",
-        },
-        "with_metr_agg_at_controller": {
-            "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
-                # Make sure queued metrics are cleared out quickly.
-                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
-            },
-            "name_suffix": "_with_metr_agg_at_controller",
-        },
-        "with_metr_agg_at_controller_and_metr_on_replicas": {
-            "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
-                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                # Make sure queued metrics are cleared out quickly.
-                "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
-            },
-            "name_suffix": "_with_metr_agg_at_controller_and_metr_on_replicas",
-        },
-    },
+    env_variants = AUTOSCALING_METRIC_ENV_VARIANTS,
     files = [
         "test_autoscaling_policy.py",
-        "test_cluster.py",
         "test_deploy.py",
-        "test_deployment_scheduler.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
     ],

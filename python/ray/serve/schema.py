@@ -1359,3 +1359,12 @@ class TaskResult(BaseModel):
         default=None, description="The timestamp of the task creation."
     )
     result: Any = Field(..., description="The result of the task.")
+
+
+@PublicAPI(stability="alpha")
+class ScaleDeploymentRequest(BaseModel):
+    """Request schema for scaling a deployment's replicas."""
+
+    target_num_replicas: NonNegativeInt = Field(
+        description="The target number of replicas for the deployment."
+    )

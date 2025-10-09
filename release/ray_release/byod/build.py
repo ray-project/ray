@@ -9,6 +9,7 @@ from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
+from ray_release.util import AZURE_REGISTRY_NAME
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -20,7 +21,10 @@ RELEASE_BYOD_DIR = (
 
 
 def build_anyscale_custom_byod_image(
-    image: str, base_image: str, post_build_script: str
+    image: str,
+    base_image: str,
+    post_build_script: str,
+    python_depset: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
@@ -28,25 +32,49 @@ def build_anyscale_custom_byod_image(
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    subprocess.check_call(
+    docker_build_cmd = [
+        "docker",
+        "build",
+        "--progress=plain",
+        "--build-arg",
+        f"BASE_IMAGE={base_image}",
+    ]
+    if post_build_script:
+        docker_build_cmd.extend(
+            ["--build-arg", f"POST_BUILD_SCRIPT={post_build_script}"]
+        )
+    if python_depset:
+        docker_build_cmd.extend(["--build-arg", f"PYTHON_DEPSET={python_depset}"])
+
+    docker_build_cmd.extend(
         [
-            "docker",
-            "build",
-            "--progress=plain",
-            "--build-arg",
-            f"BASE_IMAGE={base_image}",
-            "--build-arg",
-            f"POST_BUILD_SCRIPT={post_build_script}",
             "-t",
             image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
-        ],
+        ]
+    )
+    subprocess.check_call(
+        docker_build_cmd,
         stdout=sys.stderr,
         env=env,
     )
     _validate_and_push(image)
+    if os.environ.get("BUILDKITE"):
+        subprocess.run(
+            [
+                "buildkite-agent",
+                "annotate",
+                "--style=info",
+                "--context=custom-images",
+                "--append",
+                f"{image}<br/>",
+            ],
+        )
+    tag_without_registry = image.split("/")[-1]
+    azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
+    _tag_and_push(source=image, target=azure_tag)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
@@ -125,3 +153,14 @@ def _image_exist(image: str) -> bool:
         stderr=sys.stderr,
     )
     return p.returncode == 0
+
+
+def _tag_and_push(source: str, target: str) -> None:
+    subprocess.check_call(
+        ["docker", "tag", source, target],
+        stdout=sys.stderr,
+    )
+    subprocess.check_call(
+        ["docker", "push", target],
+        stdout=sys.stderr,
+    )
