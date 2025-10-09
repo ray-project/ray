@@ -11,11 +11,6 @@ worker_node_types:
     instance_type: m5.2xlarge
     min_workers: 250
     max_workers: 350
-aws_advanced_configurations_json:
-  TagSpecifications:
-  - ResourceType: instance
-    Tags:
-    - Key: as-feature-enable-multi-az-serve
-      Value: "true"
 flags:
+  enable_multi_az_serve: true
   allow-cross-zone-autoscaling: true
