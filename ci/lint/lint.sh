@@ -60,7 +60,7 @@ code_format() {
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
 }
 
-untested_code_snippet() {
+semgrep_lint() {
   pip install -c python/requirements_compiled.txt semgrep
   semgrep ci --config semgrep.yml
 }
