@@ -300,7 +300,7 @@ class AnyscaleJobRunner(JobRunner):
         # If running on Azure, upload working dir to Azure blob storage first
         if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
             azure_file_path = upload_working_dir_to_azure(
-                working_dir=os.get_cwd(), azure_directory_uri=self.upload_path
+                working_dir=os.getcwd(), azure_directory_uri=self.upload_path
             )
             working_dir = azure_file_path
             logger.info(f"Working dir uploaded to {working_dir}")
