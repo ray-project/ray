@@ -28,6 +28,13 @@ from ray.train.trainer import TrainingIterator
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
+    try:
+        import pydantic  # noqa: F401
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise ImportError(
+            "`ray.train.v2` requires the pydantic package, which is missing. "
+            "Run the following command to fix this: `pip install pydantic`"
+        ) from exc
     from ray.train.v2.api.callback import UserCallback  # noqa: F811
     from ray.train.v2.api.config import (  # noqa: F811
         FailureConfig,
