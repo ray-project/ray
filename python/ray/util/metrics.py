@@ -73,6 +73,14 @@ class Metric:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
+        if ":" in self._name:
+            warnings.warn(
+                f"Metric name {self._name} contains a : character, which is no longer allowed. "
+                f"Please migrate to the new metric name format. "
+                f"This will be an error in the future.",
+                FutureWarning,
+            )
+
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
 
