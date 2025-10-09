@@ -407,10 +407,6 @@ python/ray/air/integrations/wandb.py
 python/ray/air/result.py
     DOC201: Method `Result._read_file_as_str` does not have a return section in docstring
 --------------------
-python/ray/air/util/check_ingest.py
-    DOC101: Method `DummyTrainer.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `DummyTrainer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: , batch_size: Optional[int]].
---------------------
 python/ray/air/util/tensor_extensions/arrow.py
     DOC101: Function `pyarrow_table_from_pydict`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `pyarrow_table_from_pydict`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [pydict: Dict[str, Union[List[Any], pa.Array]]].
@@ -423,12 +419,6 @@ python/ray/air/util/tensor_extensions/pandas.py
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `TensorArray.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `TensorArray.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [values: Union[np.ndarray, ABCSeries, Sequence[Union[np.ndarray, TensorArrayElement]], TensorArrayElement, Any]].
---------------------
-python/ray/air/util/torch_dist.py
-    DOC101: Method `TorchDistributedWorker.execute`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `TorchDistributedWorker.execute`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [args, kwargs: ].
-    DOC201: Method `TorchDistributedWorker.execute` does not have a return section in docstring
-    DOC103: Function `init_torch_dist_process_group`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**init_process_group_kwargs: ]. Arguments in the docstring but not in the function signature: [init_process_group_kwargs: ].
 --------------------
 python/ray/air/util/transform_pyarrow.py
     DOC201: Function `_concatenate_extension_column` does not have a return section in docstring

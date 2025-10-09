@@ -2,6 +2,7 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
+    name = "py_doctest[tune]",
     files = glob(
         ["**/*.py"],
         exclude = [
