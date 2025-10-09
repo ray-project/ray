@@ -1,7 +1,6 @@
 import logging
 import logging.config
 import os
-import threading
 from typing import List, Optional
 
 import yaml
@@ -70,10 +69,6 @@ RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
 _DATASET_LOGGER_HANDLER = {}
 _ACTIVE_DATASET = None
-
-# Idempotency flag and lock for thread-safe lazy initialization
-_logging_configured = False
-_logging_lock = threading.Lock()
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -185,61 +180,61 @@ def _get_logger_names() -> List[str]:
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function is idempotent and safe to call multiple times. It should NOT be
-    called at import time to avoid interfering with other Ray components' logging
-    configurations.
-
-    This function is called lazily when Ray Data operations actually execute, not at module import time.
-
-    This function loads the configuration YAML specified by "RAY_DATA_LOGGING_CONFIG"
-    environment variable. If the variable isn't set, this function uses the default
-    configuration.
+    This function loads the configration YAML specified by "RAY_DATA_LOGGING_CONFIG"
+    environment variable. If the variable isn't set, this function loads the default
+    "logging.yaml" file that is adjacent to this module.
 
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
     """
-    global _logging_configured
+    # Dynamically load env vars
+    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
+    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
+    config = _get_logging_config()
 
-    # Double-checked locking pattern for thread safety and performance
-    if _logging_configured:
-        return
+    # Save existing handlers from all loggers before reconfiguration,
+    # as dictConfig will clear them and call close() which resets handler state
+    saved_handlers = {}
+    saved_handler_state = {}
+    for name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(name)
+        if logger.handlers:
+            saved_handlers[name] = list(logger.handlers)
+            # Save state for MemoryHandler specifically (target gets set to None on close)
+            for handler in logger.handlers:
+                if isinstance(handler, logging.handlers.MemoryHandler):
+                    saved_handler_state[id(handler)] = {
+                        "target": handler.target,
+                        "capacity": handler.capacity,
+                    }
 
-    with _logging_lock:
-        # Check again inside the lock to handle race conditions
-        if _logging_configured:
-            return
+    # Configure logging
+    config["disable_existing_loggers"] = False
+    logging.config.dictConfig(config)
 
-        config = _get_logging_config()
+    # Restore handlers that were cleared by dictConfig
+    for name, handlers in saved_handlers.items():
+        logger = logging.getLogger(name)
+        for handler in handlers:
+            # Restore MemoryHandler state that was cleared by close()
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                handler_id = id(handler)
+                if handler_id in saved_handler_state:
+                    state = saved_handler_state[handler_id]
+                    handler.target = state["target"]
+                    handler.capacity = state["capacity"]
 
-        # Preserve the propagate settings for loggers if they've been explicitly set
-        # (e.g., by test fixtures). This ensures test logging capture works correctly.
-        # Only check loggers that already exist to avoid capturing default values.
-        logger_names = list(config.get("loggers", {}).keys())
-        propagate_settings = {}
-        for name in logger_names:
-            # Only preserve propagate setting if logger already exists
-            if name in logging.Logger.manager.loggerDict:
-                propagate_settings[name] = logging.getLogger(name).propagate
+            if handler not in logger.handlers:
+                logger.addHandler(handler)
 
-        logging.config.dictConfig(config)
-
-        # Restore propagate settings if they were True (likely set by test fixtures)
-        for name, should_propagate in propagate_settings.items():
-            if should_propagate:
-                logging.getLogger(name).propagate = True
-
-        _logging_configured = True
-
-        # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
-        # RAY_DATA_LOG_ENCODING, because they are not both supported together.
-        config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
-        log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
-        if config_path is not None and log_encoding is not None:
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                "Using `RAY_DATA_LOG_ENCODING` is not supported with "
-                + "`RAY_DATA_LOGGING_CONFIG`"
-            )
+    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
+    # RAY_DATA_LOG_ENCODING, because they are not both supported together.
+    if config_path is not None and log_encoding is not None:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Using `RAY_DATA_LOG_ENCODING` is not supported with "
+            + "`RAY_DATA_LOGGING_CONFIG`"
+        )
 
 
 def reset_logging() -> None:
@@ -249,17 +244,12 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
-    global _logging_configured
+    logger = logging.getLogger("ray.data")
+    logger.handlers.clear()
+    logger.setLevel(logging.NOTSET)
 
-    with _logging_lock:
-        _logging_configured = False
-
-        logger = logging.getLogger("ray.data")
-        logger.handlers.clear()
-        logger.setLevel(logging.NOTSET)
-
-        _DATASET_LOGGER_HANDLER = {}
-        _ACTIVE_DATASET = None
+    _DATASET_LOGGER_HANDLER = {}
+    _ACTIVE_DATASET = None
 
 
 def get_log_directory() -> Optional[str]:
@@ -325,10 +315,6 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
-
-    # This method is now invoked from inside the streaming executor.
-    configure_logging()
-
     loggers = [logging.getLogger(name) for name in _get_logger_names()]
     log_handler = _create_dataset_log_handler(dataset_id)
 
