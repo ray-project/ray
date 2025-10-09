@@ -414,6 +414,8 @@ class _StatsActor:
                 if isinstance(value, list):
                     for i in range(len(value)):
                         # Pick a value between the boundaries so the sample falls into the right bucket.
+                        # We need to calculate the mid point because choosing the exact boundary value
+                        # seems to have unreliable behavior on which bucket it ends up in.
                         boundary_upper_bound = (
                             prom_metric.boundaries[i]
                             if i < len(value) - 1
