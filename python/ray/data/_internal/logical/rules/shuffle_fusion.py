@@ -125,24 +125,6 @@ class ShuffleFusion(Rule):
                     _disconnect_op(prev_op)
                     return op
 
-            if isinstance(prev_op, Aggregate) and isinstance(op, Aggregate):
-                if (
-                    _keys_can_fuse(prev_op, op)
-                    and op._batch_format == prev_op._batch_format
-                ):
-                    _disconnect_op(prev_op)
-                    # Create new Aggregate with combined aggs
-                    combined_aggs = prev_op._aggs + op._aggs
-                    new_op = Aggregate(
-                        input_op=prev_op.input_dependencies[0],
-                        key=op._key,
-                        aggs=combined_aggs,
-                        # NOTE: Fallback
-                        num_partitions=op._num_partitions or prev_op._num_partitions,
-                        batch_format=op._batch_format,
-                    )
-                    return new_op
-
             if isinstance(prev_op, Sort) and isinstance(op, Aggregate):
                 ctx = DataContext.get_current()
                 if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
