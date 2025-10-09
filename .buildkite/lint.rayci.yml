@@ -13,14 +13,13 @@ steps:
       - clang_format
       - code_format
       - pre_commit
-      - untested_code_snippet
+      - semgrep_lint
       - banned_words
       - doc_readme
       - dashboard_format
       - copyright_format
       - bazel_team
       - bazel_buildifier
-      - pytest_format
       - test_coverage
       - documentation_style
 

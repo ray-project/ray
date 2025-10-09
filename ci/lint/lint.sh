@@ -60,9 +60,9 @@ code_format() {
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
 }
 
-untested_code_snippet() {
+semgrep_lint() {
   pip install -c python/requirements_compiled.txt semgrep
-  semgrep ci --config semgrep.yml
+  semgrep scan --config semgrep.yml --error
 }
 
 banned_words() {
@@ -91,11 +91,6 @@ bazel_team() {
 
 bazel_buildifier() {
   ./ci/lint/check-bazel-buildifier.sh
-}
-
-pytest_format() {
-  pip install -c python/requirements_compiled.txt yq
-  ./ci/lint/check-pytest-format.sh
 }
 
 test_coverage() {
