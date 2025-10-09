@@ -826,27 +826,6 @@ def call_ray_start_context(request):
 
 
 @pytest.fixture
-def call_ray_start_with_external_redis(request):
-    ports = getattr(request, "param", "6379")
-    port_list = ports.split(",")
-    for port in port_list:
-        temp_dir = ray._common.utils.get_ray_temp_dir()
-        start_redis_instance(temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: build_address("localhost", x), port_list))
-    cmd = f"ray start --head --address={address_str} --redis-password=123"
-    subprocess.call(cmd.split(" "))
-
-    yield address_str.split(",")[0]
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
-
-
-@pytest.fixture
 def init_and_serve():
     import ray.util.client.server.server as ray_client_server
 

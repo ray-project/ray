@@ -21,20 +21,23 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
+/// The duration at which the GCS tries to run global GC.
+RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
+
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray event stats metrics for main services
 /// such as gcs and raylet (which today are the sole consumers of
 /// this config)
-RAY_CONFIG(bool, emit_main_service_metrics, true)
+RAY_CONFIG(bool, emit_main_service_metrics, false)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are available to
-/// debug_state_*.txt
+/// -1 means the feature is disabled. In this case, stats are available
+/// in the associated process's log file.
 /// NOTE: This requires event_stats=1.
 RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
@@ -89,12 +92,6 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, -1)
-
-/// The worker killing policy to use, available options are
-/// group_by_owner
-/// retriable_lifo
-/// retriable_fifo
-RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
@@ -530,6 +527,12 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 /// using OpenCensus.
 RAY_CONFIG(bool, enable_open_telemetry, false)
 
+/// Whether to enable Ray Event as the event collection backend. The default is
+/// using the Export API.
+RAY_CONFIG(bool, enable_ray_event, false)
+
+RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
+
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
 /// degredations.
@@ -843,6 +846,9 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 ///     export RAY_testing_rpc_failure="*=-1:25:50"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
+/// If this is set, when injecting RPC failures, we'll check if the server and client have
+/// the same address. If they do, we won't inject the failure.
+RAY_CONFIG(bool, testing_rpc_failure_avoid_intra_node_failures, false)
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
@@ -891,6 +897,11 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 // Only works on Linux>=3.4. On other platforms, this flag is ignored.
 // See https://github.com/ray-project/ray/pull/42992 for more info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
+
+// Enable per-worker process-group-based cleanup. When enabled, workers are
+// placed into their own process groups and can be cleaned up via killpg on
+// worker death. Cross-platform semantics on POSIX (no-op on Windows).
+RAY_CONFIG(bool, process_group_cleanup_enabled, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
@@ -961,3 +972,7 @@ RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
 
 // Whether to start a background thread to manage Python GC in workers.
 RAY_CONFIG(bool, start_python_gc_manager_thread, true)
+
+// Whether to enable the feature of outputting error log if the task is
+// still retryable.
+RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)

@@ -57,6 +57,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.core.generated import autoscaler_pb2
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.scripts.symmetric_run import symmetric_run
 from ray.util.annotations import PublicAPI
 from ray.util.check_open_ports import check_open_ports
 
@@ -1097,9 +1098,6 @@ def start(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
-
-        # TODO(hjiang): Validate whether specified resource is true for physical
-        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -2718,6 +2716,7 @@ cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
+cli.add_command(symmetric_run, name="symmetric-run")
 
 try:
     from ray.util.state.state_cli import (

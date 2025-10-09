@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Any, Dict, Optional, SupportsFloat, Tuple
 import unittest
-
+import copy
 import gymnasium as gym
 from gymnasium.core import ActType, ObsType
 import numpy as np
@@ -671,6 +671,111 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(episode_2._last_step_time, episode._last_step_time)
         check(episode_2.custom_data, episode.custom_data)
         self.assertDictEqual(episode_2.extra_model_outputs, episode.extra_model_outputs)
+
+    def test_setters(self):
+        """Tests whether the SingleAgentEpisode's setter methods work as expected.
+
+        Also tests numpy'ized episodes.
+
+        This test covers all setter methods:
+        - set_observations
+        - set_actions
+        - set_rewards
+        - set_extra_model_outputs
+
+        Each setter is tested with various indexing scenarios including:
+        - Single index
+        - List of indices
+        - Slice objects
+        - Negative indices (both regular and lookback buffer interpretation)
+        """
+        SOME_KEY = "some_key"
+
+        # Create a simple episode without lookback buffer first for basic tests
+        episode = SingleAgentEpisode(
+            observations=[100, 101, 102, 103, 104, 105, 106],
+            actions=[1, 2, 3, 4, 5, 6],
+            rewards=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            extra_model_outputs={
+                SOME_KEY: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06],
+            },
+            len_lookback_buffer=0,
+        )
+
+        test_patterns = [
+            # (description, new_data, indices)
+            ("zero index", 7353.0, 0),
+            ("single index", 7353.0, 2),
+            ("negative index", 7353.0, -1),
+            ("short list of indices", [7353.0], [1]),
+            ("long list of indices", [73.0, 53.0, 35.0, 53.0], [1, 2, 3, 4]),
+            ("short slice", [7353.0], slice(2, 3)),
+            ("long slice", [7.0, 3.0, 5.0, 3.0], slice(2, 6)),
+        ]
+
+        # Test set_rewards with all patterns
+        numpy_episode = copy.deepcopy(episode).to_numpy()
+
+        for e in [episode, numpy_episode]:
+            print(f"Testing numpy'ized={e.is_numpy}...")
+            for desc, new_data, indices in test_patterns:
+                print(f"Testing {desc}...")
+
+                expected_data = new_data
+                if e.is_numpy and isinstance(new_data, list):
+                    new_data = np.array(new_data)
+
+                e.set_observations(new_data=new_data, at_indices=indices)
+                check(e.get_observations(indices), expected_data)
+
+                e.set_actions(new_data=new_data, at_indices=indices)
+                check(e.get_actions(indices), expected_data)
+
+                e.set_rewards(new_data=new_data, at_indices=indices)
+                check(e.get_rewards(indices), expected_data)
+
+                e.set_extra_model_outputs(
+                    key=SOME_KEY, new_data=new_data, at_indices=indices
+                )
+                actual_data = e.get_extra_model_outputs(SOME_KEY)
+                if (
+                    desc == "single index"
+                    or desc == "zero index"
+                    or desc == "negative index"
+                ):
+                    check(
+                        actual_data[e.t_started + indices],
+                        expected_data,
+                    )
+                elif desc == "long list of indices" or desc == "short list of indices":
+                    actual_values = actual_data[
+                        slice(e.t_started + indices[0], e.t_started + indices[-1] + 1)
+                    ]
+                    check(actual_values, expected_data)
+                elif desc == "long slice" or desc == "short slice":
+                    actual_values = [
+                        actual_data[e.t_started + i]
+                        for i in range(indices.start, indices.stop)
+                    ]
+                    check(actual_values, expected_data)
+                else:
+                    raise ValueError(f"Invalid test pattern: {desc}")
+
+    def test_setters_error_cases(self):
+        """Tests error cases for setter methods."""
+        episode = self._create_episode(100)
+
+        # Test IndexError when slice size doesn't match data size for observations
+        with self.assertRaises(IndexError):
+            episode.set_observations(
+                new_data=[7, 3, 5, 3], at_indices=slice(0, 2)
+            )  # Slice of size 2, data of size 4
+
+        # Test AssertionError when key doesn't exist for extra_model_outputs
+        with self.assertRaises(AssertionError):
+            episode.set_extra_model_outputs(
+                key="nonexistent_key", new_data=999, at_indices=0
+            )
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
         # Sample 100 values and initialize episode with observations and infos.

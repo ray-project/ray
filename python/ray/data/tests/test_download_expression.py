@@ -1,5 +1,6 @@
 import io
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from PIL import Image
@@ -154,6 +155,101 @@ class TestDownloadExpressionFunctionality:
                 assert downloaded_image.size == (8, 8)
                 assert downloaded_image.mode == "RGB"
 
+    def test_chained_download_expressions(self, tmp_path):
+        """Test chained download expressions functionality."""
+        # Create sample files with different content
+        sample_data = [
+            b"Content for file 1",
+            b"Content for file 2",
+            b"Content for file 3",
+        ]
+
+        file_paths = []
+        for i, data in enumerate(sample_data):
+            file_path = tmp_path / f"test_file_{i}.txt"
+            file_path.write_bytes(data)
+            file_paths.append(str(file_path))
+
+        # Create dataset with file URIs
+        table = pa.Table.from_arrays(
+            [
+                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array([f"id_{i}" for i in range(len(file_paths))]),
+            ],
+            names=["file_uri", "file_id"],
+        )
+
+        ds = ray.data.from_arrow(table)
+
+        # Chain multiple download expressions from the same URI column
+        ds_with_chained_downloads = (
+            ds.with_column("file_bytes_1", download("file_uri"))
+            .with_column("file_bytes_2", download("file_uri"))
+            .with_column("file_bytes_3", download("file_uri"))
+        )
+
+        # Verify results
+        results = ds_with_chained_downloads.take_all()
+        assert len(results) == len(sample_data)
+
+        for i, result in enumerate(results):
+            # All download columns should have the same content
+            assert "file_bytes_1" in result
+            assert "file_bytes_2" in result
+            assert "file_bytes_3" in result
+            assert result["file_bytes_1"] == sample_data[i]
+            assert result["file_bytes_2"] == sample_data[i]
+            assert result["file_bytes_3"] == sample_data[i]
+
+            # Original columns should be preserved
+            assert result["file_id"] == f"id_{i}"
+            assert result["file_uri"] == f"local://{file_paths[i]}"
+
+    def test_download_expression_with_pandas_blocks(self, tmp_path):
+        """Test download with pandas blocks to ensure arrow conversion works.
+
+        This tests the code path in PartitionActor.__call__ where non-arrow
+        blocks are converted to arrow format before processing.
+        """
+        ctx = ray.data.context.DataContext.get_current()
+        old_enable_pandas_block = ctx.enable_pandas_block
+        ctx.enable_pandas_block = True
+        try:
+            # Create test files
+            sample_data = [
+                b"Pandas block test content 1",
+                b"Pandas block test content 2",
+            ]
+
+            file_paths = []
+            for i, data in enumerate(sample_data):
+                file_path = tmp_path / f"pandas_test_{i}.txt"
+                file_path.write_bytes(data)
+                file_paths.append(str(file_path))
+
+            # Create dataset with pandas blocks (not arrow)
+            df = pd.DataFrame(
+                {
+                    "file_uri": [f"local://{path}" for path in file_paths],
+                    "file_id": [f"id_{i}" for i in range(len(file_paths))],
+                }
+            )
+            ds = ray.data.from_pandas(df)
+
+            # Apply download - this should trigger arrow conversion in PartitionActor
+            ds_with_downloads = ds.with_column("content", download("file_uri"))
+
+            # Verify results
+            results = ds_with_downloads.take_all()
+            assert len(results) == len(sample_data)
+
+            for i, result in enumerate(results):
+                assert result["content"] == sample_data[i]
+                assert result["file_id"] == f"id_{i}"
+                assert result["file_uri"] == f"local://{file_paths[i]}"
+        finally:
+            ctx.enable_pandas_block = old_enable_pandas_block
+
 
 class TestDownloadExpressionErrors:
     """Test error conditions and edge cases for download expressions."""
@@ -171,7 +267,7 @@ class TestDownloadExpressionErrors:
         ds_with_downloads = ds.with_column("bytes", download("non_existent_column"))
 
         # Should raise error when trying to execute
-        with pytest.raises(Exception):  # Could be KeyError or similar
+        with pytest.raises(ValueError):
             ds_with_downloads.take_all()
 
     def test_download_expression_with_null_uris(self):

@@ -118,19 +118,8 @@ ray_cc_library(
             "src/mock/ray/common/ray_syncer/ray_syncer.h",
         ],
     ),
-)
-
-ray_cc_library(
-    name = "ray_fakes",
-    # NOTE(edoakes): we are moving towards fine-grained mock and fake targets.
-    # Do not include new files in this target, instead make a BUILD.bazel file
-    # in the subdirectory and exclude it here.
-    hdrs = glob(
-        ["src/fakes/**/*.h"],
-    ),
     deps = [
-        "//src/ray/common:asio",
-        "//src/ray/rpc:raylet_client_interface",
+        "//src/ray/observability:fake_ray_event_recorder",
     ],
 )
 
@@ -246,10 +235,10 @@ pyx_library(
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//src/ray/core_worker:core_worker_lib",
-        "//src/ray/gcs/gcs_client:gcs_python_callbacks",
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/gcs_rpc_client:gcs_python_callbacks",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/pubsub:python_gcs_subscriber",
         "//src/ray/thirdparty/setproctitle",
@@ -385,7 +374,7 @@ pkg_files(
 
 pkg_files(
     name = "gcs_server_files",
-    srcs = ["//src/ray/gcs/gcs_server"],
+    srcs = ["//src/ray/gcs:gcs_server"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/src/ray/gcs",
     visibility = ["//visibility:private"],
@@ -405,7 +394,6 @@ pkg_zip(
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
-        ":redis_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
         "//conditions:default": [],
@@ -492,6 +480,26 @@ genrule(
         echo "$${PWD}" > $@
     """,
     local = 1,
+)
+
+pkg_zip(
+    name = "ray_redis_zip",
+    srcs = [
+        ":redis_files",
+    ],
+    out = "ray_redis.zip",
+)
+
+py_binary(
+    name = "gen_redis_pkg",
+    srcs = ["gen_redis_pkg.py"],
+    data = [
+        ":ray_redis_zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )
 
 py_binary(
