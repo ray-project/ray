@@ -6025,7 +6025,7 @@ class Dataset:
             ... ])
             >>> summary = ds.summary()
             >>> summary.to_pandas()  # doctest: +SKIP
-            column  count          mean      min      max          std  missing_pct   zero_pct
+            column      count          mean      min      max          std  missing_pct   zero_pct
             0     age      3     18.333333      0.0     30.0    13.123346     0.000000  33.333333
             1  salary      3  55000.000000  50000.0  60000.0  5000.000000    33.333333   0.000000
             2    name      3           NaN      NaN      NaN          NaN    33.333333        NaN
@@ -6052,6 +6052,7 @@ class Dataset:
         Returns:
             A Ray Data Dataset with statistics per column, organized by data type.
         """
+        import pandas as pd
         import pyarrow as pa
 
         import ray
@@ -6067,33 +6068,28 @@ class Dataset:
         )
         results = self.aggregate(*dtype_aggs.aggregators)
 
+        # Extract unique stat names from aggregators
+        stat_names = set()
+        for agg in dtype_aggs.aggregators:
+            # Parse stat name from aggregator name like "count(col_name)"
+            agg_name = agg.name
+            if "(" in agg_name:
+                stat_name = agg_name[: agg_name.index("(")]
+                stat_names.add(stat_name)
+
+        # Sort for consistent ordering
+        expected_stats = sorted(stat_names)
+
         if not results:
-            # Return empty dataset with minimal schema
-            empty_schema = pa.schema(
-                [
-                    ("column", pa.string()),
-                    ("dtype", pa.string()),
-                    ("count", pa.float64()),
-                    ("mean", pa.float64()),
-                    ("min", pa.float64()),
-                    ("max", pa.float64()),
-                    ("std", pa.float64()),
-                    ("missing_pct", pa.float64()),
-                    ("zero_pct", pa.float64()),
-                ]
-            )
+            # Return empty dataset with schema based on inferred stats
+            schema_fields = [
+                ("column", pa.string()),
+                ("dtype", pa.string()),
+            ]
+            schema_fields.extend([(stat, pa.float64()) for stat in expected_stats])
+            empty_schema = pa.schema(schema_fields)
             return ray.data.from_arrow(pa.table(empty_schema))
 
-        # Define expected statistics columns in order
-        expected_stats = [
-            "count",
-            "mean",
-            "min",
-            "max",
-            "std",
-            "missing_pct",
-            "zero_pct",
-        ]
         all_stats = set(expected_stats)
 
         # Build summary rows: one row per column with its dtype and statistics
@@ -6114,7 +6110,7 @@ class Dataset:
 
             summary_rows.append(row)
 
-        summary_dataset = ray.data.from_items(summary_rows)
+        summary_dataset = ray.data.from_pandas(pd.DataFrame(summary_rows))
 
         return summary_dataset
 
