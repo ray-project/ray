@@ -818,7 +818,7 @@ def test_xgboost_trainer_deprecated_methods(ray_start_4_cpus, small_dataset):
 
     # Test deprecated legacy API - should raise TypeError for unexpected kwargs
     with pytest.raises(TypeError):
-        trainer = XGBoostTrainer(
+        XGBoostTrainer(
             train_fn_per_worker,
             label_column="target",
             params={"objective": "binary:logistic"},
