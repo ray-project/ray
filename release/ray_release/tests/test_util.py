@@ -12,8 +12,16 @@ from ray_release.util import (
 )
 
 
-@patch("azure.storage.blob.BlobServiceClient")
-@patch("azure.identity.DefaultAzureCredential")
+class FakeBlobClient:
+    def __init__(self):
+        self.uploaded_data = None
+
+    def upload_blob(self, data, overwrite=True):
+        self.uploaded_data = data.read()
+
+
+@patch("ray_release.util.BlobServiceClient")
+@patch("ray_release.util.DefaultAzureCredential")
 def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
     with tempfile.TemporaryDirectory() as tmp_path:
         local_file = os.path.join(tmp_path, "test.txt")
@@ -25,14 +33,13 @@ def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
         azure_path = f"abfss://{container}@{account}.dfs.core.windows.net/path/test.txt"
 
         # Mock Azure dependencies
-        mock_credential.return_value = None
+        mock_credential.return_value = MagicMock()
         mock_blob_service_client_instance = MagicMock()
         mock_blob_service_client.return_value = mock_blob_service_client_instance
-        mock_blob_client_instance = MagicMock()
+        fake_blob_client = FakeBlobClient()
         mock_blob_service_client_instance.get_blob_client.return_value = (
-            mock_blob_client_instance
+            fake_blob_client
         )
-        mock_blob_client_instance.upload_blob.return_value = None
 
         upload_file_to_azure(str(local_file), azure_path)
 
@@ -44,9 +51,8 @@ def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
             container=container, blob="path/test.txt"
         )
         with open(local_file, "rb") as f:
-            data = f.read()
-            assert data.decode("utf-8") == expected_content
-            mock_blob_client_instance.upload_blob.assert_called_once_with(data=data)
+            expected_data = f.read()
+            assert fake_blob_client.uploaded_data == expected_data
 
 
 @patch("ray_release.util.upload_file_to_azure")
