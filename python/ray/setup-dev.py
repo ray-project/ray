@@ -168,6 +168,7 @@ if __name__ == "__main__":
         "_private": None,
         "_common": None,
         "dashboard": None,
+        "agentic": None,
     }
 
     # Link all packages using a for loop

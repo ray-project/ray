@@ -270,6 +270,10 @@ if setup_spec.type == SetupType.RAY:
         "observability": [
             "memray; sys_platform != 'win32'",
         ],
+        "agentic": [
+            "langchain-openai",
+            "langgraph",
+        ],
         "serve": [
             "uvicorn[standard]",
             "requests",

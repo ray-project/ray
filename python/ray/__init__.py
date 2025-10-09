@@ -255,6 +255,7 @@ del wrap_auto_init_for_all_apis
 # Subpackages
 __all__ += [
     "actor",
+    "agentic",
     "autoscaler",
     "data",
     "internal",
