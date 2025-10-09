@@ -1,7 +1,9 @@
 import numpy as np
 import unittest
 
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.utils.replay_buffers import PrioritizedEpisodeReplayBuffer
 
 
 class TestSegmentTree(unittest.TestCase):
@@ -93,6 +95,45 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.min(2, 3), 4.0)
         assert np.isclose(tree.min(2, -1), 4.0)
         assert np.isclose(tree.min(3, 4), 3.0)
+
+    @staticmethod
+    def _get_episode(episode_len=None, id_=None, with_extra_model_outs=False):
+        eps = SingleAgentEpisode(id_=id_, observations=[0.0], infos=[{}])
+        ts = np.random.randint(1, 200) if episode_len is None else episode_len
+        for t in range(ts):
+            eps.add_env_step(
+                observation=float(t + 1),
+                action=int(t),
+                reward=0.1 * (t + 1),
+                infos={},
+                extra_model_outputs=(
+                    {k: k for k in range(2)} if with_extra_model_outs else None
+                ),
+            )
+        eps.is_terminated = np.random.random() > 0.5
+        eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
+        return eps
+
+    def test_find_prefixsum_idx(self, buffer_size=80):
+        """Fix edge case related to https://github.com/ray-project/ray/issues/54284"""
+        replay_buffer = PrioritizedEpisodeReplayBuffer(capacity=buffer_size)
+        sum_segment = replay_buffer._sum_segment
+
+        for i in range(10):
+            replay_buffer.add(self._get_episode(id_=str(i), episode_len=10))
+
+        assert sum_segment.capacity >= buffer_size
+
+        for sample in np.linspace(0, sum_segment.sum(), 50):
+            prefixsum_idx = sum_segment.find_prefixsum_idx(sample)
+            assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+
+        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum() - 0.00001)
+        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum())
+        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
+        prefixsum_idx = sum_segment.find_prefixsum_idx(sum_segment.sum() + 0.00001)
+        assert prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
 
 
 if __name__ == "__main__":
