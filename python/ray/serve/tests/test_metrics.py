@@ -31,6 +31,8 @@ from ray.serve._private.utils import block_until_http_ready
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.util.state import list_actors
 
+ALLOWED_ROUTES = ("/-/healthz", "/-/routes")
+
 
 def extract_tags(line: str) -> Dict[str, str]:
     """Extracts any tags from the metrics line."""
@@ -168,9 +170,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
             metric_dicts.append(eval(metric_dict_str))
 
-    metric_dicts = [
-        d for d in metric_dicts if d.get("route") not in ("/-/healthz", "/-/routes")
-    ]
+    metric_dicts = [d for d in metric_dicts if d.get("route") not in ALLOWED_ROUTES]
     print(metric_dicts)
     return metric_dicts
 
@@ -716,7 +716,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
-            if 'route="/-/healthz"' in line or 'route="/-/routes"' in line:
+            if any(f'route="{route}"' in line for route in ALLOWED_ROUTES):
                 continue
             if line.startswith("ray_serve_num_http_error_requests_total"):
                 error_count += int(float(line.split(" ")[-1]))
