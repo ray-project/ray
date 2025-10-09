@@ -8,6 +8,8 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from azure.storage.blob import BlobServiceClient
+from azure.identity import DefaultAzureCredential
 from google.cloud import storage
 import requests
 import shutil
@@ -241,7 +243,11 @@ def upload_working_dir_to_gcs(working_dir: str) -> str:
     return f"gs://ray-release-working-dir/{blob.name}"
 
 
-def upload_file_to_azure(local_file_path: str, azure_file_path: str) -> None:
+def upload_file_to_azure(
+    local_file_path: str,
+    azure_file_path: str,
+    blob_service_client: Optional[BlobServiceClient] = None,
+) -> None:
     """Upload a file to Azure Blob Storage.
 
     Args:
@@ -249,19 +255,16 @@ def upload_file_to_azure(local_file_path: str, azure_file_path: str) -> None:
         azure_file_path: Path to file in Azure blob storage.
     """
 
-    # Import here because not every jobs that use ray_release/util need azure
-    from azure.storage.blob import BlobServiceClient
-    from azure.identity import DefaultAzureCredential
-
     account, container, path = _parse_abfss_uri(azure_file_path)
     account_url = f"https://{account}.blob.core.windows.net"
-    credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
-    blob_service_client = BlobServiceClient(account_url, credential)
+    if blob_service_client is None:
+        credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
+        blob_service_client = BlobServiceClient(account_url, credential)
+
     blob_client = blob_service_client.get_blob_client(container=container, blob=path)
     try:
         with open(local_file_path, "rb") as f:
-            data = f.read()
-            blob_client.upload_blob(data=data)
+            blob_client.upload_blob(data=f, overwrite=True)
     except Exception as e:
         logger.exception(f"Failed to upload file to Azure Blob Storage: {e}")
         raise
@@ -293,7 +296,7 @@ def upload_working_dir_to_azure(working_dir: str, azure_directory_uri: str) -> s
     return azure_file_path
 
 
-def _parse_abfss_uri(uri: str) -> tuple:
+def _parse_abfss_uri(uri: str) -> Tuple[str, str, str]:
     """Parse ABFSS URI to extract account, container, and path.
     ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
     Returns: (account_name, container_name, path)
