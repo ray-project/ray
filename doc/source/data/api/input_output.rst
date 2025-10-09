@@ -5,6 +5,15 @@ Input/Output
 
 .. currentmodule:: ray.data
 
+Universal Reader
+----------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read
+
 Synthetic Data
 --------------
 

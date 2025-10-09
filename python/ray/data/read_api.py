@@ -459,6 +459,218 @@ def read_datasource(
     )
 
 
+@PublicAPI
+def read(
+    paths: Union[str, List[str]],
+    *,
+    format: Optional[str] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **reader_args,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` by automatically detecting file types.
+
+    This function provides a unified interface for reading various file formats. It
+    automatically detects the file type based on file extensions and calls the
+    appropriate underlying reader (e.g., :func:`read_parquet`, :func:`read_csv`,
+    :func:`read_json`).
+
+    The function supports reading from local disk, cloud storage (S3, GCS, Azure), and
+    distributed filesystems. It handles mixed file types gracefully by grouping files
+    by type and reading each group with the appropriate reader.
+
+    Supported file types:
+
+    - **Parquet** (.parquet)
+    - **CSV** (.csv, .csv.gz, .csv.br, .csv.zst, .csv.lz4)
+    - **JSON** (.json, .jsonl, .json.gz, .jsonl.gz, .json.br, .jsonl.br, .json.zst, .jsonl.zst, .json.lz4, .jsonl.lz4)
+    - **Text** (.txt)
+    - **Images** (.png, .jpg, .jpeg, .tif, .tiff, .bmp, .gif)
+    - **Audio** (.mp3, .wav, .aac, .flac, .ogg, .m4a, .wma, .alac, .aiff, .pcm, .amr, .opus)
+    - **Video** (.mp4, .mkv, .mov, .avi, .wmv, .flv, .webm, .m4v, .3gp, .mpeg, .mpg)
+    - **NumPy** (.npy)
+    - **Avro** (.avro)
+    - **TFRecords** (.tfrecords)
+    - **HTML** (.html, .htm)
+    - **WebDataset** (.tar)
+    - **Lance** (.lance)
+    - **Binary** (any other extension)
+
+    **Note:** Lakehouse table formats (Delta Lake, Hudi, Iceberg) are automatically detected
+    by examining directory structure:
+    
+    - **Delta Lake**: Detected by presence of ``_delta_log`` directory
+    - **Apache Hudi**: Detected by presence of ``.hoodie`` directory  
+    - **Apache Iceberg**: Detected by presence of ``metadata`` directory with version files
+    
+    You can also use the ``format`` parameter to explicitly specify the format and bypass
+    auto-detection.
+
+    Examples:
+        Read a single file with automatic type detection:
+
+        >>> import ray
+        >>> ds = ray.data.read("s3://bucket/data.parquet")  # doctest: +SKIP
+
+        Read a directory with mixed file types:
+
+        >>> ds = ray.data.read("s3://bucket/data/")  # doctest: +SKIP
+
+        Read multiple specific files:
+
+        >>> ds = ray.data.read([  # doctest: +SKIP
+        ...     "s3://bucket/file1.parquet",
+        ...     "s3://bucket/file2.csv",
+        ...     "s3://bucket/file3.json"
+        ... ])
+
+        Read with specific reader arguments:
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/data.csv",
+        ...     delimiter=";",
+        ...     columns=["col1", "col2"]
+        ... )
+
+        Read images with custom settings:
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/images/",
+        ...     mode="RGB",
+        ...     size=(224, 224)
+        ... )
+
+        Override automatic detection with a format hint:
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/data/",
+        ...     format="parquet"
+        ... )
+
+        Read Delta Lake table (auto-detected):
+
+        >>> ds = ray.data.read("s3://bucket/delta-table/")  # doctest: +SKIP
+
+        Read Delta Lake table (explicit format):
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     format="delta"
+        ... )
+
+        Read Apache Hudi table (auto-detected):
+
+        >>> ds = ray.data.read("s3://bucket/hudi-table/")  # doctest: +SKIP
+
+        Read Apache Iceberg table (auto-detected):
+
+        >>> ds = ray.data.read("s3://bucket/iceberg-table/")  # doctest: +SKIP
+
+        Read Lance dataset:
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/data.lance",
+        ...     format="lance"
+        ... )
+
+    Args:
+        paths: Path or list of paths to files or directories. Supports local paths
+            (with ``local://`` prefix), cloud storage (S3, GCS, Azure), and
+            distributed filesystems.
+        format: Optional format hint to specify the file format explicitly.
+            When provided, all files are read using the specified format reader,
+            bypassing automatic type detection. Supported formats: "parquet", "csv",
+            "json", "text", "images", "audio", "video", "numpy", "avro",
+            "tfrecords", "html", "webdataset", "lance", "delta", "hudi", "iceberg",
+            "binary". If None, file types are detected automatically from file extensions.
+        filesystem: PyArrow filesystem to use for reading. If not specified, the
+            filesystem is inferred from the path scheme.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        arrow_open_file_args: kwargs passed to ``pyarrow.fs.FileSystem.open_input_file``
+            when opening files. This can be used to configure connection timeouts,
+            authentication, etc.
+        meta_provider: Custom metadata provider for file scanning. If not specified,
+            uses default metadata provider.
+        partition_filter: Filter function for partitioned datasets. Takes a dictionary
+            of partition keys and values and returns whether to include the partition.
+        partitioning: Partitioning scheme for the dataset (e.g., Hive-style partitioning).
+        include_paths: Whether to include the file path in each row. Defaults to False.
+        ignore_missing_paths: Whether to ignore missing files. If False, raises an
+            error if any file is not found. Defaults to False.
+        shuffle: Whether to shuffle file order. Can be "files" for simple file-level
+            shuffling or a FileShuffleConfig for more control.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        **reader_args: Additional arguments passed to the underlying reader function.
+            The available arguments depend on the detected file type. For example,
+            CSV files support ``delimiter``, ``columns``, etc.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing rows from the files.
+
+    Raises:
+        ValueError: If file type cannot be detected or if mixed incompatible file
+            types are found.
+        FileNotFoundError: If ``ignore_missing_paths=False`` and files are not found.
+
+    Note:
+        When reading directories with mixed file types, the function groups files by
+        type and reads each group separately, then concatenates the results. This
+        means the output schema will be the union of all schemas from different file
+        types.
+
+        For more control over reading specific file types, use the dedicated reader
+        functions like :func:`read_parquet`, :func:`read_csv`, etc.
+    """
+    from ray.data._internal.read_unified import read_impl
+    
+    return read_impl(
+        paths=paths,
+        format=format,
+        filesystem=filesystem,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        arrow_open_file_args=arrow_open_file_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        include_paths=include_paths,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+        **reader_args,
+    )
+
+
+# Keep the old implementation below for reference during transition
+
 @PublicAPI(stability="alpha")
 def read_audio(
     paths: Union[str, List[str]],
