@@ -10,7 +10,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 - **Bin packing and spread scheduling**: Optimize node usage either by minimizing fragmentation (bin packing) or increasing resiliency and load balancing (spread scheduling)
 - **GPU sharing**: Allow KAI to pack multiple Ray workloads from across teams on the same GPU, letting your organization fit more work onto your existing hardware and reducing idle GPU time.
 - **Workload autoscaling**: Scale Ray replicas or workers within min/max while respecting gang constraints
-- **Cluster Autoscaling**: Compatible with dynamic cloud infrastructures (including auto-scalers like Karpenter)
+- **Cluster autoscaling**: Compatible with dynamic cloud infrastructures (including auto-scalers like Karpenter)
 - **Workload Priorities**: Prioritize Ray workloads effectively within queues
 - **Hierarchical Queues & Fairness**: Two-level queues with quotas, over-quota weights, limits and equitable resource distribution between queues using DRF
 and many more.
