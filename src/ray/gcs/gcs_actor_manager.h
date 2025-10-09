@@ -286,10 +286,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client_(std::move(client)) {}
-    /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
+    explicit Owner(rpc::Address address) : address_(std::move(address)) {}
+    /// The address of the owner.
+    rpc::Address address_;
     /// The IDs of actors owned by this worker.
     absl::flat_hash_set<ActorID> children_actor_ids_;
   };
