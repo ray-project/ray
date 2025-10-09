@@ -195,8 +195,8 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
-            self._pending_block_ref = None
-            self._pending_meta_ref = None
+            self._pending_block_ref = ray.ObjectRef.nil()
+            self._pending_meta_ref = ray.ObjectRef.nil()
 
             bytes_read += meta.size_bytes
 
