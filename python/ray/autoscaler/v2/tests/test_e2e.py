@@ -15,8 +15,15 @@ from ray._raylet import GcsClient
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated.usage_pb2 import TagKey
-from ray.util.placement_group import placement_group, remove_placement_group
-from ray.util.state.api import list_placement_groups, list_tasks
+from ray.util.placement_group import (
+    placement_group,
+    remove_placement_group,
+)
+from ray.util.state.api import (
+    list_actors,
+    list_placement_groups,
+    list_tasks,
+)
 
 
 def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
@@ -526,6 +533,33 @@ while True:
         cluster.shutdown()
 
 
+# Helper function to vaidate that a node's labels satisfy a `label_selector`.
+def _verify_node_labels_for_selector(
+    node_labels: Dict[str, str], selector: Dict[str, str]
+) -> bool:
+    for key, value in selector.items():
+        node_val = node_labels.get(key)
+
+        if "!in(" in value:
+            options_str = value.replace("!in(", "").replace(")", "")
+            options = {opt.strip() for opt in options_str.split(",")}
+            if node_val in options:
+                return False
+        elif "in(" in value:
+            options_str = value.replace("in(", "").replace(")", "")
+            options = {opt.strip() for opt in options_str.split(",")}
+            if node_val not in options:
+                return False
+        elif value.startswith("!"):
+            if node_val == value[1:]:
+                return False
+        else:
+            if node_val != value:
+                return False
+    # If all checks pass for all key-value pairs in the selector, return True.
+    return True
+
+
 @pytest.mark.parametrize("autoscaler_v2", [True])
 def test_task_scheduled_on_node_with_label_selector(autoscaler_v2):
     cluster = AutoscalingCluster(
@@ -572,32 +606,25 @@ def test_task_scheduled_on_node_with_label_selector(autoscaler_v2):
 import ray
 import time
 
-@ray.remote(num_cpus=1, label_selector={"accelerator-type": "A100"})
-def task1():
-    print("Running task1")
-    time.sleep(60)
-    return True
-
-@ray.remote(num_cpus=1, label_selector={"region": "in(us-east1,me-central1)"})
-def task2():
-    print("Running task2")
-    time.sleep(60)
-    return True
-
-@ray.remote(num_cpus=1, label_selector={"accelerator-type": "!in(A100,TPU)"})
-def task3():
-    print("Running task3")
-    time.sleep(60)
-    return True
-
-@ray.remote(num_cpus=1, label_selector={"market-type": "!in(spot)"})
-def task4():
-    print("Running task4")
-    time.sleep(60)
+@ray.remote(num_cpus=1)
+def labels_task():
+    time.sleep(20)
     return True
 
 ray.init("auto")
-assert(ray.get([task1.remote(), task2.remote(), task3.remote(), task4.remote()]))
+
+label_selectors = [
+    {"accelerator-type": "A100"},
+    {"region": "in(us-east1,me-central1)"},
+    {"accelerator-type": "!in(A100,TPU)"},
+    {"market-type": "!spot"},
+]
+
+results = [
+    labels_task.options(name=f"task_{i}", label_selector=sel).remote()
+    for i, sel in enumerate(label_selectors)
+]
+assert all(ray.get(results))
 """
 
     try:
@@ -606,21 +633,314 @@ assert(ray.get([task1.remote(), task2.remote(), task3.remote(), task4.remote()])
         gcs_address = ray.get_runtime_context().gcs_address
         expected_nodes = 4
 
-        def tasks_run():
-            tasks = list_tasks()
-            assert len(tasks) > 0
-            return True
+        def all_tasks_submitted():
+            return len(list_tasks()) == expected_nodes
 
-        run_string_as_driver_nonblocking(driver_script)
-        wait_for_condition(tasks_run)
+        proc = run_string_as_driver_nonblocking(driver_script)
+        wait_for_condition(all_tasks_submitted)
 
-        def all_tasks_scheduled():
+        def all_nodes_launched():
             status = get_cluster_status(gcs_address)
             return len(status.active_nodes) == expected_nodes
 
-        # All tasks with label selectors should be scheduled, scaling
+        wait_for_condition(all_nodes_launched, timeout=30)
+        proc.wait(timeout=30)
+        assert proc.returncode == 0, "The driver script failed."
+
+        # Validate Tasks are scheduled on nodes with required labels.
+        tasks_by_name = {
+            task.name: task for task in list_tasks(detail=True) if hasattr(task, "name")
+        }
+        nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
+        task_selectors = {
+            "task_0": {"accelerator-type": "A100"},
+            "task_1": {"region": "in(us-east1,me-central1)"},
+            "task_2": {"accelerator-type": "!in(A100,TPU)"},
+            "task_3": {"market-type": "!spot"},
+        }
+
+        for task_name, expected_selector in task_selectors.items():
+            assert (
+                task_name in tasks_by_name
+            ), f"Task with name '{task_name}' was not found."
+            task = tasks_by_name[task_name]
+
+            # Verify actual label selector from the Task matches the expected.
+            actual_selector = task.get("label_selector")
+            assert (
+                actual_selector is not None
+            ), f"Task '{task_name}' did not have a 'label_selector' field."
+
+            assert actual_selector == expected_selector, (
+                f"Task '{task_name}' has an incorrect label selector. "
+                f"Expected: {expected_selector}, Got: {actual_selector}"
+            )
+
+            # Verify Ray node created for Task.
+            node_id = task["node_id"]
+            assert (
+                node_id in nodes
+            ), f"Node with ID '{node_id}' for task '{task_name}' was not found."
+
+            # Validate node labels satisfy `label_selector` for Task.
+            node_labels = nodes[node_id]
+            assert _verify_node_labels_for_selector(
+                node_labels, actual_selector
+            ), f"Verification failed for task '{task_name}' on node '{node_id}'"
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("autoscaler_v2", [True])
+def test_actor_scheduled_on_node_with_label_selector(autoscaler_v2):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "node1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "A100", "market-type": "spot"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node2": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {
+                    "region": "us-east1",
+                    "accelerator-type": "TPU",
+                    "market-type": "spot",
+                },
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node3": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "B200", "market-type": "spot"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "node4": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "labels": {"market-type": "on-demand", "accelerator-type": "TPU"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    driver_script = """
+import ray
+
+@ray.remote(num_cpus=1)
+class Actor:
+    def ready(self):
+        return True
+
+ray.init("auto")
+
+label_selectors = [
+    {"accelerator-type": "A100"},
+    {"region": "in(us-east1,me-central1)"},
+    {"accelerator-type": "!in(A100,TPU)"},
+    {"market-type": "!spot"},
+]
+
+actors = [
+    Actor.options(name=f"actor_{i}", label_selector=sel).remote()
+    for i, sel in enumerate(label_selectors)
+]
+
+ray.get([a.ready.remote() for a in actors])
+"""
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+        expected_nodes = 4
+
+        def all_actors_submitted():
+            return len(list_actors()) == expected_nodes
+
+        proc = run_string_as_driver_nonblocking(driver_script)
+        wait_for_condition(all_actors_submitted)
+
+        def all_actors_scheduled():
+            # Verify the nodes launched for the Actors are as expected.
+            status = get_cluster_status(gcs_address)
+            if len(status.active_nodes) != expected_nodes:
+                return False
+
+            active_node_types = {
+                node.ray_node_type_name for node in status.active_nodes
+            }
+            expected_node_types = {"node1", "node2", "node3", "node4"}
+            return active_node_types == expected_node_types
+
+        # All Actors with label selectors should be scheduled, scaling
         # 4 nodes with the required labels.
-        wait_for_condition(all_tasks_scheduled, timeout=60)
+        wait_for_condition(all_actors_scheduled, timeout=30)
+        proc.wait(timeout=30)
+        assert proc.returncode == 0, "The driver script failed to submit actors."
+
+        # Finally, validate the Actors are scheduled on the node with matching labels.
+        actors_by_name = {
+            actor.name: actor
+            for actor in list_actors(detail=True)
+            if hasattr(actor, "name")
+        }
+        nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
+        actor_selectors = {
+            "actor_0": {"accelerator-type": "A100"},
+            "actor_1": {"region": "in(us-east1,me-central1)"},
+            "actor_2": {"accelerator-type": "!in(A100,TPU)"},
+            "actor_3": {"market-type": "!spot"},
+        }
+
+        for actor_name, expected_selector in actor_selectors.items():
+            assert (
+                actor_name in actors_by_name
+            ), f"Actor with name '{actor_name}' was not found."
+            actor = actors_by_name[actor_name]
+
+            # Verify actual label selector from the Actor matches the expected.
+            actual_selector = actor.get("label_selector")
+            assert (
+                actual_selector is not None
+            ), f"Actor '{actor_name}' did not have a 'label_selector' field."
+
+            assert actual_selector == expected_selector, (
+                f"Actor '{actor_name}' has an incorrect label selector. "
+                f"Expected: {expected_selector}, Got: {actual_selector}"
+            )
+
+            # Verify Ray node created for Actor.
+            node_id = actor["node_id"]
+            assert (
+                node_id in nodes
+            ), f"Node with ID '{node_id}' for Actor '{actor_name}' was not found."
+
+            # Validate node labels satisfy `label_selector` for Actor.
+            node_labels = nodes[node_id]
+            assert _verify_node_labels_for_selector(
+                node_labels, actual_selector
+            ), f"Verification failed for Actor '{actor_name}' on node '{node_id}'"
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("autoscaler_v2", [True])
+def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "unlabelled_node": {
+                "resources": {"CPU": 1, "GPU": 1, "TPU": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "not_matching_labels": {
+                "resources": {"CPU": 1},
+                "labels": {"unrelated": "labels"},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "a100_node": {
+                "resources": {"CPU": 1, "GPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "A100"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "tpu_node": {
+                "resources": {"CPU": 1, "TPU": 1},
+                "node_config": {},
+                "labels": {"accelerator-type": "TPU_V6E"},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=999,
+        autoscaler_v2=autoscaler_v2,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+        # We expect one GPU and one TPU node to scale.
+        expected_nodes = 2
+
+        # Define a placement group where each bundle should scale a node of a different type.
+        pg = placement_group(
+            name="label_selector_pg",
+            bundles=[
+                {"CPU": 1},
+                {"CPU": 1},
+            ],
+            bundle_label_selector=[
+                {"accelerator-type": "A100"},  # a100_node
+                {"accelerator-type": "TPU_V6E"},  # tpu_node
+            ],
+            strategy="SPREAD",
+        )
+
+        # Wait for the placement group to be ready.
+        ray.get(pg.ready())
+
+        # Validate the number and types of the auto-scaled nodes are as expected.
+        status = get_cluster_status(gcs_address)
+        assert len(status.active_nodes) == expected_nodes
+
+        actual_node_types = {node.ray_node_type_name for node in status.active_nodes}
+        expected_node_types = {"a100_node", "tpu_node"}
+        assert actual_node_types == expected_node_types
+
+        # Validate the placement group is scheduled to nodes with the required labels.
+        pgs = list_placement_groups(detail=True)
+        assert len(pgs) == 1
+        pg_state = pgs[0]
+        bundles_list = pg_state.bundles
+        assert (
+            bundles_list is not None
+        ), "PlacementGroupState did not have a 'bundles' field."
+
+        actual_bundle_selectors = []
+        for bundle in bundles_list:
+            actual_bundle_selectors.append(bundle["label_selector"])
+
+        expected_bundle_selectors = [
+            {"accelerator-type": "A100"},
+            {"accelerator-type": "TPU_V6E"},
+        ]
+        assert actual_bundle_selectors == expected_bundle_selectors, (
+            f"Placement group has incorrect bundle selectors. "
+            f"Expected: {expected_bundle_selectors}, Got: {actual_bundle_selectors}"
+        )
+
+        nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
+        for bundle_index, bundle in enumerate(bundles_list):
+            # Verify bundle placed on expected node.
+            bundle_node_id = bundle.get("node_id")
+            assert (
+                bundle_node_id in nodes
+            ), f"Node with ID '{bundle_node_id}' for bundle {bundle_index} was not found."
+
+            # Verify node's labels satisfy the bundle's label_selector.
+            bundle_selector = actual_bundle_selectors[bundle_index]
+            node_labels = nodes[bundle_node_id]
+            assert _verify_node_labels_for_selector(node_labels, bundle_selector)
 
     finally:
         ray.shutdown()

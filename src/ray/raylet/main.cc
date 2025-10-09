@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -33,14 +34,17 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/metrics.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -50,6 +54,9 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -126,19 +133,23 @@ DEFINE_string(
     "",
     "Path of the cgroup that the raylet will take ownership of to create its cgorup "
     "hierarchy. The raylet process must have read, write, and execute permission for "
-    "this path. If enable_resource_isolation is true, then this cannot be empty.");
-DEFINE_int64(
-    system_reserved_cpu_weight,
-    -1,
-    "The amount of cores reserved for ray system processes. It will be applied "
-    "as a cpu.weight constraint to the system cgroup. 10000 - "
-    "system_reserved_cpu_weight will be applied as a constraint to the "
-    "application cgroup. If enable resource isolation is true, then this cannot be -1.");
+    "this path. If enable-resource-isolation is true, then this cannot be empty.");
+DEFINE_int64(system_reserved_cpu_weight,
+             -1,
+             "The amount of cores reserved for ray system processes. It will be applied "
+             "as a cpu.weight constraint to the system cgroup. 10000 - "
+             "system-reserved-cpu-weight will be applied as a constraint to the "
+             "application cgroup. If enable-resource-isolation is true, then this "
+             "cannot be -1.");
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
              "The amount of memory in bytes reserved for ray system processes. It will "
-             "be applied as a memory.min constraint to the sytem cgroup. If enable "
-             "resource isolation is true, then this cannot be -1");
+             "be applied as a memory.min constraint to the system cgroup. If "
+             "enable-resource-isolation is true, then this cannot be -1");
+
+DEFINE_string(system_pids,
+              "",
+              "A comma-separated list of pids to move into the system cgroup.");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -250,11 +261,18 @@ int main(int argc, char *argv[]) {
   const std::string cgroup_path = FLAGS_cgroup_path;
   const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
   const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
+  const std::string system_pids = FLAGS_system_pids;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
+
+  std::unique_ptr<ray::CgroupManager> cgroup_manager;
+  AddProcessToCgroupHook add_process_to_cgroup_hook = [](const std::string &) {};
+  AddProcessToCgroupHook add_process_to_application_cgroup_hook =
+      [](const std::string &) {};
+  AddProcessToCgroupHook add_process_to_system_cgroup_hook = [](const std::string &) {};
 
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
@@ -266,10 +284,12 @@ int main(int argc, char *argv[]) {
            "system_reserved_cpu_weight must be set to a value between [1,10000]";
     RAY_CHECK_NE(system_reserved_memory_bytes, -1)
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "system_reserved_memory_byres must be set to a value > 0";
+           "system_reserved_memory_bytes must be set to a value > 0";
 
-    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
-    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
+    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
+        std::make_unique<ray::SysFsCgroupDriver>();
+
+    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
         ray::CgroupManager::Create(std::move(cgroup_path),
                                    node_id,
                                    system_reserved_cpu_weight,
@@ -277,22 +297,64 @@ int main(int argc, char *argv[]) {
                                    std::move(cgroup_driver));
 
     // TODO(#54703) - Link to OSS documentation once available.
-    RAY_CHECK(cgroup_manager.ok())
+    RAY_CHECK(cgroup_manager_s.ok())
         << "Failed to start raylet. Could not create CgroupManager because of "
-        << cgroup_manager.ToString();
+        << cgroup_manager_s.ToString();
+
+    cgroup_manager = std::move(cgroup_manager_s.value());
 
 #ifndef __linux__
     RAY_LOG(WARNING)
         << "Resource isolation with cgroups is only supported in linux. Please set "
            "enable_resource_isolation to false. This is likely a misconfiguration.";
 #endif
+
+    // Move system processes into the system cgroup.
+    // TODO(#54703): This logic needs to be hardened and moved out of main.cc. E.g.
+    // if system_pids is ",,,,,,", this will log an error for each empty
+    // string.
+    std::vector<std::string> system_pids_to_move;
+    if (!system_pids.empty()) {
+      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
+    }
+    system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
+    for (const auto &pid : system_pids_to_move) {
+      ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
+      // TODO(#54703): This could be upgraded to a RAY_CHECK.
+      if (!s.ok()) {
+        RAY_LOG(WARNING) << absl::StrFormat(
+            "Failed to move process %s into system cgroup with error %s",
+            pid,
+            s.ToString());
+      }
+    }
+    add_process_to_application_cgroup_hook =
+        [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
+          ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
+          if (!s.ok()) {
+            RAY_LOG(WARNING) << absl::StrFormat(
+                "Failed to move process %s into the application cgroup with error %s.",
+                pid,
+                s.ToString());
+          }
+        };
+
+    add_process_to_system_cgroup_hook = [&cgroup_mgr =
+                                             *cgroup_manager](const std::string &pid) {
+      ray::Status s = cgroup_mgr.AddProcessToSystemCgroup(pid);
+      if (!s.ok()) {
+        RAY_LOG(WARNING) << absl::StrFormat(
+            "Failed to move process %s into the system cgroup with error %s.",
+            pid,
+            s.ToString());
+      }
+    };
   }
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
-
   SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service{
@@ -321,7 +383,7 @@ int main(int argc, char *argv[]) {
                                             cluster_id,
                                             /*allow_cluster_id_nil=*/false,
                                             /*fetch_cluster_id_if_nil=*/false);
-  gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options);
+  gcs_client = std::make_unique<ray::gcs::GcsClient>(client_options, node_ip_address);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
@@ -446,16 +508,36 @@ int main(int argc, char *argv[]) {
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
-    // Core worker tries to kill child processes when it exits. But they can't do
-    // it perfectly: if the core worker is killed by SIGKILL, the child processes
-    // leak. So in raylet we also kill child processes via Linux subreaper.
-    // Only works on Linux >= 3.4.
-    if (RayConfig::instance()
-            .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG(ERROR)
+          << "Both per-worker process groups and subreaper are enabled. "
+          << "Per-worker process groups will be used for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+
+#if !defined(_WIN32)
+    RAY_LOG(INFO) << "Per-worker process group cleanup is "
+                  << (pg_enabled ? "ENABLED" : "DISABLED") << ", subreaper is "
+                  << (subreaper_enabled ? "ENABLED" : "DISABLED");
+#else
+    RAY_LOG(INFO) << "Per-worker process group cleanup is not supported on Windows.";
+#endif
+
+    if (subreaper_enabled && !pg_enabled) {
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is enabled. "
+          << "Subreaper is deprecated and will be removed in a future release. "
+          << "Prefer per-worker process groups.";
       enable_subreaper();
     } else {
-      RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+#if !defined(_WIN32)
+      // Ensure child processes are auto-reaped to avoid zombies even when both
+      // subreaper and per-worker PG cleanup are disabled.
       ray::SetSigchldIgnore();
+#endif
     }
 
     // Parse the worker port list.
@@ -613,10 +695,11 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); });
+        /*get_time=*/[]() { return absl::Now(); },
+        std::move(add_process_to_application_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
-        main_service, /*record_stats=*/true);
+        main_service, /*record_stats=*/true, node_ip_address);
 
     worker_rpc_pool = std::make_unique<ray::rpc::CoreWorkerClientPool>(
         [&](const ray::rpc::Address &addr) {
@@ -915,7 +998,8 @@ int main(int argc, char *argv[]) {
             *plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
-        shutdown_raylet_gracefully);
+        shutdown_raylet_gracefully,
+        std::move(add_process_to_system_cgroup_hook));
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

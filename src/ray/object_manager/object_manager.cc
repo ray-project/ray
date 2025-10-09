@@ -15,17 +15,19 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
-
-namespace asio = boost::asio;
+#include "ray/util/exponential_backoff.h"
 
 namespace ray {
 
@@ -90,6 +92,7 @@ ObjectManager::ObjectManager(
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
+                           /*local_address=*/"always not local",
                            ClusterID::Nil(),
                            config_.rpc_service_threads_number),
       restore_spilled_object_(std::move(restore_spilled_object)),
@@ -235,8 +238,8 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // be received if the list of locations is empty. The set of node IDs has
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
-    RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+    object_directory_->SubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback);
   }
 
   return request_id;
@@ -245,8 +248,8 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 void ObjectManager::CancelPull(uint64_t request_id) {
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id));
+    object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
+                                                  object_id);
   }
 }
 
@@ -639,7 +642,8 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> rpc_clients;
+    std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+        rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
@@ -649,7 +653,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
       }
       auto rpc_client = GetRpcClient(node_id);
       if (rpc_client != nullptr) {
-        rpc_clients.push_back(std::move(rpc_client));
+        rpc_clients.emplace_back(node_id, std::move(rpc_client));
       }
     }
     rpc_service_.post(
@@ -662,23 +666,53 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
 
 void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> &rpc_clients) {
+    const std::vector<
+        std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+        &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
   for (const auto &e : object_ids) {
     free_objects_request.add_object_ids(e.Binary());
   }
-
-  for (auto &rpc_client : rpc_clients) {
-    rpc_client->FreeObjects(free_objects_request,
-                            [](const Status &status, const rpc::FreeObjectsReply &reply) {
-                              if (!status.ok()) {
-                                RAY_LOG(WARNING)
-                                    << "Send free objects request failed due to"
-                                    << status.message();
-                              }
-                            });
+  for (const auto &entry : rpc_clients) {
+    // NOTE: The callback for FreeObjects is posted back onto the main_service_ since
+    // RetryFreeObjects accesses remote_object_manager_clients_ which is not thread safe.
+    entry.second->FreeObjects(
+        free_objects_request,
+        [this, node_id = entry.first, free_objects_request](
+            const Status &status, const rpc::FreeObjectsReply &reply) {
+          if (!status.ok()) {
+            RetryFreeObjects(node_id, 0, free_objects_request);
+          }
+        });
   }
+}
+
+void ObjectManager::RetryFreeObjects(
+    const NodeID &node_id,
+    uint32_t attempt_number,
+    const rpc::FreeObjectsRequest &free_objects_request) {
+  if (!remote_object_manager_clients_.contains(node_id)) {
+    return;
+  }
+  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
+  execute_after(
+      *main_service_,
+      [this, node_id, attempt_number, free_objects_request] {
+        auto it = remote_object_manager_clients_.find(node_id);
+        if (it == remote_object_manager_clients_.end()) {
+          return;
+        }
+        it->second->FreeObjects(
+            free_objects_request,
+            [this, node_id, attempt_number, free_objects_request](
+                const Status &status, const rpc::FreeObjectsReply &reply) {
+              if (!status.ok()) {
+                RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+              }
+            });
+      },
+      std::chrono::milliseconds(delay_ms));
 }
 
 std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(

@@ -258,8 +258,9 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._output_block_size_option_override = None
-        self.override_target_max_block_size(target_max_block_size_override)
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size_override
+        )
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
@@ -317,26 +318,10 @@ class PhysicalOperator(Operator):
         else:
             return self._output_block_size_option_override.target_max_block_size
 
-    @property
-    def actual_target_max_block_size(self) -> Optional[int]:
-        """
-        The actual target max block size output by this operator.
-        Returns:
-            `None` if the target max block size is not set, otherwise the target max block size.
-            `None` means the block size is infinite.
-        """
-        target_max_block_size = self.target_max_block_size_override
-        if target_max_block_size is None:
-            target_max_block_size = self.data_context.target_max_block_size
-        return target_max_block_size
-
     def override_target_max_block_size(self, target_max_block_size: Optional[int]):
-        if target_max_block_size is not None:
-            self._output_block_size_option_override = OutputBlockSizeOption(
-                target_max_block_size=target_max_block_size
-            )
-        elif self._output_block_size_option_override is not None:
-            self._output_block_size_option_override = None
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size
+        )
 
     def mark_execution_finished(self):
         """Manually mark that this operator has finished execution."""

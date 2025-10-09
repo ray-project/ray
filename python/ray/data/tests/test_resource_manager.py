@@ -68,15 +68,24 @@ def mock_join_op(
     right_input_op,
     incremental_resource_usage=None,
 ):
-    op = JoinOperator(
-        DataContext.get_current(),
-        left_input_op,
-        right_input_op,
-        ("id",),
-        ("id",),
-        "inner",
-        num_partitions=1,
-    )
+    left_input_op._logical_operators = [(MagicMock())]
+    right_input_op._logical_operators = [(MagicMock())]
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
+    ) as mock:
+        mock.return_value = ExecutionResources(cpu=1)
+
+        op = JoinOperator(
+            DataContext.get_current(),
+            left_input_op,
+            right_input_op,
+            ("id",),
+            ("id",),
+            "inner",
+            num_partitions=1,
+            partition_size_hint=1,
+        )
 
     op.start = MagicMock(side_effect=lambda _: None)
     if incremental_resource_usage is not None:
@@ -829,7 +838,7 @@ class TestReservationOpResourceAllocator:
                 o6 (UnionOperator) <--
                 |
                 v
-                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+                o8 (ZipOperator) <-- o7 (InputDataBuffer, completed)
         """
         DataContext.get_current().op_resource_reservation_enabled = True
 
@@ -940,7 +949,7 @@ class TestReservationOpResourceAllocator:
                 o6 (UnionOperator) <--
                 |
                 v
-                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+                o8 (ZipOperator) <-- o7 (InputDataBuffer, completed)
         """
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5

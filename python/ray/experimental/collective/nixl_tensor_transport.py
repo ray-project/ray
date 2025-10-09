@@ -4,7 +4,6 @@ import ray
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
 )
-from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
     Backend,
@@ -30,6 +29,8 @@ class NixlTensorTransport(TensorTransportManager):
             self: "ray.actor.ActorHandle",
         ) -> bool:
             try:
+                from ray.util.collective.collective import get_group_handle
+
                 nixl_backend = get_group_handle(NIXL_GROUP_NAME)
                 return nixl_backend is not None
             except Exception:
@@ -45,6 +46,7 @@ class NixlTensorTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         gpu_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
+        from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NixlTransportMetadata
 
@@ -52,7 +54,9 @@ class NixlTensorTransport(TensorTransportManager):
         device = None
         tensor_meta = []
         if gpu_object:
-            serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(gpu_object)
+            reg_descs, serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
+                gpu_object
+            )
             # We assume all tensors in one GPU object have the same device type.
             device = gpu_object[0].device
             for t in gpu_object:
@@ -62,10 +66,11 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                 tensor_meta.append((t.shape, t.dtype))
         else:
-            serialized_descs, agent_meta = None, None
+            reg_descs, serialized_descs, agent_meta = None, None, None
         return NixlTransportMetadata(
             tensor_meta=tensor_meta,
             tensor_device=device,
+            nixl_reg_descs=reg_descs,
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
@@ -148,3 +153,12 @@ class NixlTensorTransport(TensorTransportManager):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
+
+    @staticmethod
+    def garbage_collect(tensor_transport_meta: NixlTransportMetadata):
+        from ray.util.collective.collective import get_group_handle
+        from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
+        descs = tensor_transport_meta.nixl_reg_descs
+        nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
+        nixl_backend.deregister_memory(descs)

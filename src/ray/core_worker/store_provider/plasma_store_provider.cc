@@ -23,7 +23,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -64,7 +64,7 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounter &reference_counter,
+    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
@@ -261,7 +261,7 @@ Status UnblockIfNeeded(
     // NOTE: for direct call actors, we still need to issue an unblock IPC to release
     // get subscriptions, even if the worker isn't blocked.
     if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return raylet_client->NotifyDirectCallTaskUnblocked();
+      return raylet_client->NotifyWorkerUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
     }
@@ -403,7 +403,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
 }
