@@ -172,7 +172,7 @@ KAI scheduler deployment comes with several predefined priority classes:
 - train (50) - use for preemptible training workloads
 - build-preemptible (75) - use for preemptible build/interactive workloads
 - build (100) - can be used for build/interactive workloads (non-preemptible)
-- inference (125) - can be used for inference workloads (non-preemptible)
+- inference (125) - use for inference workloads (non-preemptible)
 
 You can submit the same workload above with a specific priority. Here is an example how to turn the above example into a build class workload
 
