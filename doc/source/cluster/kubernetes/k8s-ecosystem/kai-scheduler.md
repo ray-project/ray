@@ -11,7 +11,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 - **GPU sharing**: Allow KAI to pack multiple Ray workloads from across teams on the same GPU, letting your organization fit more work onto your existing hardware and reducing idle GPU time.
 - **Workload autoscaling**: Scale Ray replicas or workers within min/max while respecting gang constraints
 - **Cluster autoscaling**: Compatible with dynamic cloud infrastructures (including auto-scalers like Karpenter)
-- **Workload Priorities**: Prioritize Ray workloads effectively within queues
+- **Workload priorities**: Prioritize Ray workloads effectively within queues
 - **Hierarchical Queues & Fairness**: Two-level queues with quotas, over-quota weights, limits and equitable resource distribution between queues using DRF
 and many more.
 For more details and key features, please refer to [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
