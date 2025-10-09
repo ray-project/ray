@@ -3,6 +3,8 @@ import shutil
 import sys
 import tempfile
 from typing import Optional
+from azure.storage.blob import BlobServiceClient
+from azure.identity import DefaultAzureCredential
 
 import boto3
 from google.cloud import storage
@@ -81,9 +83,6 @@ class JobFileManager(FileManager):
             blob = bucket.blob(key)
             self._run_with_retry(lambda: blob.download_to_filename(target))
         if self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
-            from azure.storage.blob import BlobServiceClient
-            from azure.identity import DefaultAzureCredential
-
             account_url = f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"
             credential = DefaultAzureCredential(
                 exclude_managed_identity_credential=True
@@ -93,8 +92,7 @@ class JobFileManager(FileManager):
                 container=AZURE_STORAGE_CONTAINER, blob=key
             )
             with open(target, "wb") as f:
-                download_stream = blob_client.download_blob()
-                f.write(download_stream.readall())
+                blob_client.download_blob().readinto(f)
         if delete_after_download:
             self.delete(key)
 

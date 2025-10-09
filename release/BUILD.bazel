@@ -330,7 +330,7 @@ py_library(
     deps = [
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
-        bk_require("azure-storage-file-datalake"),
+        bk_require("azure-storage-blob"),
         bk_require("azure-identity"),
         bk_require("bazel-runfiles"),
         bk_require("aioboto3"),

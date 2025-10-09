@@ -76,13 +76,17 @@ class AnyscaleJobRunner(JobRunner):
             "ANYSCALE_CLOUD_STORAGE_PROVIDER",
             S3_CLOUD_STORAGE,
         )
-        self.upload_path = join_cloud_storage_paths(
-            f"{cloud_storage_provider}://{self.file_manager.bucket}",
-            self.path_in_bucket,
-        )
+
         if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            # Azure ABFSS involves container and account name in the path
+            # and in a specific format/order.
             self.upload_path = join_cloud_storage_paths(
                 f"{AZURE_CLOUD_STORAGE}://{AZURE_STORAGE_CONTAINER}@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
+        else:
+            self.upload_path = join_cloud_storage_paths(
+                f"{cloud_storage_provider}://{self.file_manager.bucket}",
                 self.path_in_bucket,
             )
         self.output_json = "/tmp/output.json"
@@ -246,6 +250,10 @@ class AnyscaleJobRunner(JobRunner):
             self.upload_path, self.output_json
         )
         upload_cloud_storage_uri = self.upload_path
+        # Convert ABFSS URI to HTTPS URI for Azure
+        # since azcopy doesn't support ABFSS.
+        # azcopy is used to fetch these artifacts on Buildkite
+        # after job is done.
         if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
             results_cloud_storage_uri = convert_abfss_uri_to_https(
                 results_cloud_storage_uri

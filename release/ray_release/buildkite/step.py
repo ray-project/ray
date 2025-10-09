@@ -158,6 +158,13 @@ def get_step(
         env_dict["AZURE_CLIENT_ID"] = os.environ.get("AZURE_CLIENT_ID")
         env_dict["AZURE_CLIENT_SECRET"] = os.environ.get("AZURE_CLIENT_SECRET")
         env_dict["AZURE_TENANT_ID"] = os.environ.get("AZURE_TENANT_ID")
+        if not all(
+            os.environ.get(env_var)
+            for env_var in ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"]
+        ):
+            raise ValueError(
+                "AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID must be set"
+            )
 
     step["env"].update(env_dict)
     step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"

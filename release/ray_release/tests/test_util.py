@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 import tempfile
-from ray_release.util import upload_file_to_azure, upload_working_dir_to_azure
+from ray_release.util import (
+    upload_file_to_azure,
+    upload_working_dir_to_azure,
+    _parse_abfss_uri,
+)
 
 
 @patch("azure.storage.blob.BlobServiceClient")
@@ -60,6 +64,43 @@ def test_upload_working_dir_to_azure(mock_upload_file_to_azure):
         assert args["local_file_path"].endswith(".zip")
         assert args["azure_file_path"].startswith(f"{azure_directory_uri}/")
         assert args["azure_file_path"].endswith(".zip")
+
+
+@pytest.mark.parametrize(
+    "uri, expected_account, expected_container, expected_path",
+    [
+        (
+            "abfss://container@account.dfs.core.windows.net/path/test.txt",
+            "account",
+            "container",
+            "path/test.txt",
+        ),
+        ("abfss://container@account.dfs.core.windows.net/", "account", "container", ""),
+        (
+            "abfss://container@account.dfs.core.windows.net/path/",
+            "account",
+            "container",
+            "path/",
+        ),
+        (
+            "abfss://container@account.dfs.core.windows.net/path/to/file.txt",
+            "account",
+            "container",
+            "path/to/file.txt",
+        ),
+        (
+            "abfss://container-name@account-123.dfs.core.windows.net/path",
+            "account-123",
+            "container-name",
+            "path",
+        ),
+    ],
+)
+def test_parse_abfss_uri(uri, expected_account, expected_container, expected_path):
+    account, container, path = _parse_abfss_uri(uri)
+    assert account == expected_account
+    assert container == expected_container
+    assert path == expected_path
 
 
 if __name__ == "__main__":
