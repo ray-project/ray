@@ -74,7 +74,7 @@ class ConsumingActor:
     def consume(self, split, max_rows_to_read: Optional[int] = None):
         rows_read = 0
         for batch in split.iter_batches():
-            rows_read += len(batch["id"])
+            rows_read += len(batch["label"])
 
             if max_rows_to_read is not None:
                 if rows_read >= max_rows_to_read:
