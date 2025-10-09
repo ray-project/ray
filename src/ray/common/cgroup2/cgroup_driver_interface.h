@@ -228,4 +228,5 @@ class CgroupDriverInterface {
   virtual Status AddProcessToCgroup(const std::string &cgroup,
                                     const std::string &pid) = 0;
 };
+
 }  // namespace ray

@@ -79,6 +79,10 @@ class WorkerInterface {
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
+  /// Optional saved process group id (PGID) for this worker's process group.
+  /// Set at registration time from getpgid(pid) and used for safe cleanup.
+  virtual std::optional<pid_t> GetSavedProcessGroupId() const = 0;
+  virtual void SetSavedProcessGroupId(pid_t pgid) = 0;
 
   virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
 
@@ -150,83 +154,90 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
 
-  rpc::WorkerType GetWorkerType() const;
-  void MarkDead();
-  bool IsDead() const;
+  rpc::WorkerType GetWorkerType() const override;
+  void MarkDead() override;
+  bool IsDead() const override;
   /// Kill the worker process. This is idempotent.
   /// \param io_service for scheduling the graceful period timer.
   /// \param force true to kill immediately, false to give time for the worker to clean up
   /// and exit gracefully.
-  void KillAsync(instrumented_io_context &io_service, bool force = false);
-  void MarkBlocked();
-  void MarkUnblocked();
-  bool IsBlocked() const;
+  void KillAsync(instrumented_io_context &io_service, bool force = false) override;
+  void MarkBlocked() override;
+  void MarkUnblocked() override;
+  bool IsBlocked() const override;
   /// Return the worker's ID.
-  WorkerID WorkerId() const;
+  WorkerID WorkerId() const override;
   /// Return the worker process.
-  Process GetProcess() const;
+  Process GetProcess() const override;
   /// Return the worker process's startup token
-  StartupToken GetStartupToken() const;
-  void SetProcess(Process proc);
-  rpc::Language GetLanguage() const;
-  const std::string IpAddress() const;
-  void AsyncNotifyGCSRestart();
+  StartupToken GetStartupToken() const override;
+  void SetProcess(Process proc) override;
+  rpc::Language GetLanguage() const override;
+  const std::string IpAddress() const override;
+  void AsyncNotifyGCSRestart() override;
   /// Connect this worker's gRPC client.
-  void Connect(int port);
+  void Connect(int port) override;
   /// Testing-only
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
-  int Port() const;
-  int AssignedPort() const;
-  void SetAssignedPort(int port);
-  void GrantLeaseId(const LeaseID &lease_id);
-  const LeaseID &GetGrantedLeaseId() const;
-  const JobID &GetAssignedJobId() const;
-  const RayLease &GetGrantedLease() const;
-  std::optional<bool> GetIsGpu() const;
-  std::optional<bool> GetIsActorWorker() const;
-  int GetRuntimeEnvHash() const;
-  void AssignActorId(const ActorID &actor_id);
-  const ActorID &GetActorId() const;
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override;
+  int Port() const override;
+  int AssignedPort() const override;
+  void SetAssignedPort(int port) override;
+  void GrantLeaseId(const LeaseID &lease_id) override;
+  const LeaseID &GetGrantedLeaseId() const override;
+  const JobID &GetAssignedJobId() const override;
+  const RayLease &GetGrantedLease() const override;
+  std::optional<bool> GetIsGpu() const override;
+  std::optional<bool> GetIsActorWorker() const override;
+  int GetRuntimeEnvHash() const override;
+  void AssignActorId(const ActorID &actor_id) override;
+  const ActorID &GetActorId() const override;
   // Creates the debug string for the ID of the lease and the actor ID if it exists.
-  const std::string GetLeaseIdAsDebugString() const;
-  bool IsDetachedActor() const;
-  const std::shared_ptr<ClientConnection> Connection() const;
-  void SetOwnerAddress(const rpc::Address &address);
-  const rpc::Address &GetOwnerAddress() const;
+  const std::string GetLeaseIdAsDebugString() const override;
+  bool IsDetachedActor() const override;
+  const std::shared_ptr<ClientConnection> Connection() const override;
+  void SetOwnerAddress(const rpc::Address &address) override;
+  const rpc::Address &GetOwnerAddress() const override;
 
-  void ActorCallArgWaitComplete(int64_t tag);
+  std::optional<pid_t> GetSavedProcessGroupId() const override;
+  void SetSavedProcessGroupId(pid_t pgid) override;
 
-  const BundleID &GetBundleId() const;
-  void SetBundleId(const BundleID &bundle_id);
+  void ActorCallArgWaitComplete(int64_t tag) override;
+
+  const BundleID &GetBundleId() const override;
+  void SetBundleId(const BundleID &bundle_id) override;
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
     return allocated_instances_;
   };
 
-  void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
+  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  const ActorID &GetRootDetachedActorId() const { return root_detached_actor_id_; }
+  const ActorID &GetRootDetachedActorId() const override {
+    return root_detached_actor_id_;
+  }
 
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
     return lifetime_allocated_instances_;
   };
 
-  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
+  void ClearLifetimeAllocatedInstances() override {
+    lifetime_allocated_instances_ = nullptr;
+  };
 
-  RayLease &GetGrantedLease() { return granted_lease_; };
+  RayLease &GetGrantedLease() override { return granted_lease_; };
 
-  void GrantLease(const RayLease &granted_lease) {
+  void GrantLease(const RayLease &granted_lease) override {
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
     SetBundleId(lease_spec.PlacementGroupBundleId());
@@ -238,27 +249,29 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
   }
 
-  absl::Time GetGrantedLeaseTime() const { return lease_grant_time_; };
+  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
 
-  bool IsRegistered() { return rpc_client_ != nullptr; }
+  bool IsRegistered() override { return rpc_client_ != nullptr; }
 
-  bool IsAvailableForScheduling() const {
-    return !IsDead()                        // Not dead
-           && !GetGrantedLeaseId().IsNil()  // Has assigned lease
-           && !IsBlocked()                  // Not blocked
-           && GetActorId().IsNil();         // No assigned actor
+  bool IsAvailableForScheduling() const override {
+    return !IsDead()  // Not dead
+           && !GetGrantedLeaseId()
+                   .IsNil()  // Has assigned lease. This is intentionally incorrect since
+                             // Ray Data relies on this for GC #56155
+           && !IsBlocked()   // Not blocked
+           && GetActorId().IsNil();  // No assigned actor
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() override {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
-  void SetJobId(const JobID &job_id);
+  void SetJobId(const JobID &job_id) override;
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
 
  protected:
-  void SetStartupToken(StartupToken startup_token);
+  void SetStartupToken(StartupToken startup_token) override;
 
  private:
   /// The worker's ID.
@@ -329,6 +342,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
+  /// Saved process group id captured at registration time. Used for process-group
+  /// cleanup validation at disconnect/stop.
+  std::optional<pid_t> saved_pgid_ = std::nullopt;
 };
 
 }  // namespace raylet

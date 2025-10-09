@@ -1201,7 +1201,10 @@ def test_map_estimated_blocks_split():
 
     min_rows_per_bundle = 10
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles(
+            [[i, i + 1] for i in range(100)]
+        ),  # create 2-row blocks so split_blocks can split into 2 blocks
     )
 
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:

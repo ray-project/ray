@@ -49,12 +49,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
+  void SubscribeObjectLocations(const UniqueID &callback_id,
+                                const ObjectID &object_id,
+                                const rpc::Address &owner_address,
+                                const OnLocationsFound &callback) override;
+
+  void UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                  const ObjectID &object_id) override;
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
@@ -112,8 +113,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   gcs::GcsClient &gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
-  /// The client call manager used to create the RPC clients.
-  rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.
   pubsub::SubscriberInterface *object_location_subscriber_;
   /// Client pool to owners.
