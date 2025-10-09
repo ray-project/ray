@@ -62,7 +62,7 @@ code_format() {
 
 semgrep_lint() {
   pip install -c python/requirements_compiled.txt semgrep
-  semgrep ci --config semgrep.yml --verbose
+  semgrep scan --config semgrep.yml --error
 }
 
 banned_words() {
