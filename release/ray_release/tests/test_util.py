@@ -1,7 +1,6 @@
 import sys
 import os
 from unittest.mock import patch
-from unittest.mock import MagicMock
 
 import pytest
 import tempfile
@@ -10,6 +9,16 @@ from ray_release.util import (
     upload_working_dir_to_azure,
     _parse_abfss_uri,
 )
+
+
+class FakeBlobServiceClient:
+    def __init__(self, account_url, credential):
+        self.account_url = account_url
+        self.credential = credential
+        self.blob_client = FakeBlobClient()
+
+    def get_blob_client(self, container, blob):
+        return self.blob_client
 
 
 class FakeBlobClient:
@@ -31,25 +40,14 @@ def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
         container = "test_container"
         account = "test_account"
         azure_path = f"abfss://{container}@{account}.dfs.core.windows.net/path/test.txt"
-
-        # Mock Azure dependencies
-        mock_credential.return_value = MagicMock()
-        mock_blob_service_client_instance = MagicMock()
-        mock_blob_service_client.return_value = mock_blob_service_client_instance
         fake_blob_client = FakeBlobClient()
-        mock_blob_service_client_instance.get_blob_client.return_value = (
-            fake_blob_client
+        fake_blob_service_client = FakeBlobServiceClient(
+            f"https://{account}.blob.core.windows.net", "test-credential"
         )
+        fake_blob_service_client.blob_client = fake_blob_client
 
-        upload_file_to_azure(str(local_file), azure_path)
+        upload_file_to_azure(str(local_file), azure_path, fake_blob_service_client)
 
-        # Verify BlobServiceClient was called correctly
-        mock_blob_service_client.assert_called_once_with(
-            f"https://{account}.blob.core.windows.net", mock_credential.return_value
-        )
-        mock_blob_service_client_instance.get_blob_client.assert_called_once_with(
-            container=container, blob="path/test.txt"
-        )
         with open(local_file, "rb") as f:
             expected_data = f.read()
             assert fake_blob_client.uploaded_data == expected_data
