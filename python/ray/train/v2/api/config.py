@@ -65,24 +65,6 @@ class ScalingConfig(ScalingConfigV1):
             auto-detected for TPUs and added as Ray node labels. This arg enables
             SPMD execution of the training workload. This field is required
             when `use_tpu` is True and `num_workers` is greater than 1.
-
-    Example:
-
-        .. testcode::
-
-            from ray.train import ScalingConfig
-            scaling_config = ScalingConfig(
-                # Number of distributed workers.
-                num_workers=2,
-                # Turn on/off GPU.
-                use_gpu=True,
-            )
-
-        .. testoutput::
-            :hide:
-
-            ...
-
     """
 
     trainer_resources: Optional[dict] = None
@@ -258,6 +240,23 @@ class RunConfig:
             raise ValueError(
                 "All callbacks must be instances of `ray.train.UserCallback`. "
                 "Passing in a Ray Tune callback is no longer supported. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        # TODO: Create a separate V2 CheckpointConfig class.
+        if not isinstance(self.checkpoint_config, CheckpointConfig):
+            raise ValueError(
+                f"Invalid `CheckpointConfig` type: {self.checkpoint_config.__class__}. "
+                "Use `ray.train.CheckpointConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.failure_config, FailureConfig):
+            raise ValueError(
+                f"Invalid `FailureConfig` type: {self.failure_config.__class__}. "
+                "Use `ray.train.FailureConfig` instead. "
                 "See this issue for more context: "
                 "https://github.com/ray-project/ray/issues/49454"
             )
