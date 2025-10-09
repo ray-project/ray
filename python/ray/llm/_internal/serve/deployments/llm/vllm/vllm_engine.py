@@ -2,6 +2,7 @@ import argparse
 import os
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
+from fastapi import Request
 from starlette.datastructures import State
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
@@ -343,12 +344,12 @@ class VLLMEngine(LLMEngine):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
     async def chat(
-        self, request: ChatCompletionRequest
+        self, request: ChatCompletionRequest, raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request
+            request, raw_request
         )
 
         if isinstance(chat_response, AsyncGenerator):
@@ -365,12 +366,12 @@ class VLLMEngine(LLMEngine):
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
     async def completions(
-        self, request: CompletionRequest
+        self, request: CompletionRequest, raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request
+            request, raw_request
         )
 
         if isinstance(completion_response, AsyncGenerator):
@@ -389,12 +390,12 @@ class VLLMEngine(LLMEngine):
                 yield CompletionResponse(**completion_response.model_dump())
 
     async def embeddings(
-        self, request: EmbeddingRequest
+        self, request: EmbeddingRequest, raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
 
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request
+            request, raw_request
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
@@ -405,11 +406,13 @@ class VLLMEngine(LLMEngine):
             yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def score(
-        self, request: ScoreRequest
+        self, request: ScoreRequest, raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        score_response = await self._oai_serving_scores.create_score(request)
+        score_response = await self._oai_serving_scores.create_score(
+            request, raw_request
+        )
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())

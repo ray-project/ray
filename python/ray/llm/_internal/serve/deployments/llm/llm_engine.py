@@ -1,5 +1,7 @@
 import abc
-from typing import TYPE_CHECKING, AsyncGenerator, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, Union
+
+from fastapi import Request
 
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -42,7 +44,7 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self, request: "ChatCompletionRequest", raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """Run a ChatCompletion with the engine.
 
@@ -56,6 +58,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The chat completion request.
+            raw_request: The raw FastAPI request object.
 
         Yields:
             Union[str, ChatCompletionResponse, ErrorResponse]: A string representing a chunk of the response, a ChatCompletionResponse object, or an ErrorResponse object.
@@ -67,7 +70,7 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def completions(
-        self, request: "CompletionRequest"
+        self, request: "CompletionRequest", raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[str, "CompletionResponse", "ErrorResponse"], None]:
         """Run a Completion with the engine.
 
@@ -85,6 +88,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The completion request.
+            raw_request: The raw FastAPI request object.
 
         Yields:
             Union[str, CompletionResponse, ErrorResponse]: A string
@@ -98,7 +102,7 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def embeddings(
-        self, request: "EmbeddingRequest"
+        self, request: "EmbeddingRequest", raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union["EmbeddingResponse", "ErrorResponse"], None]:
         """Run an Embedding with the engine.
 
@@ -112,6 +116,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The embedding request.
+            raw_request: The raw FastAPI request object.
 
         Returns:
             An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
