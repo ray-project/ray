@@ -168,6 +168,9 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
             metric_dicts.append(eval(metric_dict_str))
 
+    metric_dicts = [
+        d for d in metric_dicts if d.get("route") not in ("/-/healthz", "/-/routes")
+    ]
     print(metric_dicts)
     return metric_dicts
 
@@ -713,6 +716,8 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
+            if 'route="/-/healthz"' in line or 'route="/-/routes"' in line:
+                continue
             if line.startswith("ray_serve_num_http_error_requests_total"):
                 error_count += int(float(line.split(" ")[-1]))
             if line.startswith("ray_serve_num_http_requests_total"):
