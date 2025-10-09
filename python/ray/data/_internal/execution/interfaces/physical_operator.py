@@ -766,8 +766,6 @@ def estimate_total_num_of_blocks(
         # tasks that are yielding multiple blocks
         ongoing_tasks = metrics.num_tasks_have_outputs - metrics.num_tasks_finished
 
-        print(f"ongoing tasks = {ongoing_tasks}")
-
         estimated_num_output_bundles = round(
             estimated_num_tasks
             * metrics.num_outputs_of_finished_tasks
