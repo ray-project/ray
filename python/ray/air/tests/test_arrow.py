@@ -9,10 +9,10 @@ from packaging.version import parse as parse_version
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
+    ArrowTensorArray,
     _convert_to_pyarrow_native_array,
     _infer_pyarrow_type,
     convert_to_pyarrow_array,
-    ArrowTensorArray,
 )
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext

@@ -12,8 +12,8 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.models.distributions import Distribution
-from ray.rllib.models.torch.torch_distributions import TorchDeterministic
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.distribution.torch.torch_distribution import TorchDeterministic
 
 
 # Define a simple categorical distribution that can be used for PPO

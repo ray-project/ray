@@ -186,6 +186,16 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
 Unity Catalog
 -------------
 
@@ -400,7 +410,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
 Shuffling API

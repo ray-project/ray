@@ -12,9 +12,9 @@ import httpx
 import pytest
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -36,7 +36,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
@@ -147,6 +147,8 @@ class TestAutoscalingMetrics:
             },
             max_ongoing_requests=25,
             version="v1",
+            # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
+            graceful_shutdown_timeout_s=0.1,
         )
         class A:
             async def __call__(self):
@@ -229,9 +231,7 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(
-            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
-        )
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -277,7 +277,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -303,8 +307,8 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        # Wait for deployment A to scale up
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
@@ -352,7 +356,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -411,8 +419,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -439,7 +447,6 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance_with_signal,
     scaling_factor,
@@ -596,8 +603,8 @@ def test_e2e_bursty(serve_instance_with_signal):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -634,7 +641,6 @@ def test_e2e_bursty(serve_instance_with_signal):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
@@ -658,8 +664,8 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -985,13 +991,13 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
-        live_actors = state_api.list_actors(
+        live_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
-        dead_actors = state_api.list_actors(
+        dead_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "DEAD"),
@@ -1043,9 +1049,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
+async def g():
     signal = ray.get_actor("signal123")
-    ray.get(signal.wait.remote())
+    await signal.wait.remote()
     return os.getpid()
 
 
@@ -1514,6 +1520,67 @@ def test_autoscaling_status_changes(serve_instance):
     )
 
     print("Statuses are as expected.")
+
+
+def custom_autoscaling_policy(ctx: AutoscalingContext):
+    if ctx.total_num_requests > 50:
+        return 3, {}
+    else:
+        return 2, {}
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"name": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"},
+        AutoscalingPolicy(
+            name="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        ),
+        AutoscalingPolicy(name=custom_autoscaling_policy),
+    ],
+)
+def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 4,
+            "downscale_delay_s": 0.5,
+            "upscale_delay_s": 0,
+            "policy": policy,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        graceful_shutdown_timeout_s=1,
+        max_ongoing_requests=1000,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    [handle.remote() for _ in range(40)]
+
+    # scale up one more replica from min_replicas
+    wait_for_condition(check_num_replicas_eq, name="A", target=2)
+    print("Scaled up to 2 replicas.")
+
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    ray.get(signal.send.remote(clear=True))
+    [handle.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_eq, name="A", target=3)
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
 if __name__ == "__main__":

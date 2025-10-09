@@ -357,7 +357,9 @@ def test_pg_usage_labels(shutdown_only):
             state,
             [
                 ExpectedNodeState(
-                    head_node_id, NodeStatus.RUNNING, labels={f"_PG_{pg_id}": ""}
+                    head_node_id,
+                    NodeStatus.RUNNING,
+                    labels={f"_PG_{pg_id}": ""},
                 ),
             ],
         )

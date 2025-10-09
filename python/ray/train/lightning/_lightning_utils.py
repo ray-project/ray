@@ -9,8 +9,8 @@ import torch
 from packaging.version import Version
 
 import ray
-from ray import train
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+import ray.train
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
 from ray.util import PublicAPI
 
@@ -182,16 +182,16 @@ class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
-        return train.get_context().get_world_size()
+        return ray.train.get_context().get_world_size()
 
     def global_rank(self) -> int:
-        return train.get_context().get_world_rank()
+        return ray.train.get_context().get_world_rank()
 
     def local_rank(self) -> int:
-        return train.get_context().get_local_rank()
+        return ray.train.get_context().get_local_rank()
 
     def node_rank(self) -> int:
-        return train.get_context().get_node_rank()
+        return ray.train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
         # Disable it since `world_size()` directly returns data from Train context.
@@ -259,9 +259,14 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def __init__(self) -> None:
         super().__init__()
-        self.trial_name = train.get_context().get_trial_name()
-        self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
+        job_id = ray.get_runtime_context().get_job_id()
+        experiment_name = ray.train.get_context().get_experiment_name()
+        self.local_rank = ray.train.get_context().get_local_rank()
+
+        self.tmpdir_prefix = Path(
+            tempfile.gettempdir(),
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}",
+        ).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
@@ -286,7 +291,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         # Report to train session
         checkpoint = Checkpoint.from_directory(tmpdir)
-        train.report(metrics=metrics, checkpoint=checkpoint)
+        ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
         trainer.strategy.barrier()

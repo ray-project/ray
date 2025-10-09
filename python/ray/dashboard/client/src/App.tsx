@@ -85,6 +85,10 @@ export type GlobalContextType = {
    */
   grafanaOrgId: string;
   /**
+   * The filter for the Cluster variable in grafana dashboards.
+   */
+  grafanaClusterFilter: string | undefined;
+  /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
   dashboardUids: DashboardUids | undefined;
@@ -116,6 +120,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   metricsContextLoaded: false,
   grafanaHost: undefined,
   grafanaOrgId: "1",
+  grafanaClusterFilter: undefined,
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
@@ -135,6 +140,7 @@ const App = () => {
     metricsContextLoaded: false,
     grafanaHost: undefined,
     grafanaOrgId: "1",
+    grafanaClusterFilter: undefined,
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
@@ -166,6 +172,7 @@ const App = () => {
       const {
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         sessionName,
         prometheusHealth,
         dashboardUids,
@@ -176,6 +183,7 @@ const App = () => {
         metricsContextLoaded: true,
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         dashboardUids,
         sessionName,
         prometheusHealth,

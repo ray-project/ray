@@ -4,7 +4,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
@@ -761,7 +761,6 @@ class MetricsLogger:
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
-        assert isinstance(stats_dicts, list), "stats_dicts must be a list"
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):
@@ -1168,6 +1167,8 @@ class MetricsLogger:
             state: The state to set `self` to.
         """
         with self._threading_lock:
+            # Reset all existing stats to ensure a clean state transition
+            self.stats = {}
             for flat_key, stats_state in state["stats"].items():
                 self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 

@@ -6,13 +6,13 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
 )
-from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
 @OldAPIStack

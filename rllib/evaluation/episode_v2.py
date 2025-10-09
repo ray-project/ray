@@ -1,14 +1,15 @@
 import random
 from collections import defaultdict
-import numpy as np
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+import numpy as np
+
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import (
     _PolicyCollector,
     _PolicyCollectorGroup,
 )
-from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack

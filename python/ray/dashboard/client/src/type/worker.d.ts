@@ -15,7 +15,6 @@ export type CoreWorkerStats = {
   numExecutedTasks: number;
   numPendingTasks: number;
   workerId: string;
-  actorTitle: string;
   jobId: string;
   numObjectRefsInScope: number;
   numInPlasma: number;

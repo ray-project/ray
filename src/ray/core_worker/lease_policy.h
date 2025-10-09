@@ -18,7 +18,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/lease/lease_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -41,9 +41,9 @@ class LocalityDataProviderInterface {
 /// Interface for mocking the lease policy.
 class LeasePolicyInterface {
  public:
-  /// Get the address of the best worker node for a lease request for the provided task.
-  virtual std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) = 0;
+  /// Get the address of the best worker node for a lease request.
+  virtual std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) = 0;
 
   virtual ~LeasePolicyInterface() = default;
 };
@@ -63,13 +63,13 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
 
   ~LocalityAwareLeasePolicy() override = default;
 
-  /// Get the address of the best worker node for a lease request for the provided task.
-  std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) override;
+  /// Get the address of the best worker node for a lease request.
+  std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) override;
 
  private:
-  /// Get the best worker node for a lease request for the provided task.
-  std::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
+  /// Get the best worker node for a lease request.
+  std::optional<NodeID> GetBestNodeIdForLease(const LeaseSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.
   LocalityDataProviderInterface &locality_data_provider_;
@@ -90,9 +90,9 @@ class LocalLeasePolicy : public LeasePolicyInterface {
 
   ~LocalLeasePolicy() override = default;
 
-  /// Get the address of the local node for a lease request for the provided task.
-  std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) override;
+  /// Get the address of the local node for a lease request.
+  std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) override;
 
  private:
   /// RPC address of the local node.

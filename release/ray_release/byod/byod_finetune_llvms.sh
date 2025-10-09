@@ -13,7 +13,7 @@ pip3 install -U \
     evaluate==0.4.0 \
     wandb==0.15.8 \
     pytorch-lightning==2.0.6 \
-    "protobuf<3.21.0" \
+    protobuf \
     torchmetrics==1.0.3 \
     sentencepiece==0.1.99 \
     "urllib3<1.27" \

@@ -1,0 +1,422 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+)
+
+ray_cc_library(
+    name = "test_utils",
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
+    deps = [
+        ":asio",
+        ":id",
+        ":placement_group",
+        ":ray_object",
+        ":task_common",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:process",
+        "//src/ray/util:time",
+        "@boost//:optional",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "buffer",
+    hdrs = ["buffer.h"],
+    deps = [
+        ":status",
+        "//src/ray/thirdparty:aligned_alloc",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_object",
+    srcs = ["ray_object.cc"],
+    hdrs = [
+        "ray_object.h",
+    ],
+    deps = [
+        ":buffer",
+        ":id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+        "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_util",
+    hdrs = ["grpc_util.h"],
+    deps = [
+        ":ray_config",
+        ":status",
+        "//src/ray/util:logging",
+        "//src/ray/util:type_traits",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor",
+    srcs = [
+        "memory_monitor.cc",
+    ],
+    hdrs = [
+        "memory_monitor.h",
+    ],
+    deps = [
+        ":asio",
+        ":ray_config",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_prod",
+        "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "file_system_monitor",
+    srcs = ["file_system_monitor.cc"],
+    hdrs = ["file_system_monitor.h"],
+    deps = [
+        ":asio",
+        "//src/ray/util:event",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "runtime_env",
+    srcs = [
+        "runtime_env_common.cc",
+        "runtime_env_manager.cc",
+    ],
+    hdrs = [
+        "runtime_env_common.h",
+        "runtime_env_manager.h",
+    ],
+    deps = [
+        ":id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "id",
+    srcs = [
+        "id.cc",
+    ],
+    hdrs = [
+        "id.h",
+        "id_def.h",
+    ],
+    deps = [
+        ":constants",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/thirdparty:sha256",
+        "//src/ray/util:logging",
+        "//src/ray/util:random",
+        "//src/ray/util:visibility",
+        "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "flatbuf_utils",
+    hdrs = [
+        "flatbuf_utils.h",
+    ],
+    deps = [
+        "@com_github_google_flatbuffers//:flatbuffers",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_spec",
+    srcs = [
+        "bundle_spec.cc",
+    ],
+    hdrs = [
+        "bundle_spec.h",
+    ],
+    deps = [
+        ":grpc_util",
+        ":id",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group",
+    srcs = [
+        "placement_group.cc",
+    ],
+    hdrs = [
+        "placement_group.h",
+    ],
+    deps = [
+        ":bundle_spec",
+        ":id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "function_descriptor",
+    srcs = ["function_descriptor.cc"],
+    hdrs = ["function_descriptor.h"],
+    deps = [
+        ":grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_location_index",
+    srcs = ["bundle_location_index.cc"],
+    hdrs = ["bundle_location_index.h"],
+    deps = [
+        ":id",
+        ":placement_group",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "task_common",
+    srcs = [
+        "task/task_spec.cc",
+    ],
+    hdrs = [
+        "task/task_common.h",
+        "task/task_spec.h",
+        "task/task_util.h",
+    ],
+    deps = [
+        ":event_stats",
+        ":function_descriptor",
+        ":grpc_util",
+        ":ray_config",
+        ":ray_object",
+        ":runtime_env",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/util:container_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "lease",
+    srcs = [
+        "lease/lease_spec.cc",
+    ],
+    hdrs = [
+        "lease/lease.h",
+        "lease/lease_spec.h",
+    ],
+    deps = [
+        ":function_descriptor",
+        ":id",
+        ":runtime_env",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
+        "//src/ray/protobuf:common_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "asio",
+    srcs = [
+        "asio/asio_chaos.cc",
+        "asio/instrumented_io_context.cc",
+        "asio/io_service_pool.cc",
+        "asio/periodical_runner.cc",
+    ],
+    hdrs = [
+        "asio/asio_chaos.h",
+        "asio/asio_util.h",
+        "asio/instrumented_io_context.h",
+        "asio/io_service_pool.h",
+        "asio/periodical_runner.h",
+        "asio/postable.h",
+    ],
+    deps = [
+        ":event_stats",
+        ":ray_config",
+        "//src/ray/util:array",
+        "//src/ray/util:function_traits",
+        "@boost//:asio",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_periodical_runner",
+    hdrs = [
+        "asio/fake_periodical_runner.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":asio",
+        "@boost//:asio",
+    ],
+)
+
+ray_cc_library(
+    name = "event_stats",
+    srcs = [
+        "event_stats.cc",
+    ],
+    hdrs = [
+        "event_stats.h",
+    ],
+    deps = [
+        ":ray_config",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:time",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_config",
+    srcs = ["ray_config.cc"],
+    hdrs = [
+        "ray_config.h",
+        "ray_config_def.h",
+        "ray_internal_flag_def.h",
+    ],
+    deps = [
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
+        "@com_google_absl//absl/strings",
+        "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_syncer",
+    srcs = [
+        "ray_syncer/node_state.cc",
+        "ray_syncer/ray_syncer.cc",
+        "ray_syncer/ray_syncer_client.cc",
+        "ray_syncer/ray_syncer_server.cc",
+    ],
+    hdrs = [
+        "ray_syncer/common.h",
+        "ray_syncer/node_state.h",
+        "ray_syncer/ray_syncer.h",
+        "ray_syncer/ray_syncer_bidi_reactor.h",
+        "ray_syncer/ray_syncer_bidi_reactor_base.h",
+        "ray_syncer/ray_syncer_client.h",
+        "ray_syncer/ray_syncer_server.h",
+    ],
+    deps = [
+        ":asio",
+        ":id",
+        "//:ray_syncer_cc_grpc",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
+    deps = [
+        ":macros",
+        ":source_location",
+        "//src/ray/util:logging",
+        "//src/ray/util:macros",
+        "//src/ray/util:visibility",
+        "@boost//:system",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "macros",
+    hdrs = ["macros.h"],
+)
+
+ray_cc_library(
+    name = "status_or",
+    hdrs = ["status_or.h"],
+    deps = [
+        ":macros",
+        ":status",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+ray_cc_library(
+    name = "source_location",
+    srcs = ["source_location.cc"],
+    hdrs = ["source_location.h"],
+)
+
+ray_cc_library(
+    name = "protobuf_utils",
+    srcs = ["protobuf_utils.cc"],
+    hdrs = ["protobuf_utils.h"],
+    deps = [
+        ":constants",
+        ":id",
+        ":ray_config",
+        ":task_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:export_task_event_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_callback_types",
+    hdrs = ["gcs_callback_types.h"],
+    deps = [
+        "//src/ray/common:status",
+    ],
+)

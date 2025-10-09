@@ -6,7 +6,7 @@ accelerate
 evaluate
 wandb
 pytorch-lightning
-protobuf<3.21.0
+protobuf
 torchmetrics
 sentencepiece
 peft==0.7.0

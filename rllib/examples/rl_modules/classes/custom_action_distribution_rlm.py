@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override

@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
 from ray._common.pydantic_compat import (
@@ -32,7 +32,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
@@ -713,6 +713,31 @@ class HTTPOptionsSchema(BaseModel):
         "before closing them when no requests are ongoing. Defaults to "
         f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
+    ssl_keyfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL key file for HTTPS. If provided with ssl_certfile, "
+        "the HTTP server will use HTTPS. Cannot be updated once Serve has started.",
+    )
+    ssl_certfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL certificate file for HTTPS. If provided with "
+        "ssl_keyfile, the HTTP server will use HTTPS. Cannot be updated once Serve "
+        "has started.",
+    )
+    ssl_keyfile_password: Optional[str] = Field(
+        default=None,
+        description="Password for the SSL key file, if encrypted.",
+    )
+    ssl_ca_certs: Optional[str] = Field(
+        default=None,
+        description="Path to the CA certificate file for verifying client certificates.",
+    )
+
+    @validator("ssl_certfile")
+    def validate_ssl_certfile(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        validate_ssl_config(v, ssl_keyfile)
+        return v
 
 
 @PublicAPI(stability="stable")
@@ -953,6 +978,63 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsHealth(str, Enum):
+    HEALTHY = "healthy"
+    DELAYED = "delayed"
+    UNAVAILABLE = "unavailable"
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingStatus(str, Enum):
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+    STABLE = "STABLE"
+
+
+@PublicAPI(stability="alpha")
+class ScalingDecision(BaseModel):
+    """One autoscaling decision with minimal provenance."""
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the decision was made."
+    )
+    reason: str = Field(
+        ..., description="Short, human-readable reason for the decision."
+    )
+    prev_num_replicas: int = Field(
+        ..., ge=0, description="Replica count before the decision."
+    )
+    curr_num_replicas: int = Field(
+        ..., ge=0, description="Replica count after the decision."
+    )
+    policy: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentAutoscalingDetail(BaseModel):
+    """Deployment-level autoscaler observability."""
+
+    scaling_status: AutoscalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent scaling decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for this deployment."
+    )
+    metrics_health: AutoscalingMetricsHealth = Field(
+        AutoscalingMetricsHealth.HEALTHY,
+        description="Health of metrics collection pipeline.",
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
+    )
+
+
 @PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
@@ -993,6 +1075,11 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="Details about the live replicas of this deployment."
     )
 
+    autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
+    )
+
 
 @PublicAPI(stability="alpha")
 class APIType(str, Enum):
@@ -1001,6 +1088,14 @@ class APIType(str, Enum):
     UNKNOWN = "unknown"
     IMPERATIVE = "imperative"
     DECLARATIVE = "declarative"
+
+    @classmethod
+    def get_valid_user_values(cls):
+        """Get list of valid APIType values that users can explicitly pass.
+
+        Excludes 'unknown' which is for internal use only.
+        """
+        return [cls.IMPERATIVE.value, cls.DECLARATIVE.value]
 
 
 @PublicAPI(stability="stable")
@@ -1083,6 +1178,7 @@ class Target(BaseModel, frozen=True):
     ip: str = Field(description="IP address of the target.")
     port: int = Field(description="Port of the target.")
     instance_id: str = Field(description="Instance ID of the target.")
+    name: str = Field(description="Name of the target.")
 
 
 @PublicAPI(stability="alpha")
@@ -1202,3 +1298,73 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                         )
 
         return values
+
+
+@PublicAPI(stability="alpha")
+class CeleryAdapterConfig(BaseModel):
+    """
+    Celery adapter config. You can use it to configure the Celery task processor for your Serve application.
+    """
+
+    broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
+    backend_url: str = Field(
+        ..., description="The URL of the backend to use for Celery."
+    )
+    broker_transport_options: Optional[Dict[str, Any]] = Field(
+        default=None, description="The broker transport options to use for Celery."
+    )
+    worker_concurrency: Optional[int] = Field(
+        default=10,
+        description="The number of concurrent worker threads for the task processor.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskProcessorConfig(BaseModel):
+    """
+    Task processor config. You can use it to configure the task processor for your Serve application.
+    """
+
+    queue_name: str = Field(
+        ..., description="The name of the queue to use for task processing."
+    )
+    adapter: Union[str, Callable] = Field(
+        default="ray.serve.task_processor.CeleryTaskProcessorAdapter",
+        description="The adapter to use for task processing. By default, Celery is used.",
+    )
+    adapter_config: Any = Field(..., description="The adapter config.")
+    max_retries: Optional[int] = Field(
+        default=3,
+        description="The maximum number of times to retry a task before marking it as failed.",
+    )
+    failed_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the failed task queue. This is used to move failed tasks to a dead-letter queue after max retries.",
+    )
+    unprocessable_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the unprocessable task queue. This is used to move unprocessable tasks(like tasks with serialization issue, or missing handler) to a dead-letter queue.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskResult(BaseModel):
+    """
+    Task result Model.
+    """
+
+    id: str = Field(..., description="The ID of the task.")
+    status: str = Field(..., description="The status of the task.")
+    created_at: Optional[float] = Field(
+        default=None, description="The timestamp of the task creation."
+    )
+    result: Any = Field(..., description="The result of the task.")
+
+
+@PublicAPI(stability="alpha")
+class ScaleDeploymentRequest(BaseModel):
+    """Request schema for scaling a deployment's replicas."""
+
+    target_num_replicas: NonNegativeInt = Field(
+        description="The target number of replicas for the deployment."
+    )

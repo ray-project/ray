@@ -21,20 +21,23 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
+/// The duration at which the GCS tries to run global GC.
+RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
+
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
-/// Whether to enable Ray event stats metrics export.
-/// Note that enabling this adds high overhead to
-/// Ray metrics agent.
-RAY_CONFIG(bool, event_stats_metrics, false)
+/// Whether to enable Ray event stats metrics for main services
+/// such as gcs and raylet (which today are the sole consumers of
+/// this config)
+RAY_CONFIG(bool, emit_main_service_metrics, false)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are available to
-/// debug_state_*.txt
+/// -1 means the feature is disabled. In this case, stats are available
+/// in the associated process's log file.
 /// NOTE: This requires event_stats=1.
 RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
@@ -89,12 +92,6 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, -1)
-
-/// The worker killing policy to use, available options are
-/// group_by_owner
-/// retriable_lifo
-/// retriable_fifo
-RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
@@ -360,8 +357,9 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 /// Waiting time for each gcs service connection.
 RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
-/// The interval at which the gcs server will check if redis has gone down.
-/// When this happens, gcs server will kill itself.
+/// The interval at which the gcs server will health check the connection to the
+/// external Redis server. If a health check fails, the GCS will crash itself.
+/// Set to zero to disable health checking.
 RAY_CONFIG(uint64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 /// Duration to wait between retries for leasing worker in gcs server.
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
@@ -457,6 +455,11 @@ RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
 /// Setting the value to 0 disables the task event recording and reporting.
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
+/// The interval duration for which ray events will be reported to the event aggregator.
+/// The reported data should only be used for observability.
+/// Setting the value to 0 disables the ray event recording and reporting.
+RAY_CONFIG(int64_t, ray_events_report_interval_ms, 1000)
+
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
@@ -520,16 +523,15 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
 RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
-/// Whether enable OpenTelemetry as the metrics collection backend on the driver
-/// component. This flag is only used during the migration of the  metric collection
-/// backend from OpenCensus to OpenTelemetry. It will be removed in the future.
-RAY_CONFIG(bool, experimental_enable_open_telemetry_on_agent, false)
+/// Whether enable OpenTelemetry as the metrics collection backend. The default is
+/// using OpenCensus.
+RAY_CONFIG(bool, enable_open_telemetry, false)
 
-/// Whether enable OpenTelemetry as the metrics collection backend on the core
-/// components (core workers, gcs server, raylet, etc.). This flag is only used during
-/// the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
-/// It will be removed in the future.
-RAY_CONFIG(bool, experimental_enable_open_telemetry_on_core, false)
+/// Whether to enable Ray Event as the event collection backend. The default is
+/// using the Export API.
+RAY_CONFIG(bool, enable_ray_event, false)
+
+RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
@@ -751,18 +753,12 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
 /// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
-
-// Maximum size of the batches when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
-
-// Maximum ray sync message batch size in bytes (1MB by default) between nodes.
-RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
 
 /// ServerCall instance number of each RPC service handler
 ///
@@ -840,10 +836,19 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-///  To use this, simply do
-///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// To use this, simply do
+///     export
+///     RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// If you want to test all rpc failures you can use * as the method name and you can set
+/// -1 max_num_failures to have unlimited failures.
+/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+/// failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50"
+/// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
+/// If this is set, when injecting RPC failures, we'll check if the server and client have
+/// the same address. If they do, we won't inject the failure.
+RAY_CONFIG(bool, testing_rpc_failure_avoid_intra_node_failures, false)
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
@@ -893,6 +898,11 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 // See https://github.com/ray-project/ray/pull/42992 for more info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
 
+// Enable per-worker process-group-based cleanup. When enabled, workers are
+// placed into their own process groups and can be cleaned up via killpg on
+// worker death. Cross-platform semantics on POSIX (no-op on Windows).
+RAY_CONFIG(bool, process_group_cleanup_enabled, false)
+
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
 
@@ -921,6 +931,17 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 
+// Whether the task events from the core worker are sent to GCS directly.
+// TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
+// migrated to the event aggregator.
+RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+
+// Whether to enable the ray event to send to the event aggregator.
+// Currently, only task events are supported.
+// TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
+// event aggregator.
+RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 
@@ -935,7 +956,23 @@ RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
 // disconnects.
 RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
 
-/// The maximum time in seconds that an actor task can wait in the scheduling queue
-/// for tasks with smaller sequence numbers to show up. If timed out, the task will
-/// be cancelled.
+// The maximum time in seconds that an actor task can wait in the scheduling queue
+// for tasks with smaller sequence numbers to show up. If timed out, the task will
+// be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
+
+/// Timeout for raylet grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
+
+// The number of grpc threads spun up on the worker process. This config is consumed
+// by the raylet and then broadcast to the worker process at time of the worker
+// process getting spawned.  Setting to zero or less maintains the default
+// number of threads grpc will spawn.
+RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
+
+// Whether to start a background thread to manage Python GC in workers.
+RAY_CONFIG(bool, start_python_gc_manager_thread, true)
+
+// Whether to enable the feature of outputting error log if the task is
+// still retryable.
+RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)

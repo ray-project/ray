@@ -6,8 +6,8 @@ import torch
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
+from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 
 def is_package_present(package_name: str) -> bool:

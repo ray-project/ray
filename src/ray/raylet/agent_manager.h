@@ -19,6 +19,7 @@
 #include <csignal>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,9 @@ namespace raylet {
 
 using DelayExecutorFn = std::function<std::shared_ptr<boost::asio::deadline_timer>(
     std::function<void()>, uint32_t)>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 // Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.
@@ -58,7 +62,8 @@ class AgentManager {
       Options options,
       DelayExecutorFn delay_executor,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      bool start_agent = true /* for test */)
+      bool start_agent = true /* for test */,
+      AddProcessToCgroupHook add_to_cgroup = [](const std::string &) {})
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
@@ -70,13 +75,13 @@ class AgentManager {
       RAY_LOG(FATAL) << "AgentManager agent_commands must not be empty.";
     }
     if (start_agent) {
-      StartAgent();
+      StartAgent(std::move(add_to_cgroup));
     }
   }
   ~AgentManager();
 
  private:
-  void StartAgent();
+  void StartAgent(AddProcessToCgroupHook add_to_cgroup);
 
  private:
   const Options options_;

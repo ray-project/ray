@@ -6,18 +6,15 @@ from typing import List
 import pytest
 
 import ray
-from ray import ObjectRef
-from ray._common.test_utils import wait_for_condition
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
+from ray import ObjectRef
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
 )
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
-    convert_actor_state,
     generate_system_config_map,
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
@@ -25,6 +22,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.autoscaler._private.commands import debug_status
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.exceptions import RaySystemError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -150,6 +148,15 @@ def test_schedule_placement_groups_at_the_same_time(shutdown_only):
     wait_for_condition(is_all_placement_group_removed)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_detached_placement_group(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(2):
@@ -202,10 +209,8 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray._private.state.actors().values():
-            if actor_info["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.ALIVE
-            ):
+        for actor_info in ray.util.state.list_actors():
+            if actor_info.state == "ALIVE":
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 

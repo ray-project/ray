@@ -1,6 +1,6 @@
 import logging
 
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.

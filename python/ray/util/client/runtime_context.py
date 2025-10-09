@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray import JobID, NodeID

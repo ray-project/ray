@@ -90,8 +90,9 @@ def test_get_python_version():
 
 
 def test_get_ray_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
+
+    # These images are NOT saved on Docker Hub, but on private ECR.
     assert (
         _stub_test(
             {
@@ -99,7 +100,7 @@ def test_get_ray_image():
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:123456-py39-cpu"
+        == "rayproject/ray:a1b2c3d4-py39-cpu"
     )
     assert (
         _stub_test(
@@ -112,7 +113,7 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:123456-py39-gpu"
+        == "rayproject/ray-ml:a1b2c3d4-py39-gpu"
     )
     assert (
         _stub_test(
@@ -125,23 +126,34 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-llm:123456-py311-cu124"
+        == "rayproject/ray-llm:a1b2c3d4-py311-cu124"
     )
-    os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
-    assert (
-        _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py39-cpu"
-    )
-    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:pr-123.123456-py39-cpu"
-        )
+
+    # When RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
     with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
         assert (
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
             == "rayproject/ray:my_tag"
         )
+
+    with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
+        # Even on release branches, we also use the RAYCI_BUILD_ID.
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:a1b2c3d4-py39-cpu"
+        )
+        with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
+            assert (
+                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+                == "rayproject/ray:a1b2c3d4-py39-cpu"
+            )
+
+        # Unless RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
+        with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
+            assert (
+                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+                == "rayproject/ray:my_tag"
+            )
 
 
 def test_get_byod_runtime_env():
@@ -161,11 +173,10 @@ def test_get_byod_runtime_env():
 
 
 def test_get_anyscale_byod_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37-cpu"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:a1b2c3d4-py37-cpu"
     )
     assert _stub_test(
         {
@@ -177,7 +188,8 @@ def test_get_anyscale_byod_image():
             },
         }
     ).get_anyscale_byod_image() == (
-        f"{get_global_config()['byod_ecr']}/" f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        f"{get_global_config()['byod_ecr']}/"
+        f"{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu"
     )
     assert _stub_test(
         {
@@ -191,7 +203,7 @@ def test_get_anyscale_byod_image():
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
-        f"/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
+        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
         "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
     )
 

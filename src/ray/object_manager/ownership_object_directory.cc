@@ -18,7 +18,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "ray/stats/metric_defs.h"
 
@@ -32,7 +31,6 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
     : io_service_(io_service),
       gcs_client_(gcs_client),
-      client_call_manager_(io_service, /*record_stats=*/true),
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(RayConfig::instance().max_object_report_batch_size()),
@@ -44,7 +42,7 @@ namespace {
 void FilterRemovedNodes(gcs::GcsClient &gcs_client,
                         std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
-    if (gcs_client.Nodes().IsRemoved(*it)) {
+    if (gcs_client.Nodes().IsNodeDead(*it)) {
       it = node_ids->erase(it);
     } else {
       it++;
@@ -85,7 +83,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
     const auto new_spilled_node_id = NodeID::FromBinary(location_info.spilled_node_id());
     RAY_LOG(DEBUG).WithField(new_spilled_node_id)
         << "Received object spilled to " << new_spilled_url << " spilled on node";
-    if (gcs_client.Nodes().IsRemoved(new_spilled_node_id)) {
+    if (gcs_client.Nodes().IsNodeDead(new_spilled_node_id)) {
       *spilled_url = "";
       *spilled_node_id = NodeID::Nil();
     } else {
@@ -104,7 +102,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
 
 rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_node_id(object_info.owner_node_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
@@ -246,7 +244,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   in_flight_requests_.emplace(worker_id);
   auto owner_client = GetClient(owner_address);
   owner_client->UpdateObjectLocationBatch(
-      request,
+      std::move(request),
       [this, worker_id, node_id, owner_address](
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         RAY_CHECK(in_flight_requests_.erase(worker_id) > 0);
@@ -255,7 +253,6 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
               << "Failed to get object location update. This should only happen if the "
                  "worker / node is dead.";
           location_buffers_.erase(worker_id);
-          owner_client_pool_->Disconnect(worker_id);
           return;
         }
         SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
@@ -279,7 +276,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   for (auto const &node_id_binary : location_info.node_ids()) {
     const auto node_id = NodeID::FromBinary(node_id_binary);
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-        << "Object is on node alive? " << !gcs_client_.Nodes().IsRemoved(node_id);
+        << "Did node with object die? " << gcs_client_.Nodes().IsNodeDead(node_id);
   }
   auto location_updated = UpdateObjectLocations(location_info,
                                                 gcs_client_,
@@ -322,17 +319,17 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   }
 }
 
-ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
+void OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const UniqueID &callback_id,
     const ObjectID &object_id,
     const rpc::Address &owner_address,
     const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    // Create an object eviction subscription message.
-    auto request = std::make_unique<rpc::WorkerObjectLocationsSubMessage>();
-    request->set_intended_worker_id(owner_address.worker_id());
-    request->set_object_id(object_id.Binary());
+    // Create an object location subscription message.
+    rpc::WorkerObjectLocationsSubMessage request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
 
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       RAY_CHECK(pub_message.has_worker_object_locations_message());
@@ -345,39 +342,37 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
                                                   const Status &status) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
-      rpc::WorkerObjectLocationsPubMessage location_info;
+      const auto obj_id = ObjectID::FromBinary(object_id_binary);
       if (!status.ok()) {
-        RAY_LOG(INFO).WithField(object_id)
-            << "Failed to get the location: " << status.ToString();
-        mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+        RAY_LOG(INFO).WithField(obj_id) << "Owner of object died: " << status.ToString();
+        mark_as_failed_(obj_id, rpc::ErrorType::OWNER_DIED);
       } else {
-        // Owner is still alive but published a failure because the ref was
-        // deleted.
-        RAY_LOG(INFO).WithField(object_id)
+        // Owner is still alive but published a failure because the ref was deleted.
+        RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location for object, already released by distributed "
                "reference counting protocol";
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+        mark_as_failed_(obj_id, rpc::ErrorType::OBJECT_DELETED);
       }
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
-      ObjectLocationSubscriptionCallback(location_info,
-                                         object_id,
-                                         /*location_lookup_failed*/ true);
+      ObjectLocationSubscriptionCallback(
+          /*location_info=*/rpc::WorkerObjectLocationsPubMessage{},
+          obj_id,
+          /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
+    *sub_message->mutable_worker_object_locations_message() = std::move(request);
 
-    RAY_CHECK(object_location_subscriber_->Subscribe(
+    object_location_subscriber_->Subscribe(
         std::move(sub_message),
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
         owner_address,
         object_id.Binary(),
         /*subscribe_done_callback=*/nullptr,
         /*Success callback=*/msg_published_callback,
-        /*Failure callback=*/failure_callback));
+        /*Failure callback=*/failure_callback);
 
     auto location_state = LocationListenerState();
     location_state.owner_address = owner_address;
@@ -386,7 +381,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
   auto &listener_state = it->second;
 
   if (listener_state.callbacks.count(callback_id) > 0) {
-    return Status::OK();
+    return;
   }
   listener_state.callbacks.emplace(callback_id, callback);
 
@@ -423,14 +418,13 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
         },
         "ObjectDirectory.SubscribeObjectLocations");
   }
-  return Status::OK();
 }
 
-ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
+void OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
     const UniqueID &callback_id, const ObjectID &object_id) {
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
-    return Status::OK();
+    return;
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
@@ -438,11 +432,8 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
         entry->second.owner_address,
         object_id.Binary());
-    owner_client_pool_->Disconnect(
-        WorkerID::FromBinary(entry->second.owner_address.worker_id()));
     listeners_.erase(entry);
   }
-  return Status::OK();
 }
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
@@ -472,34 +463,34 @@ void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
 }
 
 void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
-  stats::ObjectDirectoryLocationSubscriptions.Record(listeners_.size());
+  ray_metric_object_directory_location_subscriptions_.Record(listeners_.size());
 
   // Record number of object location updates per second.
   metrics_num_object_location_updates_per_second_ =
       static_cast<double>(metrics_num_object_location_updates_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryLocationUpdates.Record(
+  ray_metric_object_directory_location_updates_.Record(
       metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
   // Record number of object location lookups per second.
   metrics_num_object_location_lookups_per_second_ =
       static_cast<double>(metrics_num_object_location_lookups_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryLocationLookups.Record(
+  ray_metric_object_directory_location_lookups_.Record(
       metrics_num_object_location_lookups_per_second_);
   metrics_num_object_location_lookups_ = 0;
   // Record number of object locations added per second.
   metrics_num_object_locations_added_per_second_ =
       static_cast<double>(metrics_num_object_locations_added_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryAddedLocations.Record(
+  ray_metric_object_directory_location_added_.Record(
       metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
   // Record number of object locations removed per second.
   metrics_num_object_locations_removed_per_second_ =
       static_cast<double>(metrics_num_object_locations_removed_) *
       (1000.0 / static_cast<double>(duration_ms));
-  stats::ObjectDirectoryRemovedLocations.Record(
+  ray_metric_object_directory_location_removed_.Record(
       metrics_num_object_locations_removed_per_second_);
   metrics_num_object_locations_removed_ = 0;
 }

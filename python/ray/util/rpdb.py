@@ -18,6 +18,7 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
+from ray._common.network_utils import build_address
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -110,9 +111,9 @@ class _RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             _cry(
-                "RemotePdb session open at %s:%s, "
+                "RemotePdb session open at %s, "
                 "use 'ray debug' to connect..."
-                % (self._ip_address, self._listen_socket.getsockname()[1])
+                % build_address(self._ip_address, self._listen_socket.getsockname()[1])
             )
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()

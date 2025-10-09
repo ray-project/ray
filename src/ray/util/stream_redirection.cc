@@ -23,18 +23,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/container/flat_hash_map.h"
 #include "ray/util/compat.h"
 #include "ray/util/internal/stream_redirection_handle.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
 namespace {
 
-// TODO(hjiang): Revisit later, should be able to save some heap allocation with
-// absl::InlinedVector.
-//
 // Maps from original stream file fd (i.e. stdout/stderr) to its stream redirector.
 absl::flat_hash_map<int, internal::StreamRedirectionHandle> redirection_file_handles;
 

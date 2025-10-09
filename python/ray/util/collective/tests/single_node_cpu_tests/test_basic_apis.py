@@ -1,9 +1,9 @@
 """Test the collective group APIs."""
 import pytest
-import ray
 
-from ray.util.collective.types import Backend
+import ray
 from ray.util.collective.tests.cpu_util import Worker, create_collective_workers
+from ray.util.collective.types import Backend
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -123,7 +123,8 @@ def test_destroy_group(ray_start_single_node, backend):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

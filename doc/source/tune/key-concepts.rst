@@ -33,7 +33,7 @@ and the :ref:`Class API <tune-class-api>`.
 Both are valid ways of defining a `trainable`, but the Function API is generally recommended and is used
 throughout the rest of this guide.
 
-Consider an example of optimizing a simple objective function like ``a * (x ** 2) + b `` in which ``a`` and ``b`` are the
+Consider an example of optimizing a simple objective function like ``a * (x ** 2) + b`` in which ``a`` and ``b`` are the
 hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
@@ -42,7 +42,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
 
     .. tab-item:: Function API
 
-        With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
+        With the :ref:`function-based API <tune-function-api>` you create a function (here called ``trainable``) that
         takes in a dictionary of hyperparameters.
         This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
 
@@ -238,7 +238,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
  * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
-Note that in the example above we  tell Tune to ``stop`` after ``20`` training iterations.
+Note that in the example above we tell Tune to ``stop`` after ``20`` training iterations.
 This way of stopping trials with explicit rules is useful, but in many cases we can do even better with
 `schedulers`.
 
@@ -256,7 +256,7 @@ passes through the trials selected by your search algorithm in the order they we
 
 In short, schedulers can stop, pause, or tweak the
 hyperparameters of running trials, potentially making your hyperparameter tuning process much faster.
-Unlike search algorithms, :ref:`Trial Scheduler <tune-schedulers>` do not select which hyperparameter
+Unlike search algorithms, :ref:`Trial Schedulers <tune-schedulers>` do not select which hyperparameter
 configurations to evaluate.
 
 Here's a quick example of using the so-called ``HyperBand`` scheduler to tune an experiment.

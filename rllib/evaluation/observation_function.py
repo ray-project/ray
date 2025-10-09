@@ -1,8 +1,8 @@
 from typing import Dict
 
 from ray.rllib.env import BaseEnv
-from ray.rllib.policy import Policy
 from ray.rllib.evaluation import RolloutWorker
+from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.typing import AgentID, PolicyID

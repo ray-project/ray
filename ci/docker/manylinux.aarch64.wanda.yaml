@@ -5,5 +5,6 @@ srcs:
   - ci/build/build-manylinux-forge.sh
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
+  - RAYCI_DISABLE_JAVA
   - HOSTTYPE=aarch64
 dockerfile: ci/docker/manylinux.Dockerfile

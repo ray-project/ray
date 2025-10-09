@@ -3,6 +3,7 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Tuple
+import tempfile
 
 import click
 import numpy as np
@@ -205,13 +206,23 @@ def train_func(use_ray: bool, config: Dict):
 
         local_time_taken = time.monotonic() - local_start_time
 
-        if use_ray:
-            train.report(dict(loss=loss, local_time_taken=local_time_taken))
-        else:
-            print(f"Reporting loss: {loss:.4f}")
-            if local_rank == 0:
-                with open(VANILLA_RESULT_JSON, "w") as f:
-                    json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
+    if use_ray:
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            if train.get_context().get_world_rank() == 0:
+                torch.save(
+                    model.state_dict(),
+                    os.path.join(temp_checkpoint_dir, "model.pt"),
+                )
+
+            train.report(
+                dict(loss=loss, local_time_taken=local_time_taken),
+                checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
+            )
+    else:
+        print(f"Reporting loss: {loss:.4f}")
+        if local_rank == 0:
+            with open(VANILLA_RESULT_JSON, "w") as f:
+                json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
 
 
 def train_torch_ray_air(
@@ -222,8 +233,8 @@ def train_torch_ray_air(
     use_gpu: bool = False,
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
-    # run using Ray AIR.
-    from ray.train import ScalingConfig
+    # run using Ray Train.
+    from ray.train import ScalingConfig, RunConfig
     from ray.train.torch import TorchTrainer
 
     def train_loop(config):
@@ -234,11 +245,11 @@ def train_torch_ray_air(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time

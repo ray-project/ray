@@ -2,11 +2,6 @@
 
 .. _env-to-module-pipeline-docs:
 
-Env-to-module pipelines
-=======================
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
@@ -27,10 +22,21 @@ Env-to-module pipelines
 
             Env-to-module pipelines (this page)
 
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/learner_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-One env-to-module pipeline resides on each :py:class:`~ray.rllib.env.env_runner.EnvRunner` and is responsible
-for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to
-the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+        .. button-ref:: learner-pipeline-docs
+
+            Learner pipelines
+
+Env-to-module pipelines
+=======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+On each :py:class:`~ray.rllib.env.env_runner.EnvRunner` resides one env-to-module pipeline
+responsible for handling the data flow from the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. figure:: images/connector_v2/env_runner_connector_pipelines.svg
     :width: 1000
@@ -43,7 +49,7 @@ the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 .. The module-to-env pipeline serves the other direction, converting the output of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, such as action logits and action distribution parameters, to actual actions understandable by the `gymnasium.Env <https://gymnasium.farama.org/api/env/>`__ and used in the env's next `step()` call.
 
 The env-to-module pipeline, when called, performs transformations from a list of ongoing :ref:`Episode objects <single-agent-episode-docs>` to an
-RLModule-readable tensor batch and RLlib passes this generated batch as the first argument into the
+``RLModule``-readable tensor batch and RLlib passes this generated batch as the first argument into the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`
 methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, depending on your exploration settings.
 
@@ -61,16 +67,16 @@ methods of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, dependi
 Default env-to-module behavior
 ------------------------------
 
-By default RLlib populates an env-to-module pipeline with the following built-in connector pieces.
+By default RLlib populates every env-to-module pipeline with the following built-in connector pieces.
 
 * :py:class:`~ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch`: Places the most recent observation from each ongoing episode into the batch. The column name is ``obs``. Note that if you have a vector of ``N`` environments per :py:class:`~ray.rllib.env.env_runner.EnvRunner`, your batch size is also ``N``.
-* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, adds a single timestep, second axis to all data to make it sequential.
-* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is a stateful one, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in``.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, adds a single timestep, second axis to all data to make it sequential.
+* *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in`` and the values don't have a time-dimension.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on your defined agent-to-module mapping function.
 * :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose 0th axis is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
-You can disable the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
+You can disable all the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
 in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
 Note that the order of these transforms is very relevant for the functionality of the pipeline.
@@ -252,7 +258,7 @@ Writing custom env-to-module connectors
 You can customize the default env-to-module pipeline that RLlib creates through specifying a function in your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, which takes an optional RL environment object (`env`) and an optional `spaces`
 dictionary as input arguments and returns a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece or a list thereof.
-RLlib prepends the provided :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
+RLlib prepends these :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances to the
 :ref:`default env-to-module pipeline <default-env-to-module-pipeline>` in the order returned,
 unless you set `add_default_connectors_to_env_to_module_pipeline=False` in your config, in which case RLlib exclusively uses the provided
 :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces without any automatically added default behavior.
@@ -373,8 +379,8 @@ Now you can use the custom preprocessor in environments with integer observation
 
 .. _observation-preprocessors-adding-rewards-to-obs:
 
-Adding recent rewards to the batch
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Adding recent rewards to the batch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Assume you wrote a custom :ref:`RLModule <rlmodule-guide>` that requires the last three received
 rewards as input in the calls to any of its `forward_..()` methods.
@@ -396,8 +402,8 @@ there are now three more values in each observation:
     from ray.rllib.connectors.env_to_module.observation_preprocessor import SingleAgentObservationPreprocessor
 
 
-    class AddPast3Rewards(SingleAgentObservationPreprocessor):
-        """Extracts last 3 rewards from episode and concatenates them to the observation tensor."""
+    class AddPastThreeRewards(SingleAgentObservationPreprocessor):
+        """Extracts last three rewards from episode and concatenates them to the observation tensor."""
 
         def recompute_output_observation_space(self, in_obs_space, in_act_space):
             # Based on the input observation space (), return the output observation
@@ -432,8 +438,8 @@ there are now three more values in each observation:
     method.
 
 
-Preprocessing observations in multi-agent setups
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Preprocessing observations in multi-agent setups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In multi-agent setups, you have two options for preprocessing your agents' individual observations
 through customizing your env-to-module pipeline:
@@ -480,8 +486,8 @@ through customizing your env-to-module pipeline:
    previous actions.
 
 
-Adding new columns to the batch
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Adding new columns to the batch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 So far, you have altered the observations in the input episodes, either by
 :ref:`manipulating them directly <observation-preprocessors>` or
@@ -574,3 +580,5 @@ You should see the new column in the batch, after running through this connector
 Note, though, that if your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` also requires the new information
 in the train batch, you would also need to add the same custom connector piece to your Algorithm's
 :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`.
+
+See :ref:`the Learner connector pipeline documentation <learner-pipeline-docs>` for more details on how to customize it.

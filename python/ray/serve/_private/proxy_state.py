@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray import ObjectRef
+from ray._common.network_utils import build_address
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
@@ -159,7 +160,7 @@ class ActorProxyWrapper(ProxyWrapper):
         try:
             proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
         except ValueError:
-            addr = f"{http_options.host}:{http_options.port}"
+            addr = build_address(http_options.host, http_options.port)
             logger.info(
                 f"Starting proxy on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
@@ -235,11 +236,7 @@ class ActorProxyWrapper(ProxyWrapper):
             return None
 
         try:
-            # NOTE: Since `check_health` method is responding with nothing, sole
-            #       purpose of fetching the result is to extract any potential
-            #       exceptions
-            self._health_check_future.result()
-            return True
+            return self._health_check_future.result()
         except TimeoutError:
             logger.warning(
                 f"Didn't receive health check response for proxy"
@@ -638,6 +635,7 @@ class ProxyStateManager:
                 ip=state.actor_details.node_ip,
                 port=port,
                 instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
             )
             for _, state in self._proxy_states.items()
             if state.actor_details.status == ProxyStatus.HEALTHY

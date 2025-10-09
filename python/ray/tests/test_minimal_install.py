@@ -3,13 +3,13 @@
 Tests that are specific to minimal installations.
 """
 
-import unittest.mock as mock
 import itertools
-import packaging
 import os
 import sys
+import unittest.mock as mock
 from typing import Dict
 
+import packaging
 import pytest
 
 
@@ -94,8 +94,7 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
                     mock_modules[mod] = mock.MagicMock()
 
             with mock.patch.dict("sys.modules", mock_modules):
-                from ray.dashboard.utils import get_all_modules
-                from ray.dashboard.utils import DashboardHeadModule
+                from ray.dashboard.utils import DashboardHeadModule, get_all_modules
 
                 get_all_modules(DashboardHeadModule)
 

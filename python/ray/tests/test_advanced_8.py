@@ -9,10 +9,8 @@ import time
 from unittest import mock
 
 import numpy as np
-import psutil
 import pytest
 
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
@@ -20,8 +18,11 @@ import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

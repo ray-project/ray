@@ -1,0 +1,52 @@
+applications:
+  - args:
+
+      prefill_config:
+        model_loading_config:
+          model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+        accelerator_type: A10G
+        engine_kwargs:
+          max_model_len: 8192
+          tensor_parallel_size: 1
+          enforce_eager: true
+          kv_transfer_config:
+            kv_connector: LMCacheConnectorV1
+            kv_role: kv_producer
+            kv_connector_extra_config:
+              discard_partial_chunks: false
+              lmcache_rpc_port: producer1
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 2
+            max_replicas: 2
+        runtime_env:
+          env_vars:
+            LMCACHE_CONFIG_FILE: configs/lmcache/prefiller.yaml
+            LMCACHE_USE_EXPERIMENTAL: "True"
+
+      decode_config:
+        model_loading_config:
+          model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+        accelerator_type: A10G
+        engine_kwargs:
+          max_model_len: 8192
+          tensor_parallel_size: 1
+          enforce_eager: true
+          kv_transfer_config:
+            kv_connector: LMCacheConnectorV1
+            kv_role: kv_consumer
+            kv_connector_extra_config:
+              discard_partial_chunks: false
+              lmcache_rpc_port: consumer1
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 6
+            max_replicas: 6
+        runtime_env:
+          env_vars:
+            LMCACHE_CONFIG_FILE: configs/lmcache/decoder.yaml
+            LMCACHE_USE_EXPERIMENTAL: "True"
+
+    import_path: ray.serve.llm:build_pd_openai_app
+    name: llm-endpoint
+    route_prefix: /

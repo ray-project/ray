@@ -9,6 +9,7 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
+from ray.train.utils import _log_deprecation_warning
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE = (
     "Passing in `xgboost.train` kwargs such as `params`, `num_boost_round`, "
     "`label_column`, etc. to `XGBoostTrainer` is deprecated "
-    "in favor of the new API which accepts a ``train_loop_per_worker`` argument, "
+    "in favor of the new API which accepts a training function, "
     "similar to the other DataParallelTrainer APIs (ex: TorchTrainer). "
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/50042"
@@ -88,6 +89,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import xgboost
 
@@ -141,11 +143,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -228,14 +225,13 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 datasets=datasets,
             )
             train_loop_config = params or {}
-        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-        # elif train_kwargs:
-        #     _log_deprecation_warning(
-        #         "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
-        #         "Please pass in a `train_loop_per_worker` function instead, "
-        #         "which has full flexibility on the call to `xgboost.train(**kwargs)`. "
-        #         f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
-        #     )
+        elif train_kwargs:
+            _log_deprecation_warning(
+                "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
+                "In your training function, you can call `xgboost.train(**kwargs)` "
+                "with arbitrary arguments. "
+                f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
+            )
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -277,8 +273,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
 
         num_boost_round = num_boost_round or 10
 
-        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-        # _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
+        _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = xgboost_train_kwargs.get("callbacks", [])

@@ -1,11 +1,12 @@
 import os
-import pytest
 import sys
 from unittest import mock
 
+import pytest
+
 import ray
-from ray.exceptions import RuntimeEnvSetupError
 from ray._private.test_utils import generate_runtime_env_dict
+from ray.exceptions import RuntimeEnvSetupError
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray

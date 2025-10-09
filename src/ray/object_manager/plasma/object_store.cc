@@ -22,15 +22,14 @@
 
 namespace plasma {
 
-ObjectStore::ObjectStore(IAllocator &allocator)
-    : allocator_(allocator), object_table_() {}
+ObjectStore::ObjectStore(IAllocator &allocator) : allocator_(allocator) {}
 
 const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
                                              plasma::flatbuf::ObjectSource source,
                                              bool fallback_allocate) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
-  RAY_CHECK(object_table_.count(object_info.object_id) == 0)
+  RAY_CHECK(!object_table_.contains(object_info.object_id))
       << object_info.object_id << " already exists!";
   auto object_size = object_info.GetObjectSize();
   auto allocation = fallback_allocate ? allocator_.FallbackAllocate(object_size)
@@ -44,11 +43,11 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   auto ptr = std::make_unique<LocalObject>(std::move(allocation.value()));
   auto entry =
       object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();
-  entry->object_info = object_info;
-  entry->state = ObjectState::PLASMA_CREATED;
-  entry->create_time = std::time(nullptr);
-  entry->construct_duration = -1;
-  entry->source = source;
+  entry->object_info_ = object_info;
+  entry->state_ = ObjectState::PLASMA_CREATED;
+  entry->create_time_ = std::time(nullptr);
+  entry->construct_duration_ = -1;
+  entry->source_ = source;
 
 #if defined(__APPLE__) || defined(__linux__)
   if (object_info.is_mutable) {
@@ -71,21 +70,20 @@ const LocalObject *ObjectStore::GetObject(const ObjectID &object_id) const {
 
 const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
   auto entry = GetMutableObject(object_id);
-  if (entry == nullptr || entry->state == ObjectState::PLASMA_SEALED) {
+  if (entry == nullptr || entry->state_ == ObjectState::PLASMA_SEALED) {
     return nullptr;
   }
-  entry->state = ObjectState::PLASMA_SEALED;
-  entry->construct_duration = std::time(nullptr) - entry->create_time;
+  entry->state_ = ObjectState::PLASMA_SEALED;
+  entry->construct_duration_ = std::time(nullptr) - entry->create_time_;
   return entry;
 }
 
 bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   auto entry = GetMutableObject(object_id);
-  if (!entry) {
+  if (entry == nullptr) {
     return false;
   }
-
-  allocator_.Free(std::move(entry->allocation));
+  allocator_.Free(std::move(entry->allocation_));
   object_table_.erase(object_id);
   return true;
 }

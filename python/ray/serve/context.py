@@ -8,7 +8,7 @@ import contextvars
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -41,11 +41,15 @@ class ReplicaContext:
         - deployment: name of the deployment the replica is a part of.
         - replica_tag: unique ID for the replica.
         - servable_object: instance of the user class/function this replica is running.
+        - rank: the rank of the replica.
+        - world_size: the number of replicas in the deployment.
     """
 
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
+    rank: int
+    world_size: int
 
     @property
     def app_name(self) -> str:
@@ -108,12 +112,16 @@ def _set_internal_replica_context(
     replica_id: ReplicaID,
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
+    rank: int,
+    world_size: int,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         replica_id=replica_id,
         servable_object=servable_object,
         _deployment_config=_deployment_config,
+        rank=rank,
+        world_size=world_size,
     )
 
 
@@ -187,6 +195,10 @@ _serve_request_context = contextvars.ContextVar(
     "Serve internal request context variable", default=None
 )
 
+_serve_batch_request_context = contextvars.ContextVar(
+    "Serve internal batching request context variable", default=None
+)
+
 
 def _get_serve_request_context():
     """Get the current request context.
@@ -198,6 +210,13 @@ def _get_serve_request_context():
     if _serve_request_context.get() is None:
         _serve_request_context.set(_RequestContext())
     return _serve_request_context.get()
+
+
+def _get_serve_batch_request_context():
+    """Get the list of request contexts for the current batch."""
+    if _serve_batch_request_context.get() is None:
+        _serve_batch_request_context.set([])
+    return _serve_batch_request_context.get()
 
 
 def _set_request_context(
@@ -223,6 +242,16 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+def _unset_request_context():
+    """Unset the request context."""
+    _serve_request_context.set(_RequestContext())
+
+
+def _set_batch_request_context(request_contexts: List[_RequestContext]):
+    """Add the request context to the batch request context."""
+    _serve_batch_request_context.set(request_contexts)
 
 
 # `_requests_pending_assignment` is a map from request ID to a

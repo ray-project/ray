@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -27,7 +31,7 @@ class NodeResourceInstanceSet {
   NodeResourceInstanceSet(){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
-  NodeResourceInstanceSet(const NodeResourceSet &total);
+  explicit NodeResourceInstanceSet(const NodeResourceSet &total);
 
   /// Check whether a particular node resource exist.
   bool Has(ResourceID resource_id) const;

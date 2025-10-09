@@ -1,24 +1,21 @@
 from dataclasses import asdict, dataclass
-from itertools import chain
+import os
+import sys
+import subprocess
 import json
 import logging
-import time
-from tqdm import tqdm
-from typing import Any, Dict, List
+from typing import Any, List
 
 import ray
-from ray.serve._private.utils import generate_request_id
+from ray.serve._private.benchmarks.locust_utils import (
+    LocustStage,
+    LocustTestResults,
+    PerformanceStats,
+)
 
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
-
-
-@dataclass
-class LocustStage:
-    duration_s: int
-    users: int
-    spawn_rate: float
 
 
 @dataclass
@@ -31,247 +28,116 @@ class LocustLoadTestConfig:
     wait_for_workers_timeout_s: float = 600
 
 
-@dataclass
-class PerformanceStats:
-    p50_latency: float
-    p90_latency: float
-    p99_latency: float
-    rps: float
-
-
-@dataclass
-class LocustTestResults:
-    history: List[Dict]
-    total_requests: int
-    num_failures: int
-    avg_latency: float
-    p50_latency: float
-    p90_latency: float
-    p99_latency: float
-    avg_rps: float
-    stats_in_stages: List[PerformanceStats]
-
-
-@dataclass
-class FailedRequest:
-    request_id: str
-    status_code: int
-    exception: str
-    response_time_ms: float
-    start_time_s: float
-
-
-class LocustClient:
-    def __init__(
-        self,
-        host_url: str,
-        token: str,
-        data: Dict[str, Any] = None,
-    ):
-        from locust import task, constant, events, FastHttpUser
-        from locust.contrib.fasthttp import FastResponse
-
-        self.errors = []
-
-        class EndpointUser(FastHttpUser):
-            wait_time = constant(0)
-            failed_requests = []
-            host = host_url
-
-            @task
-            def test(self):
-                request_id = generate_request_id()
-                headers = (
-                    {"Authorization": f"Bearer {token}", "X-Request-ID": request_id}
-                    if token
-                    else None
-                )
-                with self.client.get(
-                    "", headers=headers, json=data, catch_response=True
-                ) as r:
-                    r.request_meta["context"]["request_id"] = request_id
-
-            @events.request.add_listener
-            def on_request(
-                response: FastResponse,
-                exception,
-                context,
-                start_time: float,
-                response_time: float,
-                **kwargs,
-            ):
-                if exception:
-                    request_id = context["request_id"]
-                    response.encoding = "utf-8"
-                    err = FailedRequest(
-                        request_id=request_id,
-                        status_code=response.status_code,
-                        exception=response.text,
-                        response_time_ms=response_time,
-                        start_time_s=start_time,
-                    )
-                    self.errors.append(err)
-                    print(
-                        f"Request '{request_id}' failed with exception: {response.text}"
-                    )
-
-        self.user_class = EndpointUser
-
-
 @ray.remote(num_cpus=1)
-class LocustWorker(LocustClient):
+class LocustProcess:
     def __init__(
         self,
+        worker_type: str,
         host_url: str,
         token: str,
-        master_address: str,
-        data: Dict[str, Any] = None,
+        expected_num_workers: int = None,
+        stages: List[LocustStage] = None,
+        wait_for_workers_timeout_s: float = None,
+        data: Any = None,
+        master_address: str = None,
     ):
-        # NOTE(zcin): We need to lazily import locust because the driver
-        # script won't connect to ray properly otherwise.
-        import locust
-        from locust.env import Environment
-        from locust.log import setup_logging
-
-        super().__init__(host_url=host_url, token=token, data=data)
-        setup_logging("INFO")
-        self.env = Environment(user_classes=[self.user_class], events=locust.events)
+        self.worker_type = worker_type
+        self.host_url = host_url
+        self.token = token
+        self.expected_num_workers = expected_num_workers
+        self.stages = stages
+        self.wait_for_workers_timeout_s = wait_for_workers_timeout_s
+        self.data = data
         self.master_address = master_address
 
-    def run(self) -> List[Dict]:
-        runner = self.env.create_worker_runner(
-            master_host=self.master_address, master_port=5557
-        )
-        runner.greenlet.join()
-        return self.errors
-
-
-@ray.remote(num_cpus=1)
-class LocustMaster(LocustClient):
-    def __init__(
-        self,
-        host_url: str,
-        token: str,
-        expected_num_workers: int,
-        stages: List[LocustStage],
-        wait_for_workers_timeout_s: float,
-    ):
-        # NOTE(zcin): We need to lazily import locust because the driver
-        # script won't connect to ray properly otherwise.
-        import locust
-        from locust import LoadTestShape
-        from locust.env import Environment
-        from locust.log import setup_logging
-
-        super().__init__(host_url=host_url, token=token)
-        setup_logging("INFO")
-
-        self.stats_in_stages: List[PerformanceStats] = []
-
-        class StagesShape(LoadTestShape):
-            curr_stage_ix = 0
-
-            def tick(cls):
-                run_time = cls.get_run_time()
-                prefix_time = 0
-                for i, stage in enumerate(stages):
-                    prefix_time += stage.duration_s
-
-                    if run_time < prefix_time:
-                        if i != cls.curr_stage_ix:
-                            self.on_stage_finished()
-                            cls.curr_stage_ix = i
-
-                        current_stage = stages[cls.curr_stage_ix]
-                        return current_stage.users, current_stage.spawn_rate
-
-                # End of stage test
-                self.on_stage_finished()
-
-        self.master_env = Environment(
-            user_classes=[self.user_class],
-            shape_class=StagesShape(),
-            events=locust.events,
-        )
-        self.expected_num_workers = expected_num_workers
-        self.wait_for_workers_timeout_s = wait_for_workers_timeout_s
-        self.master_runner = None
-
-    def on_stage_finished(self):
-        stats_entry_key = ("", "GET")
-        stats_entry = self.master_runner.stats.entries.get(stats_entry_key)
-
-        self.stats_in_stages.append(
-            PerformanceStats(
-                p50_latency=stats_entry.get_current_response_time_percentile(0.5),
-                p90_latency=stats_entry.get_current_response_time_percentile(0.9),
-                p99_latency=stats_entry.get_current_response_time_percentile(0.99),
-                rps=stats_entry.current_rps,
-            )
-        )
-
     def run(self):
-        import gevent
-        from locust.stats import (
-            get_stats_summary,
-            get_percentile_stats_summary,
-            get_error_report_summary,
-            stats_history,
-            stats_printer,
+        # Create a temporary file for results
+        import tempfile
+
+        results_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json"
         )
+        results_file.close()
 
-        self.master_runner = self.master_env.create_master_runner("*", 5557)
+        # Prepare the subprocess script
+        if self.worker_type == "master":
+            script = f"""
+import sys
+import json
+from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
 
-        start = time.time()
-        while len(self.master_runner.clients.ready) < self.expected_num_workers:
-            if time.time() - start > self.wait_for_workers_timeout_s:
-                raise RuntimeError(
-                    f"Timed out waiting for {self.expected_num_workers} workers to "
-                    "connect to Locust master."
+stages = json.loads(sys.argv[1])
+stages = [LocustStage(**stage) for stage in stages]
+results = run_locust_master(
+    host_url="{self.host_url}",
+    token="{self.token}",
+    expected_num_workers={self.expected_num_workers},
+    stages=stages,
+    wait_for_workers_timeout_s={self.wait_for_workers_timeout_s}
+)
+
+with open("{results_file.name}", 'w') as f:
+    json.dump(results, f)
+"""
+            stages = json.dumps([asdict(stage) for stage in self.stages])
+            cmd_args = [sys.executable, "-c", script, stages]
+        else:
+            script = f"""
+import sys
+import json
+from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
+
+data = sys.argv[1]
+results = run_locust_worker(
+    master_address="{self.master_address}",
+    host_url="{self.host_url}",
+    token="{self.token}",
+    data=data,
+)
+"""
+            data = json.dumps(self.data)
+            cmd_args = [sys.executable, "-c", script, data]
+
+        # Start the Locust process
+        self.process = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        print(f"Started {self.worker_type} subprocess ({self.process.pid})")
+
+        try:
+            # Wait for the process to complete first
+            for line in self.process.stdout:  # yields as the child prints
+                sys.stdout.write(line)  # stream to our stdout
+
+            return_code = self.process.wait()
+            if return_code != 0:
+                # Clean up the results file on error
+                try:
+                    os.unlink(results_file.name)
+                except OSError:
+                    pass
+                raise RuntimeError(f"Subprocess failed with return code {return_code}.")
+
+            # Read the result from the results file
+            with open(results_file.name, "r") as f:
+                result_data = f.read()
+
+            if result_data:
+                result_data = json.loads(result_data)
+                stats_in_stages = [
+                    PerformanceStats(**stage)
+                    for stage in result_data.pop("stats_in_stages")
+                ]
+                result = LocustTestResults(
+                    **result_data, stats_in_stages=stats_in_stages
                 )
-
-            print(
-                f"Waiting for workers to be ready, "
-                f"{len(self.master_runner.clients.ready)} "
-                f"of {self.expected_num_workers} ready."
-            )
-            time.sleep(1)
-
-        # Periodically output current stats (each entry is aggregated
-        # stats over the past 10 seconds, by default)
-        gevent.spawn(stats_printer(self.master_env.stats))
-        gevent.spawn(stats_history, self.master_runner)
-
-        # Start test & wait for the shape test to finish
-        self.master_runner.start_shape()
-        self.master_runner.shape_greenlet.join()
-        # Send quit signal to all locust workers
-        self.master_runner.quit()
-
-        # Print stats
-        for line in get_stats_summary(self.master_runner.stats, current=False):
-            print(line)
-        # Print percentile stats
-        for line in get_percentile_stats_summary(self.master_runner.stats):
-            print(line)
-        # Print error report
-        if self.master_runner.stats.errors:
-            for line in get_error_report_summary(self.master_runner.stats):
-                print(line)
-
-        stats_entry_key = ("", "GET")
-        stats_entry = self.master_runner.stats.entries.get(stats_entry_key)
-        return LocustTestResults(
-            history=self.master_runner.stats.history,
-            total_requests=self.master_runner.stats.num_requests,
-            num_failures=self.master_runner.stats.num_failures,
-            avg_latency=stats_entry.avg_response_time,
-            p50_latency=stats_entry.get_response_time_percentile(0.5),
-            p90_latency=stats_entry.get_response_time_percentile(0.9),
-            p99_latency=stats_entry.get_response_time_percentile(0.99),
-            avg_rps=stats_entry.total_rps,
-            stats_in_stages=self.stats_in_stages,
-        )
+                return result
+        finally:
+            os.unlink(results_file.name)
 
 
 def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
@@ -288,17 +154,20 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     worker_refs = []
 
     # Start Locust workers
-    for _ in tqdm(range(config.num_workers)):
-        locust_worker = LocustWorker.remote(
+    for i in range(config.num_workers):
+        locust_worker = LocustProcess.options(name=f"LocustWorker-{i}").remote(
+            worker_type="worker",
             host_url=config.host_url,
             token=config.auth_token,
             master_address=master_address,
             data=config.data,
         )
         worker_refs.append(locust_worker.run.remote())
+        print(f"Started worker {i}")
 
     # Start Locust master
-    master_worker = LocustMaster.remote(
+    master_worker = LocustProcess.options(name="LocustMaster").remote(
+        worker_type="master",
         host_url=config.host_url,
         token=config.auth_token,
         expected_num_workers=config.num_workers,
@@ -309,13 +178,19 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
 
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
-    errors = sorted(chain(*ray.get(worker_refs)), key=lambda e: e.start_time_s)
-
-    # If there were any requests that failed, raise error.
-    if stats.num_failures > 0:
-        errors_json = [asdict(err) for err in errors]
-        raise RuntimeError(
-            f"There were failed requests: {json.dumps(errors_json, indent=4)}"
-        )
-
+    ray.get(worker_refs)
     return stats
+
+
+if __name__ == "__main__":
+    ray.init(address="auto")
+    results = run_locust_load_test(
+        LocustLoadTestConfig(
+            num_workers=9,
+            host_url="https://services-canary-pinger-aws-zugs7.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/info",
+            auth_token="v9M8jb3tBbHOGoWrg7X1fCwF8wYn7gqZR5VZ1_h4t50",
+            data=None,
+            stages=[LocustStage(duration_s=10, users=10, spawn_rate=1)],
+        )
+    )
+    print(results)

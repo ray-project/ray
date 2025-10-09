@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 
 import pytest
@@ -57,6 +58,18 @@ def test_exception_raised_in_constructor(deployment: str):
 
 
 def test_to_object_ref_error_message():
+    def _get_error_match(by_reference: bool) -> str:
+        if by_reference:
+            return (
+                "Converting DeploymentResponses to ObjectRefs "
+                "is not supported in local testing mode."
+            )
+        else:
+            return re.escape(
+                "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+                "Use handle.options(_by_reference=True) to enable it."
+            )
+
     @serve.deployment
     class Inner:
         pass
@@ -67,22 +80,18 @@ def test_to_object_ref_error_message():
             self._h = h
 
         async def __call__(self):
+            match = _get_error_match(self._h.handle_options._by_reference)
             with pytest.raises(
                 RuntimeError,
-                match=(
-                    "Converting DeploymentResponses to ObjectRefs "
-                    "is not supported in local testing mode."
-                ),
+                match=match,
             ):
                 await self._h.remote()._to_object_ref()
 
     h = serve.run(Outer.bind(Inner.bind()), _local_testing_mode=True)
+    match = _get_error_match(h.handle_options._by_reference)
     with pytest.raises(
         RuntimeError,
-        match=(
-            "Converting DeploymentResponses to ObjectRefs "
-            "is not supported in local testing mode."
-        ),
+        match=match,
     ):
         h.remote()._to_object_ref_sync()
 

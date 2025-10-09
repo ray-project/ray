@@ -154,7 +154,7 @@ CloudWatch integration with Ray requires an AMI (or Docker image) with the Unifi
 AMIs with the Unified CloudWatch Agent pre-installed are provided by the Amazon Ray Team, and are currently available in the us-east-1, us-east-2, us-west-1, and us-west-2 regions.
 Please direct any questions, comments, or issues to the `Amazon Ray Team <https://github.com/amzn/amazon-ray/issues/new/choose>`_.
 
-The table below lists AMIs with the Unified CloudWatch Agent pre-installed in each region, and you can also find AMIs at `amazon-ray README <https://github.com/amzn/amazon-ray>`_.
+The table below lists AMIs with the Unified CloudWatch Agent pre-installed in each region, and you can also find AMIs at `DLAMI Release Notes <https://docs.aws.amazon.com/dlami/latest/devguide/appendix-ami-release-notes.html>`_. Each DLAMI (Deep Learning AMI) is pre-installed with the Unified CloudWatch Agent, and its corresponding release notes include AWS CLI commands to query the latest AMI ID.
 
 .. list-table:: All available unified CloudWatch agent images
 
@@ -162,22 +162,22 @@ The table below lists AMIs with the Unified CloudWatch Agent pre-installed in ea
       - AMI ID
       - Region
       - Unified CloudWatch Agent Version
-    * - AWS Deep Learning AMI (Ubuntu 18.04, 64-bit)
-      - ami-069f2811478f86c20
+    * - AWS Deep Learning AMI (Ubuntu 24.04, 64-bit)
+      - ami-087feac195f30e722
       - us-east-1
-      - v1.247348.0b251302
-    * - AWS Deep Learning AMI (Ubuntu 18.04, 64-bit)
-      - ami-058cc0932940c2b8b
+      - v1.300057.1b1167
+    * - AWS Deep Learning AMI (Ubuntu 24.04, 64-bit)
+      - ami-0ed6c422a7c93278a
       - us-east-2
-      - v1.247348.0b251302
-    * - AWS Deep Learning AMI (Ubuntu 18.04, 64-bit)
-      - ami-044f95c9ef12883ef
+      - v1.300057.1b1167
+    * - AWS Deep Learning AMI (Ubuntu 24.04, 64-bit)
+      - ami-0c5ddf2c101267018
       - us-west-1
-      - v1.247348.0b251302
-    * - AWS Deep Learning AMI (Ubuntu 18.04, 64-bit)
-      - ami-0d88d9cbe28fac870
+      - v1.300057.1b1167
+    * - AWS Deep Learning AMI (Ubuntu 24.04, 64-bit)
+      - ami-0cfd95c6c87d00570
       - us-west-2
-      - v1.247348.0b251302
+      - v1.300057.1b1167
 
 .. note::
 
@@ -213,12 +213,12 @@ Getting started
         ray.head.default:
             node_config:
             InstanceType: c5a.large
-            ImageId: ami-0d88d9cbe28fac870  # Unified CloudWatch agent pre-installed AMI, us-west-2
+            ImageId: ami-0cfd95c6c87d00570  # Unified CloudWatch agent pre-installed AMI, us-west-2
             resources: {}
         ray.worker.default:
             node_config:
                 InstanceType: c5a.large
-                ImageId: ami-0d88d9cbe28fac870  # Unified CloudWatch agent pre-installed AMI, us-west-2
+                ImageId: ami-0cfd95c6c87d00570  # Unified CloudWatch agent pre-installed AMI, us-west-2
                 IamInstanceProfile:
                     Name: ray-autoscaler-cloudwatch-v1
             resources: {}
@@ -275,11 +275,11 @@ The following CLI command returns the latest available Unified CloudWatch Agent 
         ray.head.default:
             node_config:
             InstanceType: c5a.large
-            ImageId: ami-0d88d9cbe28fac870
+            ImageId: ami-0cfd95c6c87d00570
         ray.worker.default:
             node_config:
             InstanceType: c5a.large
-            ImageId: ami-0d88d9cbe28fac870
+            ImageId: ami-0cfd95c6c87d00570
 
 To build your own AMI with the Unified CloudWatch Agent installed:
 

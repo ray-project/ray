@@ -1,14 +1,13 @@
-import tempfile
-import subprocess
 import os
 import pickle
+import subprocess
+import tempfile
 from typing import Set
 
 import boto3
-
-from ci.ray_ci.utils import logger
 from ray_release.util import get_write_state_machine_aws_bucket
 
+from ci.ray_ci.utils import logger
 
 AWS_CACHE_KEY = "doc_build"
 ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"

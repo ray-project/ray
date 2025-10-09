@@ -32,14 +32,13 @@ build() {
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
   # Build wheels
-  export UPLOAD_WHEELS_AS_ARTIFACTS=1
   export MAC_WHEELS=1
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build_wheels_and_jars
+  ./ci/ci.sh build_macos_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_macos_wheels
   # Build jars

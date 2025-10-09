@@ -105,12 +105,13 @@ async def do_single_http_batch(
         async def do_query():
             start = time.perf_counter()
             try:
-                if stream:
-                    async with session.get(url) as r:
+                async with session.get(url) as r:
+                    if stream:
                         async for chunk, _ in r.content.iter_chunks():
                             pass
-                else:
-                    await session.get(url)
+                    else:
+                        # Read the response to ensure it's consumed
+                        await r.read()
             except aiohttp.client_exceptions.ClientConnectionError:
                 pass
 
@@ -168,6 +169,43 @@ class Noop:
 
     def __call__(self, *args, **kwargs):
         return b""
+
+
+@serve.deployment
+class ModelComp:
+    def __init__(self, child):
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+        self._child = child
+
+    async def __call__(self, *args, **kwargs):
+        return await self._child.remote()
+
+
+@serve.deployment
+class GrpcDeployment:
+    def __init__(self):
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+
+    async def grpc_call(self, user_message):
+        return serve_pb2.ModelOutput(output=9)
+
+    async def call_with_string(self, user_message):
+        return serve_pb2.ModelOutput(output=9)
+
+
+@serve.deployment
+class GrpcModelComp:
+    def __init__(self, child):
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+        self._child = child
+
+    async def grpc_call(self, user_message):
+        await self._child.remote()
+        return serve_pb2.ModelOutput(output=9)
+
+    async def call_with_string(self, user_message):
+        await self._child.remote()
+        return serve_pb2.ModelOutput(output=9)
 
 
 @serve.deployment

@@ -122,10 +122,10 @@ public class GcsClient {
           try {
             Gcs.ActorTableData info = Gcs.ActorTableData.parseFrom(result);
             UniqueId nodeId = UniqueId.NIL;
-            if (!info.getAddress().getRayletId().isEmpty()) {
+            if (!info.getAddress().getNodeId().isEmpty()) {
               nodeId =
                   UniqueId.fromByteBuffer(
-                      ByteBuffer.wrap(info.getAddress().getRayletId().toByteArray()));
+                      ByteBuffer.wrap(info.getAddress().getNodeId().toByteArray()));
             }
             actorInfos.add(
                 new ActorInfo(

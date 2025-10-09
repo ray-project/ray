@@ -3,7 +3,7 @@
 Serialization
 =============
 
-Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
+Since Ray processes do not share memory space, data transferred between workers and nodes will need to be **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
 
 Overview
 --------
@@ -48,7 +48,7 @@ Numpy Arrays
 Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data.
 The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
 
-.. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
+.. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors to hold objects that cannot be serialized.
 
 Fixing "assignment destination is read-only"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -201,6 +201,63 @@ There are at least 3 ways to define your custom serialization process:
         ray.get(ray.put(A(1)))  # still fail!
      except TypeError:
         pass
+
+.. _custom-exception-serializer:
+
+Custom Serializers for Exceptions
+----------------------------------
+
+When Ray tasks raise exceptions that cannot be serialized with the default pickle mechanism, you can register custom serializers to handle them (Note: the serializer must be registered in the driver and all workers).
+
+.. testcode::
+
+    import ray
+    import threading
+
+    class CustomError(Exception):
+        def __init__(self, message, data):
+            self.message = message
+            self.data = data
+            self.lock = threading.Lock() # Cannot be serialized
+
+    def custom_serializer(exc):
+        return {"message": exc.message, "data": str(exc.data)}
+
+    def custom_deserializer(state):
+        return CustomError(state["message"], state["data"])
+
+    # Register in the driver
+    ray.util.register_serializer(
+        CustomError, 
+        serializer=custom_serializer, 
+        deserializer=custom_deserializer
+    )
+
+    @ray.remote
+    def task_that_registers_serializer_and_raises():
+        # Register the custom serializer in the worker
+        ray.util.register_serializer(
+            CustomError, 
+            serializer=custom_serializer, 
+            deserializer=custom_deserializer
+        )
+        
+        # Now raise the custom exception
+        raise CustomError("Something went wrong", {"complex": "data"})
+
+    # The custom exception will be properly serialized across worker boundaries
+    try:
+        ray.get(task_that_registers_serializer_and_raises.remote())
+    except ray.exceptions.RayTaskError as e:
+        print(f"Caught exception: {e.cause}")  # This will be our CustomError
+
+When a custom exception is raised in a remote task, Ray will:
+
+1. Serialize the exception using your custom serializer
+2. Wrap it in a :class:`RayTaskError <ray.exceptions.RayTaskError>`
+3. The deserialized exception will be available as ``ray_task_error.cause``
+
+Whenever serialization fails, Ray throws an :class:`UnserializableException <ray.exceptions.UnserializableException>` containing the string representation of the original stack trace.
 
 
 Troubleshooting

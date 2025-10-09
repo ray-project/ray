@@ -61,7 +61,7 @@ Create a virtual environment to prevent version conflicts and to develop with an
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-        Activate your virtual environment to tell the  shell/terminal to use this particular Python:
+        Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 
@@ -291,9 +291,12 @@ Environment variables that influence builds
 
 You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
+- ``RAY_BUILD_CORE``: If set and equal to ``1``, the core parts will be built. Defaults to ``1``.
 - ``RAY_INSTALL_JAVA``: If set and equal to ``1``, extra build steps will be executed
   to build java portions of the codebase
 - ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
+- ``RAY_BUILD_REDIS``: If set and equal to ``1``, Redis binaries will be built or fetched.
+  These binaries are only used for testing. Defaults to ``1``.
 - ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
   ``cpp``) build will not provide some ``cpp`` interfaces
 - ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
@@ -367,11 +370,11 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
 
 .. code-block:: shell
 
- bazel build -c fastbuild //:ray_pkg
+ bazel run -c fastbuild //:gen_ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:all"`` instead of
-``//:ray_pkg``.
+If you need to build all targets, you can use ``bazel build //:all`` instead of
+``bazel run //:gen_ray_pkg``.
 
 To make this change permanent, you can add an option such as the following
 line to your user-level ``~/.bazelrc`` file (not to be confused with the

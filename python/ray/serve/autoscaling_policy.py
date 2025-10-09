@@ -1,7 +1,8 @@
 import logging
 import math
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
+from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
@@ -83,14 +84,8 @@ def _calculate_desired_num_replicas(
 
 @PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
-    curr_target_num_replicas: int,
-    total_num_requests: int,
-    num_running_replicas: int,
-    config: Optional[AutoscalingConfig],
-    capacity_adjusted_min_replicas: int,
-    capacity_adjusted_max_replicas: int,
-    policy_state: Dict[str, Any],
-) -> int:
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
     to scale up and a maximum threshold to scale down. Each period, a 'scale
@@ -100,15 +95,26 @@ def replica_queue_length_autoscaling_policy(
     `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
     seconds.
     """
+
+    curr_target_num_replicas: int = ctx.target_num_replicas
+    total_num_requests: int = ctx.total_num_requests
+    num_running_replicas: int = ctx.current_num_replicas
+    config: Optional[AutoscalingConfig] = ctx.config
+    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
+    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
+    policy_state: Dict[str, Any] = ctx.policy_state
     decision_counter = policy_state.get("decision_counter", 0)
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
-            return max(
-                math.ceil(1 * config.get_upscaling_factor()),
-                curr_target_num_replicas,
+            return (
+                max(
+                    math.ceil(1 * config.get_upscaling_factor()),
+                    curr_target_num_replicas,
+                ),
+                policy_state,
             )
-        return curr_target_num_replicas
+        return curr_target_num_replicas, policy_state
 
     decision_num_replicas = curr_target_num_replicas
 
@@ -138,22 +144,34 @@ def replica_queue_length_autoscaling_policy(
     elif desired_num_replicas < curr_target_num_replicas:
         # If the previous decision was to scale up (the counter was
         # positive), reset it to zero before decrementing.
+
         if decision_counter > 0:
             decision_counter = 0
         decision_counter -= 1
-
+        # Downscaling to zero is only allowed from 1 -> 0
+        is_scaling_to_zero = curr_target_num_replicas == 1
+        # Determine the delay to use
+        if is_scaling_to_zero:
+            # Check if the downscale_to_zero_delay_s is set
+            if config.downscale_to_zero_delay_s is not None:
+                delay_s = config.downscale_to_zero_delay_s
+            else:
+                delay_s = config.downscale_delay_s
+        else:
+            delay_s = config.downscale_delay_s
+            # The desired_num_replicas>0 for downscaling cases other than 1->0
+            desired_num_replicas = max(1, desired_num_replicas)
         # Only actually scale the replicas if we've made this decision for
         # 'scale_down_consecutive_periods' in a row.
-        if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S):
+        if decision_counter < -int(delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
-
     # Do nothing.
     else:
         decision_counter = 0
 
     policy_state["decision_counter"] = decision_counter
-    return decision_num_replicas
+    return decision_num_replicas, policy_state
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy

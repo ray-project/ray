@@ -12,12 +12,12 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.models.torch.torch_distributions import (
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchSquashedGaussian,
     TorchCategorical,
 )
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
-from ray.rllib.models.distributions import Distribution
+from ray.rllib.core.distribution.distribution import Distribution
 
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.

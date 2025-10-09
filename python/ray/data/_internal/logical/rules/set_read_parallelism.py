@@ -18,9 +18,11 @@ def compute_additional_split_factor(
     datasource_or_legacy_reader: Union[Datasource, Reader],
     parallelism: int,
     mem_size: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
+
     ctx = DataContext.get_current()
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
@@ -34,7 +36,13 @@ def compute_additional_split_factor(
         logger.debug(
             f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
         )
-        size_based_splits = round(max(1, expected_block_size / target_max_block_size))
+        if target_max_block_size is None:
+            # Unlimited block size -> no extra splits
+            size_based_splits = 1
+        else:
+            size_based_splits = round(
+                max(1, expected_block_size / target_max_block_size)
+            )
     else:
         size_based_splits = 1
     if cur_additional_split_factor:
@@ -99,6 +107,8 @@ class SetReadParallelismRule(Rule):
         return plan
 
     def _apply(self, op: PhysicalOperator, logical_op: Read):
+        estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
+
         (
             detected_parallelism,
             reason,
@@ -107,8 +117,8 @@ class SetReadParallelismRule(Rule):
         ) = compute_additional_split_factor(
             logical_op._datasource_or_legacy_reader,
             logical_op._parallelism,
-            logical_op._mem_size,
-            op.actual_target_max_block_size,
+            estimated_in_mem_bytes,
+            op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 

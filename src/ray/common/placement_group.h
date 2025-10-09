@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -40,14 +41,14 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Return the placement group id.
@@ -60,8 +61,6 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   BundleSpecification GetBundle(int position) const;
   /// Return the name of this placement group.
   std::string GetName() const;
-  /// Return the max CPU fraction per node for this placement group.
-  double GetMaxCpuFractionPerNode() const;
 
  private:
   /// Construct bundle vector from protobuf.
@@ -84,7 +83,6 @@ class PlacementGroupSpecBuilder {
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
-      double max_cpu_fraction_per_node,
       NodeID soft_target_node_id,
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
@@ -105,7 +103,6 @@ class PlacementGroupSpecBuilder {
     message_->set_creator_actor_id(creator_actor_id.Binary());
     message_->set_creator_actor_dead(creator_actor_id.IsNil());
     message_->set_is_detached(is_detached);
-    message_->set_max_cpu_fraction_per_node(max_cpu_fraction_per_node);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
     for (size_t i = 0; i < bundles.size(); i++) {

@@ -209,8 +209,8 @@ extern jfieldID java_actor_creation_options_namespace;
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// isAsync field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_is_async;
-/// executeOutOfOrder field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_execute_out_of_order;
+/// allowOutOfOrderExecution field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_allow_out_of_order_execution;
 /// ActorLifetime enum class
 extern jclass java_actor_lifetime_class;
 /// ordinal method of ActorLifetime class

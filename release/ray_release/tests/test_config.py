@@ -16,6 +16,7 @@ from ray_release.test import Test
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
     "release/release_data_tests.yaml",
+    "release/release_multimodal_inference_benchmarks_tests.yaml",
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
@@ -37,7 +38,7 @@ VALID_TEST = {
         "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
         "type": "client",
     },
-    "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
+    "smoke_test": {"run": {"timeout": 20}, "frequency": "nightly"},
     "alert": "default",
 }
 
@@ -54,6 +55,57 @@ def test_parse_test_definition():
           working_dir: sample_dir
           frequency: nightly
           team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_compute: compute_gce.yaml
+    """
+    )
+    # Check that parsing returns two tests, one for each variation (aws and gce). Check
+    # that both tests are valid, and their fields are populated correctly
+    tests = parse_test_definition(test_definitions)
+    aws_test = tests[0]
+    gce_test = tests[1]
+    schema = load_schema_file()
+    assert not validate_test(aws_test, schema)
+    assert not validate_test(gce_test, schema)
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    invalid_test_definition = test_definitions[0]
+    # Intentionally make the test definition invalid by create an empty 'variations'
+    # field. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = []
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+    # Intentionally make the test definition invalid by making one 'variation' entry
+    # missing the __suffix__ entry. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = [{"__suffix__": "aws"}, {}]
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+
+
+def test_parse_test_definition_with_python_version():
+    """
+    Unit test for the ray_release.config.parse_test_definition function. In particular,
+    we check that the code correctly parse a test definition that have the 'variations' & 'python'
+    field.
+    """
+    test_definitions = yaml.safe_load(
+        """
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          python: "3.10"
           cluster:
             byod:
               type: gpu

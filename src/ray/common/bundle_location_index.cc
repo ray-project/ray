@@ -147,7 +147,8 @@ std::optional<NodeID> BundleLocationIndex::GetBundleLocation(
 }
 
 void BundleLocationIndex::AddNodes(
-    const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes) {
+    const absl::flat_hash_map<NodeID, std::shared_ptr<const ray::rpc::GcsNodeInfo>>
+        &nodes) {
   for (const auto &iter : nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {
       node_to_leased_bundles_[iter.first] = std::make_shared<BundleLocations>();

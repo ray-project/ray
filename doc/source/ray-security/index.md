@@ -1,6 +1,6 @@
 (security)=
 
-# Security 
+# Security
 
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.
 
@@ -15,7 +15,7 @@ If you expose these services (Ray Dashboard, Ray Jobs, Ray Client), anybody
 who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
 * Explicitly: By submitting a Ray Job, or using the Ray Client
 * Indirectly: By calling the Dashboard REST APIs of these services
-* Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
+* Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary Python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
 
 The Ray Dashboard, Ray Jobs and Ray Client are developer tools that you should
 only use with the necessary access controls in place to restrict access to trusted parties only.

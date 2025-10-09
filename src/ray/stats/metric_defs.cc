@@ -14,6 +14,7 @@
 
 #include "ray/stats/metric_defs.h"
 
+#include "ray/stats/tag_defs.h"
 #include "ray/util/size_literals.h"
 
 using namespace ray::literals;
@@ -37,37 +38,23 @@ namespace ray::stats {
 /// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
 /// ===============================================================================
 
-/// Tracks tasks by state, including pending, running, and finished tasks.
-/// This metric may be recorded from multiple components processing the task in Ray,
-/// including the submitting core worker, executor core worker, and pull manager.
-///
-/// To avoid metric collection conflicts between components reporting on the same task,
-/// we use the "Source" required label.
-DEFINE_stats(
-    tasks,
-    "Current number of tasks currently in a particular state.",
-    // State: the task state, as described by rpc::TaskState proto in common.proto.
-    // Name: the name of the function called.
-    // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    // IsRetry: whether this task is a retry.
-    ("State", "Name", "Source", "IsRetry", "JobId"),
-    (),
-    ray::stats::GAUGE);
-
 /// Tracks actors by state, including pending, running, and idle actors.
 ///
 /// To avoid metric collection conflicts between components reporting on the same task,
 /// we use the "Source" required label.
-DEFINE_stats(actors,
-             "Current number of actors currently in a particular state.",
-             // State: the actor state, which is from rpc::ActorTableData::ActorState,
-             // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
-             // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
-             // Name: the name of actor class.
-             // Source: component reporting, e.g., "gcs" or "executor".
-             ("State", "Name", "Source", "JobId"),
-             (),
-             ray::stats::GAUGE);
+DEFINE_stats(
+    actors,
+    "An actor can be in one of DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE, "
+    "ALIVE_IDLE, ALIVE_RUNNING_TASKS, RESTARTING, or DEAD states. "
+    "An actor is considered ALIVE_IDLE if it is not executing any tasks.",
+    // State: the actor state, which is from rpc::ActorTableData::ActorState,
+    // For ALIVE actor the sub-state can be ALIVE_IDLE, ALIVE_RUNNING_TASKS.
+    // Name: the name of actor class (Keep in sync with the
+    // TASK_OR_ACTOR_NAME_TAG_KEY in python/ray/_private/telemetry/metric_cardinality.py)
+    // Source: component reporting, e.g., "gcs" or "executor".
+    ("State", "Name", "Source", "JobId"),
+    (),
+    ray::stats::GAUGE);
 
 /// Job related stats.
 DEFINE_stats(running_jobs,
@@ -118,7 +105,7 @@ DEFINE_stats(
     /// ObjectState:
     ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
     ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
-    (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
+    ("Location", "ObjectState"),
     (),
     ray::stats::GAUGE);
 
@@ -156,16 +143,19 @@ DEFINE_stats(io_context_event_loop_lag_ms,
              ray::stats::GAUGE);
 
 /// Event stats
-DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(operation_count, "operation count", ("Name"), (), ray::stats::COUNT);
+DEFINE_stats(operation_run_time_ms,
+             "operation execution time",
+             ("Name"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
+DEFINE_stats(operation_queue_time_ms,
+             "operation queuing time",
+             ("Name"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
 DEFINE_stats(
-    operation_run_time_ms, "operation execution time", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(
-    operation_queue_time_ms, "operation queuing time", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(operation_active_count,
-             "activate operation number",
-             ("Method"),
-             (),
-             ray::stats::GAUGE);
+    operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
 
 /// GRPC server
 DEFINE_stats(grpc_server_req_process_time_ms,

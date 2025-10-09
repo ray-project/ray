@@ -1,0 +1,68 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "thread_pool_test",
+    srcs = ["thread_pool_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker/task_execution:thread_pool",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "fiber_state_test",
+    srcs = ["fiber_state_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker/task_execution:fiber",
+        "//src/ray/util:logging",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "concurrency_group_manager_test",
+    srcs = ["concurrency_group_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker/task_execution:concurrency_group_manager",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "scheduling_queue_test",
+    srcs = ["scheduling_queue_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker/task_execution:actor_scheduling_queue",
+        "//src/ray/core_worker/task_execution:normal_scheduling_queue",
+        "//src/ray/core_worker/task_execution:out_of_order_actor_scheduling_queue",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "task_receiver_test",
+    srcs = ["task_receiver_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:asio",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker/task_execution:task_receiver",
+        "//src/ray/core_worker_rpc_client:core_worker_client_interface",
+        "//src/ray/util:time",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
