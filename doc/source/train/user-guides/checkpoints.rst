@@ -337,7 +337,7 @@ in the training loop include:
 
 * Running validation in parallel with the training loop
 * Running validation on different hardware than training
-* Leveraging :ref:`vms-autoscaling` to rent user-specified machines only for the duration of the validation
+* Leveraging :ref:`Autoscaling <vms-autoscaling>` to rent user-specified machines only for the duration of the validation
 
 .. _train-validate-fn:
 
@@ -375,14 +375,19 @@ calculate average accuracy on a validation set. To learn more about how to use
 
 You should use ``TorchTrainer`` if:
 
-* You don't want to add a dependency on Ray Data
-* You prefer PyTorch's metrics aggregation API to Ray Data's
+* You want to keep your existing validation logic and avoid migrating to Ray Data.
+  The training function API lets you fully customize the validation loop to match your current setup.
+* Your validation code depends on running within a Torch process group — for example, your
+  metric aggregation logic uses collective communication calls, or your model parallelism
+  setup requires cross-GPU communication during the forward pass.
 
 You should use ``map_batches`` if:
 
 * You care about validation performance. Preliminary benchmarks show that ``map_batches`` is
-  faster and the Ray Data team will continue to work on OSS and proprietary performance improvements.
-* You prefer Ray Data's metrics aggregation API to PyTorch's
+  faster.
+* You prefer Ray Data’s native metric aggregation APIs over PyTorch, where you must implement
+  aggregation manually using low-level collective operations or rely on third-party libraries
+  such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
 
 Reporting with your validation function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
