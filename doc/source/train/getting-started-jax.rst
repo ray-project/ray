@@ -62,8 +62,8 @@ For reference, the final code is as follows:
 .. testcode::
     :skipif: True
 
-    from ray.train.v2 import JaxTrainer
-    from ray.train.v2 import ScalingConfig
+    from ray.train.jax import JaxTrainer
+    from ray.train import ScalingConfig
 
     def train_func():
         # Your JAX training code here.
