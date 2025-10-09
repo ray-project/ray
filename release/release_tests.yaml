@@ -2920,6 +2920,7 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        - RAY_emit_main_service_metrics=1
     cluster_compute: distributed.yaml
 
   run:
