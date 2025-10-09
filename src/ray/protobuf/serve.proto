@@ -24,10 +24,8 @@ option java_multiple_files = true;
 
 // Configuration options for Serve's autoscaling policy
 message AutoscalingPolicy {
-  // Name of the policy function or the import path of the policy if user passed a string.
-  // Will be the concatenation of the policy module and the policy name if user passed a
-  // callable.
-  string name = 1;
+  // Policy function needs to be a string import path.
+  string policy_function = 1;
 
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 2;
