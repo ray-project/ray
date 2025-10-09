@@ -24,7 +24,7 @@ Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
             from ray import serve
             from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
-            from ray.serve.llm.ingress import OpenAiIngress
+            from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
             llm_config = LLMConfig(
                 model_loading_config=dict(
@@ -45,9 +45,17 @@ Deployment through :class:`OpenAiIngress <ray.serve.llm.ingress.OpenAiIngress>`
             )
 
             # Deploy the application
-            deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-            llm_app = OpenAiIngress.as_deployment().bind([deployment])
-            serve.run(llm_app, blocking=True)
+            server_options = LLMServer.get_deployment_options(llm_config)
+            server_deployment = serve.deployment(LLMServer).options(
+                **server_options).bind(llm_config)
+
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config])
+            ingress_cls = make_fastapi_ingress(OpenAiIngress)
+            ingress_deployment = serve.deployment(ingress_cls).options(
+                **ingress_options).bind([server_deployment])
+
+            serve.run(ingress_deployment, blocking=True)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
 
@@ -139,7 +147,7 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
             from ray import serve
             from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
-            from ray.serve.llm.ingress import OpenAiIngress
+            from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
@@ -167,11 +175,25 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
                 accelerator_type="A10G",
             )
 
-            # Deploy the application
-            deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
-            deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
-            llm_app = OpenAiIngress.as_deployment().bind([deployment1, deployment2])
-            serve.run(llm_app, blocking=True)
+            # deployment #1
+            server_options1 = LLMServer.get_deployment_options(llm_config1)
+            server_deployment1 = serve.deployment(LLMServer).options(
+                **server_options1).bind(llm_config1)
+
+            # deployment #2
+            server_options2 = LLMServer.get_deployment_options(llm_config2)
+            server_deployment2 = serve.deployment(LLMServer).options(
+                **server_options2).bind(llm_config2)
+
+            # ingress
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config1, llm_config2])
+            ingress_cls = make_fastapi_ingress(OpenAiIngress)
+            ingress_deployment = serve.deployment(ingress_cls).options(
+                **ingress_options).bind([server_deployment1, server_deployment2])
+
+            # run
+            serve.run(ingress_deployment, blocking=True)
 
 See also :ref:`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
 
@@ -708,7 +730,7 @@ By customizing the placement groups of the GPU workers, you can serve multiple s
             )
         ),
         accelerator_type="L4",
-        resources_per_bundle=dict(GPU=0.49),
+        placement_group_config=dict(bundles=[dict(GPU=0.49)]),
         runtime_env=dict(
             env_vars={
                 "VLLM_RAY_PER_WORKER_GPUS": "0.49",
@@ -720,7 +742,7 @@ By customizing the placement groups of the GPU workers, you can serve multiple s
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=True)
 
-In this example, we have specified 8 replicas of the model, and we use the `resources_per_bundle` to specify the fraction of the GPU that each model will use in placement group. Also we need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There is also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
+In this example, we have specified 8 replicas of the model, and we use the `placement_group_config` to specify the fraction of the GPU that each model will use in placement group. Also we need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There is also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
 
 We need to make sure `gpu_memory_utilization` is set to a reasonable value, because vLLM will pre-allocate the GPU memory based on GPU memory utilization, regardless of how we scheduler the Ray GPU workers. In this example, setting it to 0.4 means, that vLLM will target to use 40% of the GPU memory for the model, its kv-cache, CUDAGraph memory, etc.
 
@@ -772,7 +794,7 @@ How do I use gated Huggingface models?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use `runtime_env` to specify the env variables that are required to access the model.
-To set the deployment options, you can use the :meth:`get_serve_options <ray.serve.llm.LLMConfig.get_serve_options>` method on the :class:`LLMConfig <ray.serve.llm.LLMConfig>` object.
+To get the deployment options, you can use the ``get_deployment_options`` method on the :class:`LLMServer <ray.serve.llm.deployment.LLMServer>` class. Each deployment class has its own ``get_deployment_options`` method.
 
 .. code-block:: python
 
@@ -780,6 +802,8 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
     from ray.serve.llm import LLMConfig
     from ray.serve.llm.deployment import LLMServer
     from ray.serve.llm.ingress import OpenAiIngress
+    from ray.serve.llm.builders import build_openai_app
+
     import os
 
     llm_config = LLMConfig(
@@ -801,10 +825,8 @@ To set the deployment options, you can use the :meth:`get_serve_options <ray.ser
         ),
     )
 
-    # Deploy the application
-    deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = OpenAiIngress.as_deployment().bind([deployment])
-    serve.run(llm_app, blocking=True)
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=True)
 
 Why is downloading the model so slow?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -819,6 +841,7 @@ If you are using huggingface models, you can enable fast download by setting `HF
     from ray.serve.llm import LLMConfig
     from ray.serve.llm.deployment import LLMServer
     from ray.serve.llm.ingress import OpenAiIngress
+    from ray.serve.llm.builders import build_openai_app
     import os
 
     llm_config = LLMConfig(
@@ -842,9 +865,8 @@ If you are using huggingface models, you can enable fast download by setting `HF
     )
 
     # Deploy the application
-    deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = OpenAiIngress.as_deployment().bind([deployment])
-    serve.run(llm_app, blocking=True)
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=True)
 
 How to configure tokenizer pool size so it doesn't hang?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
