@@ -17,3 +17,5 @@ aws_advanced_configurations_json:
     Tags:
     - Key: as-feature-enable-multi-az-serve
       Value: "true"
+flags:
+  allow-cross-zone-autoscaling: true
