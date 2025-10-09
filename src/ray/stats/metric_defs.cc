@@ -105,7 +105,7 @@ DEFINE_stats(
     /// ObjectState:
     ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
     ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
-    (ray::stats::LocationKey.name(), ray::stats::ObjectStateKey.name()),
+    ("Location", "ObjectState"),
     (),
     ray::stats::GAUGE);
 

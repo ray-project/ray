@@ -74,6 +74,7 @@ def get_step_for_test_group(
     priority: int = 0,
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
+    block_step_key: Optional[str] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -92,6 +93,7 @@ def get_step_for_test_group(
                     env=env,
                     priority_val=priority,
                     global_config=global_config,
+                    block_step_key=block_step_key,
                 )
 
                 if not is_concurrency_limit:
@@ -115,6 +117,7 @@ def get_step(
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     env = env or {}
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
@@ -200,4 +203,19 @@ def get_step(
     else:
         step["depends_on"] = get_prerequisite_step(image)
 
+    if block_step_key:
+        if not step["depends_on"]:
+            step["depends_on"] = block_step_key
+        else:
+            step["depends_on"] = [step["depends_on"], block_step_key]
+    return step
+
+
+def generate_block_step(num_tests: int):
+    step = {
+        "block": "Run release tests",
+        "depends_on": None,
+        "key": "block_run_release_tests",
+        "prompt": f"You are triggering {num_tests} tests. Do you want to proceed?",
+    }
     return step

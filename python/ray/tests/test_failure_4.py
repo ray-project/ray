@@ -556,7 +556,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
         _system_config=system_configs,
     )
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, include_dashboard=True)
 
     @ray.remote(resources={"foo": 1})
     def func():
@@ -700,7 +700,7 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
         time.sleep(3)
         os.kill(os.getpid(), 9)
 
-    with ray.init():
+    with ray.init(include_dashboard=True):
         ref = sleeper.remote()
 
         raylet = ray.nodes()[0]
