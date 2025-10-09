@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -34,10 +35,14 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
     async def hi_gen_async():
         for i in range(10):
             yield f"hi_{i}"
+            # to avoid caolescing chunks
+            await asyncio.sleep(0.2)
 
     def hi_gen_sync():
         for i in range(10):
             yield f"hi_{i}"
+            # to avoid caolescing chunks
+            time.sleep(0.2)
 
     if use_fastapi:
         app = FastAPI()
@@ -63,7 +68,7 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
     url = get_application_url("HTTP")
     with httpx.stream("GET", url) as r:
         r.raise_for_status()
-        for i, chunk in enumerate(r.iter_text(chunk_size=4)):
+        for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
 
 
@@ -257,10 +262,14 @@ def test_proxy_from_streaming_handle(
         async def hi_gen_async(self):
             for i in range(10):
                 yield f"hi_{i}"
+                # to avoid caolescing chunks
+                await asyncio.sleep(0.2)
 
         def hi_gen_sync(self):
             for i in range(10):
                 yield f"hi_{i}"
+                # to avoid caolescing chunks
+                time.sleep(0.2)
 
     if use_fastapi:
         app = FastAPI()
@@ -300,7 +309,7 @@ def test_proxy_from_streaming_handle(
     url = get_application_url("HTTP")
     with httpx.stream("GET", url) as r:
         r.raise_for_status()
-        for i, chunk in enumerate(r.iter_text(chunk_size=4)):
+        for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
 
 
