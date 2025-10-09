@@ -88,7 +88,12 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         filtered_dicts = await get_or_create_event_loop().run_in_executor(
             self._executor,
             lambda: [
-                message_to_dict(e, always_print_fields_with_no_presence=True)
+                message_to_dict(
+                    e,
+                    always_print_fields_with_no_presence=False,
+                    preserving_proto_field_name=True,
+                    use_integers_for_enums=True,
+                )
                 for e in filtered
             ],
         )
