@@ -79,7 +79,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
           for(int i = 0; i < 4; i++) {
             // This doesn't block.
             ray::Task(SlowFunction).Remote();
-          a
+          }
 
 Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 

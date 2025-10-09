@@ -27,7 +27,7 @@ class CgroupManagerFactory {
   /**
 
     This feature is only enabled in Linux. If using Linux, validates inputs, creates the
-    ray's cgroup heirarchy, enables constraints, and moves all system processes into the
+    ray cgroup heirarchy, enables constraints, and moves all system processes into the
     system cgroup.
 
     On non-Linux platforms, this will return a noop implementation.
