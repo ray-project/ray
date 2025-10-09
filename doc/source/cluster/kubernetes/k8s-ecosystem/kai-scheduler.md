@@ -110,11 +110,7 @@ spec:
 
 ```
 
-Verify queues are created
-
-```bash
-kubectl get queues
-```
+Note: To make this demo easier to follow, we combined these queue definitions with the RayCluster example in the next step. You can use the single combined YAML file and apply both queues and workloads at once.
 
 ## Step 4: Gang scheduling with KAI Scheduler
 
@@ -154,10 +150,15 @@ spec:
 
 ```
 
-Apply this RayCluster:
+Apply this RayCluster with queues:
 
 ```bash
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml
+
 kubectl apply -f ray-cluster.kai-scheduler.yaml
+
+#Verify queues are created
+kubectl get queues
 
 # Watch the pods get scheduled
 kubectl get pods -w
@@ -258,6 +259,8 @@ spec:
 ```
 
 ```bash
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
+
 kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 
 # Watch the pods get scheduled
