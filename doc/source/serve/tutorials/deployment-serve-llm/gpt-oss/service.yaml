@@ -1,6 +1,6 @@
 # service.yaml
 name: deploy-gpt-oss
-containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.1
+containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.2
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
