@@ -156,11 +156,3 @@ def test_find_partitions_duplicates():
     assert partitions[1].to_pydict() == {"value": []}  # [1,2)
     assert partitions[2].to_pydict() == {"value": [2, 2, 2, 2, 2]}  # [2,3)
     assert partitions[3].to_pydict() == {"value": []}  # >=3
-
-
-if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main(["-v", __file__]))

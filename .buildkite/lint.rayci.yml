@@ -13,7 +13,7 @@ steps:
       - clang_format
       - code_format
       - pre_commit
-      - semgrep_lint
+      - untested_code_snippet
       - banned_words
       - doc_readme
       - dashboard_format
