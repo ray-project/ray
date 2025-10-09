@@ -229,6 +229,17 @@ class ApplicationState:
         logging_config: LoggingConfig,
         external_scaler_enabled: bool = False,
     ):
+        """Init application state.
+
+        Args:
+            name: Application name.
+            deployment_state_manager: State manager for all deployments
+                in the cluster.
+            endpoint_state: State manager for endpoints in the system.
+            logging_config: Logging configuration for the application.
+            external_scaler_enabled: Whether external autoscaling is enabled for
+                this application.
+        """
 
         self._name = name
         self._status_msg = ""
