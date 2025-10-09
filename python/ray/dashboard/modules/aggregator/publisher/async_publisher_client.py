@@ -191,7 +191,6 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
         self._timeout_s = timeout_s
 
         self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
-        self._first_publish = False
 
     async def publish(
         self,
@@ -244,11 +243,6 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
                     num_events_published=0,
                     num_events_filtered_out=0,
                 )
-
-            # logging only once to ensure that we are receiving and publishing events to GCS, not to be checked into the repo
-            if not self._first_publish:
-                logger.info(f"GCS AddEvents succeeded: {status_code}")
-                self._first_publish = True
 
             return PublishStats(
                 is_publish_successful=True,
