@@ -900,7 +900,7 @@ class ReplicaBase(ABC):
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
             )
-            has_rank_changed = rank != self._rank
+            rank_changed = rank != self._rank
             self._rank = rank
             logging_config_changed = (
                 deployment_config.logging_config
@@ -920,7 +920,7 @@ class ReplicaBase(ABC):
             await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                 deployment_config.max_ongoing_requests
             )
-            if user_config_changed or has_rank_changed:
+            if user_config_changed or rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config,
                     rank=rank,
@@ -1695,7 +1695,7 @@ class UserCallableWrapper:
         # other methods. See https://github.com/ray-project/ray/pull/42159.
 
         # NOTE(abrar): The only way to subscribe to rank changes is to provide some user config.
-        # We can relax this in the future as more usecases arise for rank. I am reluctant to
+        # We can relax this in the future as more use cases arise for rank. I am reluctant to
         # introduce behavior change for a feature we might not need.
         user_subscribed_to_rank = False
         if not self._is_function and hasattr(self._callable, RECONFIGURE_METHOD):
