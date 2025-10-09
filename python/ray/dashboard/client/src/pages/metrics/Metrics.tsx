@@ -98,9 +98,8 @@ export const Metrics = () => {
   const grafanaOrgIdParam = grafanaOrgId ?? "1";
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
-  const [cachedSelectedTab, setCachedSelectedTab] = useLocalStorage<
-    DashboardTab | null
-  >(`Metrics-selectedTab`, null);
+  const [cachedSelectedTab, setCachedSelectedTab] =
+    useLocalStorage<DashboardTab | null>(`Metrics-selectedTab`, null);
 
   const [selectedTab, setSelectedTab] = useState<DashboardTab>(
     cachedSelectedTab ?? "core",
@@ -108,38 +107,39 @@ export const Metrics = () => {
 
   // Build the dashboard URL based on selected tab
   const buildDashboardUrl = useMemo(
-    () => (tab: DashboardTab, kiosk = true): string => {
-      const dashboardUid =
-        tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
+    () =>
+      (tab: DashboardTab, kiosk = true): string => {
+        const dashboardUid =
+          tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
 
-      const params = new URLSearchParams();
-      params.set("orgId", grafanaOrgIdParam);
-      params.set("theme", "light");
+        const params = new URLSearchParams();
+        params.set("orgId", grafanaOrgIdParam);
+        params.set("theme", "light");
 
-      if (kiosk) {
-        params.set("kiosk", "1");
-      }
+        if (kiosk) {
+          params.set("kiosk", "1");
+        }
 
-      params.set("refresh", "5s");
-      params.set("from", "now-5m");
-      params.set("to", "now");
+        params.set("refresh", "5s");
+        params.set("from", "now-5m");
+        params.set("to", "now");
 
-      if (currentTimeZone !== undefined) {
-        params.set("timezone", currentTimeZone);
-      }
+        if (currentTimeZone !== undefined) {
+          params.set("timezone", currentTimeZone);
+        }
 
-      if (sessionName !== undefined) {
-        params.set("var-SessionName", sessionName);
-      }
+        if (sessionName !== undefined) {
+          params.set("var-SessionName", sessionName);
+        }
 
-      params.set("var-datasource", grafanaDefaultDatasource);
+        params.set("var-datasource", grafanaDefaultDatasource);
 
-      if (grafanaClusterFilter) {
-        params.set("var-Cluster", grafanaClusterFilter);
-      }
+        if (grafanaClusterFilter) {
+          params.set("var-Cluster", grafanaClusterFilter);
+        }
 
-      return `${grafanaHost}/d/${dashboardUid}/?${params.toString()}`;
-    },
+        return `${grafanaHost}/d/${dashboardUid}/?${params.toString()}`;
+      },
     [
       grafanaDataDashboardUid,
       grafanaDefaultDashboardUid,
@@ -199,9 +199,7 @@ export const Metrics = () => {
               }}
             >
               <Tab label="Core" value="core" />
-              {grafanaDataDashboardUid && (
-                <Tab label="Ray Data" value="data" />
-              )}
+              {grafanaDataDashboardUid && <Tab label="Ray Data" value="data" />}
             </Tabs>
             <Box sx={{ paddingRight: 2 }}>
               <Button
@@ -224,7 +222,9 @@ export const Metrics = () => {
           >
             <Box
               component="iframe"
-              title={selectedTab === "data" ? "Ray Data Dashboard" : "Core Dashboard"}
+              title={
+                selectedTab === "data" ? "Ray Data Dashboard" : "Core Dashboard"
+              }
               src={currentDashboardUrl}
               sx={{
                 width: "100%",
@@ -238,7 +238,6 @@ export const Metrics = () => {
     </Box>
   );
 };
-
 
 export type GrafanaNotRunningAlertProps = {
   severity?: AlertProps["severity"];
