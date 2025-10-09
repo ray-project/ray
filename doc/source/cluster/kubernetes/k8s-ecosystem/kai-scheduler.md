@@ -32,9 +32,9 @@ PodGrouper schedules all 5 pods (1 head + 4 workers) together or none at all.
 
 2. **Queues**: Queues enforce fairness in resource distribution using:
 
-- Quota: The baseline amount of resources guaranteed to the queue. Quotas are allocated first to ensure fairness.
-- Queue Priority: Determines the order in which queues receive resources beyond their quota. Higher-priority queues are served first.
-- Over-Quota Weight: Controls how surplus resources are shared among queues within the same priority level. Queues with higher weights receive a larger share of the extra resources.
+- Quota: The baseline amount of resources guaranteed to the queue. The scheduler allocates quotas first to ensure fairness.
+- Queue priority: Determines the order in which queues receive resources beyond their quota. The scheduler serves the higher-priority queues first.
+- Over-quota weight: Controls how the scheduler divides surplus resources among queues within the same priority level. Queues with higher weights receive a larger share of the extra resources.
 - Limit: Defines the maximum resources that the queue can consume.
 
 You can arrange queues hierarchically for organizations with multiple teams, for example, departments with multiple teams.
@@ -118,7 +118,7 @@ kubectl get queues
 
 ## Step 4: Gang scheduling with KAI Scheduler
 
-The key pattern is to simply add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
+The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
 ```yaml
 apiVersion: ray.io/v1
