@@ -182,7 +182,7 @@ kind: RayCluster
 metadata:
   name: raycluster-sample
   labels:
-    kai.scheduler/queue: team-a    # This is the essential configuration!
+    kai.scheduler/queue: team-a    # This is the essential configuration.
     priorityClassName: build       # Here you can specify the priority class (optional)
 spec:
   headGroupSpec:
