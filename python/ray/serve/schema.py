@@ -563,7 +563,7 @@ class ServeApplicationSchema(BaseModel):
     autoscaling_policy: Optional[dict] = Field(
         default=None,
         description=(
-            "Autoscaling policy for the application. "
+            "Application-level autoscaling policy. "
             "If null, serve fallbacks to autoscaling policy in each deployment. "
             "This option is under development and not yet supported."
         ),

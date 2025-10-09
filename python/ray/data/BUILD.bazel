@@ -207,6 +207,22 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_type_conversion",
+    size = "small",
+    srcs = [
+        "tests/test_arrow_type_conversion.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_arrow_serialization",
     size = "small",
     srcs = ["tests/test_arrow_serialization.py"],
@@ -491,6 +507,76 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_limits",
+    size = "large",
+    srcs = ["tests/test_dataset_limits.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_creation",
+    size = "large",
+    srcs = ["tests/test_dataset_creation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_validation",
+    size = "large",
+    srcs = ["tests/test_dataset_validation.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_aggregrations",
+    size = "large",
+    srcs = ["tests/test_dataset_aggregrations.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_iter",
+    size = "large",
+    srcs = ["tests/test_dataset_iter.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_csv",
     size = "medium",
     srcs = ["tests/test_csv.py"],
@@ -508,6 +594,20 @@ py_test(
     name = "test_datasink",
     size = "small",
     srcs = ["tests/test_datasink.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -841,6 +941,20 @@ py_test(
 )
 
 py_test(
+    name = "test_tensor_extension",
+    size = "small",
+    srcs = ["tests/test_tensor_extension.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_text",
     size = "small",
     srcs = ["tests/test_text.py"],
@@ -887,6 +1001,20 @@ py_test(
     name = "test_torch",
     size = "small",
     srcs = ["tests/test_torch.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_tensor_utils",
+    size = "small",
+    srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1056,6 +1184,20 @@ py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_object_extension",
+    size = "small",
+    srcs = ["tests/test_object_extension.py"],
     tags = [
         "exclusive",
         "team:data",
