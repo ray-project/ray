@@ -43,6 +43,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
 )
+from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.test_utils import (
     MockActorHandle,
     MockClusterNodeInfoCache,
@@ -2844,7 +2845,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: req_per_replica
@@ -3032,7 +3034,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 2 for replica in replicas
@@ -3128,7 +3131,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 1 for replica in replicas
@@ -3237,7 +3241,8 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=0,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id: 1 for replica in replicas
@@ -3354,7 +3359,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=1,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
+            aggregated_queued_requests=1,
             aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
@@ -3470,7 +3476,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=1,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
+            aggregated_queued_requests=1,
             aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
@@ -3546,7 +3553,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
-            queued_requests=0,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+            aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
             },
@@ -3653,7 +3661,8 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
-            queued_requests=0,
+            queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+            aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
             },
@@ -5060,6 +5069,144 @@ def test_docs_path_not_updated_for_different_version(mock_deployment_state_manag
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v3)])
     assert ds.docs_path is None
+
+
+def test_set_target_num_replicas_api(mock_deployment_state_manager):
+    """Test the new set_target_num_replicas API for scaling deployments."""
+    # Create deployment state manager
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy initial deployment with 1 replica
+    info_1, v1 = deployment_info(version="1", num_replicas=1)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    assert ds.target_num_replicas == 1
+
+    # Test scaling up using the new API
+    dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 3)
+    assert ds.target_num_replicas == 3
+
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+
+def test_set_target_num_replicas_nonexistent_deployment(mock_deployment_state_manager):
+    """Test that scaling nonexistent deployment raises KeyError."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    nonexistent_id = DeploymentID("nonexistent", "test_app")
+
+    with pytest.raises(ValueError, match="Deployment.*not found"):
+        dsm.set_target_num_replicas(nonexistent_id, 3)
+
+
+def test_set_target_num_replicas_during_upgrade(mock_deployment_state_manager):
+    """Test setting target replicas while an upgrade is ongoing."""
+
+    # Create deployment state manager
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy initial deployment (v1) with 2 replicas
+    info_1, v1 = deployment_info(version="1", num_replicas=2)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+    assert ds.target_num_replicas == 2
+
+    # Get replicas to RUNNING state
+    for replica in ds._replicas.get([ReplicaState.STARTING]):
+        replica._actor.set_ready()
+
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+
+    # Start an upgrade to v2 with 2 replicas
+    info_2, v2 = deployment_info(version="2", num_replicas=2)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+
+    check_counts(
+        ds,
+        total=3,
+        by_state=[
+            (ReplicaState.STARTING, 1, v2),
+            (ReplicaState.RUNNING, 1, v1),
+            (ReplicaState.STOPPING, 1, v1),
+        ],
+    )
+    assert ds.target_num_replicas == 2
+
+    # Scale up to 5 replicas in the middle of the upgrade.
+    dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 5)
+    assert ds.target_num_replicas == 5
+
+    def dsm_update():
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+
+    dsm_update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[
+            (ReplicaState.STARTING, 3, v2),
+            (ReplicaState.RUNNING, 1, v1),
+            (ReplicaState.RUNNING, 1, v2),
+        ],
+    )
+
+    dsm_update()
+    check_counts(
+        ds,
+        total=6,
+        by_state=[
+            (ReplicaState.STARTING, 1, v2),
+            (ReplicaState.RUNNING, 4, v2),
+            (ReplicaState.STOPPING, 1, v1),
+        ],
+    )
+
+    dsm_update()
+    check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, v2)])
+
+    assert ds.target_num_replicas == 5
+
+
+def test_set_target_num_replicas_deleting_deployment(mock_deployment_state_manager):
+    """Test scaling deployment that is being deleted."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy an initial deployment
+    info, v1 = deployment_info(num_replicas=2, version="v1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+
+    # Delete the deployment
+    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+
+    # The deployment status should be DELETING
+    statuses = dsm.get_deployment_statuses([TEST_DEPLOYMENT_ID])
+    assert statuses[0].status_trigger == DeploymentStatusTrigger.DELETING
+
+    # Scaling should fail
+    with pytest.raises(DeploymentIsBeingDeletedError):
+        dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 3)
 
 
 class TestDeploymentRankManagerIntegrationE2E:

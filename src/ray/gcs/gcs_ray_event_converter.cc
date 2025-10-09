@@ -19,80 +19,18 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
 
-std::vector<rpc::AddTaskEventDataRequest>
-GcsRayEventConverter::ConvertToTaskEventDataRequests(
-    rpc::events::AddEventsRequest &&request) {
-  std::vector<rpc::AddTaskEventDataRequest> requests_per_job_id;
-  absl::flat_hash_map<std::string, size_t> job_id_to_index;
-  // convert RayEvents to TaskEvents and group by job id.
-  for (auto &event : *request.mutable_events_data()->mutable_events()) {
-    std::optional<rpc::TaskEvents> task_event = std::nullopt;
-    switch (event.event_type()) {
-    case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
-      break;
-    }
-    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
-      break;
-    }
-    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()));
-      break;
-    }
-    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
-      task_event =
-          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
-      break;
-    }
-    default:
-      // TODO(can-anyscale): Handle other event types
-      break;
-    }
+namespace {
 
-    // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
-    if (task_event) {
-      AddTaskEventToRequest(std::move(*task_event), requests_per_job_id, job_id_to_index);
-    }
-  }
-
-  //  Groups all taskEventMetadata belonging to same jobId into one
-  //  AddTaskEventDataRequest
-  auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
-  if (metadata->dropped_task_attempts_size() > 0) {
-    AddDroppedTaskAttemptsToRequest(
-        std::move(*metadata), requests_per_job_id, job_id_to_index);
-  }
-  return requests_per_job_id;
-}
-
-void GcsRayEventConverter::AddTaskEventToRequest(
-    rpc::TaskEvents &&task_event,
-    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
-    absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
-  const std::string job_id_key = task_event.job_id();
-  auto it = job_id_to_index.find(job_id_key);
-  if (it == job_id_to_index.end()) {
-    // Create new AddTaskEventDataRequest entry and add index to map
-    size_t idx = requests_per_job_id.size();
-    requests_per_job_id.emplace_back();
-    auto *data = requests_per_job_id.back().mutable_data();
-    data->set_job_id(job_id_key);
-    *data->add_events_by_task() = std::move(task_event);
-    job_id_to_index.emplace(job_id_key, idx);
-  } else {
-    // add taskEvent to existing AddTaskEventDataRequest with same job id
-    auto *data = requests_per_job_id[it->second].mutable_data();
-    *data->add_events_by_task() = std::move(task_event);
-  }
-}
-
-void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
+/// Add dropped task attempts to the appropriate job-grouped request.
+///
+/// \param metadata The task events metadata containing dropped task attempts.
+/// \param requests_per_job_id The list of requests grouped by job id.
+/// \param job_id_to_index The map from job id to index in requests_per_job_id.
+void AddDroppedTaskAttemptsToRequest(
     rpc::events::TaskEventsMetadata &&metadata,
     std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
     absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
@@ -118,8 +56,57 @@ void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
   }
 }
 
-rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::TaskDefinitionEvent &&event) {
+/// Populate the TaskInfoEntry with the given runtime env info, function descriptor,
+/// and required resources. This function is commonly used to convert the task
+/// and actor task definition events to TaskEvents.
+///
+/// \param serialized_runtime_env The serialized runtime environment string.
+/// \param function_descriptor The function descriptor.
+/// \param required_resources The required resources.
+/// \param language The language of the task.
+/// \param task_info The output TaskInfoEntry to populate.
+void PopulateTaskRuntimeAndFunctionInfo(
+    std::string &&serialized_runtime_env,
+    rpc::FunctionDescriptor &&function_descriptor,
+    ::google::protobuf::Map<std::string, double> &&required_resources,
+    rpc::Language language,
+    rpc::TaskInfoEntry *task_info) {
+  task_info->set_language(language);
+  task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
+      std::move(serialized_runtime_env));
+  switch (language) {
+  case rpc::Language::CPP:
+    if (function_descriptor.has_cpp_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_cpp_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  case rpc::Language::PYTHON:
+    if (function_descriptor.has_python_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_python_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  case rpc::Language::JAVA:
+    if (function_descriptor.has_java_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_java_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  default:
+    RAY_CHECK(false) << "Unsupported language: " << language;
+  }
+  task_info->mutable_required_resources()->swap(required_resources);
+}
+
+/// Convert a TaskDefinitionEvent to a TaskEvents.
+///
+/// \param event The TaskDefinitionEvent to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
@@ -143,8 +130,11 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   return task_event;
 }
 
-rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::TaskExecutionEvent &&event) {
+/// Convert a TaskExecutionEvent to a TaskEvents.
+///
+/// \param event The TaskExecutionEvent to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
@@ -154,7 +144,7 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
   task_state_update->set_worker_pid(event.worker_pid());
-  task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
+  *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
@@ -163,8 +153,11 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   return task_event;
 }
 
-rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::ActorTaskDefinitionEvent &&event) {
+/// Convert an ActorTaskDefinitionEvent to a TaskEvents.
+///
+/// \param event The ActorTaskDefinitionEvent to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event) {
   rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
@@ -190,50 +183,80 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   return task_event;
 }
 
-rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::TaskProfileEvents &&event) {
+/// Convert ProfileEvents to a TaskEvents.
+///
+/// \param event TaskProfileEvents object to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
+  *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
   return task_event;
 }
 
-void GcsRayEventConverter::PopulateTaskRuntimeAndFunctionInfo(
-    std::string &&serialized_runtime_env,
-    rpc::FunctionDescriptor &&function_descriptor,
-    ::google::protobuf::Map<std::string, double> &&required_resources,
-    rpc::Language language,
-    rpc::TaskInfoEntry *task_info) {
-  task_info->set_language(language);
-  task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
-      std::move(serialized_runtime_env));
-  switch (language) {
-  case rpc::Language::CPP:
-    if (function_descriptor.has_cpp_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          function_descriptor.cpp_function_descriptor().function_name());
+}  // namespace
+
+std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
+    rpc::events::AddEventsRequest &&request) {
+  std::vector<rpc::AddTaskEventDataRequest> requests_per_job_id;
+  absl::flat_hash_map<std::string, size_t> job_id_to_index;
+  // convert RayEvents to TaskEvents and group by job id.
+  for (auto &event : *request.mutable_events_data()->mutable_events()) {
+    std::optional<rpc::TaskEvents> task_event = std::nullopt;
+
+    switch (event.event_type()) {
+    case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
+      break;
     }
-    break;
-  case rpc::Language::PYTHON:
-    if (function_descriptor.has_python_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          function_descriptor.python_function_descriptor().function_name());
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
+      break;
     }
-    break;
-  case rpc::Language::JAVA:
-    if (function_descriptor.has_java_function_descriptor()) {
-      task_info->set_func_or_class_name(
-          function_descriptor.java_function_descriptor().function_name());
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()));
+      break;
     }
-    break;
-  default:
-    // Other languages are not handled.
-    break;
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
+      task_event =
+          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
+      break;
+    }
+    default:
+      RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
+    }
+
+    // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
+    if (task_event) {
+      const std::string job_id_key = task_event->job_id();
+      auto it = job_id_to_index.find(job_id_key);
+      if (it == job_id_to_index.end()) {
+        // Create new AddTaskEventDataRequest entry and add index to map
+        size_t idx = requests_per_job_id.size();
+        requests_per_job_id.emplace_back();
+        auto *data = requests_per_job_id.back().mutable_data();
+        data->set_job_id(job_id_key);
+        *data->add_events_by_task() = std::move(*task_event);
+        job_id_to_index.emplace(job_id_key, idx);
+      } else {
+        // add taskEvent to existing AddTaskEventDataRequest with same job id
+        auto *data = requests_per_job_id[it->second].mutable_data();
+        *data->add_events_by_task() = std::move(*task_event);
+      }
+    }
   }
-  task_info->mutable_required_resources()->swap(required_resources);
+
+  //  Groups all taskEventMetadata belonging to same jobId into one
+  //  AddTaskEventDataRequest
+  auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
+  if (metadata->dropped_task_attempts_size() > 0) {
+    AddDroppedTaskAttemptsToRequest(
+        std::move(*metadata), requests_per_job_id, job_id_to_index);
+  }
+  return requests_per_job_id;
 }
 
 }  // namespace gcs

@@ -28,7 +28,8 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
-BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CORE = os.getenv("RAY_BUILD_CORE", "1") == "1"
+BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
 BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
@@ -373,7 +374,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.10.2",
+                "vllm>=0.11.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -552,30 +553,10 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
         raise OSError(msg)
 
-    bazel_env = os.environ.copy()
-    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
-
-    if is_native_windows_or_msys():
-        SHELL = bazel_env.get("SHELL")
-        if SHELL:
-            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
-        SYSTEMROOT = os.getenv("SystemRoot")
-        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
-        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
-            msg = (
-                "You appear to have Bash from WSL,"
-                " which Bazel may invoke unexpectedly. "
-                "To avoid potential problems,"
-                " please explicitly set the {name!r}"
-                " environment variable for Bazel."
-            ).format(name="BAZEL_SH")
-            raise RuntimeError(msg)
-
-    # Note: We are passing in sys.executable so that we use the same
-    # version of Python to build packages inside the build.sh script. Note
-    # that certain flags will not be passed along such as --user or sudo.
-    # TODO(rkn): Fix this.
+    # Vendor thirdparty packages.
+    #
+    # TODO(ray-core, ray-ci): the version of these vendored packages should be
+    # pinned, so that the build is reproducible.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
@@ -605,6 +586,39 @@ def build(build_python, build_java, build_cpp, build_redis):
             ]
             + runtime_env_agent_pip_packages
         )
+
+    bazel_targets = []
+    if build_python:
+        bazel_targets.append("//:gen_ray_pkg")
+    if build_cpp:
+        bazel_targets.append("//cpp:gen_ray_cpp_pkg")
+    if build_java:
+        bazel_targets.append("//java:gen_ray_java_pkg")
+    if build_redis:
+        bazel_targets.append("//:gen_redis_pkg")
+
+    if not bazel_targets:
+        return
+
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
+
+    if is_native_windows_or_msys():
+        SHELL = bazel_env.get("SHELL")
+        if SHELL:
+            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
+        SYSTEMROOT = os.getenv("SystemRoot")
+        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
+        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
+            msg = (
+                "You appear to have Bash from WSL,"
+                " which Bazel may invoke unexpectedly. "
+                "To avoid potential problems,"
+                " please explicitly set the {name!r}"
+                " environment variable for Bazel."
+            ).format(name="BAZEL_SH")
+            raise RuntimeError(msg)
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -643,12 +657,6 @@ def build(build_python, build_java, build_cpp, build_redis):
         bazel_precmd_flags = []
         if sys.platform == "win32":
             bazel_precmd_flags = ["--output_user_root=C:/tmp"]
-
-    bazel_targets = []
-    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
-    bazel_targets += ["//:gen_redis_pkg"] if build_redis else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -713,7 +721,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
         build(False, False, False, False)
     else:
-        build(True, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
+        build(BUILD_CORE, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
         if setup_spec.build_type == BuildType.DEPS_ONLY:
