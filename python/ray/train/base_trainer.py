@@ -538,6 +538,20 @@ class BaseTrainer(abc.ABC):
         constructors to avoid logging incorrect deprecation warnings when
         `ray.train.RunConfig` is passed to Ray Tune.
         """
+        from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR, is_v2_enabled
+
+        if is_v2_enabled():
+            raise DeprecationWarning(
+                f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
+                "This Trainer class is not compatible with Ray Train V2.\n"
+                "To fix this:\n"
+                "  - Update to use the new import path. For example, "
+                "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
+                "`from ray.train.torch import TorchTrainer`\n"
+                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0\n"
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
         if not _v2_migration_warnings_enabled():
             return
