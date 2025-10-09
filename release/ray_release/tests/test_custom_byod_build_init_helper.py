@@ -15,6 +15,7 @@ from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 from ray_release.test import Test
 from ray_release.configs.global_config import get_global_config
+from ray_release.util import AZURE_REGISTRY_NAME
 
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
@@ -110,18 +111,21 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
                 in content["steps"][0]["commands"][0]
             )
+            assert content["steps"][0]["commands"][4].startswith(
+                "az acr login"
+            ) and content["steps"][0]["commands"][4].endswith(AZURE_REGISTRY_NAME)
             assert (
                 f"--region {config['byod_ecr_region']}"
-                in content["steps"][0]["commands"][3]
+                in content["steps"][0]["commands"][5]
             )
-            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][3]
+            assert f"{config['byod_ecr']}" in content["steps"][0]["commands"][5]
             assert (
                 f"--image-name {custom_byod_images[0][0]}"
-                in content["steps"][0]["commands"][4]
+                in content["steps"][0]["commands"][6]
             )
             assert (
                 f"--image-name {custom_byod_images[2][0]}"
-                in content["steps"][1]["commands"][4]
+                in content["steps"][1]["commands"][6]
             )
 
 
