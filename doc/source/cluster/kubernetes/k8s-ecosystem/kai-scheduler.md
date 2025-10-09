@@ -14,7 +14,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 - **Workload priorities**: Prioritize Ray workloads effectively within queues
 - **Hierarchical queues and fairness**: Two-level queues with quotas, over-quota weights, limits, and equitable resource distribution between queues using DRF
 and many more.
-For more details and key features, please refer to [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
+For more details and key features, see [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
 
 ### Core Components
 
