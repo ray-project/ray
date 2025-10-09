@@ -491,3 +491,11 @@ def test_hash_shuffle_operator_remote_args(
                 op._aggregator_pool._aggregator_ray_remote_args
                 == tc.expected_ray_remote_args
             )
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
