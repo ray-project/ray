@@ -109,7 +109,7 @@ def _xgboost_train_fn_per_worker(
         import xgboost as xgb
 
         # External memory requires hist tree method for optimal performance
-        # Required by QuantileDMatrix for external memory:
+        # Required by ExtMemQuantileDMatrix for external memory:
         # https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
         if "tree_method" not in config:
             config["tree_method"] = "hist"

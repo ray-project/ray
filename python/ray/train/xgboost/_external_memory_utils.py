@@ -43,9 +43,8 @@ MAX_BATCH_SIZE = 100000  # Above this, memory pressure increases
 # https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 MIN_XGBOOST_VERSION = "2.0.0"
 
-# Retry limits for iterator
-MAX_EMPTY_BATCHES = 10  # Maximum consecutive empty batches before failing
-MAX_ERROR_RETRIES = 5  # Maximum consecutive errors before failing
+# No retry logic - follow XGBoost's fail-fast pattern
+# Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
 
 def create_external_memory_dmatrix(
@@ -60,11 +59,13 @@ def create_external_memory_dmatrix(
     missing: Optional[float] = None,
     **kwargs,
 ):
-    """Create an XGBoost DMatrix with external memory optimization.
+    """Create an XGBoost ExtMemQuantileDMatrix for external memory training.
 
-    This function creates an XGBoost DMatrix that uses external memory for
-    training on large datasets that don't fit in memory. It follows XGBoost's
-    official external memory API using QuantileDMatrix.
+    This function creates an ExtMemQuantileDMatrix that streams data from external
+    memory for training on large datasets that don't fit in RAM. It follows XGBoost's
+    official external memory API.
+    
+    Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
     Performance Tips:
     - Use larger batch sizes for better I/O efficiency
@@ -89,10 +90,10 @@ def create_external_memory_dmatrix(
         enable_categorical: Enable categorical feature support. Requires
             XGBoost >= 1.6.0.
         missing: Value to recognize as missing. If None, uses NaN.
-        **kwargs: Additional arguments passed to QuantileDMatrix constructor.
+        **kwargs: Additional arguments passed to ExtMemQuantileDMatrix constructor.
 
     Returns:
-        XGBoost QuantileDMatrix object optimized for external memory training.
+        XGBoost ExtMemQuantileDMatrix object optimized for external memory training.
 
     Raises:
         ImportError: If XGBoost is not properly installed or version is too old.
@@ -265,144 +266,85 @@ def create_external_memory_dmatrix(
             self.batch_size = batch_size
             self.missing_value = missing_value
             self._iterator = None
-            self._batch_index = 0
-            self._total_batches = 0
-            self._error_count = 0
-            self._empty_batch_count = 0
             super().__init__(cache_prefix=cache_dir)
 
         def next(self, input_data):
-            """Advance the iterator by one batch and return the data.
+            """Advance the iterator by one batch and pass data to XGBoost.
+            
+            Follows XGBoost's external memory iterator pattern.
+            Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
             Args:
-                input_data: XGBoost input data callback function.
+                input_data: XGBoost callback function to receive batch data.
 
             Returns:
                 1 if data was successfully loaded, 0 if iteration is complete.
-
-            Raises:
-                RuntimeError: If too many consecutive errors or empty batches occur.
             """
             if self._iterator is None:
-                # Initialize iterator on first call
-                try:
-                    self._iterator = self.dataset_shard.iter_batches(
-                        batch_size=self.batch_size,
-                        batch_format="pandas",
-                    )
-                    self._batch_index = 0
-                    self._error_count = 0
-                    self._empty_batch_count = 0
-                except Exception as e:
-                    logger.error(f"Failed to initialize batch iterator: {e}")
+                # Initialize iterator on first call - Ray Data streaming execution
+                self._iterator = self.dataset_shard.iter_batches(
+                    batch_size=self.batch_size,
+                    batch_format="pandas",
+                )
+            
+            try:
+                # Get next batch from Ray Data stream
+                batch_df = next(self._iterator)
+                
+                # Validate batch is not empty
+                if batch_df.empty:
                     raise RuntimeError(
-                        f"Cannot create batch iterator from dataset: {e}. "
-                        "Ensure the dataset is properly configured."
-                    ) from e
-
-            # Use a loop to handle empty batches and retries instead of recursion
-            while True:
-                try:
-                    batch_df = next(self._iterator)
-                    self._batch_index += 1
-
-                    # Validate batch data
-                    if batch_df.empty:
-                        self._empty_batch_count += 1
-                        logger.warning(
-                            f"Batch {self._batch_index} is empty. Skipping "
-                            f"(empty batch count: {self._empty_batch_count})"
-                        )
-                        if self._empty_batch_count > MAX_EMPTY_BATCHES:
-                            raise RuntimeError(
-                                f"Too many consecutive empty batches ({self._empty_batch_count}). "
-                                "Check dataset content and filtering logic."
-                            )
-                        continue  # Skip to next batch
-
-                    # Separate features and labels
-                    try:
-                        if isinstance(self.label_column, str):
-                            if self.label_column not in batch_df.columns:
-                                raise KeyError(
-                                    f"Label column '{self.label_column}' not found "
-                                    f"in dataset. Available columns: {list(batch_df.columns)}"
-                                )
-                            labels = batch_df[self.label_column].values
-                            features = batch_df.drop(columns=[self.label_column])
-                        else:
-                            # Multiple label columns
-                            missing_labels = [
-                                col
-                                for col in self.label_column
-                                if col not in batch_df.columns
-                            ]
-                            if missing_labels:
-                                raise KeyError(
-                                    f"Label columns {missing_labels} not found "
-                                    f"in dataset. Available: {list(batch_df.columns)}"
-                                )
-                            labels = batch_df[self.label_column].values
-                            features = batch_df.drop(columns=self.label_column)
-
-                        # Handle feature columns selection
-                        if self.feature_columns is not None:
-                            missing_features = [
-                                col
-                                for col in self.feature_columns
-                                if col not in features.columns
-                            ]
-                            if missing_features:
-                                raise KeyError(
-                                    f"Feature columns {missing_features} not found. "
-                                    f"Available: {list(features.columns)}"
-                                )
-                            features = features[self.feature_columns]
-
-                        # Validate data types
-                        if not all(features.dtypes.apply(lambda x: x.kind in "biufc")):
-                            logger.warning(
-                                "Some feature columns have non-numeric types. "
-                                "This may cause training errors. "
-                                "Consider converting to numeric types."
-                            )
-
-                        # Return data to XGBoost
-                        input_data(data=features.values, label=labels)
-                        # Reset counters on success
-                        self._error_count = 0
-                        self._empty_batch_count = 0
-                        return 1
-
-                    except KeyError as e:
-                        logger.error(f"Column error in batch {self._batch_index}: {e}")
-                        raise RuntimeError(
-                            f"Data schema error: {e}. "
-                            "Ensure label_column and feature_columns are correct."
-                        ) from e
-
-                except StopIteration:
-                    # End of iteration
-                    return 0
-                except Exception as e:
-                    self._error_count += 1
-                    logger.error(
-                        f"Error in batch {self._batch_index}: {e} "
-                        f"(error count: {self._error_count})"
+                        "Empty batch encountered. Check dataset content and filtering."
                     )
-                    if self._error_count > MAX_ERROR_RETRIES:
-                        raise RuntimeError(
-                            f"Too many consecutive errors ({self._error_count}). "
-                            f"Last error: {e}. Check data format and quality."
-                        ) from e
-                    # Continue to next batch instead of recursion
-                    continue
+                
+                # Separate features and labels
+                if isinstance(self.label_column, str):
+                    if self.label_column not in batch_df.columns:
+                        raise KeyError(
+                            f"Label column '{self.label_column}' not found. "
+                            f"Available: {list(batch_df.columns)}"
+                        )
+                    labels = batch_df[self.label_column].values
+                    features = batch_df.drop(columns=[self.label_column])
+                else:
+                    # Multiple label columns
+                    missing_labels = [
+                        col for col in self.label_column 
+                        if col not in batch_df.columns
+                    ]
+                    if missing_labels:
+                        raise KeyError(
+                            f"Label columns {missing_labels} not found. "
+                            f"Available: {list(batch_df.columns)}"
+                        )
+                    labels = batch_df[self.label_column].values
+                    features = batch_df.drop(columns=self.label_column)
+                
+                # Select feature columns if specified
+                if self.feature_columns is not None:
+                    missing_features = [
+                        col for col in self.feature_columns 
+                        if col not in features.columns
+                    ]
+                    if missing_features:
+                        raise KeyError(
+                            f"Feature columns {missing_features} not found. "
+                            f"Available: {list(features.columns)}"
+                        )
+                    features = features[self.feature_columns]
+                
+                # Pass data to XGBoost
+                input_data(data=features.values, label=labels)
+                return 1
+                
+            except StopIteration:
+                # End of iteration - normal termination
+                return 0
+            # Let all other exceptions propagate - fail fast
 
         def reset(self):
             """Reset the iterator to the beginning."""
             self._iterator = None
-            self._batch_index = 0
-            self._error_count = 0
 
     # Create the iterator
     try:
@@ -419,8 +361,9 @@ def create_external_memory_dmatrix(
             "Check dataset_shard and column specifications."
         ) from e
 
-    # Create QuantileDMatrix with external memory
-    # QuantileDMatrix is optimized for hist tree method
+    # Create ExtMemQuantileDMatrix for external memory
+    # ExtMemQuantileDMatrix fetches data on-demand from external memory
+    # Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
     try:
         dmatrix_kwargs = {
             "max_bin": max_bin,
@@ -435,7 +378,7 @@ def create_external_memory_dmatrix(
         if missing is not None:
             dmatrix_kwargs["missing"] = missing
 
-        dmatrix = xgb.QuantileDMatrix(
+        dmatrix = xgb.ExtMemQuantileDMatrix(
             data_iter,
             **dmatrix_kwargs,
         )
@@ -443,9 +386,9 @@ def create_external_memory_dmatrix(
         return dmatrix
 
     except Exception as e:
-        logger.error(f"Failed to create QuantileDMatrix: {e}")
+        logger.error(f"Failed to create ExtMemQuantileDMatrix: {e}")
         raise RuntimeError(
-            f"QuantileDMatrix creation failed: {e}. "
+            f"ExtMemQuantileDMatrix creation failed: {e}. "
             "Common issues:\n"
             "  - Incompatible data types (ensure numeric features)\n"
             "  - Memory constraints (try reducing batch_size or max_bin)\n"
@@ -551,8 +494,8 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
     """
     return {
         "parameters": {
-            # Required for QuantileDMatrix (external memory):
-            # https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.QuantileDMatrix
+            # Required for ExtMemQuantileDMatrix (external memory):
+            # https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.ExtMemQuantileDMatrix
             "tree_method": "hist",
             # Recommended for external memory performance:
             # https://xgboost.readthedocs.io/en/stable/parameter.html#additional-parameters-for-hist-tree-method
@@ -562,7 +505,7 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
             "max_bin": 256,
         },
         "best_practices": [
-            "Use hist tree method (required for QuantileDMatrix)",
+            "Use hist tree method (required for ExtMemQuantileDMatrix)",
             "Use depthwise grow policy for better performance",
             "Set appropriate batch_size based on available memory",
             "Use shared storage for cache_dir in distributed training",
