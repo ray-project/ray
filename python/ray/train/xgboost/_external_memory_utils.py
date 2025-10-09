@@ -29,14 +29,18 @@ from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-# Constants for default configuration
-DEFAULT_CPU_BATCH_SIZE = 10000
-DEFAULT_GPU_BATCH_SIZE = 5000
-DEFAULT_MAX_BIN = 256
-MIN_BATCH_SIZE = 100
-MAX_BATCH_SIZE = 100000
+# Constants for external memory configuration
+# Based on XGBoost external memory best practices:
+# https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
+DEFAULT_CPU_BATCH_SIZE = 10000  # Balanced performance for CPU training
+DEFAULT_GPU_BATCH_SIZE = 5000  # Lower for GPU to manage memory better
+DEFAULT_MAX_BIN = 256  # XGBoost default for histogram-based algorithms
+MIN_BATCH_SIZE = 100  # Below this, I/O overhead dominates
+MAX_BATCH_SIZE = 100000  # Above this, memory pressure increases
 
 # XGBoost version requirements
+# External memory support stabilized in 2.0.0:
+# https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 MIN_XGBOOST_VERSION = "2.0.0"
 
 # Retry limits for iterator
@@ -135,6 +139,8 @@ def create_external_memory_dmatrix(
         ) from e
 
     # Validate XGBoost version
+    # External memory support was stabilized in XGBoost 2.0.0:
+    # https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
     try:
         xgb_version = version.parse(xgb.__version__)
         min_version = version.parse(MIN_XGBOOST_VERSION)
@@ -143,25 +149,26 @@ def create_external_memory_dmatrix(
                 f"XGBoost version {xgb.__version__} is older than "
                 f"recommended {MIN_XGBOOST_VERSION}. "
                 "External memory support may be limited or buggy. "
-                "Please upgrade: pip install --upgrade xgboost"
+                "Please upgrade: pip install --upgrade xgboost. "
+                "See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html"
             )
     except Exception as e:
         logger.warning(f"Could not verify XGBoost version: {e}")
 
     # Validate device parameter
+    # XGBoost supports CPU and CUDA devices:
+    # https://xgboost.readthedocs.io/en/stable/gpu/index.html
     if device not in ("cpu", "cuda"):
         raise ValueError(
             f"Invalid device '{device}'. Must be 'cpu' or 'cuda'. "
-            f"For GPU training, ensure CUDA-enabled XGBoost is installed."
+            f"For GPU training, ensure CUDA-enabled XGBoost is installed. "
+            "See: https://xgboost.readthedocs.io/en/stable/gpu/index.html"
         )
 
     # Set and validate batch size
     if batch_size is None:
         batch_size = DEFAULT_GPU_BATCH_SIZE if device == "cuda" else (
             DEFAULT_CPU_BATCH_SIZE
-        )
-        logger.debug(
-            f"Auto-selected batch_size={batch_size} for device={device}"
         )
     else:
         if not isinstance(batch_size, int) or batch_size <= 0:
@@ -171,12 +178,14 @@ def create_external_memory_dmatrix(
         if batch_size < MIN_BATCH_SIZE:
             logger.warning(
                 f"batch_size={batch_size} is very small (< {MIN_BATCH_SIZE}). "
-                "This may cause poor I/O performance. Consider increasing it."
+                "This may cause poor I/O performance. Consider increasing it. "
+                "See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html"
             )
         if batch_size > MAX_BATCH_SIZE:
             logger.warning(
                 f"batch_size={batch_size} is very large (> {MAX_BATCH_SIZE}). "
-                "This may cause high memory usage. Consider decreasing it."
+                "This may cause high memory usage. Consider decreasing it. "
+                "See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html"
             )
 
     # Set and validate cache directory
@@ -200,7 +209,6 @@ def create_external_memory_dmatrix(
             with open(test_file, "w") as f:
                 f.write("test")
             os.remove(test_file)
-            logger.debug(f"Using cache directory: {cache_dir}")
         except (OSError, PermissionError) as e:
             raise RuntimeError(
                 f"Cannot write to cache_dir '{cache_dir}': {e}. "
@@ -216,12 +224,14 @@ def create_external_memory_dmatrix(
         if max_bin < 16:
             logger.warning(
                 f"max_bin={max_bin} is very low. This may reduce model quality. "
-                "Consider using at least 32."
+                "Consider using at least 32. "
+                "See: https://xgboost.readthedocs.io/en/stable/parameter.html"
             )
         if max_bin > 1024:
             logger.warning(
                 f"max_bin={max_bin} is very high. This may slow down training. "
-                "Consider using 256-512 for most cases."
+                "Consider using 256-512 for most cases. "
+                "See: https://xgboost.readthedocs.io/en/stable/parameter.html"
             )
     else:
         max_bin = DEFAULT_MAX_BIN
@@ -275,9 +285,6 @@ def create_external_memory_dmatrix(
             """
             if self._iterator is None:
                 # Initialize iterator on first call
-                logger.debug(
-                    f"Initializing batch iterator with batch_size={self.batch_size}"
-                )
                 try:
                     self._iterator = self.dataset_shard.iter_batches(
                         batch_size=self.batch_size,
@@ -360,13 +367,6 @@ def create_external_memory_dmatrix(
                                 "Consider converting to numeric types."
                             )
 
-                        # Log progress periodically
-                        if self._batch_index % 100 == 0:
-                            logger.info(
-                                f"Processed {self._batch_index} batches "
-                                f"({self._batch_index * self.batch_size} samples)"
-                            )
-
                         # Return data to XGBoost
                         input_data(data=features.values, label=labels)
                         # Reset counters on success
@@ -383,10 +383,6 @@ def create_external_memory_dmatrix(
 
                 except StopIteration:
                     # End of iteration
-                    logger.info(
-                        f"Completed iteration over {self._batch_index} batches "
-                        f"({self._batch_index * self.batch_size} total samples)"
-                    )
                     return 0
                 except Exception as e:
                     self._error_count += 1
@@ -404,7 +400,6 @@ def create_external_memory_dmatrix(
 
         def reset(self):
             """Reset the iterator to the beginning."""
-            logger.debug("Resetting batch iterator")
             self._iterator = None
             self._batch_index = 0
             self._error_count = 0
@@ -426,11 +421,6 @@ def create_external_memory_dmatrix(
 
     # Create QuantileDMatrix with external memory
     # QuantileDMatrix is optimized for hist tree method
-    logger.info(
-        f"Creating QuantileDMatrix with: batch_size={batch_size}, "
-        f"max_bin={max_bin}, device={device}, cache_dir={cache_dir}"
-    )
-
     try:
         dmatrix_kwargs = {
             "max_bin": max_bin,
@@ -439,22 +429,15 @@ def create_external_memory_dmatrix(
 
         # Add categorical feature support if enabled
         if enable_categorical:
-            logger.debug("Categorical features enabled")
             dmatrix_kwargs["enable_categorical"] = True
 
         # Add missing value if specified
         if missing is not None:
-            logger.debug(f"Using missing value: {missing}")
             dmatrix_kwargs["missing"] = missing
 
         dmatrix = xgb.QuantileDMatrix(
             data_iter,
             **dmatrix_kwargs,
-        )
-
-        logger.info(
-            f"Successfully created external memory QuantileDMatrix "
-            f"(batch_size={batch_size}, max_bin={max_bin}, device={device})"
         )
 
         return dmatrix
@@ -478,10 +461,14 @@ def setup_gpu_external_memory() -> bool:
     memory performance. It should be called before creating external memory DMatrix
     objects for GPU training.
 
-    RMM provides:
+    RMM provides optimal GPU memory management for XGBoost:
     - Better GPU memory allocation performance
     - Memory pooling for reduced allocation overhead
     - Integration with CuPy for NumPy-like GPU arrays
+    
+    References:
+    - XGBoost GPU training: https://xgboost.readthedocs.io/en/stable/gpu/index.html
+    - RMM documentation: https://docs.rapids.ai/api/rmm/stable/
 
     Returns:
         True if GPU setup was successful, False otherwise.
@@ -530,12 +517,12 @@ def setup_gpu_external_memory() -> bool:
             import cupy  # noqa: F401
 
             cupy.cuda.set_allocator(rmm_cupy_allocator)
-            logger.info("Successfully configured RMM for GPU external memory training")
             return True
         except ImportError:
             logger.warning(
                 "RMM and CuPy are required for optimal GPU external memory performance. "
-                "Install with: pip install rmm-cu11 cupy-cuda11x"
+                "Install with: pip install rmm-cu11 cupy-cuda11x. "
+                "See: https://docs.rapids.ai/api/rmm/stable/"
             )
             return False
 
@@ -552,6 +539,8 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
 
     Returns:
         Dictionary containing recommended configuration settings and best practices.
+        All recommendations are based on XGBoost official documentation:
+        https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
     Examples:
         .. testcode::
@@ -562,8 +551,14 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
     """
     return {
         "parameters": {
+            # Required for QuantileDMatrix (external memory):
+            # https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.QuantileDMatrix
             "tree_method": "hist",
+            # Recommended for external memory performance:
+            # https://xgboost.readthedocs.io/en/stable/parameter.html#additional-parameters-for-hist-tree-method
             "grow_policy": "depthwise",
+            # Default for hist tree method:
+            # https://xgboost.readthedocs.io/en/stable/parameter.html
             "max_bin": 256,
         },
         "best_practices": [

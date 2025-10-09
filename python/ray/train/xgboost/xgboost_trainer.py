@@ -95,11 +95,6 @@ def _xgboost_train_fn_per_worker(
                     "No additional training will be performed."
                 )
                 return
-            
-            logger.info(
-                f"Resuming from checkpoint: model has {starting_iter} rounds, "
-                f"will train {remaining_iters} more to reach {num_boost_round}"
-            )
         except Exception as e:
             logger.error(f"Failed to load model from checkpoint: {e}")
             raise RuntimeError(
@@ -114,33 +109,32 @@ def _xgboost_train_fn_per_worker(
         import xgboost as xgb
 
         # External memory requires hist tree method for optimal performance
-        # This is a requirement from XGBoost's official external memory API
+        # Required by QuantileDMatrix for external memory:
+        # https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
         if "tree_method" not in config:
             config["tree_method"] = "hist"
         elif config["tree_method"] != "hist":
             logger.warning(
                 f"External memory training requires tree_method='hist' for optimal performance. "
                 f"Current setting: {config['tree_method']}. "
-                "Consider changing to 'hist' for better external memory performance."
+                "Consider changing to 'hist' for better external memory performance. "
+                "See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html"
             )
 
         # Recommend depthwise grow policy for external memory
+        # Depthwise policy performs better with external memory:
+        # https://xgboost.readthedocs.io/en/stable/parameter.html#additional-parameters-for-hist-tree-method
         if "grow_policy" not in config:
             config["grow_policy"] = "depthwise"
         elif config["grow_policy"] == "lossguide":
             logger.warning(
                 "Using grow_policy='lossguide' with external memory can significantly "
-                "slow down training. Consider using 'depthwise' for better performance."
+                "slow down training. Consider using 'depthwise' for better performance. "
+                "See: https://xgboost.readthedocs.io/en/stable/parameter.html"
             )
 
         # Create external memory DMatrix using shared utilities
         from ._external_memory_utils import create_external_memory_dmatrix
-
-        logger.info(
-            f"Creating external memory DMatrix for training "
-            f"(device={external_memory_device}, "
-            f"batch_size={external_memory_batch_size})"
-        )
 
         try:
             dtrain = create_external_memory_dmatrix(
@@ -164,7 +158,6 @@ def _xgboost_train_fn_per_worker(
             if eval_name != TRAIN_DATASET_KEY:
                 try:
                     eval_ds_iter = ray.train.get_dataset_shard(eval_name)
-                    logger.debug(f"Creating DMatrix for evaluation dataset: {eval_name}")
                     deval = create_external_memory_dmatrix(
                         dataset_shard=eval_ds_iter,
                         label_column=label_column,
@@ -181,16 +174,9 @@ def _xgboost_train_fn_per_worker(
                         f"Evaluation DMatrix creation failed for '{eval_name}': {e}"
                     ) from e
 
-        logger.info(
-            f"Successfully created {len(evals)} DMatrix objects "
-            f"(1 training + {len(evals)-1} evaluation)"
-        )
-
     else:
         # Use standard DMatrix for smaller datasets
         import xgboost as xgb
-
-        logger.info("Creating standard in-memory DMatrix for training")
 
         try:
             train_ds = train_ds_iter.materialize()
@@ -209,11 +195,6 @@ def _xgboost_train_fn_per_worker(
             # Separate features and labels
             train_X = train_df.drop(columns=[label_column])
             train_y = train_df[label_column]
-
-            logger.debug(
-                f"Training data: {len(train_df)} samples, "
-                f"{len(train_X.columns)} features"
-            )
 
             # Create standard DMatrix
             dtrain = xgb.DMatrix(train_X, label=train_y)
@@ -251,27 +232,13 @@ def _xgboost_train_fn_per_worker(
                     deval = xgb.DMatrix(eval_X, label=eval_y)
                     evals.append((deval, eval_name))
 
-                    logger.debug(
-                        f"Evaluation dataset '{eval_name}': {len(eval_df)} samples"
-                    )
-
                 except Exception as e:
                     logger.error(f"Failed to create DMatrix for '{eval_name}': {e}")
                     raise RuntimeError(
                         f"Evaluation DMatrix creation failed for '{eval_name}': {e}"
                     ) from e
 
-        logger.info(
-            f"Successfully created {len(evals)} DMatrix objects "
-            f"(1 training + {len(evals)-1} evaluation)"
-        )
-
     # Train the model
-    logger.info(
-        f"Starting XGBoost training: {remaining_iters} rounds, "
-        f"{len(evals)} evaluation sets"
-    )
-
     try:
         bst = xgb.train(
             xgboost_train_kwargs,
@@ -284,11 +251,6 @@ def _xgboost_train_fn_per_worker(
 
         if bst is None:
             raise RuntimeError("xgb.train returned None")
-
-        logger.info(
-            f"Training completed successfully: "
-            f"{bst.num_boosted_rounds()} total rounds"
-        )
 
         # Report final metrics
         ray.train.report({"model": bst})

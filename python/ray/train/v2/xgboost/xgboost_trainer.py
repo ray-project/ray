@@ -125,6 +125,10 @@ class XGBoostTrainer(DataParallelTrainer):
             booster = RayTrainReportCallback.get_model(result.checkpoint)
 
             # External memory training for large datasets
+            # Create larger datasets that require external memory
+            large_train_ds = ray.data.read_parquet("s3://bucket/large_train.parquet")
+            large_eval_ds = ray.data.read_parquet("s3://bucket/large_eval.parquet")
+            
             large_trainer = XGBoostTrainer(
                 train_loop_per_worker=train_fn_per_worker,
                 datasets={"train": large_train_ds, "validation": large_eval_ds},
