@@ -181,8 +181,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 serve run serve_qwen_3_32b:app --non-blocking
 ```
 
@@ -201,8 +200,7 @@ You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the pro
 Example curl with `/no_think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -247,8 +245,7 @@ You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt 
 Example curl with `/think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -290,8 +287,7 @@ If you configure a valid reasoning parser, the reasoning output should appear in
 Shutdown your LLM service:
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
