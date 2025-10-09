@@ -10,18 +10,20 @@ When there is a circular dependency present in the codebase, import errors are t
 
 ### The Fix:
 
-To make Ray Train resilient to such erroneous imports, this linter proactively detects circular imports and specifies how to fix it. The fix perscribed by the linter prevents import errors by importing the base train packages early within in the patching directory. In the below example, the previously depicted circular import is resolved by the linter's suggested fix to import `ray.train.foo` early in `ray.train.v2.foo`.
+To make Ray Train resilient to such erroneous imports, this linter proactively detects circular imports and specifies how to fix it. The fix perscribed by the linter prevents import errors by importing the base Train packages early within in the patching directory. In the below example, the previously depicted circular import is resolved by the linter's suggested fix to import `ray.train.foo` early in `ray.train.v2.foo`.
 
 ![SuccessPath](./images/SuccessPath.png)
 
+The key observation is that the fix redirects the import path of `from ray.train.v2.foo import foo_v2` so that the base Train init file (e.g. `ray.train.foo.__init__.py`) runs before the patching file (e.g. `ray.train.v2.foo.py`), avoiding the error in the previous example.
+
 ### Linter Specification
 
-The linter implements an `ast.NodeVisitor` to parse imports within the base train directory and the patching directory to detect circular imports. The below example depicts two circular imports that would be detected by the linter originating from a `ray.train.common.__init__.py` file.
+The linter implements an `ast.NodeVisitor` to parse imports within the base Train directory and the patching directory to detect circular imports. The below example depicts two circular imports that would be detected by the linter originating from a `ray.train.common.__init__.py` file.
 
 ![Linter](./images/Linter.png)
 
-The linter parses all `__init__.py` files in the base train directory and collects their imports. For each patching import (e.g. `from ray.train.v2.foo import foo_v2`), the linter will also collect the imports in the patching file (e.g. `ray.train.v2.foo.py`) and if any of these imports point back to the same base train file (e.g. `ray.train.common.__init__.py`), a violation is detected.
+The linter parses all `__init__.py` files in the base Train directory and collects their imports. For each patching import (e.g. `from ray.train.v2.foo import foo_v2`), the linter will also collect the imports in the patching file (e.g. `ray.train.v2.foo.py`) and if any of these imports point back to the same base Train file (e.g. `ray.train.common.__init__.py`), a violation is detected.
 
-However, notice from the diagram that the linter also detects violations in the case of reexports. If the base train file points to a patching package file (e.g. `ray.train.v2.bar.__init__.py`), the linter will also collect the imports of the referenced implementation file (e.g. `ray.train.v2.bar.bar_impl.py`) to search for a violation.
+However, notice from the diagram that the linter also detects violations in the case of reexports. If the base Train file points to a patching package file (e.g. `ray.train.v2.bar.__init__.py`), the linter will also collect the imports of the referenced implementation file (e.g. `ray.train.v2.bar.bar_impl.py`) to search for a violation.
 
-That said, in both cases, if the linter finds that the base train file is imported early in the patching package file (e.g. `ray.train.common` is imported in `ray.train.v2.foo.__init__.py`/`ray.train.v2.bar.__init__.py`), then the violation will be suppressed. Otherwise, this is the fix that will be reccommended by the linter.
+That said, in both cases, if the linter finds that the base Train file is imported early in the patching package file (e.g. `ray.train.common` is imported in `ray.train.v2.foo.__init__.py`/`ray.train.v2.bar.__init__.py`), then the violation will be suppressed. Otherwise, this is the fix that will be reccommended by the linter.
