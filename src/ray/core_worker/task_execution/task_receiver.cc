@@ -146,13 +146,18 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
           }
         }
       }
-      if (!status.ok()) {
+      if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
+          status.IsCreationTaskError() || status.IsInterrupted() || status.IsIOError() ||
+          status.IsDisconnected()) {
         reply->set_worker_exiting(true);
         if (objects_valid) {
           accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
         } else {
           accepted_send_reply_callback(status, nullptr, nullptr);
         }
+      } else if (status.IsTimedOut()) {
+        // Don't signal that the worker is shutting down, but do propogate the error
+        accepted_send_reply_callback(status, nullptr, nullptr);
       } else {
         RAY_CHECK_OK(status);
         RAY_CHECK(objects_valid)
