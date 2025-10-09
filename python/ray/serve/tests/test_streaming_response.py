@@ -35,13 +35,13 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
     async def hi_gen_async():
         for i in range(10):
             yield f"hi_{i}"
-            # to avoid caolescing chunks
+            # to avoid coalescing chunks
             await asyncio.sleep(0.2)
 
     def hi_gen_sync():
         for i in range(10):
             yield f"hi_{i}"
-            # to avoid caolescing chunks
+            # to avoid coalescing chunks
             time.sleep(0.2)
 
     if use_fastapi:
@@ -262,13 +262,13 @@ def test_proxy_from_streaming_handle(
         async def hi_gen_async(self):
             for i in range(10):
                 yield f"hi_{i}"
-                # to avoid caolescing chunks
+                # to avoid coalescing chunks
                 await asyncio.sleep(0.2)
 
         def hi_gen_sync(self):
             for i in range(10):
                 yield f"hi_{i}"
-                # to avoid caolescing chunks
+                # to avoid coalescing chunks
                 time.sleep(0.2)
 
     if use_fastapi:
