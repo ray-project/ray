@@ -1,0 +1,29 @@
+build_arg_sets:
+  py311:
+    PYTHON_VERSION: 3.11
+    PYTHON_SHORT: 311
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=${PYTHON_VERSION}
+    - --unsafe-package ray
+    - --python-platform=linux
+  build_arg_sets:
+    - py311
+
+depsets:
+# First, extract base test dependencies from the current compiled mono repo one.
+# This also expands to the indirect dependencies for this Python version & platform.
+  - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    <<: *common_settings
+    requirements:
+      - python/requirements.txt
+      - python/requirements/lint-requirements.txt
+      - python/requirements/base-test-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/deplocks/lint/lint_py${PYTHON_VERSION}.lock
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
