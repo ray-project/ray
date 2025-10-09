@@ -685,8 +685,8 @@ def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
     return app
 
 
-def _inject_root_path(app, root_path: str):
-    """Middleware to enforce root_path for newer Uvicorn versions."""
+def _inject_root_path(app: ASGIApp, root_path: str):
+    """Middleware to inject root_path to the ASGI app."""
     if not root_path:
         return app
 
@@ -698,8 +698,13 @@ def _inject_root_path(app, root_path: str):
     return scope_root_path_middleware
 
 
-def _apply_root_path(app, root_path: str):
-    """???"""
+def _apply_root_path(app: ASGIApp, root_path: str):
+    """To have `root_path` as a prefix for all deployment routes it needs
+    to be injected into the ASGI scope instead of passing to uvicorn.Config
+    since 0.26.0 uvicorn version.
+
+    Reference: https://uvicorn.dev/release-notes/?utm_source=chatgpt.com#0260-january-16-2024
+    """
     if not root_path:
         return app, root_path
 
@@ -724,10 +729,6 @@ async def start_asgi_http_server(
     """
     app = _apply_middlewares(app, http_options.middlewares)
     app, root_path = _apply_root_path(app, http_options.root_path)
-    # root_path = http_options.root_path
-    # pip freeze | grep uvicorn
-    # 	pip install uvicorn==0.25.0
-    # 	pip install uvicorn==0.35.0
 
     sock = socket.socket()
     if enable_so_reuseport:
