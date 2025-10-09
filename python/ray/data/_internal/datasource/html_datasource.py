@@ -168,16 +168,19 @@ class HTMLDatasource(FileBasedDatasource):
         # Parse HTML with appropriate parser
         # Try lxml first (faster) if available, otherwise use html.parser
         soup = None
+        parser = None
         parse_error = None
         
         # First try lxml parser (faster)
         try:
             soup = BeautifulSoup(html_content, "lxml")
+            parser = "lxml"
         except Exception as e:
             # lxml not available or failed, try html.parser
             parse_error = e
             try:
                 soup = BeautifulSoup(html_content, "html.parser")
+                parser = "html.parser"
             except Exception as fallback_error:
                 # Both parsers failed, raise error with details
                 raise ValueError(
