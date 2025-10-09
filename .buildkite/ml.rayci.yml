@@ -283,7 +283,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
-        --except-tags gpu,needs_credentials
+        --except-tags gpu,needs_credentials,train_v2_gpu
     depends_on: [ "mlbuild", "forge" ]
     soft_fail: true
 
@@ -315,6 +315,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags gpu
+        --only-tags gpu,train_v2_gpu
     depends_on: [ "mlgpubuild", "forge" ]
     soft_fail: true
