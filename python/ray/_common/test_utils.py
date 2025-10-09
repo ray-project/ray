@@ -99,8 +99,7 @@ def wait_for_condition(
     """
     start = time.time()
     last_ex = None
-    t = time.time() - start
-    while t <= timeout:
+    while time.time() - start <= timeout:
         try:
             if condition_predictor(**kwargs):
                 return
@@ -109,9 +108,6 @@ def wait_for_condition(
                 raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
-        t = time.time() - start
-        if temp:
-            print(f"@@@@@ time elapsed: {t}")
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
