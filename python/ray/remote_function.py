@@ -249,9 +249,6 @@ class RemoteFunction:
                 task. If set to True, task events such as (task running, finished)
                 are emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             _labels: The key-value labels of a task.
 
         Examples:

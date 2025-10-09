@@ -1438,9 +1438,6 @@ class ActorClass(Generic[T]):
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
 
