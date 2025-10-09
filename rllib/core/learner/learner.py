@@ -1658,7 +1658,6 @@ class Learner(Checkpointable):
             value=total_module_steps,
             reduce="sum",
             clear_on_reduce=True,
-            with_throughput=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
