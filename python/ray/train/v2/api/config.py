@@ -150,7 +150,6 @@ class FailureConfig(FailureConfigV1):
     controller_failure_limit: int = -1
 
     def __post_init__(self):
-        # TODO(justinvyu): Add link to migration guide.
         if self.fail_fast != _DEPRECATED:
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
@@ -208,7 +207,6 @@ class RunConfig:
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()
 
-        # TODO(justinvyu): Add link to migration guide.
         run_config_deprecation_message = (
             "`RunConfig({})` is deprecated. This configuration was a "
             "Ray Tune API that did not support Ray Train usage well, "
