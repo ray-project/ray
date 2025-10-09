@@ -63,7 +63,7 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
     url = get_application_url("HTTP")
     with httpx.stream("GET", url) as r:
         r.raise_for_status()
-        for i, chunk in enumerate(r.iter_text()):
+        for i, chunk in enumerate(r.iter_text(chunk_size=4)):
             assert chunk == f"hi_{i}"
 
 
@@ -300,7 +300,7 @@ def test_proxy_from_streaming_handle(
     url = get_application_url("HTTP")
     with httpx.stream("GET", url) as r:
         r.raise_for_status()
-        for i, chunk in enumerate(r.iter_text()):
+        for i, chunk in enumerate(r.iter_text(chunk_size=4)):
             assert chunk == f"hi_{i}"
 
 
