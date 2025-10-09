@@ -83,7 +83,7 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
-      const rpc::WaitForActorRefDeletedRequest &request,
+      rpc::WaitForActorRefDeletedRequest &&request,
       const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
