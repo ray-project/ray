@@ -653,11 +653,3 @@ def test_variable_shape_tensor_serialization():
     payload = PicklableArrayPayload.from_array(ar)
     ar2 = payload.to_array()
     assert ar == ar2
-
-
-if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main(["-v", __file__]))
