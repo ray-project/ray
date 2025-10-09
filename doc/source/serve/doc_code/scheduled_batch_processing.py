@@ -9,7 +9,9 @@ from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 
 
-def scheduled_batch_processing_policy(ctx: AutoscalingContext) -> tuple[int, Dict[str, Any]]:
+def scheduled_batch_processing_policy(
+    ctx: AutoscalingContext,
+) -> tuple[int, Dict[str, Any]]:
     current_time = datetime.now()
     current_hour = current_time.hour
     # Scale up during business hours (9 AM - 5 PM)
