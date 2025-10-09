@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 import pyarrow.compute as pc
+from datasketches import kll_floats_sketch
 
 from ray.data._internal.util import is_null
 from ray.data.block import (
@@ -1189,3 +1190,90 @@ class ZeroPercentage(AggregateFnV2):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+
+class ApproximateQuantile(AggregateFnV2):
+    def __init__(
+        self,
+        on: str,
+        quantiles: List[float],
+        k: int = 800,
+        alias_name: Optional[str] = None,
+    ):
+        """
+        Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+        https://datasketches.apache.org/docs/KLL/KLLOverview.html
+
+        The accuracy of the KLL quantile sketch is a function of the configured K, which also affects
+        the overall size of the sketch.
+        The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
+        median (rank = 0.50) means that the true quantile (if you could extract it from the set)
+        should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
+        rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
+        In other words, the error is a fixed +/- epsilon for the entire range of ranks.
+
+        Typical single-sided rank error by k (use for getQuantile/getRank):
+            - k=100 → ~2.61%
+            - k=200 → ~1.33%
+            - k=400 → ~0.68%
+            - k=800 → ~0.35%
+
+        See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+
+        Null values in the target column are ignored when constructing the sketch.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateQuantile
+
+                # Create a dataset with some values
+                ds = ray.data.from_items(
+                    [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+                    {"value": 80.0}, {"value": 100.0}]
+                )
+
+                result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+                # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+
+
+        Args:
+            on: The name of the column to calculate the quantile on. Must be a numeric column.
+            quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
+            k: Controls the accuracy and memory footprint of the sketch; higher k yields lower error but uses more memory. Defaults to 800.
+            alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
+        """
+        self._quantiles = quantiles
+        self._k = k
+        super().__init__(
+            alias_name if alias_name else f"approx_quantile({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: ApproximateQuantile.zero(k).serialize(),
+        )
+
+    @staticmethod
+    def zero(k: int):
+        return kll_floats_sketch(k=k)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = ApproximateQuantile.zero(self._k)
+        for value in column:
+            # we ignore nulls here
+            if value.as_py() is not None:
+                sketch.update(float(value.as_py()))
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = ApproximateQuantile.zero(self._k)
+        combined.merge(kll_floats_sketch.deserialize(current_accumulator))
+        combined.merge(kll_floats_sketch.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[float]:
+        return kll_floats_sketch.deserialize(accumulator).get_quantiles(self._quantiles)
