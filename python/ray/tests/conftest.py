@@ -1505,6 +1505,7 @@ def event_routing_config(request, monkeypatch):
         print("using aggregator mode")
         # Enable aggregator path in core worker
         monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
         monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_gcs", "0")
         # Ensure aggregator agent publishes to GCS
         monkeypatch.setenv(
