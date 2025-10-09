@@ -23,7 +23,6 @@ class DeploymentInfo:
         ingress: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-        external_scaler_enabled: bool = False,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -40,7 +39,6 @@ class DeploymentInfo:
 
         self.route_prefix = route_prefix
         self.ingress = ingress
-        self.external_scaler_enabled = external_scaler_enabled
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -60,7 +58,6 @@ class DeploymentInfo:
         replica_config: ReplicaConfig = None,
         version: str = None,
         route_prefix: str = None,
-        external_scaler_enabled: bool = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
             deployment_config=deployment_config or self.deployment_config,
@@ -72,11 +69,6 @@ class DeploymentInfo:
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
-            external_scaler_enabled=(
-                external_scaler_enabled
-                if external_scaler_enabled is not None
-                else self.external_scaler_enabled
-            ),
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
