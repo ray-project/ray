@@ -47,6 +47,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
+  "core_worker_rpc_server_reconnect_timeout_s": 0,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_storage": $0
