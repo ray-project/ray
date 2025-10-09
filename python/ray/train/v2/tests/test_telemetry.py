@@ -9,6 +9,23 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
+def mock_record(monkeypatch):
+    import ray.air._internal.usage
+
+    recorded = {}
+
+    def mock_record_extra_usage_tag(key: ray_usage_lib.TagKey, value: str):
+        recorded[key] = value
+
+    monkeypatch.setattr(
+        ray.air._internal.usage,
+        "record_extra_usage_tag",
+        mock_record_extra_usage_tag,
+    )
+    yield recorded
+
+
+@pytest.fixture
 def reset_usage_lib():
     yield
     ray.shutdown()
