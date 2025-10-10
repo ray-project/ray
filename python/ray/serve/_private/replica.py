@@ -64,6 +64,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
+    RECORD_METRICS_TASK_NAME,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -289,10 +290,10 @@ class ReplicaMetricsManager:
         )
         # Collect autoscaling metrics locally periodically.
         self._metrics_pusher.register_or_update_task(
-            self.RECORD_METRICS_TASK_NAME,
+            RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-            )
+            RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+        )
 
     def should_collect_ongoing_requests(self) -> bool:
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
