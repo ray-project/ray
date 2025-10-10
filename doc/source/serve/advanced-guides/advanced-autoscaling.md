@@ -439,3 +439,79 @@ makes more conservative downscaling decisions.
 | `downscaling_factor = 1` | `downscaling_factor = 0.5` |
 | ------------------------------------------------ | ----------------------------------------------- |
 | ![downscale-smooth-before](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_before.png) | ![downscale-smooth-after](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_after.png) |
+
+
+(serve-custom-autoscaling-policies)=
+## Custom autoscaling policies
+
+:::{warning}
+Custom autoscaling policies are experimental and may change in future releases.
+:::
+
+Ray Serve’s built-in, request-driven autoscaling works well for most apps. Use **custom autoscaling policies** when you need more control—e.g., scaling on external metrics (CloudWatch, Prometheus), anticipating predictable traffic (scheduled batch jobs), or applying business logic that goes beyond queue thresholds.
+
+Custom policies let you implement scaling logic based on any metrics or rules you choose.
+
+### Custom policy for deployment
+
+A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
+
+* **Current state:** Current replica count and deployment metadata.
+* **Built-in metrics:** Total requests, queued requests, per-replica counts.
+* **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
+* **Capacity bounds:** `min` / `max` replica limits adjusted for current cluster capacity.
+* **Policy state:** A `dict` you can use to persist arbitrary state across control-loop iterations.
+* **Timing:** Timestamps of the last scale actions and “now”.
+
+The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_scheduled_batch_processing_policy__
+:end-before: __end_scheduled_batch_processing_policy__
+```
+
+```{literalinclude} ../doc_code/scheduled_batch_processing.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+Policies are defined **per deployment**. If you don’t provide one, Ray Serve falls back to its built-in request-based policy.
+
+The policy function is invoked by the Ray Serve controller every `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` seconds (default **0.1s**), so your logic runs against near-real-time state.
+
+:::{warning}
+Keep policy functions **fast and lightweight**. Slow logic can block the Serve controller and degrade cluster responsiveness.
+:::
+
+
+### Custom metrics
+
+You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
+
+This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_custom_metrics_autoscaling_policy__
+:end-before: __end_custom_metrics_autoscaling_policy__
+```
+
+```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+:::{note}
+The `record_autoscaling_stats()` method can be either synchronous or asynchronous. It must complete within the timeout specified by `RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S` (default 30 seconds).
+:::
+
+In your policy, access custom metrics via:
+
+* **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
+  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S` (the metric recording interval).
+* **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
+
+> Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
