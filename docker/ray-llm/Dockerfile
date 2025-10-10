@@ -109,7 +109,7 @@ UCX_VERSION="1.19.0"
 )
 
 # Keep in sync with llm-requirements.txt
-NIXL_VERSION="0.4.1"
+NIXL_VERSION="0.6.0"
 (
     echo "Installing NIXL ${NIXL_VERSION}"
     # NIXL needs meson pybind11 ninja, but should have been included in requirements_*.txt
