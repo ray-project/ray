@@ -28,18 +28,28 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/gcs_ray_event_converter.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
 
-GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+using std::literals::operator""sv;
+
+GcsTaskManager::GcsTaskManager(
+    instrumented_io_context &io_service,
+    ray::observability::MetricInterface &task_events_reported_gauge,
+    ray::observability::MetricInterface &task_events_dropped_gauge,
+    ray::observability::MetricInterface &task_events_stored_gauge)
     : io_service_(io_service),
       task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-      ray_event_converter_(std::make_unique<GcsRayEventConverter>()),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      task_events_reported_gauge_(task_events_reported_gauge),
+      task_events_dropped_gauge_(task_events_dropped_gauge),
+      task_events_stored_gauge_(task_events_stored_gauge) {
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
                                         "GcsTaskManager.GcJobSummary");
@@ -62,7 +72,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    JobID job_id) const {
+    const JobID &job_id) const {
   auto task_locators_itr = job_index_.find(job_id);
   if (task_locators_itr == job_index_.end()) {
     // Not found any tasks related to this job.
@@ -447,7 +457,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (job_ids.size() == 1) {
-      JobID job_id = *job_ids.begin();
+      const JobID &job_id = *job_ids.begin();
       task_events = task_event_storage_->GetTaskEvents(job_id);
 
       // Populate per-job data loss.
@@ -643,7 +653,7 @@ void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) 
   auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
-  for (auto events_by_task : *data.mutable_events_by_task()) {
+  for (auto &events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);
     task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
   }
@@ -661,8 +671,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto task_event_data_requests =
-      ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   for (auto &task_event_data : task_event_data_requests) {
     RecordTaskEventData(task_event_data);
@@ -691,16 +700,14 @@ std::string GcsTaskManager::DebugString() {
 
 void GcsTaskManager::RecordMetrics() {
   auto counters = stats_counter_.GetAll();
-  ray::stats::STATS_gcs_task_manager_task_events_reported.Record(
-      counters[kTotalNumTaskEventsReported]);
+  task_events_reported_gauge_.Record(counters[kTotalNumTaskEventsReported]);
 
-  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumTaskAttemptsDropped], "STATUS_EVENT");
-  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumProfileTaskEventsDropped], "PROFILE_EVENT");
+  task_events_dropped_gauge_.Record(counters[kTotalNumTaskAttemptsDropped],
+                                    {{"Type"sv, "STATUS_EVENT"}});
+  task_events_dropped_gauge_.Record(counters[kTotalNumProfileTaskEventsDropped],
+                                    {{"Type"sv, "PROFILE_EVENT"}});
 
-  ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
-      counters[kNumTaskEventsStored]);
+  task_events_stored_gauge_.Record(counters[kNumTaskEventsStored]);
 
   {
     absl::MutexLock lock(&mutex_);

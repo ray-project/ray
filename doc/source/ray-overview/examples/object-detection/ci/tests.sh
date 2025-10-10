@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euxo pipefail
+
 # don't use nbcovert or jupytext unless you're willing
 # to check each subprocess unit and validate that errors
 # aren't being consumed/hidden

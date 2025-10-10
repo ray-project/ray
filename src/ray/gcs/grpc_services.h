@@ -29,7 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 

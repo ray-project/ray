@@ -95,12 +95,12 @@ OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=44,
         title="Ray OOM Kills (Tasks and Actors)",
-        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html. Note: The RayNodeType filter does not work on this graph.",
         unit="failures",
         targets=[
             Target(
-                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (Name, instance, RayNodeType)',
-                legend="OOM Killed: {{Name}}, {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", {global_filters}}}) by (Name, instance)',
+                legend="OOM Killed: {{Name}}, {{instance}}",
             ),
         ],
     ),
@@ -175,7 +175,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=42,
-        title="Active Actors by State",
+        title="Alive Actors by State",
         description="Current count of alive actors (i.e. not dead/terminated), grouped by state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
         unit="actors",
         targets=[
@@ -187,7 +187,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=36,
-        title="Active Actors by Name",
+        title="Alive Actors by Name",
         description="Current count of alive actors, grouped by actor name.",
         unit="actors",
         targets=[

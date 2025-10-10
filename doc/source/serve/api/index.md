@@ -85,6 +85,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
+   serve.config.AggregationFunction
    serve.config.RequestRouterConfig
 ```
 
@@ -392,6 +393,7 @@ Content-Type: application/json
    schema.CeleryAdapterConfig
    schema.TaskProcessorConfig
    schema.TaskResult
+   schema.ScaleDeploymentRequest
 ```
 
 (serve-rest-api-response-schema)=

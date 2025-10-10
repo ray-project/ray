@@ -5,7 +5,7 @@ ray_cc_library(
     hdrs = ["store_client.h"],
     deps = [
         "//src/ray/common:asio",
-        "//src/ray/common:gcs_callbacks",
+        "//src/ray/common:gcs_callback_types",
         "//src/ray/common:id",
         "//src/ray/common:status",
     ],

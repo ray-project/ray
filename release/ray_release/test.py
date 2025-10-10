@@ -388,6 +388,12 @@ class Test(dict):
         """
         return self.get("env") == "kuberay"
 
+    def is_azure(self) -> bool:
+        """
+        Returns whether this test is running on Azure.
+        """
+        return self.get("env") == "azure"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -432,7 +438,13 @@ class Test(dict):
         """
         Returns the post-build script for the BYOD cluster.
         """
-        return self["cluster"]["byod"].get("post_build_script")
+        return self["cluster"]["byod"].get("post_build_script", None)
+
+    def get_byod_python_depset(self) -> Optional[str]:
+        """
+        Returns the lock file path.
+        """
+        return self["cluster"]["byod"].get("python_depset", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
@@ -555,6 +567,7 @@ class Test(dict):
             return self.get_byod_base_image_tag(build_id)
         custom_info = {
             "post_build_script": self.get_byod_post_build_script(),
+            "python_depset": self.get_byod_python_depset(),
         }
         return f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
 
@@ -618,7 +631,10 @@ class Test(dict):
         """
         Returns whether this test requires a custom byod image.
         """
-        return self.get_byod_post_build_script() is not None
+        return (
+            self.get_byod_post_build_script() is not None
+            or self.get_byod_python_depset() is not None
+        )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """

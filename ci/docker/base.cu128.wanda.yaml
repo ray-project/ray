@@ -10,7 +10,7 @@ srcs:
   - ci/env/install-miniforge.sh
   - ci/suppress_output
 build_args:
-  - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
+  - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
   - BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
 tags:
