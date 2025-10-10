@@ -783,5 +783,33 @@ def test_deployment_contains_utils(serve_instance):
     )
 
 
+def test_deploy_use_custom_request_router(serve_instance):
+    """Test that the custom request router is initialized and used correctly."""
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "use_custom_request_router.yaml",
+    )
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
+        == "hello_from_custom_request_router"
+    )
+
+
+def test_deploy_use_custom_autoscaling(serve_instance):
+    """Test that the custom autoscaling is initialized correctly."""
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "use_custom_autoscaling.yaml",
+    )
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
+        == "hello_from_custom_autoscaling_policy"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
