@@ -240,7 +240,7 @@ def run_training_with_validation(
     checkpoint_upload_mode: CheckpointUploadMode,
     validate_fn: Optional[Callable],
     validate_within_trainer: bool,
-    num_epochs: int = 10,
+    num_epochs: int,
 ):
     # Launch distributed training job.
     start_time = time.time()
@@ -286,7 +286,7 @@ def run_training_with_validation(
 
 def main():
     consolidated_metrics = {}
-    num_epochs = 1
+    num_epochs = 10
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
         CheckpointUploadMode.SYNC, None, True, num_epochs
     )
