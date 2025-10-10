@@ -113,12 +113,12 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         self,
         input_op: LogicalOperator,
         num_outputs: int,
-        hash_shuffle: bool,
+        full_shuffle: bool,
         random_permute: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ):
-        if hash_shuffle:
+        if full_shuffle:
             sub_progress_bar_names = [
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -133,9 +133,9 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        # Will perform a hash-shuffle-based partition
-        self._hash_shuffle = hash_shuffle
-        # Will randomly shuffle the block's orders
+        # If True, each output block will get rows from the input block
+        self._full_shuffle = full_shuffle
+        # If True, will randomly shuffle the block's orders
         self._random_permute = random_permute
         self._keys = keys
         self._sort = sort

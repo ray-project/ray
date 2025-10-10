@@ -57,9 +57,9 @@ class ShuffleFusion(Rule):
 
             if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
                 if _keys_can_fuse(prev_op, op):
-                    _disconnect_op(prev_op)
-                    # If one of the operators hash shuffles, then new_op should too.
-                    hash_shuffle = op._hash_shuffle or prev_op._hash_shuffle
+                    _disconnect_op_from_dag(prev_op)
+                    # If one of the operators full shuffles, then new_op should too.
+                    full_shuffle = op._full_shuffle or prev_op._full_shuffle
 
                     # Similarly, if one of the operators random permutation, then the new_op
                     # should randomly permute too.
@@ -68,7 +68,7 @@ class ShuffleFusion(Rule):
                     new_op = Repartition(
                         input_op=prev_op.input_dependencies[0],
                         num_outputs=op._num_outputs,
-                        hash_shuffle=hash_shuffle,
+                        full_shuffle=full_shuffle,
                         random_permute=random_permute,
                         keys=op._keys,
                         sort=op._sort,
@@ -79,17 +79,17 @@ class ShuffleFusion(Rule):
             if isinstance(prev_op, StreamingRepartition) and isinstance(
                 op, Repartition
             ):
-                _disconnect_op(prev_op)
+                _disconnect_op_from_dag(prev_op)
                 return op
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, RandomShuffle):
                 # We need to make sure at least one of the shuffles is non-deterministic
                 if prev_op._seed is not None or op._seed is not None:
-                    _disconnect_op(prev_op)
+                    _disconnect_op_from_dag(prev_op)
                     return op
 
             if isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle):
-                _disconnect_op(prev_op)
+                _disconnect_op_from_dag(prev_op)
 
                 new_op = RandomShuffle(
                     input_op=prev_op.input_dependencies[0],
@@ -101,12 +101,12 @@ class ShuffleFusion(Rule):
                 return new_op
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
-                _disconnect_op(prev_op)
+                _disconnect_op_from_dag(prev_op)
                 # Create new Repartition with shuffle enabled
                 new_op = Repartition(
                     input_op=prev_op.input_dependencies[0],
                     num_outputs=op._num_outputs,
-                    hash_shuffle=True,  # NOTE: the shuffle here
+                    full_shuffle=True,  # NOTE: the shuffle here
                     random_permute=True,  # NOTE: the random permute here
                     keys=op._keys,
                     sort=op._sort,
@@ -114,7 +114,7 @@ class ShuffleFusion(Rule):
                 return new_op
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Sort):
-                _disconnect_op(prev_op)
+                _disconnect_op_from_dag(prev_op)
                 return op
 
             if isinstance(prev_op, Repartition) and isinstance(op, Aggregate):
@@ -122,18 +122,18 @@ class ShuffleFusion(Rule):
                 if prev_op._num_outputs == op._num_partitions and _keys_can_fuse(
                     prev_op, op
                 ):
-                    _disconnect_op(prev_op)
+                    _disconnect_op_from_dag(prev_op)
                     return op
 
             if isinstance(prev_op, Sort) and isinstance(op, Aggregate):
                 ctx = DataContext.get_current()
                 if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
-                    _disconnect_op(prev_op)
+                    _disconnect_op_from_dag(prev_op)
                     return op
 
             if isinstance(prev_op, Sort) and isinstance(op, Sort):
                 if prev_op._batch_format == op._batch_format:
-                    _disconnect_op(prev_op)
+                    _disconnect_op_from_dag(prev_op)
                     # Create new Sort with combined columns
                     from ray.data._internal.planner.exchange.sort_task_spec import (
                         SortKey,
@@ -161,7 +161,7 @@ class ShuffleFusion(Rule):
 
 
 # TODO(justin): apply this to other Rules
-def _disconnect_op(op: Operator):
+def _disconnect_op_from_dag(op: Operator):
     """Disconnect an operator from the DAG by connecting
     its prev_ops directly to its next_ops.
 
