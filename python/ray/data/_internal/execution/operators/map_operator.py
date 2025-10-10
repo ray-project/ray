@@ -416,9 +416,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
 
-            # Estimate number of tasks and rows from inputs received and tasks
-            # submitted so far
-
             if self._metrics.num_tasks_finished == 0:
                 self._estimated_num_output_bundles = (
                     self._metrics.num_task_outputs_generated
@@ -434,6 +431,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
             (
                 _,
                 self._estimated_num_output_bundles,
