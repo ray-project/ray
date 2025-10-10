@@ -822,7 +822,8 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     """
     # Right now we don't allow modifying the autoscaling policy, so this will not fail
     policy = "i.dont.exist:fake_policy"
-    AutoscalingConfig(_policy=policy)
+    with pytest.raises(ModuleNotFoundError):
+        AutoscalingConfig(policy={"policy_function": policy})
 
 
 def test_default_autoscaling_policy_import_path():
