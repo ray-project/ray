@@ -20,6 +20,7 @@ steps:
       - copyright_format
       - bazel_team
       - bazel_buildifier
+      - pytest_format
       - test_coverage
       - documentation_style
 
