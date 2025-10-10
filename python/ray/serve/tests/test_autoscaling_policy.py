@@ -1540,11 +1540,13 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
 @pytest.mark.parametrize(
     "policy",
     [
-        {"name": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"},
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        },
         AutoscalingPolicy(
-            name="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
         ),
-        AutoscalingPolicy(name=custom_autoscaling_policy),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy),
     ],
 )
 def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
