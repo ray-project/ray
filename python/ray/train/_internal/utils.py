@@ -4,7 +4,6 @@ import inspect
 import logging
 import os
 import socket
-from pathlib import Path
 from typing import (
     Any,
     Callable,
@@ -76,21 +75,6 @@ def get_address_and_port() -> Tuple[str, int]:
     addr = ray.util.get_node_ip_address()
     port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
     return addr, port
-
-
-def construct_path(path: Path, parent_path: Path) -> Path:
-    """Constructs a path relative to a parent.
-
-    Args:
-        path: A relative or absolute path.
-        parent_path: A relative path or absolute path.
-
-    Returns: An absolute path.
-    """
-    if path.expanduser().is_absolute():
-        return path.expanduser().resolve()
-    else:
-        return parent_path.joinpath(path).expanduser().resolve()
 
 
 def update_env_vars(env_vars: Dict[str, Any]):

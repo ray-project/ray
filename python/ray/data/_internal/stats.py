@@ -278,15 +278,43 @@ class _StatsActor:
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
         iter_tag_keys = ("dataset",)
-        self.iter_total_blocked_s = Gauge(
-            "data_iter_total_blocked_seconds",
-            description="Seconds user thread is blocked by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
+
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
             description="Total time spent waiting for the first batch after starting iteration. "
             "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_block_fetching_s = Gauge(
+            "data_iter_block_fetching_seconds",
+            description="Seconds taken to fetch (with ray.get) blocks by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_shaping_s = Gauge(
+            "data_iter_batch_shaping_seconds",
+            description="Seconds taken to shape batch from incoming blocks by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_formatting_s = Gauge(
+            "data_iter_batch_formatting_seconds",
+            description="Seconds taken to format batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_collating_s = Gauge(
+            "data_iter_batch_collating_seconds",
+            description="Seconds taken to collate batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_finalizing_s = Gauge(
+            "data_iter_batch_finalizing_seconds",
+            description="Seconds taken to collate batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_total_blocked_s = Gauge(
+            "data_iter_total_blocked_seconds",
+            description="Seconds user thread is blocked by iter_batches()",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -297,6 +325,46 @@ class _StatsActor:
         self.iter_initialize_s = Gauge(
             "data_iter_initialize_seconds",
             description="Seconds spent in iterator initialization code",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_get_s = Gauge(
+            "data_iter_get_seconds",
+            description="Seconds spent in ray.get() while resolving block references",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_next_batch_s = Gauge(
+            "data_iter_next_batch_seconds",
+            description="Seconds spent getting the next batch from the block buffer",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_format_batch_s = Gauge(
+            "data_iter_format_batch_seconds",
+            description="Seconds spent formatting the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_collate_batch_s = Gauge(
+            "data_iter_collate_batch_seconds",
+            description="Seconds spent collating the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_finalize_batch_s = Gauge(
+            "data_iter_finalize_batch_seconds",
+            description="Seconds spent finalizing the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_local = Gauge(
+            "data_iter_blocks_local",
+            description="Number of blocks already on the local node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_remote = Gauge(
+            "data_iter_blocks_remote",
+            description="Number of blocks that require fetching from another node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_unknown_location = Gauge(
+            "data_iter_unknown_location",
+            description="Number of blocks that have unknown locations",
             tag_keys=iter_tag_keys,
         )
 
@@ -477,10 +545,27 @@ class _StatsActor:
         dataset_tag,
     ):
         tags = self._create_tags(dataset_tag)
-        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
-        self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_get_s.set(stats.iter_get_s.get(), tags)
+        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
+        self.iter_blocks_local.set(stats.iter_blocks_local, tags)
+        self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
+        self.iter_unknown_location.set(stats.iter_unknown_location, tags)
+
+        self.iter_block_fetching_s.set(stats.iter_get_s.get(), tags)
+        self.iter_batch_shaping_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_batch_formatting_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_batch_collating_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_batch_finalizing_s.set(stats.iter_finalize_batch_s.get(), tags)
+
+        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
+
+        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def register_dataset(
         self,
