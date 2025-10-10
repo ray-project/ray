@@ -12,10 +12,10 @@ import pytest
 import ray
 from ray._common.network_utils import build_address
 from ray._common.test_utils import (
+    MockTimer,
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
-    MockTimer,
 )
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -25,9 +25,9 @@ from ray._private.ray_constants import (
 )
 from ray._raylet import NodeID
 from ray.dashboard.consts import (
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-    DEFAULT_JOB_START_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
@@ -362,7 +362,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     indirect=True,
 )
 async def test_pending_job_timeout_during_new_head_creation(
-    call_ray_start, tmp_path, monkeypatch
+    call_ray_start, tmp_path, monkeypatch  # noqa: F811
 ):
     """Test the timeout for pending jobs during new head node creation."""
 
