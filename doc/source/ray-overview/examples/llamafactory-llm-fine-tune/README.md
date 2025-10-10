@@ -32,7 +32,7 @@ Single-signal feedback alignment with **KTO** and **LoRA** for lightweight, scal
 
 ## Development with Anyscale workspaces
 
-Develop as you would on your laptop. Attach your IDE remotely and install dependencies with `pip` that automatically propagate to the cluster. Debug distributed training with the [distributed debugger](https://docs.anyscale.com/platform/workspaces/workspaces-debugging/#distributed-debugger). For more details, see the [workspaces docs](https://docs.anyscale.com/platform/workspaces/).
+Develop as you would on your laptop. Attach your IDE remotely and install dependencies with `pip` that automatically propagate to the cluster. Debug distributed training with the [distributed debugger](https://docs.anyscale.com/platform/workspaces/workspaces-debugging/#distributed-debugger). For more details, see [Anyscale workspaces](https://docs.anyscale.com/platform/workspaces/).
 
 ## Production with Anyscale jobs
 

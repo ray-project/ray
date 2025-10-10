@@ -5,7 +5,7 @@ trust_remote_code: true
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
 
 ### method
-# If you instead want to use just LoRA, or use a pre-quantized model like Qwen/Qwen2.5-7B-Instruct-AWQ, then omit the quantization_bit/method keys below
+# If you instead want to use just LoRA, or a pre-quantized model like Qwen/Qwen2.5-7B-Instruct-AWQ, then omit the quantization_bit/method keys below
 quantization_bit: 4 # 4-bit base weights (QLoRA). Use 8 for 8-bit; omit for FP16/BF16
 quantization_method: bnb  # QLoRA via BitsAndBytes or hqq / eetq
 
@@ -30,14 +30,14 @@ preprocessing_num_workers: 16
 ### output
 output_dir: qwen2.5_7b_qlora_dpo
 logging_steps: 5
-save_steps: 5              # for tensorboard logging purpose too, can increase if not using tensorboard
+save_steps: 5              # For tensorboard logging purpose too. Can increase if not using tensorboard
 plot_loss: true
 report_to: tensorboard  # or none
 
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 2
-num_train_epochs: 3.0  # low for demo purpose; adjust as needed
+num_train_epochs: 3.0  # Low for demo purpose; adjust as needed
 learning_rate: 5.0e-6
 bf16: true
 lr_scheduler_type: cosine
@@ -57,7 +57,7 @@ resources_per_worker:
 ray_init_kwargs:
   runtime_env:
     env_vars:
-      # if using gated models like meta-llama/Llama-3.1-8B-Instruct
+      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
       # HF_TOKEN: <your_huggingface_token>
       # Enable faster downloads if hf_transfer is installed:
       HF_HUB_ENABLE_HF_TRANSFER: '1'

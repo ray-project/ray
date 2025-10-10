@@ -12,10 +12,9 @@ lora_rank: 8
 lora_target: all
 
 ### deepspeed
-deepspeed: /mnt/cluster_storage/ds_z3_config.json # path to the DeepSpeed config
+deepspeed: /mnt/cluster_storage/ds_z3_config.json # Path to the DeepSpeed config
 
 ### dataset
-# local dataset
 dataset: my_glaive_toolcall_en_demo
 dataset_dir: /mnt/cluster_storage
 
@@ -33,7 +32,7 @@ plot_loss: true
 report_to: wandb # or none
 
 ### train
-per_device_train_batch_size: 1 # adjust this depending on your GPU memory and sequence length
+per_device_train_batch_size: 1 # Adjust this depending on your GPU memory and sequence length
 gradient_accumulation_steps: 4
 num_train_epochs: 3.0
 learning_rate: 1.0e-4
@@ -54,10 +53,9 @@ resources_per_worker:
 ray_init_kwargs:
   runtime_env:
     env_vars:
-      # if using wandb for experiments tracking
+      # If using wandb for experiments tracking
       WANDB_API_KEY: <your_wandb_token>
-      # if using gated models like meta-llama/Llama-3.1-8B-Instruct
+      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
       # HF_TOKEN: <your_huggingface_token>
-      # if hf_transfer is installed
+      # If hf_transfer is installed
       HF_HUB_ENABLE_HF_TRANSFER: '1'
-      
