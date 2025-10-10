@@ -35,11 +35,11 @@ void LagProbeLoop(instrumented_io_context &io_context,
         auto end = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
-        ray::stats::STATS_io_context_event_loop_lag_ms.Record(
-            duration.count(),
-            {
-                {"Name", context_name.value_or(GetThreadName())},
-            });
+        //ray::stats::STATS_io_context_event_loop_lag_ms.Record(
+        //    duration.count(),
+        //    {
+        //        {"Name", context_name.value_or(GetThreadName())},
+        //    });
 
         // Schedule the next probe. If `duration` is larger than `interval_ms`, we
         // should schedule the next probe immediately. Otherwise, we should wait
