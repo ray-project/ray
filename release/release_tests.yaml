@@ -1907,8 +1907,8 @@
     cluster_compute: compute_aws.yaml
 
   run:
-  timeout: 1800
-  script: RAY_TRAIN_V2_ENABLED=1 pytest -sv test_huggingface_transformers.py
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 pytest -sv test_huggingface_transformers.py
 
 - name: huggingface_accelerate
   group: Train tests
