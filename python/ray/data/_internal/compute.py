@@ -28,7 +28,6 @@ class ComputeStrategy:
     pass
 
 
-@DeveloperAPI
 class TaskPoolStrategy(ComputeStrategy):
     def __init__(
         self,
