@@ -577,6 +577,10 @@ def validate_fn(checkpoint, config):
         scaling_config=ray.train.ScalingConfig(
             num_workers=2, use_gpu=True, accelerator_type="A10G"
         ),
+        # Name validation run to easily associate it with training run
+        run_config=ray.train.RunConfig(
+            name=f"{config['train_run_name']}_validation_epoch_{config['epoch']}"
+        ),
         # User weaker GPUs for validation
         datasets={"validation": config["dataset"]},
     )
@@ -658,6 +662,8 @@ def train_func(config):
                 validate_fn=validate_fn,
                 validate_config={
                     "dataset": config["validation_dataset"],
+                    "train_run_name": ray.train.get_context().get_experiment_name(),
+                    "epoch": epoch,
                 },
             )
         else:
