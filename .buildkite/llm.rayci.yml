@@ -30,7 +30,7 @@ steps:
       - cpu
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --except-tags gpu
     depends_on: llmbuild
 
@@ -41,6 +41,6 @@ steps:
       - gpu
     instance_type: g6-large
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --build-name llmgpubuild --only-tags gpu
     depends_on: llmgpubuild
