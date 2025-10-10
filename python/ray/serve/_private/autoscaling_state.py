@@ -1,7 +1,6 @@
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
@@ -25,47 +24,9 @@ from ray.serve._private.metrics_utils import (
     merge_timeseries_dicts,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.config import AutoscalingContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class AutoscalingContext:
-    """Rich context provided to custom autoscaling policies."""
-
-    # Deployment information
-    deployment_id: DeploymentID
-    deployment_name: str
-    app_name: Optional[str]
-
-    # Current state
-    current_num_replicas: int
-    target_num_replicas: int
-    running_replicas: List[ReplicaID]
-
-    # Built-in metrics
-    total_num_requests: float
-    queued_requests: Optional[float]
-    requests_per_replica: Dict[ReplicaID, float]
-
-    # Custom metrics
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
-
-    # Capacity and bounds
-    capacity_adjusted_min_replicas: int
-    capacity_adjusted_max_replicas: int
-
-    # Policy state
-    policy_state: Dict[str, Any]
-
-    # Timing
-    last_scale_up_time: Optional[float]
-    last_scale_down_time: Optional[float]
-    current_time: Optional[float]
-
-    # Config
-    config: Optional[Any]
 
 
 class AutoscalingState:
