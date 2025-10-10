@@ -540,7 +540,7 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> List[Union[int, float]]:
+    def aggregate_block(self, block: Block) -> Optional[List[Union[int, float]]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
@@ -724,7 +724,7 @@ class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
+    def aggregate_block(self, block: Block) -> Optional[Union[int, float]]:
         block_accessor = BlockAccessor.for_block(block)
 
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
