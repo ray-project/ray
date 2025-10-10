@@ -20,16 +20,13 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/publisher_interface.h"
-#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 namespace core {
@@ -141,7 +138,7 @@ class ActorManagerTest : public ::testing::Test {
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         actor_task_submitter_(new MockActorTaskSubmitter()),
-        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         reference_counter_(std::make_unique<ReferenceCounter>(
             rpc::Address(),
@@ -197,7 +194,7 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
