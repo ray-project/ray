@@ -182,9 +182,7 @@ class TestShuffleFusionLongChains:
                 full_shuffle=(i % 2 == 1),  # Alternate shuffle
                 random_permute=(i % 2 == 1),  # Every other
             )
-            if i == 0:
-                expected_fused_name = "[Repartition->Repartition]"
-            elif i < 9:
+            if i < 9:
                 expected_fused_name = f"[{expected_fused_name}->Repartition]"
 
         logical_plan = LogicalPlan(current_op, self.context)
