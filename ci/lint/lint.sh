@@ -61,7 +61,7 @@ code_format() {
 }
 
 semgrep_lint() {
-  pip install -c python/requirements_compiled.txt semgrep
+  pip install -c python/requirements_compiled.txt semgrep pre-commit
   pre-commit run semgrep --all-files --show-diff-on-failure
 }
 
