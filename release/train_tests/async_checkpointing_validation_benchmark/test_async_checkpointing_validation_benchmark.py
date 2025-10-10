@@ -1,6 +1,5 @@
 import logging
 import os
-import pytest
 import tempfile
 import time
 from typing import Callable, Optional
@@ -21,6 +20,9 @@ from ray._private.test_utils import safe_write_to_results_json
 
 
 logger = logging.getLogger(__name__)
+
+MAXIMUM_ALLOWED_ACCURACY_DIFF = 0.2
+MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER = 1.1
 
 # ==== Start dataset and model creation ======
 
@@ -159,9 +161,6 @@ def train_func(config):
     train_data_shard = ray.train.get_dataset_shard("train")
     train_dataloader = train_data_shard.iter_torch_batches(batch_size=256)
     if validate_within_trainer:
-        mean_acc = torchmetrics.Accuracy(
-            task="multiclass", num_classes=10, top_k=1
-        ).cuda()
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
             batch_size=128
         )
@@ -185,6 +184,9 @@ def train_func(config):
         val_elapsed_time = None
         if validate_within_trainer:
             val_start_time = time.time()
+            mean_acc = torchmetrics.Accuracy(
+                task="multiclass", num_classes=10, top_k=1
+            ).cuda()
             model.eval()
             with torch.no_grad():
                 for batch in test_dataloader:
@@ -282,9 +284,7 @@ def run_training_with_validation(
     return metrics
 
 
-def test_async_checkpointing_validation_benchmark():
-    # Needed to avoid No module named 'test_async_checkpointing_validation_benchmark'
-    ray.init(runtime_env={"working_dir": os.path.dirname(__file__)})
+def main():
     consolidated_metrics = {}
     num_epochs = 1
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
@@ -303,10 +303,98 @@ def test_async_checkpointing_validation_benchmark():
     logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
 
+    # Assert final scores aren't too far off, which would imply an inaccurate comparison
+    # Example value: 0.55
+    sync_final_score = consolidated_metrics["sync_cp_inline_val_metrics"]["final_score"]
+    async_torchtrainer_final_score = consolidated_metrics[
+        "async_cp_torch_trainer_val_metrics"
+    ]["final_score"]
+    async_map_batches_final_score = consolidated_metrics[
+        "async_cp_map_batches_val_metrics"
+    ]["final_score"]
+    assert (
+        abs(sync_final_score - async_torchtrainer_final_score)
+        < MAXIMUM_ALLOWED_ACCURACY_DIFF
+        and abs(sync_final_score - async_map_batches_final_score)
+        < MAXIMUM_ALLOWED_ACCURACY_DIFF
+    )
+
+    # Assert async checkpointing/validation e2e time is faster; add multipler to account for training time variance
+    # Example values: 1385s vs 1317s vs 1304s
+    sync_e2e_time = consolidated_metrics["sync_cp_inline_val_metrics"]["e2e_time"]
+    async_torchtrainer_e2e_time = consolidated_metrics[
+        "async_cp_torch_trainer_val_metrics"
+    ]["e2e_time"]
+    async_map_batches_e2e_time = consolidated_metrics[
+        "async_cp_map_batches_val_metrics"
+    ]["e2e_time"]
+    assert (
+        async_torchtrainer_e2e_time
+        < sync_e2e_time * MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER
+        and async_map_batches_e2e_time
+        < sync_e2e_time * MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER
+    )
+
+    # Assert map_batches is faster than TorchTrainer. Note that inline is the fastest but is blocking
+    # Example values: 92s vs 387s vs 264s (gap between sync and async smaller if more data)
+    sync_validation_time = consolidated_metrics["sync_cp_inline_val_metrics"][
+        "total_validation_time"
+    ]
+    async_torchtrainer_validation_time = consolidated_metrics[
+        "async_cp_torch_trainer_val_metrics"
+    ]["total_validation_time"]
+    async_map_batches_validation_time = consolidated_metrics[
+        "async_cp_map_batches_val_metrics"
+    ]["total_validation_time"]
+    assert async_map_batches_validation_time < async_torchtrainer_validation_time
+
+    # Assert report blocking time is (way) less with async checkpointing
+    # Example values: 3.66s vs 0.033s
+    sync_report_blocked_time = consolidated_metrics["sync_cp_inline_val_metrics"][
+        "total_report_blocked_time"
+    ]
+    async_torchtrainer_report_blocked_time = consolidated_metrics[
+        "async_cp_torch_trainer_val_metrics"
+    ]["total_report_blocked_time"]
+    async_map_batches_report_blocked_time = consolidated_metrics[
+        "async_cp_map_batches_val_metrics"
+    ]["total_report_blocked_time"]
+    assert (
+        async_torchtrainer_report_blocked_time < sync_report_blocked_time
+        and async_map_batches_report_blocked_time < sync_report_blocked_time
+    )
+
+    # Assert sync blocking time (report + validation + final validation) is less than async blocking time (report + final validation)
+    # Example values of final validation blocking time: 40s vs 26s
+    sync_final_validation_blocking_time = consolidated_metrics[
+        "sync_cp_inline_val_metrics"
+    ]["final_validation_waiting_time"]
+    async_torchtrainer_final_validation_blocking_time = consolidated_metrics[
+        "async_cp_torch_trainer_val_metrics"
+    ]["final_validation_waiting_time"]
+    async_map_batches_final_validation_blocking_time = consolidated_metrics[
+        "async_cp_map_batches_val_metrics"
+    ]["final_validation_waiting_time"]
+    sync_blocking_time = (
+        sync_report_blocked_time
+        + sync_validation_time
+        + sync_final_validation_blocking_time
+    )
+    async_torchtrainer_blocking_time = (
+        async_torchtrainer_report_blocked_time
+        + async_torchtrainer_final_validation_blocking_time
+    )
+    async_map_batches_blocking_time = (
+        async_map_batches_report_blocked_time
+        + async_map_batches_final_validation_blocking_time
+    )
+    assert (
+        sync_blocking_time > async_torchtrainer_blocking_time
+        and sync_blocking_time > async_map_batches_blocking_time
+    )
+
     # TODO: consider correctness checks like validating that local checkpoints get deleted
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    main()

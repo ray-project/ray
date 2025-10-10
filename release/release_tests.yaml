@@ -1820,7 +1820,7 @@
     cluster_compute: compute_aws.yaml
   run:
     timeout: 3600
-    script: RAY_TRAIN_V2_ENABLED=1 pytest -v test_async_checkpointing_validation_benchmark.py -s
+    script: RAY_TRAIN_V2_ENABLED=1 python test_async_checkpointing_validation_benchmark.py
     wait_for_nodes:
       num_nodes: 2
   alert: default
