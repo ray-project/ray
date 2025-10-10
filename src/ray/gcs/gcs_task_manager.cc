@@ -188,11 +188,14 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
-    // Need to add to the new list first.
-    task_events_list_[target_list_index].push_front(std::move(existing_task));
-
-    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
-    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
+    // Move the list node itself between lists to avoid moving the underlying
+    // protobuf message. This preserves internal map/repeated-field storage and
+    // avoids invalidation that can lead to crashes during concurrent updates.
+    auto &from_list = task_events_list_[cur_list_index];
+    auto &to_list = task_events_list_[target_list_index];
+    auto it = loc->GetCurrentListIterator();
+    to_list.splice(to_list.begin(), from_list, it);
+    loc->SetCurrentList(target_list_index, it);
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
