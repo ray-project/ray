@@ -64,7 +64,7 @@ For reference, the final code is as follows:
 .. testcode::
     :skipif: True
 
-    from ray.train.v2 import JaxTrainer
+    from ray.train.v2.jax import JaxTrainer
     from ray.train import ScalingConfig
 
     def train_func():
@@ -89,7 +89,7 @@ Compare a JAX training script with and without Ray Train.
             import jax.numpy as jnp
             import optax
 
-            from ray.train.v2 import JaxTrainer
+            from ray.train.v2.jax import JaxTrainer
             from ray.train import ScalingConfig
 
             def train_func():
@@ -208,7 +208,7 @@ This function is the entry point that Ray will execute on each remote worker.
 
 .. code-block:: diff
 
-    +from ray.train.v2 import JaxTrainer
+    +from ray.train.v2.jax import JaxTrainer
     +from ray.train import ScalingConfig, report
 
     -def main_logic()
