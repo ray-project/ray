@@ -153,8 +153,11 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_queue_size(self) -> int:
+    def internal_input_queue_size(self) -> int:
         return self._block_ref_bundler.num_bundles()
+
+    def internal_output_queue_size(self) -> int:
+        return len(self._output_queue)
 
     @property
     def name(self) -> str:
@@ -718,9 +721,11 @@ class _OrderedOutputQueue(_OutputQueue):
         self._task_outputs: Dict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_output_index: int = 0
         self._completed_tasks: Set[int] = set()
+        self._size: int = 0
 
     def notify_task_output_ready(self, task_index: int, output: RefBundle):
         self._task_outputs[task_index].append(output)
+        self._size += 1
 
     def _move_to_next_task(self):
         """Move the outut index to the next task.
@@ -749,7 +754,11 @@ class _OrderedOutputQueue(_OutputQueue):
         if len(self._task_outputs[self._current_output_index]) == 0:
             if self._current_output_index in self._completed_tasks:
                 self._move_to_next_task()
+        self._size -= 1
         return next_bundle
+
+    def __len__(self) -> int:
+        return self._size
 
 
 class _UnorderedOutputQueue(_OutputQueue):
@@ -766,6 +775,9 @@ class _UnorderedOutputQueue(_OutputQueue):
 
     def get_next(self) -> RefBundle:
         return self._queue.popleft()
+
+    def __len__(self) -> int:
+        return len(self._queue)
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

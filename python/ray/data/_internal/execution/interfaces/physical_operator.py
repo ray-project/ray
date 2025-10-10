@@ -344,7 +344,7 @@ class PhysicalOperator(Operator):
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
         internal_queue_size = (
-            self.internal_queue_size()
+            self.internal_input_queue_size()
             if isinstance(self, InternalQueueOperatorMixin)
             else 0
         )
