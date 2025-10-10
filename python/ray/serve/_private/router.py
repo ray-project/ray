@@ -44,6 +44,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RECORD_METRICS_TASK_NAME,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -266,7 +267,7 @@ class RouterMetricsManager:
             # Record number of queued + ongoing requests at regular
             # intervals into the in-memory metrics store
             self.metrics_pusher.register_or_update_task(
-                self.RECORD_METRICS_TASK_NAME,
+                RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
