@@ -764,8 +764,6 @@ def _estimate_reader_batch_size(
 def get_parquet_dataset(paths, filesystem, dataset_kwargs):
     import pyarrow.parquet as pq
 
-    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-
     # If you pass a list containing a single directory path to `ParquetDataset`, PyArrow
     # errors with 'IsADirectoryError: Path ... points to a directory, but only file
     # paths are supported'. To avoid this, we pass the directory path directly.
