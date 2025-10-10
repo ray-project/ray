@@ -357,7 +357,7 @@ def _get_num_cpus(
                 f"'CPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
                 f"Using the value from 'resources': {group_resources['CPU']}."
             )
-        return int(group_resources["CPU"])
+        return _round_up_k8s_quantity(group_resources["CPU"])
     if "num-cpus" in ray_start_params:
         return int(ray_start_params["num-cpus"])
     elif "cpu" in k8s_resources.get("limits", {}):
@@ -416,7 +416,7 @@ def _get_num_gpus(
                 f"'GPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
                 f"Using the value from 'resources': {group_resources['GPU']}."
             )
-        return int(group_resources["GPU"])
+        return _round_up_k8s_quantity(group_resources["GPU"])
     elif "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
     else:
@@ -446,7 +446,7 @@ def _get_num_tpus(
     or k8s_resources, with priority for `resources` field.
     """
     if "TPU" in group_resources:
-        return int(group_resources["TPU"])
+        return _round_up_k8s_quantity(group_resources["TPU"])
     elif "TPU" in custom_resource_dict:
         return custom_resource_dict["TPU"]
     else:
@@ -498,7 +498,9 @@ def _get_custom_resources(
         standard_keys = {"CPU", "GPU", "memory"}
         try:
             custom_resources = {
-                k: int(v) for k, v in group_resources.items() if k not in standard_keys
+                k: _round_up_k8s_quantity(v)
+                for k, v in group_resources.items()
+                if k not in standard_keys
             }
         except Exception as e:
             logger.error(
@@ -508,8 +510,7 @@ def _get_custom_resources(
                 "ray/autoscaler/kuberay/ray-cluster.complete.yaml."
             )
             raise e
-        if custom_resources:
-            return custom_resources
+        return custom_resources
 
     # Otherwise, check rayStartParams.
     if "resources" not in ray_start_params:
