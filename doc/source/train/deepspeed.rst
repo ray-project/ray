@@ -106,6 +106,13 @@ Install the requirements:
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything
     for distributed training.
 
+
+Fine-tune LLMs with DeepSpeed
+-----------------------------
+
+A step-by-step guide Jupyter notebook to fine-tuning large language models (LLMs) with DeepSpeed and Ray Train is available in the `examples/pytorch/deepspeed_finetune <https://github.com/ray-project/ray/blob/master/doc/source/train/examples/pytorch/deepspeed_finetune/README.ipynb>`_.
+
+
 Run DeepSpeed with Other Frameworks
 -----------------------------------
 

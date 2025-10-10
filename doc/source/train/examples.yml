@@ -62,7 +62,7 @@ examples:
     use_cases:
       - computer vision
     link: examples/pytorch/pytorch-fsdp/README
-  - title: 'A Step-by-step Guide: Fine-tuning LLMs with Ray Train and DeepSpeed'
+  - title: Fine-tune an LLM with Ray Train and DeepSpeed
     skill_level: intermediate
     frameworks:
       - pytorch
