@@ -140,6 +140,8 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        # Need this property for lineage tracking
+        self._source_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
