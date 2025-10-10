@@ -52,7 +52,7 @@ class TestFeatureAggregatorsForDataset:
         assert len(feature_aggs.vector_columns) == 0
 
         # Check that we have the right number of aggregators
-        # 3 numerical columns * 8 aggregators each + 1 string column * 2 aggregators = 23 total
+        # 3 numerical columns * 8 aggregators each + 1 string column * 2 aggregators = 26 total
         print(feature_aggs.aggregators)
         assert len(feature_aggs.aggregators) == 26
 
@@ -76,7 +76,7 @@ class TestFeatureAggregatorsForDataset:
         assert "value" in feature_aggs.numerical_columns
         assert "category" not in feature_aggs.numerical_columns
 
-        # Check aggregator count: 1 numerical * 8 + 2 categorical * 2 = 11
+        # Check aggregator count: 1 numerical * 8 + 2 categorical * 2 = 12
         assert len(feature_aggs.aggregators) == 12
 
     def test_vector_columns_detection(self):
@@ -132,7 +132,7 @@ class TestFeatureAggregatorsForDataset:
         # bool_val should be treated as numerical (integer-like)
         assert "bool_val" in feature_aggs.numerical_columns
 
-        # Check aggregator count: 3 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 25
+        # Check aggregator count: 3 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 28
         assert len(feature_aggs.aggregators) == 28
 
     def test_column_filtering(self):
@@ -153,7 +153,7 @@ class TestFeatureAggregatorsForDataset:
         assert "col3" in feature_aggs.vector_columns
         assert "col4" not in feature_aggs.numerical_columns
 
-        # Check aggregator count: 1 numerical * 8 + 1 vector * 2 = 9
+        # Check aggregator count: 1 numerical * 8 + 1 vector * 2 = 10
         assert len(feature_aggs.aggregators) == 10
 
     def test_empty_dataset_schema(self):
@@ -356,7 +356,7 @@ class TestFeatureAggregatorsForDataset:
         assert "category" in feature_aggs.str_columns
         assert "vector" in feature_aggs.vector_columns
 
-        # Check aggregator count: 2 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 18
+        # Check aggregator count: 2 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 20
         assert len(feature_aggs.aggregators) == 20
 
 
