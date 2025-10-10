@@ -195,8 +195,6 @@ class TestShuffleFusionLongChains:
         assert dag._full_shuffle  # Should be True if any were True
         assert dag._random_permute  # Should be True if any were True
         assert dag.input_dependencies[0] == input_op  # Should connect directly to input
-        # Verify fused name format - should have nested fusion pattern
-        # The actual name has 9 brackets, so let's build it correctly
 
         assert dag.name == expected_fused_name
 
