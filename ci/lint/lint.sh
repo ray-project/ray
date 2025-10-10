@@ -93,6 +93,11 @@ bazel_buildifier() {
   ./ci/lint/check-bazel-buildifier.sh
 }
 
+pytest_format() {
+  pip install -c python/requirements_compiled.txt yq
+  ./ci/lint/check-pytest-format.sh
+}
+
 test_coverage() {
   python ci/pipeline/check-test-run.py
 }

@@ -31,7 +31,7 @@ rules:
   - id: missing-pytest-main
     paths:
       include:
-        - "python/ray/data/tests/**/test_*.py"
+        - "python/ray/data/tests/test_*.py"
     languages:
       - python
     message: |
