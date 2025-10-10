@@ -35,7 +35,7 @@ def small_event_line_limit():
 
 @pytest.fixture
 def fast_gcs_failure_detection(monkeypatch):
-    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "2")
+    monkeypatch.setenv("RAY_gcs_rpc_client_reconnect_timeout_s", "2")
     monkeypatch.setenv("GCS_CHECK_ALIVE_INTERVAL_SECONDS", "1")
 
 

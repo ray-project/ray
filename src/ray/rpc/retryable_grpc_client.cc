@@ -85,8 +85,8 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
                        << ExponentialBackoff::GetBackoffMs(
                               attempt_number_,
-                              server_unavailable_base_timeout_seconds_ * 1000,
-                              server_unavailable_max_timeout_seconds_ * 1000) /
+                              client_reconnect_timeout_base_seconds_ * 1000,
+                              client_reconnect_timeout_max_seconds_ * 1000) /
                               1000
                        << " seconds";
       server_unavailable_timeout_callback_();
@@ -95,8 +95,8 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       server_unavailable_timeout_time_ =
           now + absl::Seconds(ExponentialBackoff::GetBackoffMs(
                                   attempt_number_,
-                                  server_unavailable_base_timeout_seconds_ * 1000,
-                                  server_unavailable_max_timeout_seconds_ * 1000) /
+                                  client_reconnect_timeout_base_seconds_ * 1000,
+                                  client_reconnect_timeout_max_seconds_ * 1000) /
                               1000);
     }
 
@@ -167,7 +167,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
     server_unavailable_timeout_time_ =
-        now + absl::Seconds(server_unavailable_base_timeout_seconds_);
+        now + absl::Seconds(client_reconnect_timeout_base_seconds_);
     SetupCheckTimer();
   }
 }
