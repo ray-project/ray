@@ -656,16 +656,11 @@
 # Cross-AZ RPC fault tolerance test
 #################################################
 
-- name: "map_batches_cross_az_rpc_with_failure_injection"
+- name: "map_batches_autoscaling_xaz"
   frequency: nightly
   env: gce
 
   cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_testing_rpc_failure="*=-1:10:10"
-        - RAY_testing_rpc_failure_avoid_intra_node_failures=1
     cluster_compute: cross_az_250_350_compute_gce.yaml
 
   run:
@@ -680,23 +675,22 @@
       env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
-
-- name: "map_batches_cross_az_rpc_without_failure_injection"
-  frequency: nightly
-  env: gce
-
-  cluster:
-    cluster_compute: cross_az_250_350_compute_gce.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python map_benchmark.py --api map_batches --batch-format numpy
-      --compute actors --sf 1000 --repeat-inputs 1 --concurrency 2024 2024
-
-  variations:
-    - __suffix__: gce
-    - __suffix__: aws
+    - __suffix__: gce_failure_injection
+      cluster:
+        byod:
+          type: gpu
+          # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with 10% request failures and 10% response failures.
+          # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
+          runtime_env:
+            - RAY_testing_rpc_failure="*=-1:10:10"
+            - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+        cluster_compute: cross_az_250_350_compute_gce.yaml
+    - __suffix__: aws_failure_injection
       env: aws
       cluster:
+        byod:
+          type: gpu
+          runtime_env:
+            - RAY_testing_rpc_failure="*=-1:10:10"
+            - RAY_testing_rpc_failure_avoid_intra_node_failures=1
         cluster_compute: cross_az_250_350_compute_aws.yaml
