@@ -161,6 +161,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._actor_locality_enabled: Optional[bool] = None
 
         # Locality metrics
         self._locality_hits = 0
@@ -496,13 +497,12 @@ class ActorPoolMapOperator(MapOperator):
     def per_task_resource_allocation(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        # For Actor tasks resource allocation is determined as:
+        #   - Per actor resource allocation divided by
+        #   - Actor's max task concurrency
+        max_concurrency = self._actor_pool.max_actor_concurrency()
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
-
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
-        return max_concurrency * self._actor_pool.max_size()
 
     def min_scheduling_resources(
         self: "PhysicalOperator",
@@ -530,6 +530,9 @@ class ActorPoolMapOperator(MapOperator):
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
+
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        return self._actor_pool.max_size() * self._actor_pool.max_actor_concurrency()
 
 
 class _MapWorker:
