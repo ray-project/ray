@@ -53,7 +53,6 @@ class TestFeatureAggregatorsForDataset:
 
         # Check that we have the right number of aggregators
         # 3 numerical columns * 8 aggregators each + 1 string column * 2 aggregators = 26 total
-        print(feature_aggs.aggregators)
         assert len(feature_aggs.aggregators) == 26
 
     def test_categorical_columns_detection(self):
