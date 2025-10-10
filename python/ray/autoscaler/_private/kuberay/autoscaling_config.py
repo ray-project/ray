@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 import requests
 
 from ray._private.label_utils import (
-    parse_node_labels_string,
     validate_node_label_syntax,
 )
 from ray.autoscaler._private.constants import (
@@ -316,30 +315,31 @@ def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
     1. Top-level `labels` field in the group spec.
     2. `labels` field in `rayStartParams`.
     """
+    labels_dict = {}
+
+    ray_start_params = group_spec.get("rayStartParams", {})
+    labels_str = ray_start_params.get("labels")
+    if labels_str:
+        logger.warning(
+            f"Ignoring labels: {labels_str} set in rayStartParams. Group labels are supported in the top-level Labels field starting in Kuberay v1.5"
+        )
 
     # Check for top-level structured Labels field.
     if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
         labels_dict = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
-        validate_node_label_syntax(labels_dict)
-        return labels_dict
+        if labels_dict:
+            try:
+                validate_node_label_syntax(labels_dict)
+            except ValueError as e:
+                group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
+                logger.error(
+                    f"Error parsing `labels`: {labels_dict} for group {group_name}: {e}"
+                )
+                # Return an empty dict when failed to parse labels.
+                return {}
 
-    # Otherwise, check for `labels` in rayStartParams.
-    ray_start_params = group_spec.get("rayStartParams", {})
-    labels_str = ray_start_params.get("labels")
-
-    if not labels_str:
-        return {}
-
-    try:
-        return parse_node_labels_string(labels_str)
-    except ValueError as e:
-        group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
-        logger.error(
-            f"Error parsing `labels`: {labels_str} in rayStartParams for group {group_name}: {e}"
-        )
-        # Return an empty dict when failed to parse labels.
-        return {}
+    return labels_dict
 
 
 def _get_num_cpus(
@@ -352,6 +352,11 @@ def _get_num_cpus(
     with priority for `resources` field.
     """
     if "CPU" in group_resources:
+        if "num-cpus" in ray_start_params:
+            logger.warning(
+                f"'CPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['CPU']}."
+            )
         return int(group_resources["CPU"])
     if "num-cpus" in ray_start_params:
         return int(ray_start_params["num-cpus"])
@@ -379,6 +384,11 @@ def _get_memory(
     with priority for `resources` field.
     """
     if "memory" in group_resources:
+        if "memory" in ray_start_params:
+            logger.warning(
+                f"'memory' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['memory']}."
+            )
         return _round_up_k8s_quantity(group_resources["memory"])
     if "memory" in ray_start_params:
         return int(ray_start_params["memory"])
@@ -397,10 +407,15 @@ def _get_num_gpus(
     k8s_resources: Dict[str, Dict[str, str]],
     group_name: str,
 ) -> Optional[int]:
-    """Get memory resource annotation from `resources` field, ray_start_params or k8s_resources,
+    """Get GPU resource annotation from `resources` field, ray_start_params or k8s_resources,
     with priority for `resources` field.
     """
     if "GPU" in group_resources:
+        if "num-gpus" in ray_start_params:
+            logger.warning(
+                f"'GPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['GPU']}."
+            )
         return int(group_resources["GPU"])
     elif "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
@@ -475,11 +490,26 @@ def _get_custom_resources(
     """
     # If the top-level `resources` field is defined, use it as the exclusive source.
     if group_resources:
+        if "resources" in ray_start_params:
+            logger.warning(
+                f"custom resources specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the values from 'resources': {group_resources}."
+            )
         standard_keys = {"CPU", "GPU", "memory"}
-        custom_resources = {
-            k: float(v) for k, v in group_resources.items() if k not in standard_keys
-        }
-        return custom_resources
+        try:
+            custom_resources = {
+                k: int(v) for k, v in group_resources.items() if k not in standard_keys
+            }
+        except Exception as e:
+            logger.error(
+                f"Error reading `resource` for group {group_name}."
+                " For the correct format, refer to example configuration at "
+                "https://github.com/ray-project/ray/blob/master/python/"
+                "ray/autoscaler/kuberay/ray-cluster.complete.yaml."
+            )
+            raise e
+        if custom_resources:
+            return custom_resources
 
     # Otherwise, check rayStartParams.
     if "resources" not in ray_start_params:
