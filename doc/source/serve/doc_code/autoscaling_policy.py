@@ -18,6 +18,8 @@ def scheduled_batch_processing_policy(
     # Minimal scaling during off-peak hours
     else:
         return 1, {"reason": "Off-peak hours"}
+
+
 # __end_scheduled_batch_processing_policy__
 
 
@@ -36,4 +38,6 @@ def custom_metrics_autoscaling_policy(
         return max(ctx.capacity_adjusted_min_replicas, ctx.current_num_replicas - 1), {}
     else:
         return ctx.current_num_replicas, {}
+
+
 # __end_custom_metrics_autoscaling_policy__
