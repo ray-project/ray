@@ -688,9 +688,10 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     caplog.clear()
 
 
-
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_transient_error_retry(monkeypatch, ray_start_cluster, deterministic_failure: str):
+def test_transient_error_retry(
+    monkeypatch, ray_start_cluster, deterministic_failure: str
+):
     with monkeypatch.context() as m:
         # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
         m.setenv(
