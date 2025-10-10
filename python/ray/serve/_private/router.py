@@ -43,7 +43,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-    RECORD_METRICS_TASK_NAME,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -273,7 +272,6 @@ class RouterMetricsManager:
                     autoscaling_config.metrics_interval_s,
                 ),
             )
-
             # Push metrics to the controller periodically.
             shared = SharedHandleMetricsPusher.get_or_create(self._controller_handle)
             shared.register(self)
