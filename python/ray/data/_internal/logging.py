@@ -205,7 +205,6 @@ def configure_logging() -> None:
             ]
 
     # Configure logging
-    config["disable_existing_loggers"] = False
     logging.config.dictConfig(config)
 
     # Restore handlers that were cleared by dictConfig
