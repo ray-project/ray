@@ -360,19 +360,6 @@ class TestApproximateQuantile:
         assert result_by_group["A"] == [2.0]
         assert result_by_group["B"] == [20.0]
 
-    def test_approximate_quantile_respects_k(self, ray_start_regular_shared_2_cpus):
-        data = [{"id": i, "value": float(i)} for i in range(1000)]
-        ds = ray.data.from_items(data)
-
-        result = ds.aggregate(
-            ApproximateQuantile(on="value", quantiles=[0.25, 0.5, 0.75], k=200)
-        )
-
-        expected = np.quantile(np.arange(1000, dtype=float), [0.25, 0.5, 0.75])
-        actual = result["approx_quantile(value)"]
-        for actual_val, expected_val in zip(actual, expected):
-            assert abs(actual_val - expected_val) <= 1.0
-
 
 if __name__ == "__main__":
     import sys

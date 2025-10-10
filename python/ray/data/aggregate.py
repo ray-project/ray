@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 import pyarrow.compute as pc
-from datasketches import kll_floats_sketch
 
 from ray.data._internal.util import is_null
 from ray.data.block import (
@@ -1193,6 +1192,16 @@ class ZeroPercentage(AggregateFnV2):
 
 
 class ApproximateQuantile(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import kll_floats_sketch  # type: ignore[import]
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateQuantile requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return kll_floats_sketch
+
     def __init__(
         self,
         on: str,
@@ -1245,24 +1254,25 @@ class ApproximateQuantile(AggregateFnV2):
             k: Controls the accuracy and memory footprint of the sketch; higher k yields lower error but uses more memory. Defaults to 800.
             alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
         """
+        self._require_datasketches()
         self._quantiles = quantiles
         self._k = k
         super().__init__(
             alias_name if alias_name else f"approx_quantile({str(on)})",
             on=on,
             ignore_nulls=True,
-            zero_factory=lambda: ApproximateQuantile.zero(k).serialize(),
+            zero_factory=lambda: self.zero(k).serialize(),
         )
 
-    @staticmethod
-    def zero(k: int):
-        return kll_floats_sketch(k=k)
+    def zero(self, k: int):
+        sketch_cls = self._require_datasketches()
+        return sketch_cls(k=k)
 
     def aggregate_block(self, block: Block) -> bytes:
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
-        sketch = ApproximateQuantile.zero(self._k)
+        sketch = self.zero(self._k)
         for value in column:
             # we ignore nulls here
             if value.as_py() is not None:
@@ -1270,10 +1280,12 @@ class ApproximateQuantile(AggregateFnV2):
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
-        combined = ApproximateQuantile.zero(self._k)
-        combined.merge(kll_floats_sketch.deserialize(current_accumulator))
-        combined.merge(kll_floats_sketch.deserialize(new))
+        combined = self.zero(self._k)
+        sketch_cls = self._require_datasketches()
+        combined.merge(sketch_cls.deserialize(current_accumulator))
+        combined.merge(sketch_cls.deserialize(new))
         return combined.serialize()
 
     def finalize(self, accumulator: bytes) -> List[float]:
-        return kll_floats_sketch.deserialize(accumulator).get_quantiles(self._quantiles)
+        sketch_cls = self._require_datasketches()
+        return sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
