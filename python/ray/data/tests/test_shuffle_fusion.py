@@ -184,7 +184,7 @@ class TestShuffleFusionLongChains:
             )
             if i == 0:
                 expected_fused_name = "[Repartition->Repartition]"
-            elif i < 9:
+            else:
                 expected_fused_name = f"[{expected_fused_name}->Repartition]"
 
         logical_plan = LogicalPlan(current_op, self.context)

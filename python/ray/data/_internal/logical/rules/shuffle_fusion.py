@@ -19,8 +19,6 @@ class ShuffleFusion(Rule):
     """Logical optimization rule that fuses shuffle operations together. This is different
     from FuseOperators, which operates on the physical-level.
 
-    If there are redundant Shuffle operators, it removes the `Project` operator from
-    the graph.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
@@ -38,7 +36,7 @@ class ShuffleFusion(Rule):
 
             # NOTE: This str contains outer brackets to show
             # that it's logical fusion. TODO(justin): Please confirm
-            # if that's ok with team.
+            # with team if that's ok with team.
             fused_name = f"[{prev_op.name}->{op.name}]"
 
             # Only fuse if the ops' remote arguments are compatible.
@@ -85,22 +83,22 @@ def _disconnect_op_from_dag(op: Operator):
 
 
 def _keys_can_fuse(
-    parent_op: LogicalOperatorContainsPartitionKeys,
-    child_op: LogicalOperatorContainsPartitionKeys,
+    prev_op: LogicalOperatorContainsPartitionKeys,
+    op: LogicalOperatorContainsPartitionKeys,
 ) -> bool:
-    """Check if parent and child operators can fuse based on key matching.
+    """Check if prev and curr operators can fuse based on key matching.
     This helper function is used to compare if two shuffle operators
     have compatible keys to fuse together."""
     # Get parent keys based on operator type
-    parent_keys = parent_op.get_partition_keys()
+    prev_keys = prev_op.get_partition_keys()
 
     # Get child keys based on operator type
-    child_keys = child_op.get_partition_keys()
+    op_keys = op.get_partition_keys()
 
     # Compare keys: either both match or both are None
-    if parent_keys and child_keys:
-        return set(parent_keys) == set(child_keys)
-    elif parent_keys is None and child_keys is None:
+    if prev_keys and op_keys:
+        return set(prev_keys) == set(op_keys)
+    elif prev_keys is None and op_keys is None:
         return True
     else:
         return False

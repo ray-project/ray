@@ -136,7 +136,7 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         )
         # If True, each output block will get rows from the input block
         self._full_shuffle = full_shuffle
-        # If True, will randomly shuffle the block's orders
+        # If True, will randomly permute the order of blocks and rows within blocks.
         self._random_permute = random_permute
         self._keys = keys
         self._sort = sort
