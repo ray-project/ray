@@ -656,7 +656,7 @@ class _ClosingIterator(OutputIterator):
             # Update progress-bars
             if self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(
-                    bundle.num_rows(), op.num_output_rows_total()
+                    bundle.num_rows() or 0, op.num_output_rows_total()
                 )
 
             return bundle
