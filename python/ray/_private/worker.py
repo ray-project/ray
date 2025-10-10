@@ -1838,7 +1838,8 @@ def init(
             "`local_mode` is an experimental feature that is no "
             "longer maintained and will be removed in the near future. "
             "For debugging consider using the Ray distributed debugger.",
-            FutureWarning, stacklevel=2,
+            FutureWarning,
+            stacklevel=2,
         )
     else:
         driver_mode = SCRIPT_MODE
