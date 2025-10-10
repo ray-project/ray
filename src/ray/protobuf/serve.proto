@@ -85,6 +85,9 @@ message AutoscalingConfig {
 
   // How long to wait before scaling down replicas from 1 to 0
   optional double downscale_to_zero_delay_s = 16;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 17;
 }
 
 //[Begin] LOGGING CONFIG
@@ -171,6 +174,9 @@ message DeploymentConfig {
 
   // The deployment's routing configuration.
   RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
 }
 
 // Deployment language.
