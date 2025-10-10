@@ -330,6 +330,8 @@ py_library(
     deps = [
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
+        bk_require("azure-storage-blob"),
+        bk_require("azure-identity"),
         bk_require("bazel-runfiles"),
         bk_require("aioboto3"),
         bk_require("boto3"),
@@ -337,6 +339,7 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("msal"),
         bk_require("pybuildkite"),
         bk_require("pygithub"),
         bk_require("requests"),
@@ -747,6 +750,20 @@ py_test(
 py_test(
     name = "test_template",
     srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_util",
+    srcs = ["ray_release/tests/test_util.py"],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
