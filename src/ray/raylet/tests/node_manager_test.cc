@@ -298,7 +298,8 @@ class NodeManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }),
+        fake_task_by_state_counter_() {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -310,7 +311,6 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
