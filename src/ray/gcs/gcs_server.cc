@@ -79,7 +79,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         return std::make_shared<ray::rpc::RayletClient>(
             addr,
             this->client_call_manager_,
-            /*raylet_unavailable_timeout_callback=*/[this, addr]() {
+            /*raylet_unavailable_timeout_callback=*/
+            [this, addr]() {
               const NodeID node_id = NodeID::FromBinary(addr.node_id());
               auto alive_node = this->gcs_node_manager_->GetAliveNode(node_id);
               if (!alive_node.has_value()) {
@@ -99,8 +100,13 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                 this->worker_client_pool_.Disconnect(worker_id);
                 return;
               }
-              auto raylet_client = this->raylet_client_pool_.GetByID(node_id);
-              RAY_CHECK(raylet_client);
+              auto &node_info = alive_node.value();
+              auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+                  node_id,
+                  node_info->node_manager_address(),
+                  node_info->node_manager_port());
+              auto raylet_client =
+                  this->raylet_client_pool_.GetOrConnectByAddress(remote_address);
               // Worker could still be dead even if node is alive.
               raylet_client->IsLocalWorkerDead(
                   worker_id,
@@ -372,8 +378,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
           rpc::RayletClientPool::GenerateRayletAddress(item.first,
                                                        item.second.node_manager_address(),
                                                        item.second.node_manager_port());
-      auto raylet_client =
-          raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
+      auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
@@ -398,42 +403,31 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   periodical_runner_->RunFnPeriodically(
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
-          std::shared_ptr<ray::RayletClientInterface> raylet_client;
-          if (auto raylet_client_opt = raylet_client_pool_.GetByID(alive_node.first)) {
-            raylet_client = raylet_client_opt;
-          } else {
-            // When not connect, use GetOrConnectByAddress
-            auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
-                alive_node.first,
-                alive_node.second->node_manager_address(),
-                alive_node.second->node_manager_port());
-            raylet_client =
-                raylet_client_pool_.GetOrConnectByAddress(std::move(remote_address));
-          }
-          if (raylet_client == nullptr) {
-            RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
-                           << ". Skip this round of pulling for resource load";
-          } else {
-            // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
-              if (status.ok()) {
-                // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
-                // after verifying that non-autoscaler paths are taken care of.
-                // Currently, GcsResourceManager aggregates reporting from different
-                // sources at different intervals, leading to an obviously inconsistent
-                // view.
-                //
-                // Once autoscaler is completely moved to the new mode of consistent
-                // per-node reporting, remove this if it is not needed anymore.
-                gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
-                gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                    std::move(load_and_usage.resources()));
-              } else {
-                RAY_LOG_EVERY_N(WARNING, 10)
-                    << "Failed to get the resource load: " << status.ToString();
-              }
-            });
-          }
+          auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+              alive_node.first,
+              alive_node.second->node_manager_address(),
+              alive_node.second->node_manager_port());
+          auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
+
+          // GetResourceLoad will also get usage. Historically it didn't.
+          raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
+            if (status.ok()) {
+              // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
+              // after verifying that non-autoscaler paths are taken care of.
+              // Currently, GcsResourceManager aggregates reporting from different
+              // sources at different intervals, leading to an obviously inconsistent
+              // view.
+              //
+              // Once autoscaler is completely moved to the new mode of consistent
+              // per-node reporting, remove this if it is not needed anymore.
+              gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
+              gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
+                  std::move(*load_and_usage.mutable_resources()));
+            } else {
+              RAY_LOG_EVERY_N(WARNING, 10)
+                  << "Failed to get the resource load: " << status.ToString();
+            }
+          });
         }
       },
       RayConfig::instance().gcs_pull_resource_loads_period_milliseconds(),
