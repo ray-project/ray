@@ -23,6 +23,10 @@ from typing import (
     Union,
 )
 
+from python.ray.serve._private.constants import (
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+)
+
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
