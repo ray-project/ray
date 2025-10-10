@@ -350,7 +350,6 @@ class StreamingExecutor(Executor, threading.Thread):
             self._progress_manager.close_with_finishing_description(
                 desc, exception is None
             )
-            logger.info(desc)
 
     def update_metrics(self, sched_loop_duration: int):
         self._sched_loop_duration_s.set(

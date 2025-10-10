@@ -409,6 +409,7 @@ class RichExecutionProgressManager:
                         kwargs["total"] = 1.0
                     self._total.update(self._total_task_id, description=desc, **kwargs)
                     self._close_no_lock()
+                    logger.info(desc)
 
     # Total Progress
     def _can_update_total(self) -> bool:
