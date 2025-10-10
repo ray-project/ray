@@ -82,7 +82,6 @@ def main():
                 "actor_ready_time": actor_ready_time,
                 "total_time": actor_launch_time + actor_ready_time,
                 "num_actors": args.total_actors,
-                "success": "1",
             }
             json.dump(results, out_file)
 
