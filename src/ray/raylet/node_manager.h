@@ -404,7 +404,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handle a task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
-  /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
+  /// However, it is guaranteed to arrive after NotifyWorkerBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
   void HandleNotifyWorkerUnblocked(const std::shared_ptr<WorkerInterface> &worker);
