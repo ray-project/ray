@@ -375,7 +375,6 @@ py_test_run_all_subdirectory(
     tags = [
         "exclusive",
         "gpu",
-        "team:data",
         "team:llm"
     ],
 )
