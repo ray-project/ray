@@ -87,10 +87,19 @@ T = TypeVar("T")
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
 }
+
+
 class CallMethod(Enum):
     CHAT = "chat"
     COMPLETIONS = "completions"
     TRANSCRIPTIONS = "transcriptions"
+
+
+NON_STREAMING_RESPONSE_TYPES = (
+    ChatCompletionResponse,
+    CompletionResponse,
+    TranscriptionResponse,
+)
 
 
 def _sanitize_chat_completion_request(
@@ -130,6 +139,7 @@ DEFAULT_ENDPOINTS = {
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
+    "transcriptions": lambda app: app.post("/v1/audio/transcriptions"),
     "score": lambda app: app.post("/v1/score"),
 }
 
@@ -515,13 +525,6 @@ class OpenAiIngress(DeploymentProtocol):
         call_method: CallMethod,
     ) -> Response:
 
-        if call_method == CallMethod.CHAT:
-            NoneStreamingResponseType = ChatCompletionResponse
-        elif call_method == CallMethod.COMPLETIONS:
-            NoneStreamingResponseType = CompletionResponse
-        elif call_method == CallMethod.TRANSCRIPTIONS:
-            NoneStreamingResponseType = TranscriptionResponse
-
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
             gen = self._get_response(body=body, call_method=call_method)
@@ -541,7 +544,7 @@ class OpenAiIngress(DeploymentProtocol):
                     type=first_chunk.error.type,
                 )
 
-            if isinstance(first_chunk, NoneStreamingResponseType):
+            if isinstance(first_chunk, NON_STREAMING_RESPONSE_TYPES):
                 # Not streaming, first chunk should be a single response
                 return JSONResponse(content=first_chunk.model_dump())
 
