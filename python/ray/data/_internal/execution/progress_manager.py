@@ -410,10 +410,23 @@ class RichExecutionProgressManager:
                 if self._live.is_started:
                     kwargs = {}
                     if success:
+                        # set everything to completed
                         kwargs["completed"] = 1.0
                         kwargs["total"] = 1.0
                         for pg in self._sub_progress_bars:
                             pg.complete()
+                        for tid, progress, _ in self._op_display.values():
+                            completed = progress.tasks[tid].completed or 0
+                            completed, total, rate, count_str = _get_progress_metrics(
+                                self._start_time, completed, completed
+                            )
+                            progress.update(
+                                tid,
+                                completed=completed,
+                                total=total,
+                                rate=rate,
+                                count_str=count_str,
+                            )
                     self._total.update(self._total_task_id, description=desc, **kwargs)
                     self._close_no_lock()
                     logger.info(desc)
