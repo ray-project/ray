@@ -390,6 +390,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
       std::string session_name);
 
+  explicit TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client,
+                               std::string node_ip_address,
+                               int metrics_agent_port,
+                               std::string session_name);
+
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
 
@@ -553,6 +558,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Client to the GCS used to push profile events to it.
   std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
+
+  /// Client call manager used to make gRPC calls.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   /// Client to the event aggregator used to push ray events to it.
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
