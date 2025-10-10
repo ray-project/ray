@@ -203,13 +203,11 @@ repos:
         language: system
         types: [python]
 
-  - repo: local
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.32.0
     hooks:
       - id: semgrep
-        name: Check for semgrep violations
-        entry: ci/lint/lint.sh semgrep_lint
-        language: system
-        types: [python]
+        args: [--config=semgrep.yml, --error]
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
