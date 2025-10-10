@@ -1,6 +1,7 @@
 import argparse
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional, Tuple, Union
 
 from fastapi import Request
 from starlette.datastructures import State
@@ -49,6 +50,57 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+@dataclass
+class RawRequestInfo:
+    """Container for serializable request information.
+
+    This class holds the minimal request data (headers and state) that can be
+    serialized and passed across Ray's boundaries, then used to reconstruct
+    a Request object for vLLM.
+    """
+
+    headers: Optional[Dict[str, str]] = None
+    state: Optional[Dict[str, Any]] = None
+
+
+def _create_raw_request(
+    headers: Optional[Dict[str, str]] = None,
+    state: Optional[Dict[str, Any]] = None,
+    path: str = "/",
+) -> Request:
+    """Create a FastAPI/Starlette Request object with optional headers and state.
+
+    This utility creates a real Starlette Request object
+    with the specified HTTP headers and custom state, for cases where
+    only a minimal scope is required (such as vLLM's serving methods).
+
+    Args:
+        headers: A dictionary of HTTP headers.
+        state: A dictionary with state data.
+        path: The request path (defaults to "/").
+
+    Returns:
+        A Request object with the specified headers and state set.
+    """
+    from starlette.datastructures import State
+    from starlette.requests import Request
+
+    # Minimal ASGI scope for an HTTP POST request.
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": path,
+        "headers": [
+            (k.lower().encode(), v.encode()) for k, v in (headers or {}).items()
+        ],
+        "query_string": b"",
+    }
+    req = Request(scope)
+    if state is not None:
+        req.state = State(state)
+    return req
 
 
 def _get_vllm_engine_config(
@@ -344,9 +396,18 @@ class VLLMEngine(LLMEngine):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
     async def chat(
-        self, request: ChatCompletionRequest, raw_request: Optional[Request] = None
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
+
+        # Create raw request from serializable request info
+        raw_request = None
+        if raw_request_info is not None:
+            raw_request = _create_raw_request(
+                raw_request_info.headers, raw_request_info.state
+            )
 
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
             request, raw_request
@@ -366,9 +427,18 @@ class VLLMEngine(LLMEngine):
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
     async def completions(
-        self, request: CompletionRequest, raw_request: Optional[Request] = None
+        self,
+        request: CompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
+
+        # Create raw request from serializable request info
+        raw_request = None
+        if raw_request_info is not None:
+            raw_request = _create_raw_request(
+                raw_request_info.headers, raw_request_info.state
+            )
 
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
             request, raw_request
@@ -390,9 +460,18 @@ class VLLMEngine(LLMEngine):
                 yield CompletionResponse(**completion_response.model_dump())
 
     async def embeddings(
-        self, request: EmbeddingRequest, raw_request: Optional[Request] = None
+        self,
+        request: EmbeddingRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
+
+        # Create raw request from serializable request info
+        raw_request = None
+        if raw_request_info is not None:
+            raw_request = _create_raw_request(
+                raw_request_info.headers, raw_request_info.state
+            )
 
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
             request, raw_request
@@ -406,9 +485,18 @@ class VLLMEngine(LLMEngine):
             yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def score(
-        self, request: ScoreRequest, raw_request: Optional[Request] = None
+        self,
+        request: ScoreRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
+
+        # Create raw request from serializable request info
+        raw_request = None
+        if raw_request_info is not None:
+            raw_request = _create_raw_request(
+                raw_request_info.headers, raw_request_info.state
+            )
 
         score_response = await self._oai_serving_scores.create_score(
             request, raw_request

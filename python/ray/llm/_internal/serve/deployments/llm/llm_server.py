@@ -29,7 +29,10 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
+    RawRequestInfo,
+    VLLMEngine,
+)
 from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
@@ -306,13 +309,23 @@ class LLMServer(LLMServerProtocol):
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
 
+        # Extract serializable request info from raw_request
+        raw_request_info = None
+        if raw_request is not None:
+            raw_request_info = RawRequestInfo(
+                headers=dict(raw_request.headers.items()),
+                state=dict(raw_request.state._state)
+                if hasattr(raw_request.state, "_state")
+                else None,
+            )
+
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:
             stream = self._batch_output_stream(
-                getattr(self.engine, engine_method)(request, raw_request)
+                getattr(self.engine, engine_method)(request, raw_request_info)
             )
         else:
-            stream = getattr(self.engine, engine_method)(request, raw_request)
+            stream = getattr(self.engine, engine_method)(request, raw_request_info)
 
         return stream
 

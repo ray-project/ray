@@ -383,6 +383,60 @@ class TestLLMServer:
             await server.start()
             mock_push_telemetry.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_raw_request_reaches_vllm_engine(self, mock_llm_config):
+        """Test that raw_request is passed to the vllm_engine."""
+        from unittest.mock import MagicMock
+
+        from fastapi import Request
+
+        from ray.llm._internal.serve.configs.openai_api_models import (
+            ChatCompletionRequest,
+        )
+
+        # Track if raw_request was received by the engine
+        captured_raw_request = []
+
+        # Create a mock engine that captures raw_request
+        class RawRequestCapturingEngine(MockVLLMEngine):
+            async def chat(self, request, raw_request=None):
+                captured_raw_request.append(raw_request)
+                # Call parent implementation
+                async for response in super().chat(request, raw_request):
+                    yield response
+
+        # Create server with custom engine
+        server = LLMServer.sync_init(
+            mock_llm_config, engine_cls=RawRequestCapturingEngine
+        )
+        await server.start()
+
+        # Create a mock FastAPI request
+        from starlette.datastructures import Headers
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = Headers({"content-type": "application/json"})
+
+        # Create a chat request
+        chat_request = ChatCompletionRequest(
+            model="mock-model",
+            messages=[{"role": "user", "content": "Hello, world!"}],
+            max_tokens=10,
+            stream=False,
+        )
+
+        # Make a request through the server
+        response_gen = server.chat(chat_request, mock_request)
+
+        # Consume the generator
+        chunks = []
+        async for chunk in response_gen:
+            chunks.append(chunk)
+
+        # Verify that raw_request was passed to the engine
+        assert len(captured_raw_request) == 1
+        assert captured_raw_request[0] is mock_request
+
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
     @pytest.mark.parametrize("stream", [True])
     @pytest.mark.parametrize("max_tokens", [64])

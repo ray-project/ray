@@ -58,6 +58,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import RawRequestInfo
 from ray.llm._internal.serve.deployments.protocol import DeploymentProtocol
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
@@ -443,8 +444,18 @@ class OpenAiIngress(DeploymentProtocol):
         if isinstance(body, ChatCompletionRequest):
             body = _sanitize_chat_completion_request(body)
 
+        # Extract serializable request info from raw_request
+        raw_request_info = None
+        if raw_request is not None:
+            raw_request_info = RawRequestInfo(
+                headers=dict(raw_request.headers.items()),
+                state=dict(raw_request.state._state)
+                if hasattr(raw_request.state, "_state")
+                else None,
+            )
+
         async for response in getattr(model_handle, call_method).remote(
-            body, raw_request
+            body, raw_request_info
         ):
             yield response
 
