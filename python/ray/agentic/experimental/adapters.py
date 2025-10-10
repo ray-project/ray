@@ -1,6 +1,6 @@
 """Framework adapters for agent execution."""
 
-import asyncio
+import functools
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List
@@ -231,8 +231,6 @@ class LangGraphAdapter(AgentAdapter):
 
             def make_wrapper(tool):
                 """Create wrapper that preserves signature for LangChain."""
-                import functools
-
                 original_func = tool._function if hasattr(tool, "_function") else tool
 
                 @functools.wraps(original_func)
@@ -276,7 +274,7 @@ class LangGraphAdapter(AgentAdapter):
                     SystemMessage(content=self.system_prompt),
                     HumanMessage(content=message),
                 ]
-                response = await asyncio.to_thread(self._llm.invoke, llm_messages)
+                response = await self._llm.ainvoke(llm_messages)
                 return response.content
 
             # With tools: use LangGraph's ReAct agent for tool calling
@@ -321,14 +319,13 @@ class LangGraphAdapter(AgentAdapter):
 
             # Execute agent
             try:
-                result = await asyncio.to_thread(
-                    agent.invoke,
+                result = await agent.ainvoke(
                     {
                         "messages": [
                             SystemMessage(content=self.system_prompt),
                             HumanMessage(content=message),
                         ]
-                    },
+                    }
                 )
 
                 logger.info(
@@ -378,7 +375,13 @@ class _MockAdapter(AgentAdapter):
         tool_results = []
         if tools:
             for tool in tools:
-                if hasattr(tool, "remote"):
+                # Handle both bound and unbound Ray remote functions
+                if hasattr(tool, "execute"):
+                    # Bound tool (created with .bind())
+                    result = ray.get(tool.execute())
+                    tool_results.append(result)
+                elif hasattr(tool, "remote"):
+                    # Unbound tool (needs to be called with .remote())
                     result = ray.get(tool.remote())
                     tool_results.append(result)
 
