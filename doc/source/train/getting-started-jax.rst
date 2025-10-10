@@ -83,7 +83,8 @@ Compare a JAX training script with and without Ray Train.
 .. tab-set::
 
     .. tab-item:: JAX + Ray Train
-        .. code-block:: python
+        .. testcode:: python
+            :skipif: True
             
             import jax
             import jax.numpy as jnp
