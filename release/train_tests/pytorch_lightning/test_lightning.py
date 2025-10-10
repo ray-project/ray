@@ -65,7 +65,7 @@ def train_func():
 
 def test_lightning_train_run():
     # [2] Configure scaling and resource requirements.
-    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=4, use_gpu=True)
 
     # [3] Launch distributed training job.
     trainer = TorchTrainer(
