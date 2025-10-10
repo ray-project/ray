@@ -42,7 +42,7 @@ void RetryableGrpcClient::SetupCheckTimer() {
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_.async_wait([weak_self](boost::system::error_code error) {
     if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
-      self->CheckChannelStatus();
+      self->CheckChannelStatus(true);
     }
   });
 }
@@ -124,10 +124,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
     RAY_LOG(WARNING) << "Pending queue for failed request has reached the "
                      << "limit. Blocking the current thread until network is recovered";
-    if (!server_unavailable_timeout_time_.has_value()) {
-      server_unavailable_timeout_time_ =
-          now + absl::Seconds(server_unavailable_timeout_seconds_);
-    }
+    RAY_CHECK(server_unavailable_timeout_time_.has_value());
     while (server_unavailable_timeout_time_.has_value()) {
       // This is to implement backpressure and avoid OOM.
       // Ideally we shouldn't block the event loop but
@@ -161,4 +158,5 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
     SetupCheckTimer();
   }
 }
+
 }  // namespace ray::rpc
