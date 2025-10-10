@@ -552,7 +552,7 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// `ray_io_context_event_loop_lag_ms`.
 ///
 /// A probe task is only posted after a previous probe task has completed.
-RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 60000)
+RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
