@@ -38,19 +38,20 @@ class ThreadedRayletClient : public RayletClient {
   Status GetWorkerPIDs(std::shared_ptr<std::vector<int32_t>> worker_pids,
                        int64_t timeout_ms);
 
+ private:
+  /// Connect to the raylet on a singleton io service with a dedicated thread.
+  void ConnectOnSingletonIoContext();
+
   /// Connect to the raylet. The io service is provided from outside.
   /// \param io_service The io service to run the grpc event loop.
   void Connect(instrumented_io_context &io_service);
 
- private:
   /// client call manager is created inside the raylet client, it should be kept active
   /// during the whole lifetime of client.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::string ip_address_;
   int port_;
 };
-
-void ConnectOnSingletonIoContext(ThreadedRayletClient &raylet_client);
 
 }  // namespace rpc
 }  // namespace ray

@@ -28,7 +28,17 @@ namespace ray {
 namespace rpc {
 
 ThreadedRayletClient::ThreadedRayletClient(const std::string &ip_address, int port)
-    : RayletClient(), ip_address_(ip_address), port_(port) {}
+    : RayletClient(), ip_address_(ip_address), port_(port) {
+  // Connect to the raylet on a singleton io service with a dedicated thread.
+  // This is to avoid creating multiple threads for multiple clients in python.
+  ConnectOnSingletonIoContext();
+}
+
+void ThreadedRayletClient::ConnectOnSingletonIoContext() {
+  static InstrumentedIOContextWithThread io_context("raylet_client_io_service");
+  instrumented_io_context &io_service = io_context.GetIoService();
+  Connect(io_service);
+}
 
 void ThreadedRayletClient::Connect(instrumented_io_context &io_service) {
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
@@ -85,12 +95,6 @@ Status ThreadedRayletClient::GetWorkerPIDs(
     return Status::TimedOut("Timed out getting worker PIDs from raylet");
   }
   return future.get();
-}
-
-void ConnectOnSingletonIoContext(ThreadedRayletClient &raylet_client) {
-  static InstrumentedIOContextWithThread io_context("raylet_client_io_service");
-  instrumented_io_context &io_service = io_context.GetIoService();
-  raylet_client.Connect(io_service);
 }
 
 }  // namespace rpc

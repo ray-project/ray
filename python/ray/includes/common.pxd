@@ -768,7 +768,6 @@ cdef extern from "ray/raylet_rpc_client/threaded_raylet_client.h" nogil:
         CThreadedRayletClient(const c_string &ip_address, int port)
         CRayStatus GetWorkerPIDs(shared_ptr[c_vector[int32_t]] worker_pids,
                                  int64_t timeout_ms)
-    cdef void ConnectOnSingletonIoContext(CThreadedRayletClient &raylet_client)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

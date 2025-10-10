@@ -21,9 +21,6 @@ cdef class RayletClient:
         c_ip_address = ip_address.encode('utf-8')
         c_port = <int32_t>port
         self.inner = make_unique[CThreadedRayletClient](c_ip_address, c_port)
-        with nogil:
-            # connects on singleton io context even if multiple raylet clients are created
-            ConnectOnSingletonIoContext(dereference(self.inner))
 
     def get_worker_pids(self, timeout_ms: int = 1000) -> list[int]:
         """Get the PIDs of all workers registered with the raylet."""
