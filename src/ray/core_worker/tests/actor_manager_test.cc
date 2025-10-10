@@ -20,10 +20,16 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_counter.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 namespace core {
@@ -135,7 +141,14 @@ class ActorManagerTest : public ::testing::Test {
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         actor_task_submitter_(new MockActorTaskSubmitter()),
-        reference_counter_(new MockReferenceCounter()) {
+        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        reference_counter_(std::make_unique<ReferenceCounter>(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            [](const NodeID &node_id) { return true; },
+            /*lineage_pinning_enabled=*/true)) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
 
@@ -171,12 +184,11 @@ class ActorManagerTest : public ::testing::Test {
                                                        ray_namespace,
                                                        -1,
                                                        false);
-    EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
-        .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddNewActorHandle(std::move(actor_handle),
-                                      call_site,
-                                      caller_address,
-                                      /*owned*/ true);
+
+    actor_manager_->EmplaceNewActorHandle(std::move(actor_handle),
+                                          call_site,
+                                          caller_address,
+                                          /*owned*/ true);
     actor_manager_->SubscribeActorState(actor_id);
     return actor_id;
   }
@@ -185,7 +197,9 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
-  std::unique_ptr<MockReferenceCounter> reference_counter_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  std::unique_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
 
@@ -210,11 +224,9 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
-      .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
-  ASSERT_TRUE(actor_manager_->AddNewActorHandle(
+  ASSERT_TRUE(actor_manager_->EmplaceNewActorHandle(
       std::move(actor_handle), call_site, caller_address, true));
   actor_manager_->SubscribeActorState(actor_id);
 
@@ -236,7 +248,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       -1,
                                                       false);
   // Make sure the same actor id adding will return false.
-  ASSERT_FALSE(actor_manager_->AddNewActorHandle(
+  ASSERT_FALSE(actor_manager_->EmplaceNewActorHandle(
       std::move(actor_handle2), call_site, caller_address, true));
   actor_manager_->SubscribeActorState(actor_id);
 
@@ -287,14 +299,10 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
-      .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
 
-  // Sinece RegisterActor happens in a non-owner worker, we should
+  // Since RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
-  EXPECT_CALL(*reference_counter_, AddLocalReference(_, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(std::move(actor_handle),
                                                                   outer_object_id,
                                                                   call_site,

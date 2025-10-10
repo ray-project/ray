@@ -80,10 +80,10 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
   if (status.ok()) {
     auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
     actor_id = actor_handle->GetActorID();
-    AddNewActorHandle(std::move(actor_handle),
-                      call_site,
-                      caller_address,
-                      /*owned*/ false);
+    EmplaceNewActorHandle(std::move(actor_handle),
+                          call_site,
+                          caller_address,
+                          /*owned*/ false);
   } else {
     // Use a NIL actor ID to signal that the actor wasn't found.
     RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -119,31 +119,47 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool owned) {
+bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                         const std::string &call_site,
+                                         const rpc::Address &caller_address,
+                                         bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  // Detached actor doesn't need ref counting.
+
+  int32_t max_pending_calls = actor_handle->MaxPendingCalls();
+  bool allow_out_of_order_execution = actor_handle->AllowOutOfOrderExecution();
+  int64_t max_task_retries = actor_handle->MaxTaskRetries();
+
+  {
+    absl::MutexLock lock(&mutex_);
+    if (!actor_handles_.emplace(actor_id, std::move(actor_handle)).second) {
+      return false;
+    }
+  }
+
   if (owned) {
+    // Detached actor doesn't need ref counting.
     reference_counter_.AddOwnedObject(actor_creation_return_id,
                                       /*inner_ids=*/{},
                                       caller_address,
                                       call_site,
-                                      /*object_size*/ -1,
+                                      /*object_size=*/-1,
                                       /*is_reconstructable=*/true,
                                       /*add_local_ref=*/true);
+
+    RAY_CHECK(reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+        actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
+          MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
+        }));
   }
 
-  return AddActorHandle(std::move(actor_handle),
-                        call_site,
-                        caller_address,
-                        actor_id,
-                        actor_creation_return_id,
-                        /*add_local_ref=*/false,
-                        /*is_self*/ false,
-                        owned);
+  actor_task_submitter_.AddActorQueueIfNotExists(
+      actor_id,
+      max_pending_calls,
+      allow_out_of_order_execution,
+      /*fail_if_actor_unreachable=*/max_task_retries == 0,
+      owned);
+  return true;
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
