@@ -835,8 +835,16 @@ class AutoscalingStateManager:
         }
 
     def get_total_num_requests(self, deployment_id: DeploymentID) -> float:
-        app_state = self._app_autoscaling_states[deployment_id.app_name]
-        return app_state.get_total_num_requests(deployment_id)
+        if deployment_id.app_name in self._app_autoscaling_states:
+            return self._app_autoscaling_states[
+                deployment_id.app_name
+            ].get_total_num_requests(deployment_id)
+        else:
+            logger.warning(
+                f"Cannot get total number of requests for deployment "
+                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
+            )
+            return 0
 
     def is_within_bounds(
         self, deployment_id: DeploymentID, num_replicas_running_at_target_version: int
@@ -854,6 +862,11 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_replica(replica_metric_report)
+        else:
+            logger.warning(
+                f"Cannot record request metrics for replica "
+                f"{replica_metric_report.replica_id} because the application {replica_metric_report.replica_id.deployment_id.app_name} is not registered"
+            )
 
     def record_request_metrics_for_handle(
         self,
@@ -865,6 +878,11 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_handle(handle_metric_report)
+        else:
+            logger.warning(
+                f"Cannot record request metrics for handle "
+                f"{handle_metric_report.handle_id} because the application {handle_metric_report.deployment_id.app_name} is not registered"
+            )
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():

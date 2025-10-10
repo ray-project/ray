@@ -445,6 +445,9 @@ class ApplicationState:
         """
         Apply the autoscaling decisions for the application.
         If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
+
+        Returns:
+            True if there is a change to number of replicas for any deployment. False otherwise.
         """
         target_deployments = self.target_deployments
         if len(target_deployments) == 0:

@@ -3333,7 +3333,7 @@ class DeploymentStateManager:
         target_state_changed = False
 
         # STEP 1: Update current state
-        for deployment_id, deployment_state in self._deployment_states.items():
+        for deployment_state in self._deployment_states.values():
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
