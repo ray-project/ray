@@ -146,6 +146,8 @@ class SessionFileHandler(logging.Handler):
 
 
 def _get_logging_config() -> Optional[dict]:
+    import copy
+
     def _load_logging_config(config_path: str):
         with open(config_path) as file:
             config = yaml.safe_load(file)
@@ -158,7 +160,8 @@ def _get_logging_config() -> Optional[dict]:
     if config_path is not None:
         config = _load_logging_config(config_path)
     else:
-        config = DEFAULT_CONFIG
+        # Make a deep copy to avoid mutating the DEFAULT_CONFIG
+        config = copy.deepcopy(DEFAULT_CONFIG)
         if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
                 for (
@@ -178,6 +181,7 @@ def _get_logger_names() -> List[str]:
 
 
 _configured_logger_handlers = {}
+_logging_configured = False
 
 
 def configure_logging() -> None:
@@ -190,43 +194,36 @@ def configure_logging() -> None:
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
 
-    Note: This function is idempotent when handlers have been added to ray.data loggers
-    after initial configuration, as reconfiguration would close and invalidate those handlers.
+    Note: This function is idempotent after initial configuration when handlers have been
+    added to ray.data loggers, as reconfiguration would close and invalidate those handlers.
     """
     global _configured_logger_handlers
+    global _logging_configured
 
-    # Check if any ray.data loggers have handlers that weren't added by us
-    # If so, skip reconfiguration to preserve them since dict Config() would close them.
-    has_user_handlers = False
-    for name in logging.root.manager.loggerDict:
-        if name.startswith("ray.data"):
-            logger = logging.getLogger(name)
-            current_handlers = {id(h) for h in logger.handlers}
-            configured_handlers = _configured_logger_handlers.get(name, set())
-            if current_handlers - configured_handlers:
-                # Logger has handlers we didn't add
-                has_user_handlers = True
-                break
-
-    if has_user_handlers:
-        # Skip reconfiguration to preserve user-added handlers
-        return
-
-    # Dynamically load env vars
+    # Dynamically load env vars and get config
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
+
+    # Check if any managed loggers already have handlers before configuring
+    # If so, skip configuration to preserve them since dictConfig() would close them
+    configured_logger_names = set(config.get("loggers", {}).keys())
+    for name, logger_obj in logging.root.manager.loggerDict.items():
+        if isinstance(logger_obj, logging.Logger):
+            is_managed = any(
+                name == cfg_name or name.startswith(cfg_name + ".")
+                for cfg_name in configured_logger_names
+            )
+            if is_managed and logger_obj.handlers:
+                # Skip configuration to preserve existing handlers
+                _logging_configured = True
+                return
 
     # Configure logging
     config["disable_existing_loggers"] = False
     logging.config.dictConfig(config)
 
-    # Track which handlers we added
-    _configured_logger_handlers.clear()
-    for name in logging.root.manager.loggerDict:
-        if name.startswith("ray.data"):
-            logger = logging.getLogger(name)
-            _configured_logger_handlers[name] = {id(h) for h in logger.handlers}
+    _logging_configured = True
 
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
@@ -246,13 +243,24 @@ def reset_logging() -> None:
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
     global _configured_logger_handlers
-    logger = logging.getLogger("ray.data")
-    logger.handlers.clear()
-    logger.setLevel(logging.NOTSET)
+    global _logging_configured
+
+    # Clear handlers from all loggers we track
+    for name in list(_configured_logger_handlers.keys()):
+        logger = logging.getLogger(name)
+        logger.handlers.clear()
+        logger.setLevel(logging.NOTSET)
+
+    # Also clear all loggers managed by Ray Data logging config
+    for name in _get_logger_names():
+        logger = logging.getLogger(name)
+        logger.handlers.clear()
+        logger.setLevel(logging.NOTSET)
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
     _configured_logger_handlers = {}
+    _logging_configured = False
 
 
 def get_log_directory() -> Optional[str]:
