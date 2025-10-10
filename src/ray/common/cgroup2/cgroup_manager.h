@@ -78,7 +78,7 @@ class CgroupManager : public CgroupManagerInterface {
       2) the system leaf cgroup i.e. the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
-    @note If the process does not have adequate cgroup permissions or the workers leaf
+    @note If the process does not have adequate cgroup permissions or the workers
     cgroup does not exist, this will fail a RAY_CHECK.
 
     @param pid of the process to move into the workers leaf cgroup.
