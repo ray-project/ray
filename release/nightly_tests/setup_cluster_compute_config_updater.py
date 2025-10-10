@@ -8,7 +8,6 @@ import requests
 import anyscale
 import time
 import argparse
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +135,7 @@ if __name__ == "__main__":
 
     head_node_id = ray.get_runtime_context().get_node_id()
     updater = ClusterComputeConfigUpdater.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=head_node_id, soft=False
-        ),
+        label_selector={"ray.io/node-id": head_node_id},
         namespace="release_test_namespace",
         name="ClusterComputeConfigUpdater",
         lifetime="detached",
