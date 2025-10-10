@@ -13,9 +13,9 @@ lora_target: all
 pref_beta: 0.1
 
 ### acceleration methods
-# both methods can be enabled at the same time
-flash_attn: fa2            # speed up attention and cut activation memory at long context, use auto on Turing GPUs (e.g., T4)
-enable_liger_kernel: true  # reduce VRAM and improve throughput across multiple transformer ops
+# You can enable both methods at the same time
+flash_attn: fa2            # Speed up attention and cut activation memory at long context. Use auto on Turing GPUs (e.g., T4)
+enable_liger_kernel: true  # Reduce VRAM and improve throughput across multiple transformer ops
 
 ### dataset
 dataset: my_kto_en_demo
@@ -38,7 +38,7 @@ report_to: mlflow   # or none
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 2
-num_train_epochs: 3.0  # low for demo purpose; adjust as needed
+num_train_epochs: 3.0  # Low for demo purpose; adjust as needed
 learning_rate: 5.0e-6
 bf16: true
 lr_scheduler_type: cosine
@@ -51,18 +51,17 @@ ray_storage_path: /mnt/cluster_storage/
 ray_num_workers: 4
 resources_per_worker:
   GPU: 1
-  anyscale/accelerator_shape:4xL40S: 0.001  # pin a specific node shape
+  anyscale/accelerator_shape:4xL40S: 0.001  # Pin a specific node shape
   # accelerator_type:L40S: 0.001            # or just request a GPU type
 
 ray_init_kwargs:
   runtime_env:
     env_vars:
-      # if using gated models like meta-llama/Llama-3-8B-Instruct
+      # If using gated models like meta-llama/Llama-3-8B-Instruct
       HF_TOKEN: <your_huggingface_token>
       # Enable faster downloads if hf_transfer is installed:
       HF_HUB_ENABLE_HF_TRANSFER: '1'
-      # if using mlflow for experiments tracking
+      # If using mlflow for experiments tracking
       MLFLOW_TRACKING_URI: "https://<your_cloud_id>.cloud.databricks.com"
       MLFLOW_TRACKING_TOKEN: "<mlflow_tracking_token>"
       MLFLOW_EXPERIMENT_NAME: "/Users/<your_user_id>/experiment_name"
-      
