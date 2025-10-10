@@ -695,14 +695,14 @@ def test_transient_error_retry(monkeypatch, ray_start_cluster):
             "RAY_testing_rpc_failure",
             "CoreWorkerService.grpc_client.PushTask=100:25:25",
         )
-        cluster = ray_start_cluster
-        cluster.add_node(
-            num_cpus=1,
-            resources={"head": 1},
+        m.setenv(
+            "RAY_actor_scheduling_queue_max_reorder_wait_seconds", "5"
         )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
 
-        @ray.remote(max_task_retries=-1, resources={"head": 1})
+        @ray.remote(max_task_retries=-1)
         class RetryActor:
             def echo(self, value):
                 return value
