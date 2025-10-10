@@ -1191,7 +1191,7 @@ def get_log(
     submission_id: Optional[str] = None,
     attempt_number: int = 0,
     _interval: Optional[float] = None,
-    filter_ansi_code: bool = None,
+    filter_ansi_code: bool = False,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
 

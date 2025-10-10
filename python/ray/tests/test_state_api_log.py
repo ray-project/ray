@@ -1316,6 +1316,16 @@ def test_log_get(ray_start_cluster):
         assert UNCOLORED_MESSAGE not in joined_lines_w_ansi
         assert COLORED_MESSAGE in joined_lines_w_ansi
 
+        # If a random value is set as a path query string for `filter_ansi_code`,
+        # it should be treated as default behavior
+        lines_rand_val = get_log(
+            actor_id=actor_id, suffix="out", filter_ansi_code="random value"
+        )
+        joined_lines_rand_val = "".join(lines_rand_val)
+        lines_default = get_log(actor_id=actor_id, suffix="out", filter_ansi_code=None)
+        joined_lines_default = "".join(lines_default)
+        assert joined_lines_rand_val == joined_lines_default, joined_lines_default
+
         return True
 
     wait_for_condition(verify)

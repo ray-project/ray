@@ -229,9 +229,14 @@ class StateHead(SubprocessModule, RateLimitedModule):
             suffix=req.query.get("suffix", "out"),
             attempt_number=req.query.get("attempt_number", 0),
         )
-        filtering_ansi_esc_code = req.query.get("filter_ansi_code", False)
+
+        filtering_ansi_code = req.query.get("filter_ansi_code", False)
+
+        if isinstance(filtering_ansi_code, str):
+            filtering_ansi_code = filtering_ansi_code.lower() == "true"
 
         logger.info(f"Streaming logs with options: {options}")
+        logger.info(f"Filtering ANSI escape codes: {filtering_ansi_code}")
 
         async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
             actor_info_dict = await self.gcs_client.async_get_all_actor_info(
@@ -255,7 +260,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         try:
             first_chunk = await logs_gen.__anext__()
             # Filter ANSI escape codes
-            if filtering_ansi_esc_code:
+            if filtering_ansi_code:
                 first_chunk = ANSI_ESC_PATTERN.sub(b"", first_chunk)
             await response.prepare(req)
             await response.write(first_chunk)
@@ -273,7 +278,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         try:
             async for logs in logs_gen:
                 # Filter ANSI escape codes
-                if filtering_ansi_esc_code:
+                if filtering_ansi_code:
                     logs = ANSI_ESC_PATTERN.sub(b"", logs)
                 await response.write(logs)
         except Exception:
