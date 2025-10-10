@@ -172,11 +172,38 @@ class AggregationFunction(str, Enum):
 
 @PublicAPI(stability="alpha")
 class AutoscalingPolicy(BaseModel):
-    name: Union[str, Callable] = Field(
+    # Cloudpickled policy definition.
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+
+    policy_function: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY_NAME,
-        description="Name of the policy function or the import path of the policy. "
-        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+        description="Policy function can be a string import path or a function callable. "
+        "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.serialize_policy()
+
+    def serialize_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        policy_path = self.policy_function
+
+        if isinstance(policy_path, Callable):
+            policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
+
+        if not self._serialized_policy_def:
+            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
+
+        self.policy_function = policy_path
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_policy_def)
 
 
 @PublicAPI(stability="stable")
@@ -247,9 +274,6 @@ class AutoscalingConfig(BaseModel):
         description="Function used to aggregate metrics across a time window.",
     )
 
-    # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = PrivateAttr(default=b"")
-
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
     policy: AutoscalingPolicy = Field(
         default_factory=AutoscalingPolicy,
@@ -298,27 +322,6 @@ class AutoscalingConfig(BaseModel):
             return v
         return AggregationFunction(str(v).lower())
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.serialize_policy()
-
-    def serialize_policy(self) -> None:
-        """Serialize policy with cloudpickle.
-
-        Import the policy if it's passed in as a string import path. Then cloudpickle
-        the policy and set `serialized_policy_def` if it's empty.
-        """
-        policy = self.policy
-        policy_name = policy.name
-
-        if isinstance(policy_name, Callable):
-            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
-
-        if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
-
-        self.policy = AutoscalingPolicy(name=policy_name)
-
     @classmethod
     def default(cls):
         return cls(
@@ -326,10 +329,6 @@ class AutoscalingConfig(BaseModel):
             min_replicas=1,
             max_replicas=100,
         )
-
-    def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscaling_factor(self) -> PositiveFloat:
         if self.upscaling_factor:
