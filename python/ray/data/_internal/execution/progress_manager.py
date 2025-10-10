@@ -177,6 +177,8 @@ class SubProgressBar(AbstractProgressBar):
 
     def _update(self, completed: int, total: Optional[int] = None) -> None:
         assert self._enabled
+        if self._start_time is None:
+            self._start_time = time.time()
         completed, total, rate, count_str = _get_progress_metrics(
             self._start_time, completed, total
         )
@@ -190,8 +192,6 @@ class SubProgressBar(AbstractProgressBar):
 
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._enabled and i != 0:
-            if self._start_time is None:
-                self._start_time = time.time()
             if total is not None:
                 self._total = total
             self._completed += i
