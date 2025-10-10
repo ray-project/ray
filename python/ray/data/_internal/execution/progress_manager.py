@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 import threading
 import time
 import uuid
@@ -233,7 +234,7 @@ class RichExecutionProgressManager:
         self._lock = threading.RLock()
 
         # rich
-        self._console = Console()
+        self._console = Console(file=sys.stderr)
         self._total = Progress(
             TextColumn(" ", table_column=Column(no_wrap=True)),
             SpinnerColumn(finished_text="•"),
