@@ -284,7 +284,7 @@ def run_training_with_validation(
 
 def test_async_checkpointing_validation_benchmark():
     # Needed to avoid No module named 'test_async_checkpointing_validation_benchmark'
-    ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
+    ray.init(runtime_env={"working_dir": os.path.dirname(__file__)})
     consolidated_metrics = {}
     num_epochs = 1
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
