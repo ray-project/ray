@@ -180,7 +180,7 @@ class TestShuffleFusionLongChains:
                 input_op=current_op,
                 num_outputs=i,
                 full_shuffle=(i % 2 == 1),  # Alternate shuffle
-                random_permute=(i % 2 == 1),  # Every third one
+                random_permute=(i % 2 == 1),  # Every other
             )
             if i == 0:
                 expected_fused_name = "[Repartition->Repartition]"
