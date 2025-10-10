@@ -21,8 +21,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
+    aggregate_timeseries,
     merge_timeseries_dicts,
-    time_weighted_average,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
@@ -106,7 +106,7 @@ class AutoscalingState:
 
         self._deployment_info = info
         self._config = config
-        self._policy = self._config.get_policy()
+        self._policy = self._config.policy.get_policy()
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -390,11 +390,13 @@ class AutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
-            # Calculate the time-weighted average of the running requests
-            avg_ongoing = time_weighted_average(
-                ongoing_requests_timeseries, last_window_s=last_window_s
+            # Calculate the aggregated running requests
+            value = aggregate_timeseries(
+                ongoing_requests_timeseries,
+                aggregation_function=self._config.aggregation_function,
+                last_window_s=last_window_s,
             )
-            return avg_ongoing if avg_ongoing is not None else 0.0
+            return value if value is not None else 0.0
 
         return 0.0
 

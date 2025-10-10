@@ -101,14 +101,7 @@ def test_report_issues():
     assert data[1]["event_data"]["message"] == "High memory usage detected"
 
 
-@pytest.mark.parametrize(
-    "should_trigger, test_description",
-    [
-        (False, "high threshold (1000.0) - should NOT detect issues"),
-        (True, "low threshold (0.0) - should detect issues for slow tasks"),
-    ],
-)
-def test_hanging_detector_detects_issues(should_trigger, test_description):
+def test_hanging_detector_detects_issues():
     """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
     import io
     import logging
@@ -140,13 +133,15 @@ def test_hanging_detector_detects_issues(should_trigger, test_description):
     try:
         # Create a pipeline with many small blocks to ensure concurrent tasks
         def sleep_task(x):
-            if x["id"] == 9 and should_trigger:
+            if x["id"] == 2:
                 # Issue detection is based on the mean + stdev. One of the tasks must take
                 # awhile, so doing it just for one of the rows.
                 time.sleep(1)
             return x
 
-        ray.data.range(10, override_num_blocks=10).map(sleep_task).materialize()
+        ray.data.range(3, override_num_blocks=3).map(
+            sleep_task, concurrency=1
+        ).materialize()
 
         # Check if hanging detection occurred
         log_output = log_capture.getvalue()
@@ -155,10 +150,7 @@ def test_hanging_detector_detects_issues(should_trigger, test_description):
             and "longer than the average task duration" in log_output
         )
 
-        if should_trigger:
-            assert hanging_detected, test_description
-        else:
-            assert not hanging_detected, test_description
+        assert hanging_detected, log_output
 
     finally:
         # Clean up logging

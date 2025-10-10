@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import AggregationFunction, AutoscalingConfig, RequestRouterConfig
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -336,6 +336,10 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["downscaling_factor"] = None
             if not data["autoscaling_config"].get("target_ongoing_requests"):
                 data["autoscaling_config"]["target_ongoing_requests"] = None
+            if not data["autoscaling_config"].get("aggregation_function"):
+                data["autoscaling_config"][
+                    "aggregation_function"
+                ] = AggregationFunction.MEAN
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
