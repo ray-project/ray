@@ -605,6 +605,9 @@ class OpenAiIngress(DeploymentProtocol):
     async def transcriptions(self, body: TranscriptionRequest) -> Response:
         """Create transcription for the provided audio input.
 
+        Args:
+            body: The TranscriptionRequest object.
+
         Returns:
             A response object with transcriptions.
         """
