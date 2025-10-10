@@ -1,6 +1,16 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 import pyarrow.compute as pc
@@ -17,9 +27,8 @@ from ray.util.annotations import Deprecated, PublicAPI
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
 
-T = TypeVar("T")
-U = TypeVar("U")
-AggType = TypeVar("AggType")
+AccumulatorType = TypeVar("AccumulatorType")
+AggOutputType = TypeVar("AggOutputType")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -74,12 +83,14 @@ class AggregateFn:
 
     def __init__(
         self,
-        init: Callable[[KeyType], AggType],
-        merge: Callable[[AggType, AggType], AggType],
+        init: Callable[[KeyType], AccumulatorType],
+        merge: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
         name: str,
-        accumulate_row: Callable[[AggType, T], AggType] = None,
-        accumulate_block: Callable[[AggType, Block], AggType] = None,
-        finalize: Optional[Callable[[AggType], U]] = None,
+        accumulate_row: Callable[
+            [AccumulatorType, Dict[str, Any]], AccumulatorType
+        ] = None,
+        accumulate_block: Callable[[AccumulatorType, Block], AccumulatorType] = None,
+        finalize: Optional[Callable[[AccumulatorType], AggOutputType]] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -90,7 +101,7 @@ class AggregateFn:
 
         if accumulate_block is None:
 
-            def accumulate_block(a: AggType, block: Block) -> AggType:
+            def accumulate_block(a: AccumulatorType, block: Block) -> AccumulatorType:
                 block_acc = BlockAccessor.for_block(block)
                 for r in block_acc.iter_rows(public_row_format=False):
                     a = accumulate_row(a, r)
@@ -114,7 +125,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
+class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType]):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -154,7 +165,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
     def __init__(
         self,
         name: str,
-        zero_factory: Callable[[], AggType],
+        zero_factory: Callable[[], AccumulatorType],
         *,
         on: Optional[str],
         ignore_nulls: bool,
@@ -185,7 +196,9 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
         return self._target_col_name
 
     @abc.abstractmethod
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
         """Combines a new partial aggregation result with the current accumulator.
 
         This method defines how two intermediate aggregation states are merged.
@@ -205,7 +218,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
         ...
 
     @abc.abstractmethod
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> AccumulatorType:
         """Aggregates data within a single block.
 
         This method processes all rows in a given `Block` and returns a partial
@@ -223,7 +236,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AggType, U]):
         """
         ...
 
-    def finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AccumulatorType) -> Optional[AggOutputType]:
         """Transforms the final accumulated state into the desired output.
 
         This method is called once per group after all blocks have been processed
@@ -482,7 +495,7 @@ class Max(AggregateFnV2[Union[int, float], Union[int, float]]):
 
 
 @PublicAPI
-class Mean(AggregateFnV2[List[int], float]):
+class Mean(AggregateFnV2[List[Union[int, float]], float]):
     """Defines mean (average) aggregation.
 
     Example:
@@ -527,7 +540,7 @@ class Mean(AggregateFnV2[List[int], float]):
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> List[int]:
+    def aggregate_block(self, block: Block) -> List[Union[int, float]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
@@ -545,10 +558,12 @@ class Mean(AggregateFnV2[List[int], float]):
 
         return [sum_, count]
 
-    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+    def combine(
+        self, current_accumulator: List[Union[int, float]], new: List[Union[int, float]]
+    ) -> List[Union[int, float]]:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def finalize(self, accumulator: List[int]) -> Optional[float]:
+    def finalize(self, accumulator: List[Union[int, float]]) -> Optional[float]:
         # The final accumulator for a group is [total_sum, total_count].
         if accumulator[1] == 0:
             # If total_count is 0 (e.g., group was empty or all nulls ignored),
@@ -559,7 +574,7 @@ class Mean(AggregateFnV2[List[int], float]):
 
 
 @PublicAPI
-class Std(AggregateFnV2[List[float], float]):
+class Std(AggregateFnV2[List[Union[int, float]], float]):
     """Defines standard deviation aggregation.
 
     Uses Welford's online algorithm for numerical stability. This method computes
@@ -616,7 +631,7 @@ class Std(AggregateFnV2[List[float], float]):
 
         self._ddof = ddof
 
-    def aggregate_block(self, block: Block) -> List[float]:
+    def aggregate_block(self, block: Block) -> List[Union[int, float]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
@@ -945,10 +960,10 @@ def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
 
 
 def _null_safe_aggregate(
-    aggregate: Callable[[Block], AggType],
+    aggregate: Callable[[Block], AccumulatorType],
     ignore_nulls: bool,
-) -> Callable[[Block], Optional[AggType]]:
-    def _safe_aggregate(block: Block) -> Optional[AggType]:
+) -> Callable[[Block], Optional[AccumulatorType]]:
+    def _safe_aggregate(block: Block) -> Optional[AccumulatorType]:
         result = aggregate(block)
         # NOTE: If `ignore_nulls=True`, aggregation will only be returning
         #       null if the block does NOT contain any non-null elements
@@ -961,9 +976,9 @@ def _null_safe_aggregate(
 
 
 def _null_safe_finalize(
-    finalize: Callable[[AggType], AggType]
-) -> Callable[[Optional[AggType]], AggType]:
-    def _safe_finalize(acc: Optional[AggType]) -> AggType:
+    finalize: Callable[[AccumulatorType], AccumulatorType],
+) -> Callable[[Optional[AccumulatorType]], AccumulatorType]:
+    def _safe_finalize(acc: Optional[AccumulatorType]) -> AccumulatorType:
         # If accumulator container is not null, finalize.
         # Otherwise, return as is.
         return acc if is_null(acc) else finalize(acc)
@@ -972,8 +987,11 @@ def _null_safe_finalize(
 
 
 def _null_safe_combine(
-    combine: Callable[[AggType, AggType], AggType], ignore_nulls: bool
-) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
+    combine: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
+    ignore_nulls: bool,
+) -> Callable[
+    [Optional[AccumulatorType], Optional[AccumulatorType]], Optional[AccumulatorType]
+]:
     """Null-safe combination have to be an associative operation
     with an identity element (zero) or in other words implement a monoid.
 
@@ -996,8 +1014,8 @@ def _null_safe_combine(
     if ignore_nulls:
 
         def _safe_combine(
-            cur: Optional[AggType], new: Optional[AggType]
-        ) -> Optional[AggType]:
+            cur: Optional[AccumulatorType], new: Optional[AccumulatorType]
+        ) -> Optional[AccumulatorType]:
             if is_null(cur):
                 return new
             elif is_null(new):
@@ -1008,8 +1026,8 @@ def _null_safe_combine(
     else:
 
         def _safe_combine(
-            cur: Optional[AggType], new: Optional[AggType]
-        ) -> Optional[AggType]:
+            cur: Optional[AccumulatorType], new: Optional[AccumulatorType]
+        ) -> Optional[AccumulatorType]:
             if is_null(new):
                 return new
             elif is_null(cur):

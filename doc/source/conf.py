@@ -129,8 +129,8 @@ nb_output_folder = "_build/jupyter_execute"
 nitpicky = True
 nitpick_ignore_regex = [
     ("py:obj", "ray.actor.T"),
-    ("py:obj", "ray.data.aggregate.U"),
-    ("py:obj", "ray.data.aggregate.AggType"),
+    ("py:obj", "ray.data.aggregate.AccumulatorType"),
+    ("py:obj", "ray.data.aggregate.AggOutputType"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
