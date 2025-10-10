@@ -27,7 +27,8 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
+from ray.serve.api import _prepare_http_options
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
     LoggingConfig,
@@ -529,13 +530,16 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"location": "EveryNode"}
+    proxy_location = None
+    http_options = None
     grpc_options = gRPCOptions()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        http_options = {**config.http_options.dict(), **http_options}
+        proxy_location = config.proxy_location
+        http_options = HTTPOptions(**config.http_options.dict())
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
+    http_options = _prepare_http_options(proxy_location, http_options)
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
