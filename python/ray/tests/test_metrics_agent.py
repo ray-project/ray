@@ -559,10 +559,8 @@ def test_metrics_export_event_aggregator_agent(
                 if m.name == descriptor and m.labels[CONSUMER_TAG_KEY] == consumer_name
             ]
             if not samples:
-                print("missing: ", descriptor)
                 return False
             if samples[0].value != expected_value:
-                print("incorrect value: ", descriptor, expected_value)
                 return False
         return True
 
