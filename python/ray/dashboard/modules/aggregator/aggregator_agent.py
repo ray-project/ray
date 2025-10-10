@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 2
+    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -58,7 +58,7 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
 )
 
 

@@ -243,6 +243,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
                     num_events_published=0,
                     num_events_filtered_out=0,
                 )
+
             return PublishStats(
                 is_publish_successful=True,
                 num_events_published=len(filtered_events),
