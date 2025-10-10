@@ -14,7 +14,7 @@ dependencies = [
     "ray[data,serve,train,tune]",
     "scikit-learn==1.6.0",
     "torch==2.7.1",
-    "transformers==4.52.3",
+    "transformers==4.53.0",
 ]
 
 [tool.uv.sources]
