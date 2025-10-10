@@ -101,6 +101,12 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
 };
 
+bool CheckRayletClientPoolHasClient(RayletClientPool &raylet_client_pool,
+                                    const NodeID &node_id) {
+  absl::MutexLock lock(&raylet_client_pool.mu_);
+  return raylet_client_pool.client_map_.contains(node_id);
+}
+
 TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   // Add 2 raylet clients to the pool.
   // raylet_client_1 unavailable calls:
@@ -127,10 +133,12 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
 
   auto raylet_client_1 = dynamic_cast<MockRayletClient *>(
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_1_address).get());
-  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), raylet_client_1);
+  ASSERT_TRUE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_1_node_id));
   auto raylet_client_2 = dynamic_cast<MockRayletClient *>(
       raylet_client_pool_->GetOrConnectByAddress(raylet_client_2_address).get());
-  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_2_node_id).get(), raylet_client_2);
+  ASSERT_TRUE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_2_node_id));
 
   GcsNodeInfo node_info_alive;
   node_info_alive.set_state(GcsNodeInfo::ALIVE);
@@ -163,13 +171,17 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   }
 
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_NE(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
+  ASSERT_TRUE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_1_node_id));
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_NE(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
+  ASSERT_TRUE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_1_node_id));
   raylet_client_1->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_1_node_id).get(), nullptr);
+  ASSERT_FALSE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_1_node_id));
   raylet_client_2->unavailable_timeout_callback_();
-  ASSERT_EQ(raylet_client_pool_->GetByID(raylet_client_2_node_id).get(), nullptr);
+  ASSERT_FALSE(
+      CheckRayletClientPoolHasClient(*raylet_client_pool_, raylet_client_2_node_id));
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

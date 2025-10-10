@@ -837,6 +837,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
+  raylet_client_pool_.Disconnect(node_id);
+  worker_rpc_pool_.Disconnect(node_id);
+
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
@@ -2727,7 +2730,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
     raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {

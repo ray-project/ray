@@ -207,6 +207,22 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_type_conversion",
+    size = "small",
+    srcs = [
+        "tests/test_arrow_type_conversion.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_arrow_serialization",
     size = "small",
     srcs = ["tests/test_arrow_serialization.py"],
@@ -589,6 +605,20 @@ py_test(
 )
 
 py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_deduping_schema",
     size = "small",
     srcs = ["tests/test_deduping_schema.py"],
@@ -785,6 +815,34 @@ py_test(
 )
 
 py_test(
+    name = "test_map_batches",
+    size = "enormous",
+    srcs = ["tests/test_map_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_with_column",
+    size = "enormous",
+    srcs = ["tests/test_with_column.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_filter",
     size = "medium",
     srcs = ["tests/test_filter.py"],
@@ -911,6 +969,20 @@ py_test(
 )
 
 py_test(
+    name = "test_tensor_extension",
+    size = "small",
+    srcs = ["tests/test_tensor_extension.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_text",
     size = "small",
     srcs = ["tests/test_text.py"],
@@ -957,6 +1029,20 @@ py_test(
     name = "test_torch",
     size = "small",
     srcs = ["tests/test_torch.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_tensor_utils",
+    size = "small",
+    srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1126,6 +1212,20 @@ py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_object_extension",
+    size = "small",
+    srcs = ["tests/test_object_extension.py"],
     tags = [
         "exclusive",
         "team:data",

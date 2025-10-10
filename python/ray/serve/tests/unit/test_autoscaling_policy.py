@@ -2,13 +2,12 @@ import sys
 
 import pytest
 
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
     _calculate_desired_num_replicas,
     replica_queue_length_autoscaling_policy,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
 
 class TestCalculateDesiredNumReplicas:
