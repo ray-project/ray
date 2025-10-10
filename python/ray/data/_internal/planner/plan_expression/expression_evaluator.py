@@ -88,9 +88,9 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         op = node.ops[0]
         if isinstance(op, ast.In):
-            return left_expr.is_in(comparators[0])
+            return left_expr.isin(comparators[0])
         elif isinstance(op, ast.NotIn):
-            return ~left_expr.is_in(comparators[0])
+            return ~left_expr.isin(comparators[0])
         elif isinstance(op, ast.Eq):
             return left_expr == comparators[0]
         elif isinstance(op, ast.NotEq):
@@ -233,7 +233,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                 nan_is_null=nan_is_null
             ),
             "is_valid": lambda arg: arg.is_valid(),
-            "is_in": lambda arg1, arg2: arg1.is_in(arg2),
+            "isin": lambda arg1, arg2: arg1.isin(arg2),
         }
 
         if func_name in function_map:
@@ -248,10 +248,10 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                 else:
                     raise ValueError("is_null function requires one or two arguments.")
             # Handle the "is_in" function with exactly two arguments
-            elif func_name == "is_in" and len(args) != 2:
-                raise ValueError("is_in function requires two arguments.")
+            elif func_name == "isin" and len(args) != 2:
+                raise ValueError("isin function requires two arguments.")
             # Ensure the function has one argument (for functions like is_valid)
-            elif func_name != "is_in" and len(args) != 1:
+            elif func_name != "isin" and len(args) != 1:
                 raise ValueError(f"{func_name} function requires exactly one argument.")
             # Call the corresponding function with the arguments
             return function_map[func_name](*args)
@@ -397,9 +397,9 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             operand = self.visit(node.args[0])
             # Use x != x pattern for NaN detection (NaN != NaN is True)
             return BinaryExpr(Operation.NE, operand, operand)
-        elif func_name == "is_in":
+        elif func_name == "isin":
             if len(node.args) != 2:
-                raise ValueError("is_in() expects exactly two arguments")
+                raise ValueError("isin() expects exactly two arguments")
             left = self.visit(node.args[0])
             right = self.visit(node.args[1])
             return BinaryExpr(Operation.IN, left, right)
