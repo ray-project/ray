@@ -298,7 +298,7 @@ Engine Metrics
 ---------------------
 All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable using Prometheus. See `vLLM metrics <https://docs.vllm.ai/en/stable/usage/metrics.html>`_ for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
 
-Engine metric logging is off by default, and must be manually enabled. In addition, you must enable the vLLM V1 engine to use engine metrics. To enable engine-level metric logging, set `log_engine_metrics: True` when configuring the LLM deployment. For example:
+Engine metric logging is on by default as of Ray 2.51. To disable engine-level metric logging, set `log_engine_metrics: False` when configuring the LLM deployment. For example:
 
 .. tab-set::
 
@@ -320,7 +320,7 @@ Engine metric logging is off by default, and must be manually enabled. In additi
                         min_replicas=1, max_replicas=2,
                     )
                 ),
-                log_engine_metrics=True
+                log_engine_metrics=False
             )
 
             app = build_openai_app({"llm_configs": [llm_config]})
@@ -343,7 +343,7 @@ Engine metric logging is off by default, and must be manually enabled. In additi
                         autoscaling_config:
                             min_replicas: 1
                             max_replicas: 2
-                    log_engine_metrics: true
+                    log_engine_metrics: false
             import_path: ray.serve.llm:build_openai_app
             name: llm_app
             route_prefix: "/"

@@ -30,7 +30,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray event stats metrics for main services
 /// such as gcs and raylet (which today are the sole consumers of
 /// this config)
-RAY_CONFIG(bool, emit_main_service_metrics, false)
+RAY_CONFIG(bool, emit_main_service_metrics, true)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
@@ -552,7 +552,7 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// `ray_io_context_event_loop_lag_ms`.
 ///
 /// A probe task is only posted after a previous probe task has completed.
-RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 250)
+RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
