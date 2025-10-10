@@ -490,13 +490,18 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     Make sure the GCS states are updated properly.
     """
-    for n in ray.nodes():
-        node_id = n["NodeID"]
-        is_alive = n["Alive"]
-        if node_id == head_node_id:
-            assert is_alive
-        if node_id in worker_node_ids:
-            assert not is_alive
+
+    def nodes_gcs_state_updated():
+        for n in ray.nodes():
+            node_id = n["NodeID"]
+            is_alive = n["Alive"]
+            if node_id == head_node_id:
+                assert is_alive
+            if node_id in worker_node_ids:
+                assert not is_alive
+
+    wait_for_condition(nodes_gcs_state_updated, timeout=1)
+
     """
     Make sure head node is not dead and functional.
     """
