@@ -656,7 +656,7 @@
 # Cross-AZ RPC fault tolerance test
 #################################################
 
-- name: "map_batches_autoscaling_xaz"
+- name: "cross_az_map_batches_autoscaling"
   frequency: nightly
   env: gce
 
@@ -678,7 +678,6 @@
     - __suffix__: gce_failure_injection
       cluster:
         byod:
-          type: gpu
           # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with 10% request failures and 10% response failures.
           # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
           runtime_env:
@@ -689,7 +688,6 @@
       env: aws
       cluster:
         byod:
-          type: gpu
           runtime_env:
             - RAY_testing_rpc_failure="*=-1:10:10"
             - RAY_testing_rpc_failure_avoid_intra_node_failures=1
