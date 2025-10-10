@@ -444,7 +444,7 @@ makes more conservative downscaling decisions.
 (serve-custom-autoscaling-policies)=
 ## Custom autoscaling policies
 
-:::{note}
+:::{warning}
 Custom autoscaling policies are experimental and may change in future releases.
 :::
 
