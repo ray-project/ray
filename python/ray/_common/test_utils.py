@@ -15,6 +15,8 @@ from collections.abc import Awaitable
 from contextlib import contextmanager
 from enum import Enum
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set
+import threading
+
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -247,3 +249,25 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+class MockTimer:
+    def __init__(self, start_time: Optional[float] = None):
+        self._lock = threading.Lock()
+        self.reset(start_time=start_time)
+
+    def reset(self, start_time: Optional[float] = None):
+        if start_time is None:
+            start_time = time.time()
+        self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    def advance(self, by: float):
+        with self._lock:
+            self._curr += by
+
+    def realistic_sleep(self, amt: float):
+        with self._lock:
+            self._curr += amt + 0.001

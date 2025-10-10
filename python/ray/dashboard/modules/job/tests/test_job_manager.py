@@ -15,6 +15,7 @@ from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
+    MockTimer,
 )
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
@@ -26,6 +27,7 @@ from ray._raylet import NodeID
 from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
@@ -351,6 +353,59 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
         assert start_message in logs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_pending_job_timeout_during_new_head_creation(
+    call_ray_start, tmp_path, monkeypatch
+):
+    """Test the timeout for pending jobs during new head node creation."""
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+
+    # Submit a job with unsatisfied resource.
+    start_timer = MockTimer()
+    with monkeypatch.context() as m:
+        m.setattr(time, "time", start_timer.time)
+
+        job_manager = JobManager(gcs_client, tmp_path)
+        job_id = "test_job_1"
+        await job_manager.submit_job(
+            submission_id=job_id,
+            entrypoint="echo 'hello world'",
+            entrypoint_num_cpus=2,
+        )
+        await asyncio.sleep(0.1)
+
+    # New head node created.
+    timeout = DEFAULT_JOB_START_TIMEOUT_SECONDS
+    timeout_timer = MockTimer(start_timer.time() + timeout + 1)
+    with monkeypatch.context() as m:
+        m.setattr(time, "time", timeout_timer.time)
+
+        new_job_manager = JobManager(gcs_client, tmp_path)
+        await asyncio.sleep(0.1)
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed, job_manager=new_job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await new_job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+    # Check that supervisor has been removed.
+    job_supervisor = new_job_manager._get_actor_for_job(job_id)
+    assert job_supervisor is None
 
 
 @pytest.mark.asyncio
