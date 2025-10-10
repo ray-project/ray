@@ -19,13 +19,10 @@ def test_parse_build_arg_sets():
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
-        assert "general_depset__py311_cpu" in [depset.name for depset in config.depsets]
-        assert "build_args_test_depset__py311_cpu" in [
-            depset.name for depset in config.depsets
-        ]
-        assert "expanded_depset__py311_cpu" in [
-            depset.name for depset in config.depsets
-        ]
+        depset_names = {depset.name for depset in config.depsets}
+        assert "general_depset__py311_cpu" in depset_names
+        assert "build_args_test_depset__py311_cpu" in depset_names
+        assert "expanded_depset__py311_cpu" in depset_names
 
 
 def test_substitute_build_args():
