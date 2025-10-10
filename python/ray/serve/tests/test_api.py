@@ -1202,7 +1202,7 @@ def test_max_constructor_retry_count(serve_instance):
 
     counter = Counter.remote()
 
-    @serve.deployment(num_replicas=4, max_constructor_retry_count=10)
+    @serve.deployment(num_replicas=3, max_constructor_retry_count=7)
     class A:
         def __init__(self, counter):
             counter.increase.remote()
@@ -1214,9 +1214,9 @@ def test_max_constructor_retry_count(serve_instance):
     except Exception:
         pass
 
-    # we are triggering 4 replicas at once, and for understanding, let's assume then only one replica fail 10 times,
-    # hence total count should be 10(one replica with 10 failures and 3 replicas with 0 failures) = 13
-    wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 13)
+    # we are triggering 3 replicas at once, and for understanding, let's assume then only one replica fail 7 times,
+    # hence total count should be 7(one replica with 7 failures and 2 replicas with 0 failures) = 9
+    wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 9)
 
 
 if __name__ == "__main__":
