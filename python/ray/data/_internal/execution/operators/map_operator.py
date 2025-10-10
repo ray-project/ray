@@ -418,13 +418,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
-            (
-                _,
-                self._estimated_num_output_bundles,
-                self._estimated_output_num_rows,
-            ) = estimate_total_num_of_blocks(
-                self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
-            )
+
+            if self._metrics.num_tasks_finished == 0:
+                self._estimated_num_output_bundles = (
+                    self._metrics.num_task_outputs_generated
+                )
+                self._estimated_output_num_rows = (
+                    self._metrics.rows_task_outputs_generated
+                )
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
@@ -432,6 +433,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
+
+            (
+                _,
+                self._estimated_num_output_bundles,
+                self._estimated_output_num_rows,
+            ) = estimate_total_num_of_blocks(
+                self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
+            )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
