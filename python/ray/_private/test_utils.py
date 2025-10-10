@@ -397,17 +397,48 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
 def wait_for_dashboard_agent_available(cluster):
     gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
+    )
 
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
+
+def wait_for_aggregator_agent_ready(address, node_id):
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Wait for the agent to be ready
+    def _is_aggregator_agent_ready() -> bool:
+        ready_key = (
+            f"{dashboard_consts.DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{node_id}"
+        ).encode()
+        val = gcs_client.internal_kv_get(
+            ready_key,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
         )
+        return val == b"1"
 
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+    wait_for_condition(_is_aggregator_agent_ready)
+    # wait for 2 extra seconds to make sure the agent is ready
+    time.sleep(2)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
