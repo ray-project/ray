@@ -115,7 +115,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
             task_idx=self._next_task_index,
             op_name=self.name,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
-            target_max_block_size_override=self.actual_target_max_block_size,
+            target_max_block_size_override=self.target_max_block_size_override,
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
@@ -194,4 +194,8 @@ class NAryOperator(PhysicalOperator):
         """
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"
-        super().__init__(op_name, list(input_ops), data_context)
+        super().__init__(
+            op_name,
+            list(input_ops),
+            data_context,
+        )

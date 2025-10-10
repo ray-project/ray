@@ -22,7 +22,7 @@ import "src/ray/protobuf/public/events_actor_task_definition_event.proto";
 import "src/ray/protobuf/public/events_task_definition_event.proto";
 import "src/ray/protobuf/public/events_task_execution_event.proto";
 import "src/ray/protobuf/public/events_driver_job_definition_event.proto";
-import "src/ray/protobuf/public/events_driver_job_execution_event.proto";
+import "src/ray/protobuf/public/events_driver_job_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_actor_definition_event.proto";
 import "src/ray/protobuf/public/events_actor_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_node_definition_event.proto";
@@ -53,7 +53,7 @@ message RayEvent {
     ACTOR_TASK_DEFINITION_EVENT = 3;
     TASK_PROFILE_EVENT = 4;
     DRIVER_JOB_DEFINITION_EVENT = 5;
-    DRIVER_JOB_EXECUTION_EVENT = 6;
+    DRIVER_JOB_LIFECYCLE_EVENT = 6;
     NODE_DEFINITION_EVENT = 7;
     NODE_LIFECYCLE_EVENT = 8;
     ACTOR_DEFINITION_EVENT = 9;
@@ -98,7 +98,7 @@ message RayEvent {
   ActorTaskDefinitionEvent actor_task_definition_event = 10;
   TaskProfileEvents task_profile_events = 11;
   DriverJobDefinitionEvent driver_job_definition_event = 12;
-  DriverJobExecutionEvent driver_job_execution_event = 13;
+  DriverJobLifecycleEvent driver_job_lifecycle_event = 13;
   NodeDefinitionEvent node_definition_event = 14;
   NodeLifecycleEvent node_lifecycle_event = 15;
   ActorDefinitionEvent actor_definition_event = 16;

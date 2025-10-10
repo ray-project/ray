@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
@@ -31,8 +32,8 @@
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
@@ -48,9 +49,10 @@
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/throttler.h"
 
 namespace ray::raylet {
@@ -59,6 +61,9 @@ using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::ResourceUsageBatchData;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -148,7 +153,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       plasma::PlasmaClientInterface &store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
-      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -395,14 +402,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleNotifyWorkerBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleNotifyWorkerUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -857,15 +864,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
-  /// Number of tasks that are received and scheduled.
-  uint64_t metrics_num_task_scheduled_;
-
-  /// Number of tasks that are executed at this node.
-  uint64_t metrics_num_task_executed_;
-
-  /// Number of tasks that are spilled back to other nodes.
-  uint64_t metrics_num_task_spilled_back_;
-
   /// Managers all bundle-related operations.
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
@@ -884,6 +882,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  /// Used to move the dashboard and runtime_env agents into the system cgroup.
+  AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
+
+  // Controls the lifecycle of the CgroupManager.
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 };
 
 }  // namespace ray::raylet

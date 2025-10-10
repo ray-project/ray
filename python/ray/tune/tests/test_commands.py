@@ -9,7 +9,6 @@ import click
 import pytest
 
 import ray
-import ray.train
 from ray import tune
 from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands

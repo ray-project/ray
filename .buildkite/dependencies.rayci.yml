@@ -23,7 +23,27 @@ steps:
     key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
-    command: ./ci/test_compile_llm_requirements.sh
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depsets.yaml --check
+      - chown -R 2000:100 /artifact-mount
+      - cp ./python/deplocks/llm/* /artifact-mount/
     job_env: manylinux
-    depends_on:
-      - manylinux
+    depends_on: manylinux
+
+  - label: ":tapioca: build: raydepsets: compile ray img dependencies"
+    key: raydepsets_compile_rayimg_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux
+
+  - label: ":tapioca: build: raydepsets: compile multimodal inference release test dependencies"
+    key: raydepsets_compile_multimodal_inference_release_test_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux

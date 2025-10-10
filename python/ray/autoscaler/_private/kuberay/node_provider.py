@@ -246,6 +246,11 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
 
+def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
+    # 1 is the default numOfHosts value used by the KubeRay operator
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
+
+
 class IKubernetesHttpApiClient(ABC):
     """
     An interface for a Kubernetes HTTP API client.
@@ -334,6 +339,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             url,
             json.dumps(payload),
             headers={**headers, "Content-type": "application/json-patch+json"},
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
         if not result.status_code == 200:

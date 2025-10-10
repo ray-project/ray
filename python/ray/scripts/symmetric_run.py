@@ -84,7 +84,7 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 
 USAGE:
 
-    python -m ray.scripts.symmetric_run --address ADDRESS
+    ray symmetric-run --address ADDRESS
 [--min-nodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
 
 DESCRIPTION:
@@ -100,15 +100,15 @@ EXAMPLES:
 
     # Start Ray with default settings and run a Python script
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
+    ray symmetric-run --address 127.0.0.1:6379 -- python my_script.py
 
     # Start Ray with specific head node and run a command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
 
     # Start Ray and run a multi-word command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
 
 RAY START OPTIONS:
 
@@ -133,10 +133,13 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
-    separator = all_args.index("--")
-
-    if separator == -1:
-        raise click.ClickException("No separator '--' found in arguments.")
+    try:
+        separator = all_args.index("--")
+    except ValueError:
+        raise click.ClickException(
+            "No separator '--' found in arguments. Please use '--' to "
+            "separate Ray start arguments and the entrypoint command."
+        )
 
     run_and_start_args, entrypoint_on_head = (
         all_args[:separator],
