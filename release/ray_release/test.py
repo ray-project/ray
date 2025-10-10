@@ -388,6 +388,12 @@ class Test(dict):
         """
         return self.get("env") == "kuberay"
 
+    def is_azure(self) -> bool:
+        """
+        Returns whether this test is running on Azure.
+        """
+        return self.get("env") == "azure"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
