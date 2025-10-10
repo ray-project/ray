@@ -26,7 +26,7 @@ async def initialize_worker_nodes(
     llm_config: LLMConfig,
     *,
     download_extra_files: bool,
-    ctx: CallbackCtx,
+    callback: Callback,
 ):
     """Runs the download tasks across all the nodes in the placement groups.
 
@@ -35,6 +35,7 @@ async def initialize_worker_nodes(
     run the download_model_files task for each node in a separate ray.remote call.
     This ensures that we call download_model_files once per node all in parallel.
     """
+    ctx = callback.ctx
     engine_config = VLLMEngineConfig.from_llm_config(llm_config)
     pg_table = ray.util.placement_group_table(ctx.placement_group)
 
@@ -56,17 +57,21 @@ async def initialize_worker_nodes(
         )
 
     logger.info("Running tasks to download model files on worker nodes")
-    await asyncio.gather(
+    paths = await asyncio.gather(
         *[
             download_task.remote(
                 engine_config.actual_hf_model_id,
                 engine_config.mirror_config,
                 download_model=ctx.worker_node_download_model,
                 download_extra_files=download_extra_files,
+                callback=callback,
             )
             for download_task in download_tasks
         ]
     )
+
+    # assume that all paths are the same
+    llm_config.get_engine_config().hf_model_id = paths[0]
 
 
 async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
@@ -81,16 +86,16 @@ async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
     # Get callback instance (if configured) with context information
     callback = llm_config.get_or_create_callback()
 
-    await Callback.run_callback("on_before_node_init", callback)
+    await callback.run_callback("on_before_node_init")
 
     if callback.ctx.run_downloads:
         await initialize_worker_nodes(
             llm_config,
-            ctx=callback.ctx,
+            callback=callback,
             download_extra_files=True,
         )
 
-    await Callback.run_callback("on_after_node_init", callback)
+    await callback.run_callback("on_after_node_init")
 
     return callback.ctx
 

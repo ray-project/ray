@@ -31,6 +31,7 @@ class TestingCallback(Callback):
 
         self.ctx.custom_data["ctx_test_key"] = "ctx_test_value"
         self.before_init_called = True
+        self.ctx.run_downloads = False
 
     async def on_after_node_init(self) -> None:
         assert self.ctx.worker_node_download_model == NodeModelDownloadable.NONE

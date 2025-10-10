@@ -180,7 +180,7 @@ class VLLMEngine(LLMEngine):
 
         await init_app_state(
             engine_client=self._engine_client,
-            vllm_config=vllm_engine_config,
+            # vllm_config=vllm_engine_config,
             state=state,
             args=args,
         )

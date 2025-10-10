@@ -1,7 +1,8 @@
+import asyncio
 import inspect
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Type, Union
 
 if TYPE_CHECKING:
     from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
@@ -66,44 +67,70 @@ class Callback:
         """Called after node initialization completes."""
         pass
 
-    @staticmethod
-    async def run_callback(method_name: str, callback: "Callback") -> Awaitable[None]:
+    def on_before_download_model_files_distributed(self) -> None:
+        """Called before model files are downloaded on each node."""
+        pass
+
+    def _get_method(self, method_name: str) -> Callable:
+        """Get a callback method."""
+        if not hasattr(self, method_name):
+            raise AttributeError(
+                f"Callback {type(self).__name__} does not have method '{method_name}'"
+            )
+        return getattr(self, method_name), inspect.iscoroutinefunction(
+            getattr(self, method_name)
+        )
+
+    def _handle_callback_error(self, method_name: str, e: Exception) -> None:
+        if self.raise_error_on_callback:
+            raise Exception(
+                f"Error running callback method '{method_name}' on {type(self).__name__}: {str(e)}"
+            ) from e
+        else:
+            logger.error(
+                f"Error running callback method '{method_name}' on {type(self).__name__}: {str(e)}"
+            )
+
+    async def run_callback(self, method_name: str) -> Awaitable[None]:
         """Run a callback method either synchronously or asynchronously.
 
         Args:
             method_name: The name of the method to call on the callback
-            callback: The callback instance to call the method on
-
-        Raises:
-            AttributeError: If the method doesn't exist on the callback
-            Exception: Any exception raised by the callback method
 
         Returns:
             None
         """
-        if not hasattr(callback, method_name):
-            raise AttributeError(
-                f"Callback {type(callback).__name__} does not have method '{method_name}'"
-            )
-
-        method = getattr(callback, method_name)
+        method, is_async = self._get_method(method_name)
 
         try:
-            # Check if the method is a coroutine function
-            if inspect.iscoroutinefunction(method):
+            if is_async:
                 await method()
             else:
-                # For sync methods, run them in the event loop
                 method()
         except Exception as e:
-            if callback.raise_error_on_callback:
-                raise Exception(
-                    f"Error running callback method '{method_name}' on {type(callback).__name__}: {str(e)}"
-                ) from e
+            self._handle_callback_error(method_name, e)
+
+    def run_callback_sync(self, method_name: str) -> None:
+        """Run a callback method synchronously
+
+        Args:
+            method_name: The name of the method to call on the callback
+        Returns:
+            None
+        """
+        method, is_async = self._get_method(method_name)
+
+        try:
+            if is_async:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.run_until_complete(method())
+                except RuntimeError:
+                    asyncio.run(method())
             else:
-                logger.error(
-                    f"Error running callback method '{method_name}' on {type(callback).__name__}: {str(e)}"
-                )
+                method()
+        except Exception as e:
+            self._handle_callback_error(method_name, e)
 
 
 @dataclass
