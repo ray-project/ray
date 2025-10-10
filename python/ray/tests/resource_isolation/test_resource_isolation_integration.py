@@ -30,7 +30,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #
 # To run locally, uncomment the following line.
-_ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
+# _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
 
 # The integration tests assume that the _ROOT_CGROUP exists and that
 # the process has read and write access.
