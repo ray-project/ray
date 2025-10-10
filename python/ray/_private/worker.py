@@ -1835,11 +1835,10 @@ def init(
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
-            "DeprecationWarning: local mode is an experimental feature that is no "
-            "longer maintained and will be removed in the future."
-            " For debugging consider using Ray Distributed Debugger. ",
-            DeprecationWarning,
-            stacklevel=2,
+            "`local_mode` is an experimental feature that is no "
+            "longer maintained and will be removed in the near future. "
+            "For debugging consider using the Ray distributed debugger.",
+            FutureWarning, stacklevel=2,
         )
     else:
         driver_mode = SCRIPT_MODE
