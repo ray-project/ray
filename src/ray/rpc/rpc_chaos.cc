@@ -46,10 +46,9 @@ namespace testing {
 // these are set to 0, but by setting them to positive values it guarantees that the first
 // X request RPCs will fail, followed by Y response RPCs. Afterwards, it will revert to
 // the probabilistic failures. You can combine this with the wildcard so that each RPC
-// method will have the same lower bounds applied. It's recommended to set the total
-// amount as -1 when using the wildcard as the lower bound will be applied to each
-// individual RPC method. Ex. unlimited failures for all rpc's with 25% request failures
-// and 50% response failures with at least 2 request failures and 3 response failures.
+// method will have the same lower bounds applied.
+// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+// failures with at least 2 request failures and 3 response failures.
 //     export RAY_testing_rpc_failure="*=-1:25:50:2:3"
 
 class RpcFailureManager {
