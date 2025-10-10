@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 # Timeout for getting metadata from Ray object references (in seconds)
 METADATA_GET_TIMEOUT_S = 1.0
 
+# Timeout for waiting for metadata object to become available (in seconds)
+METADATA_WAIT_TIMEOUT_S = 0.1
+
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
@@ -96,8 +99,8 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
+        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """Create a DataOpTask
@@ -160,7 +163,9 @@ class DataOpTask(OpTask):
 
             if self._pending_meta_ref.is_nil():
                 try:
-                    self._pending_meta_ref = self._streaming_gen._next_sync(timeout_s=0)
+                    self._pending_meta_ref = self._streaming_gen._next_sync(
+                        timeout_s=METADATA_WAIT_TIMEOUT_S
+                    )
                 except StopIteration:
                     # The generator should always yield 2 values (block and metadata)
                     # each time. If we get a StopIteration here, it means an error

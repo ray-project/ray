@@ -2,8 +2,10 @@ import os
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 import ray
@@ -11,6 +13,7 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
@@ -26,7 +29,10 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -54,6 +60,8 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators.map_operator import MapRows
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.util import MiB
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -966,6 +974,84 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage1.id.endswith("_sub_0")
     assert sub_stage2.name == "SubStage2"
     assert sub_stage2.id.endswith("_sub_1")
+
+
+class TestDataOpTask:
+    def test_on_data_ready_single_output(self, ray_start_regular_shared):
+        @ray.remote
+        def map_task():
+            builder = DelegatingBlockBuilder()
+            builder.add_batch({"data": np.zeros((1, 128 * MiB), dtype=np.uint8)})
+            block = builder.build()
+            yield block
+
+            block_accessor = BlockAccessor.for_block(block)
+            block_metadata = block_accessor.get_metadata()
+            yield BlockMetadataWithSchema(
+                block_metadata, schema=block_accessor.schema()
+            )
+
+        def verify_output(bundle):
+            assert bundle.num_rows() == 1, bundle.num_rows()
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        has_completed = False
+
+        def verify_exception(exc: Optional[Exception]):
+            nonlocal has_completed
+
+            assert exc is None
+            has_completed = True
+
+        generator_backpressure_num_objects = (
+            ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
+            * 2  # Multiply by two because we yield a metadata object for each block.
+        )
+        streaming_gen = map_task.options(
+            _generator_backpressure_num_objects=generator_backpressure_num_objects
+        ).remote()
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            output_ready_callback=verify_output,
+            task_done_callback=verify_exception,
+        )
+
+        bytes_read = 0
+        while not has_completed:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None)
+
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_exception(self, ray_start_regular_shared):
+        @ray.remote
+        def map_task():
+            assert False, "Block generation failed"
+            yield
+
+        def verify_exception(exc: Optional[Exception]):
+            assert isinstance(exc, AssertionError)
+
+        generator_backpressure_num_objects = (
+            ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
+            * 2  # Multiply by two because we yield a metadata object for each block.
+        )
+        streaming_gen = map_task.options(
+            _generator_backpressure_num_objects=generator_backpressure_num_objects
+        ).remote()
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            task_done_callback=verify_exception,
+        )
+
+        with pytest.raises(AssertionError, match="Block generation failed"):
+            while True:
+                ray.wait([streaming_gen], fetch_local=False)
+                data_op_task.on_data_ready(None)
 
 
 if __name__ == "__main__":
