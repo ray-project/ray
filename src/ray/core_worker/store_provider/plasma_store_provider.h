@@ -152,7 +152,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// argument to Get to retrieve the object data.
   Status Release(const ObjectID &object_id);
 
-  Status Get(const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
+  Status Get(const std::vector<ObjectID> &object_ids,
+             const std::vector<rpc::Address> &owner_addresses,
              int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
@@ -185,7 +186,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
-  Status Wait(const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
+  Status Wait(const std::vector<ObjectID> &object_ids,
+              const std::vector<rpc::Address> &owner_addresses,
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
@@ -217,7 +219,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status.
   Status PullObjectsAndGetFromPlasmaStore(
-      absl::flat_hash_set<ObjectID> &remaining,
+      absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx,
       const std::vector<ObjectID> &batch_ids,
       const std::vector<rpc::Address> &batch_owner_addresses,
       int64_t timeout_ms,
@@ -226,8 +228,9 @@ class CoreWorkerPlasmaStoreProvider {
 
   /// Print a warning if we've attempted the fetch for too long and some
   /// objects are still unavailable.
-  static void WarnIfFetchHanging(int64_t fetch_start_time_ms,
-                                 const absl::flat_hash_set<ObjectID> &remaining);
+  static void WarnIfFetchHanging(
+      int64_t fetch_start_time_ms,
+      const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx);
 
   /// Put something in the plasma store so that subsequent plasma store accesses
   /// will be faster. Currently the first access is always slow, and we don't

@@ -176,7 +176,7 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
 }
 
 Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
-    absl::flat_hash_set<ObjectID> &remaining,
+    absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx,
     const std::vector<ObjectID> &batch_ids,
     const std::vector<rpc::Address> &batch_owner_addresses,
     int64_t timeout_ms,
@@ -207,7 +207,7 @@ Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
       }
       auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      remaining.erase(object_id);
+      remaining_object_id_to_idx.erase(object_id);
       if (result_object->IsException()) {
         RAY_CHECK(!result_object->IsInPlasmaError());
         *got_exception = true;
@@ -270,29 +270,27 @@ Status UnblockIfNeeded(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  absl::flat_hash_set<ObjectID> remaining;
+  absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
 
   // Send initial requests to pull all objects in parallel.
-  std::vector<std::pair<ObjectID, rpc::Address>> id_vector(object_ids.begin(),
-                                                           object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
     for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
-      // Construct remaining set a batch at a time
-      remaining.insert(id_vector[i].first);
+      remaining_object_id_to_idx[object_ids[i]] = i;
 
-      batch_ids.push_back(id_vector[i].first);
-      batch_owner_addresses.push_back(id_vector[i].second);
+      batch_ids.push_back(object_ids[i]);
+      batch_owner_addresses.push_back(owner_addresses[i]);
     }
     RAY_RETURN_NOT_OK(
-        PullObjectsAndGetFromPlasmaStore(remaining,
+        PullObjectsAndGetFromPlasmaStore(remaining_object_id_to_idx,
                                          batch_ids,
                                          batch_owner_addresses,
                                          /*timeout_ms=*/0,
@@ -303,7 +301,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   // If all objects were fetched already, return. Note that we always need to
   // call UnblockIfNeeded() to cancel the get request.
-  if (remaining.empty() || *got_exception) {
+  if (remaining_object_id_to_idx.empty() || *got_exception) {
     return UnblockIfNeeded(raylet_ipc_client_, ctx);
   }
 
@@ -314,15 +312,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
   auto fetch_start_time_ms = current_time_ms();
-  while (!remaining.empty() && !should_break) {
+  while (!remaining_object_id_to_idx.empty() && !should_break) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
-    for (const auto &id : remaining) {
+    for (const auto &[id, idx] : remaining_object_id_to_idx) {
       if (static_cast<int64_t>(batch_ids.size()) == fetch_batch_size_) {
         break;
       }
       batch_ids.push_back(id);
-      batch_owner_addresses.push_back(object_ids.find(id)->second);
+      batch_owner_addresses.push_back(owner_addresses[idx]);
     }
 
     int64_t batch_timeout =
@@ -334,8 +332,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       timed_out = remaining_timeout <= 0;
     }
 
-    size_t previous_size = remaining.size();
-    RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(remaining,
+    size_t previous_size = remaining_object_id_to_idx.size();
+    RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(remaining_object_id_to_idx,
                                                        batch_ids,
                                                        batch_owner_addresses,
                                                        batch_timeout,
@@ -343,8 +341,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                                        got_exception));
     should_break = timed_out || *got_exception;
 
-    if ((previous_size - remaining.size()) < batch_ids.size()) {
-      WarnIfFetchHanging(fetch_start_time_ms, remaining);
+    if ((previous_size - remaining_object_id_to_idx.size()) < batch_ids.size()) {
+      WarnIfFetchHanging(fetch_start_time_ms, remaining_object_id_to_idx);
     }
     if (check_signals_) {
       Status status = check_signals_();
@@ -355,7 +353,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       }
     }
     if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
-        remaining.size() > 0) {
+        remaining_object_id_to_idx.size() > 0) {
       // Yield the plasma lock to other threads. This is a temporary workaround since we
       // are holding the lock for a long time, so it can easily starve inbound RPC
       // requests to Release() buffers which only require holding the lock for brief
@@ -364,7 +362,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
   }
 
-  if (!remaining.empty() && timed_out) {
+  if (!remaining_object_id_to_idx.empty() && timed_out) {
     RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
@@ -380,19 +378,12 @@ Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
-    const absl::flat_hash_map<ObjectID, rpc::Address> &object_ids,
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
     int num_objects,
     int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_set<ObjectID> *ready) {
-  // Construct object ids vector and owner addresses vector
-  std::vector<ObjectID> object_id_vector;
-  std::vector<rpc::Address> owner_addresses;
-  for (const auto &[object_id, owner_address] : object_ids) {
-    object_id_vector.push_back(object_id);
-    owner_addresses.push_back(owner_address);
-  }
-
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
   absl::flat_hash_set<ObjectID> ready_in_plasma;
@@ -406,8 +397,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     RAY_ASSIGN_OR_RETURN(
         ready_in_plasma,
-        raylet_ipc_client_->Wait(
-            object_id_vector, owner_addresses, num_objects, call_timeout));
+        raylet_ipc_client_->Wait(object_ids, owner_addresses, num_objects, call_timeout));
 
     if (ready_in_plasma.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
@@ -441,12 +431,13 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
-    int64_t fetch_start_time_ms, const absl::flat_hash_set<ObjectID> &remaining) {
+    int64_t fetch_start_time_ms,
+    const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx) {
   int64_t duration_ms = current_time_ms() - fetch_start_time_ms;
   if (duration_ms > RayConfig::instance().fetch_warn_timeout_milliseconds()) {
     std::ostringstream oss;
     size_t printed = 0;
-    for (auto &id : remaining) {
+    for (auto &[id, _] : remaining_object_id_to_idx) {
       if (printed >=
           RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
         break;
@@ -457,7 +448,7 @@ void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
       oss << id.Hex();
       printed++;
     }
-    if (printed < remaining.size()) {
+    if (printed < remaining_object_id_to_idx.size()) {
       oss << ", etc";
     }
     RAY_LOG(WARNING)

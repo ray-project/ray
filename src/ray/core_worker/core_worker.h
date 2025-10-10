@@ -1429,14 +1429,6 @@ class CoreWorker {
                             const std::shared_ptr<RayObject> &obj,
                             rpc::GetObjectStatusReply *reply);
 
-  /// Helper method to construct a map from ObjectIDs to their owner addresses.
-  /// This method helps prepare inputs for calls to the plasma store.
-  ///
-  /// \param[in] object_ids Set of ObjectIDs to look up.
-  /// \return A map from ObjectID to owner address (rpc::Address).
-  absl::flat_hash_map<ObjectID, rpc::Address> GetObjectIdToOwnerAddressMap(
-      const absl::flat_hash_set<ObjectID> &object_ids);
-
   ///
   /// Private methods related to task submission.
   ///

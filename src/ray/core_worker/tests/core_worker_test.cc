@@ -651,20 +651,15 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;
   for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
-
-  // Prepare object ids map
   const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
-  absl::flat_hash_map<ObjectID, rpc::Address> id_map;
-  for (size_t i = 0; i < ids.size(); i++) {
-    id_map[ids[i]] = owner_addresses[i];
-  }
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   bool got_exception = false;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   ASSERT_TRUE(
-      provider.Get(id_map, /*timeout_ms=*/-1, ctx, &results, &got_exception).ok());
+      provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, ctx, &results, &got_exception)
+          .ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);

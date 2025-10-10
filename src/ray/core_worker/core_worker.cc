@@ -1368,9 +1368,10 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
 
-    // Resolve owner addresses of plasma ids
-    absl::flat_hash_map<ObjectID, rpc::Address> plasma_object_ids_map =
-        GetObjectIdToOwnerAddressMap(plasma_object_ids);
+    // Prepare object ids vector and owner addresses vector
+    std::vector<ObjectID> object_ids =
+        std::vector<ObjectID>(plasma_object_ids.begin(), plasma_object_ids.end());
+    auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
@@ -1378,7 +1379,8 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids_map,
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(object_ids,
+                                                  owner_addresses,
                                                   local_timeout_ms,
                                                   *worker_context_,
                                                   &result_map,
@@ -1527,11 +1529,13 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // these objects.
     if (!plasma_object_ids.empty()) {
       // Prepare object ids map
-      absl::flat_hash_map<ObjectID, rpc::Address> plasma_object_ids_map =
-          GetObjectIdToOwnerAddressMap(plasma_object_ids);
+      std::vector<ObjectID> object_ids =
+          std::vector<ObjectID>(plasma_object_ids.begin(), plasma_object_ids.end());
+      auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids_map,
+          object_ids,
+          owner_addresses,
           std::min(static_cast<int>(plasma_object_ids.size()),
                    num_objects - static_cast<int>(ready.size())),
           timeout_ms,
@@ -3019,11 +3023,11 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
   // Resolve owner address of return id
-  absl::flat_hash_map<ObjectID, rpc::Address> return_id_map =
-      GetObjectIdToOwnerAddressMap({return_id});
+  std::vector<ObjectID> object_ids = {return_id};
+  auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
   auto status = plasma_store_provider_->Get(
-      return_id_map, 0, *worker_context_, &result_map, &got_exception);
+      object_ids, owner_addresses, 0, *worker_context_, &result_map, &got_exception);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3292,10 +3296,11 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
   } else {
     // Resolve owner addresses of by-ref ids
-    absl::flat_hash_map<ObjectID, rpc::Address> by_ref_ids_map =
-        GetObjectIdToOwnerAddressMap(by_ref_ids);
+    std::vector<ObjectID> object_ids =
+        std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
+    auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids_map, -1, *worker_context_, &result_map, &got_exception));
+        object_ids, owner_addresses, -1, *worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -3484,17 +3489,6 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
     }
     reply->set_object_size(locality_data.value().object_size);
   }
-}
-
-absl::flat_hash_map<ObjectID, rpc::Address> CoreWorker::GetObjectIdToOwnerAddressMap(
-    const absl::flat_hash_set<ObjectID> &object_ids) {
-  std::vector<ObjectID> object_ids_vector(object_ids.begin(), object_ids.end());
-  const auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids_vector);
-  absl::flat_hash_map<ObjectID, rpc::Address> object_id_map;
-  for (size_t i = 0; i < object_ids_vector.size(); i++) {
-    object_id_map[object_ids_vector[i]] = owner_addresses[i];
-  }
-  return object_id_map;
 }
 
 void CoreWorker::HandleWaitForActorRefDeleted(
