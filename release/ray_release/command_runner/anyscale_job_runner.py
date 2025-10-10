@@ -27,6 +27,10 @@ from ray_release.util import (
     generate_tmp_cloud_storage_path,
     get_anyscale_sdk,
     S3_CLOUD_STORAGE,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_CONTAINER,
+    upload_working_dir_to_azure,
+    convert_abfss_uri_to_https,
 )
 
 if TYPE_CHECKING:
@@ -72,10 +76,19 @@ class AnyscaleJobRunner(JobRunner):
             "ANYSCALE_CLOUD_STORAGE_PROVIDER",
             S3_CLOUD_STORAGE,
         )
-        self.upload_path = join_cloud_storage_paths(
-            f"{cloud_storage_provider}://{self.file_manager.bucket}",
-            self.path_in_bucket,
-        )
+
+        if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            # Azure ABFSS involves container and account name in the path
+            # and in a specific format/order.
+            self.upload_path = join_cloud_storage_paths(
+                f"{AZURE_CLOUD_STORAGE}://{AZURE_STORAGE_CONTAINER}@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
+        else:
+            self.upload_path = join_cloud_storage_paths(
+                f"{cloud_storage_provider}://{self.file_manager.bucket}",
+                self.path_in_bucket,
+            )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
@@ -227,17 +240,44 @@ class AnyscaleJobRunner(JobRunner):
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
+        results_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self._RESULT_OUTPUT_JSON
+        )
+        metrics_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self._METRICS_OUTPUT_JSON
+        )
+        output_cloud_storage_uri = join_cloud_storage_paths(
+            self.upload_path, self.output_json
+        )
+        upload_cloud_storage_uri = self.upload_path
+        # Convert ABFSS URI to HTTPS URI for Azure
+        # since azcopy doesn't support ABFSS.
+        # azcopy is used to fetch these artifacts on Buildkite
+        # after job is done.
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            results_cloud_storage_uri = convert_abfss_uri_to_https(
+                results_cloud_storage_uri
+            )
+            metrics_cloud_storage_uri = convert_abfss_uri_to_https(
+                metrics_cloud_storage_uri
+            )
+            output_cloud_storage_uri = convert_abfss_uri_to_https(
+                output_cloud_storage_uri
+            )
+            upload_cloud_storage_uri = convert_abfss_uri_to_https(
+                upload_cloud_storage_uri
+            )
         full_command = (
             f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            f"'{results_cloud_storage_uri}' "
             "--metrics-cloud-storage-uri "
             f"'"
-            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            f"{metrics_cloud_storage_uri}' "
             "--output-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
-            f"--upload-cloud-storage-uri '{self.upload_path}' "
+            f"'{output_cloud_storage_uri}' "
+            f"--upload-cloud-storage-uri '{upload_cloud_storage_uri}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
@@ -256,11 +296,19 @@ class AnyscaleJobRunner(JobRunner):
             - self._wait_for_nodes_timeout
             + 900,
         )
+        working_dir = "."
+        # If running on Azure, upload working dir to Azure blob storage first
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            azure_file_path = upload_working_dir_to_azure(
+                working_dir=os.getcwd(), azure_directory_uri=self.upload_path
+            )
+            working_dir = azure_file_path
+            logger.info(f"Working dir uploaded to {working_dir}")
 
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            working_dir=".",
+            working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
             pip=pip,
