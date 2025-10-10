@@ -4,7 +4,7 @@ import threading
 import time
 import uuid
 from enum import Enum
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -175,6 +175,19 @@ class SubProgressBar(AbstractProgressBar):
     def get_description(self) -> str:
         return self._desc
 
+    def _update(self, completed: int, total: Optional[int] = None) -> None:
+        assert self._enabled
+        completed, total, rate, count_str = _get_progress_metrics(
+            self._start_time, completed, total
+        )
+        self._progress.update(
+            self._tid,
+            completed=completed,
+            total=total,
+            rate=rate,
+            count_str=count_str,
+        )
+
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._enabled and i != 0:
             if self._start_time is None:
@@ -182,16 +195,11 @@ class SubProgressBar(AbstractProgressBar):
             if total is not None:
                 self._total = total
             self._completed += i
-            completed, total, rate, count_str = _get_progress_metrics(
-                self._start_time, self._completed, self._total
-            )
-            self._progress.update(
-                self._tid,
-                completed=completed,
-                total=total,
-                rate=rate,
-                count_str=count_str,
-            )
+            self._update(self._completed, self._total)
+
+    def complete(self) -> None:
+        if self._enabled:
+            self._update(self._completed, self._completed)
 
     def __getstate__(self):
         return {}
@@ -211,6 +219,7 @@ class RichExecutionProgressManager:
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
         self._lock = None
+        self._sub_progress_bars: List[SubProgressBar] = []
 
         if not self._mode.is_enabled():
             self._live = None
@@ -374,6 +383,7 @@ class RichExecutionProgressManager:
                     tid=tid,
                 )
                 state.op.set_sub_progress_bar(name, pg)
+                self._sub_progress_bars.append(pg)
 
     # Management
     def start(self):
@@ -393,12 +403,6 @@ class RichExecutionProgressManager:
         time.sleep(0.02)
         self._live.stop()
 
-    def close(self):
-        if self._mode.is_enabled():
-            with self._lock:
-                if self._live.is_started:
-                    self._close_no_lock()
-
     def close_with_finishing_description(self, desc: str, success: bool):
         if self._mode.is_enabled():
             with self._lock:
@@ -407,6 +411,8 @@ class RichExecutionProgressManager:
                     if success:
                         kwargs["completed"] = 1.0
                         kwargs["total"] = 1.0
+                        for pg in self._sub_progress_bars:
+                            pg.complete()
                     self._total.update(self._total_task_id, description=desc, **kwargs)
                     self._close_no_lock()
                     logger.info(desc)
