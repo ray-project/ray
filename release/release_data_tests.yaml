@@ -677,7 +677,7 @@
   variations:
     - __suffix__: gce
     - __suffix__: aws
-      env: aws_perf
+      env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
 
@@ -697,6 +697,6 @@
   variations:
     - __suffix__: gce
     - __suffix__: aws
-      env: aws_perf
+      env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
