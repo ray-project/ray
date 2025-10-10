@@ -14,7 +14,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -36,7 +35,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
