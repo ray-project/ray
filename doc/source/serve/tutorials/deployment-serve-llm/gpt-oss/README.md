@@ -103,10 +103,10 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ### Dependencies
 
-gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.2`.
+gpt-oss integration is available starting from `ray==2.50.0` and `vllm==0.10.2`.
 
 ```bash
-pip install "ray[serve,llm]==2.49.2"
+pip install "ray[serve,llm]==2.50.0"
 pip install "vllm==0.10.2"
 ```
 
