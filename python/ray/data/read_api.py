@@ -2,110 +2,83 @@ import collections
 import logging
 import os
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Literal,
+                    Optional, Tuple, TypeVar, Union)
 
 import numpy as np
 from packaging.version import parse as parse_version
-
-import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import \
+    _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
-from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.datasource.bigquery_datasource import \
+    BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
+from ray.data._internal.datasource.clickhouse_datasource import \
+    ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
-)
+from ray.data._internal.datasource.delta_sharing_datasource import \
+    DeltaSharingDatasource
 from ray.data._internal.datasource.html_datasource import (
-    HTMLDatasource,
-    HTMLFileMetadataProvider,
-)
+    HTMLDatasource, HTMLFileMetadataProvider)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
-    ImageDatasource,
-    ImageFileMetadataProvider,
-)
+    ImageDatasource, ImageFileMetadataProvider)
 from ray.data._internal.datasource.json_datasource import (
-    JSON_FILE_EXTENSIONS,
-    ArrowJSONDatasource,
-    PandasJSONDatasource,
-)
+    JSON_FILE_EXTENSIONS, ArrowJSONDatasource, PandasJSONDatasource)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
+from ray.data._internal.datasource.parquet_bulk_datasource import \
+    ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
-from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data._internal.datasource.tfrecords_datasource import \
+    TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
+from ray.data._internal.datasource.unity_catalog_datasource import \
+    UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
-from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.webdataset_datasource import \
+    WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
-    FromArrow,
-    FromBlocks,
-    FromItems,
-    FromNumpy,
-    FromPandas,
-)
+from ray.data._internal.logical.operators.from_operators import (FromArrow,
+                                                                 FromBlocks,
+                                                                 FromItems,
+                                                                 FromNumpy,
+                                                                 FromPandas)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import (
-    _autodetect_parallelism,
-    get_table_block_metadata_schema,
-    merge_resources_to_ray_remote_args,
-    ndarray_to_block,
-    pandas_df_to_arrow_block,
-)
-from ray.data.block import (
-    Block,
-    BlockExecStats,
-    BlockMetadataWithSchema,
-)
+from ray.data._internal.util import (_autodetect_parallelism,
+                                     get_table_block_metadata_schema,
+                                     merge_resources_to_ray_remote_args,
+                                     ndarray_to_block,
+                                     pandas_df_to_arrow_block)
+from ray.data.block import Block, BlockExecStats, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
-from ray.data.datasource import (
-    BaseFileMetadataProvider,
-    Connection,
-    Datasource,
-    PathPartitionFilter,
-)
+from ray.data.datasource import (BaseFileMetadataProvider, Connection,
+                                 Datasource, PathPartitionFilter)
 from ray.data.datasource.datasource import Reader
-from ray.data.datasource.file_based_datasource import (
-    FileShuffleConfig,
-    _validate_shuffle_arg,
-)
+from ray.data.datasource.file_based_datasource import (FileShuffleConfig,
+                                                       _validate_shuffle_arg)
 from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
-    FileMetadataProvider,
-)
+    DefaultFileMetadataProvider, FastFileMetadataProvider,
+    FileMetadataProvider)
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+import ray
 
 if TYPE_CHECKING:
     import daft
@@ -120,9 +93,9 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from pyiceberg.expressions import BooleanExpression
+    from ray.data._internal.datasource.tfrecords_datasource import \
+        TFXReadOptions
     from tensorflow_metadata.proto.v0 import schema_pb2
-
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
 T = TypeVar("T")
 
@@ -513,11 +486,11 @@ def read(
 
     **Note:** Lakehouse table formats (Delta Lake, Hudi, Iceberg) are automatically detected
     by examining directory structure:
-    
+
     - **Delta Lake**: Detected by presence of ``_delta_log`` directory
-    - **Apache Hudi**: Detected by presence of ``.hoodie`` directory  
+    - **Apache Hudi**: Detected by presence of ``.hoodie`` directory
     - **Apache Iceberg**: Detected by presence of ``metadata`` directory with version files
-    
+
     You can also use the ``format`` parameter to explicitly specify the format and bypass
     auto-detection.
 
@@ -648,7 +621,7 @@ def read(
         functions like :func:`read_parquet`, :func:`read_csv`, etc.
     """
     from ray.data._internal.read_unified import read_impl
-    
+
     return read_impl(
         paths=paths,
         format=format,
@@ -672,6 +645,7 @@ def read(
 
 
 # Keep the old implementation below for reference during transition
+
 
 @PublicAPI(stability="alpha")
 def read_audio(
@@ -2652,9 +2626,8 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
+        from ray.data._internal.datasource.tfrecords_datasource import \
+            _infer_schema_and_transform
 
         return _infer_schema_and_transform(ds)
 
@@ -3176,9 +3149,8 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_uc_datasource import (
-        DatabricksUCDatasource,
-    )
+    from ray.data._internal.datasource.databricks_uc_datasource import \
+        DatabricksUCDatasource
 
     def get_dbutils():
         no_dbutils_error = RuntimeError("No dbutils module found.")
@@ -3386,7 +3358,6 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import dask
-
     from ray.util.dask import ray_dask_get
 
     partitions = df.to_delayed()
@@ -3488,9 +3459,8 @@ def from_pandas(
             ary = dfs[0]
         dfs = np.array_split(ary, override_num_blocks)
 
-    from ray.air.util.data_batch_conversion import (
-        _cast_ndarray_columns_to_tensor_extension,
-    )
+    from ray.air.util.data_batch_conversion import \
+        _cast_ndarray_columns_to_tensor_extension
 
     context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
@@ -3979,10 +3949,8 @@ def from_huggingface(
     """  # noqa: E501
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
-
-    from ray.data._internal.datasource.huggingface_datasource import (
-        HuggingFaceDatasource,
-    )
+    from ray.data._internal.datasource.huggingface_datasource import \
+        HuggingFaceDatasource
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
         try:

@@ -19,10 +19,10 @@ import warnings
 import numpy as np
 import pyarrow as pa
 import pytest
-
-import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+import ray
 
 
 class TestReadUnified:
@@ -116,7 +116,12 @@ class TestReadUnified:
 
         # Create test data
         for i in range(3):
-            df = pd.DataFrame({"a": [i * 10 + j for j in range(5)], "b": [f"val_{i}_{j}" for j in range(5)]})
+            df = pd.DataFrame(
+                {
+                    "a": [i * 10 + j for j in range(5)],
+                    "b": [f"val_{i}_{j}" for j in range(5)],
+                }
+            )
             parquet_file = os.path.join(tmp_path, f"test_{i}.parquet")
             pq.write_table(pa.Table.from_pandas(df), parquet_file)
 
@@ -148,7 +153,7 @@ class TestReadUnified:
 
         # Read using the unified reader
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should successfully read all files
         assert ds.count() > 0
 
@@ -168,7 +173,7 @@ class TestReadUnified:
 
         # Read using the unified reader with multiple paths
         ds = ray.data.read([parquet_file, csv_file])
-        
+
         assert ds.count() == 4
 
     def test_read_compressed_csv(self, ray_start_regular_shared, tmp_path):
@@ -220,12 +225,9 @@ class TestReadUnified:
 
         # Try to read both valid and nonexistent files
         missing_file = os.path.join(tmp_path, "missing.parquet")
-        
-        ds = ray.data.read(
-            [valid_file, missing_file],
-            ignore_missing_paths=True
-        )
-        
+
+        ds = ray.data.read([valid_file, missing_file], ignore_missing_paths=True)
+
         assert ds.count() == 3  # Only from valid file
 
     def test_read_empty_directory(self, ray_start_regular_shared, tmp_path):
@@ -236,7 +238,9 @@ class TestReadUnified:
         with pytest.raises(ValueError, match="No files found"):
             ray.data.read(empty_dir)
 
-    def test_read_empty_directory_with_ignore_missing(self, ray_start_regular_shared, tmp_path):
+    def test_read_empty_directory_with_ignore_missing(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading an empty directory with ignore_missing_paths=True."""
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
@@ -302,7 +306,7 @@ class TestReadUnified:
 
         # Read with custom parallelism
         ds = ray.data.read(str(tmp_path), override_num_blocks=10)
-        
+
         assert ds.count() == 50
 
     def test_read_jsonl_format(self, ray_start_regular_shared, tmp_path):
@@ -326,19 +330,16 @@ class TestReadUnified:
     def test_read_avro_files(self, ray_start_regular_shared, tmp_path):
         """Test reading Avro files."""
         import pandas as pd
-        from fastavro import writer, parse_schema
+        from fastavro import parse_schema, writer
 
         # Create test data
         schema = {
             "type": "record",
             "name": "Test",
-            "fields": [
-                {"name": "a", "type": "int"},
-                {"name": "b", "type": "string"}
-            ]
+            "fields": [{"name": "a", "type": "int"}, {"name": "b", "type": "string"}],
         }
         records = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
-        
+
         avro_file = os.path.join(tmp_path, "test.avro")
         with open(avro_file, "wb") as f:
             writer(f, parse_schema(schema), records)
@@ -384,11 +385,11 @@ class TestReadUnified:
 
     def test_read_compound_extensions(self, ray_start_regular_shared, tmp_path):
         """Test reading files with compound extensions like .csv.gz."""
-        import pandas as pd
-
+        import gzip
         # Create compressed JSON
         import json
-        import gzip
+
+        import pandas as pd
 
         data = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
         json_gz_file = os.path.join(tmp_path, "test.json.gz")
@@ -424,7 +425,9 @@ class TestReadUnified:
 
         pd.testing.assert_frame_equal(result, df)
 
-    def test_read_preserves_schema_across_types(self, ray_start_regular_shared, tmp_path):
+    def test_read_preserves_schema_across_types(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that reading mixed types preserves appropriate schemas."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -440,7 +443,7 @@ class TestReadUnified:
 
         # Read mixed types
         ds = ray.data.read([parquet_file, csv_file])
-        
+
         # Should be able to convert to pandas
         result = ds.to_pandas()
         assert len(result) == 6
@@ -458,14 +461,18 @@ class TestReadUnified:
 
         # Create files in different directories
         df1 = pd.DataFrame({"a": [1, 2]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(subdir1, "test1.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(subdir1, "test1.parquet")
+        )
 
         df2 = pd.DataFrame({"a": [3, 4]})
-        pq.write_table(pa.Table.from_pandas(df2), os.path.join(subdir2, "test2.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df2), os.path.join(subdir2, "test2.parquet")
+        )
 
         # Read recursively
         ds = ray.data.read(str(tmp_path))
-        
+
         assert ds.count() == 4
 
     def test_read_with_partition_filter(self, ray_start_regular_shared, tmp_path):
@@ -478,14 +485,16 @@ class TestReadUnified:
             part_dir = os.path.join(tmp_path, f"partition={partition}")
             os.makedirs(part_dir)
             df = pd.DataFrame({"value": [1, 2, 3]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(part_dir, "data.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(part_dir, "data.parquet")
+            )
 
         # Read with partition filter
         def filter_func(partition_dict):
             return partition_dict.get("partition") == "a"
 
         ds = ray.data.read(str(tmp_path), partition_filter=filter_func)
-        
+
         # Should only read partition a
         assert ds.count() == 3
 
@@ -493,7 +502,9 @@ class TestReadUnified:
 class TestReadEdgeCases:
     """Test edge cases and error handling for ray.data.read()."""
 
-    def test_read_special_characters_in_filename(self, ray_start_regular_shared, tmp_path):
+    def test_read_special_characters_in_filename(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading files with special characters in names."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -523,7 +534,7 @@ class TestReadEdgeCases:
 
         # Read all files
         ds = ray.data.read(str(tmp_path))
-        
+
         assert ds.count() == num_files
 
     def test_read_empty_file(self, ray_start_regular_shared, tmp_path):
@@ -566,13 +577,17 @@ class TestReadSchemas:
         import pyarrow.parquet as pq
 
         # Create file with various types
-        df = pd.DataFrame({
-            "int_col": [1, 2, 3],
-            "float_col": [1.1, 2.2, 3.3],
-            "string_col": ["a", "b", "c"],
-            "bool_col": [True, False, True]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "typed.parquet"))
+        df = pd.DataFrame(
+            {
+                "int_col": [1, 2, 3],
+                "float_col": [1.1, 2.2, 3.3],
+                "string_col": ["a", "b", "c"],
+                "bool_col": [True, False, True],
+            }
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "typed.parquet")
+        )
 
         # Read and check schema
         ds = ray.data.read(os.path.join(tmp_path, "typed.parquet"))
@@ -590,14 +605,12 @@ class TestReadSchemas:
         # Create nested structure
         data = {
             "id": [1, 2, 3],
-            "metadata": [
-                {"key": "value1"},
-                {"key": "value2"},
-                {"key": "value3"}
-            ]
+            "metadata": [{"key": "value1"}, {"key": "value2"}, {"key": "value3"}],
         }
         df = pd.DataFrame(data)
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "nested.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "nested.parquet")
+        )
 
         # Read nested data
         ds = ray.data.read(os.path.join(tmp_path, "nested.parquet"))
@@ -611,11 +624,12 @@ class TestReadSchemas:
         import pyarrow.parquet as pq
 
         # Create data with lists
-        df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "values": [[1, 2, 3], [4, 5], [6, 7, 8, 9]]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "lists.parquet"))
+        df = pd.DataFrame(
+            {"id": [1, 2, 3], "values": [[1, 2, 3], [4, 5], [6, 7, 8, 9]]}
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "lists.parquet")
+        )
 
         # Read list data
         ds = ray.data.read(os.path.join(tmp_path, "lists.parquet"))
@@ -645,7 +659,9 @@ class TestReadEncoding:
 
         # Write compressed CSV
         df = pd.DataFrame({"a": range(100), "b": range(100, 200)})
-        df.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # Read compressed file
         ds = ray.data.read(os.path.join(tmp_path, "data.csv.gz"))
@@ -661,7 +677,9 @@ class TestReadEncoding:
 
         # Gzip compressed
         df2 = pd.DataFrame({"a": [4, 5, 6]})
-        df2.to_csv(os.path.join(tmp_path, "data2.csv.gz"), index=False, compression="gzip")
+        df2.to_csv(
+            os.path.join(tmp_path, "data2.csv.gz"), index=False, compression="gzip"
+        )
 
         # Read both
         ds = ray.data.read(str(tmp_path))
@@ -693,11 +711,10 @@ class TestReadMetadata:
         import pyarrow.parquet as pq
 
         # Create data with nulls
-        df = pd.DataFrame({
-            "a": [1, None, 3],
-            "b": ["x", "y", None]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "nulls.parquet"))
+        df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", None]})
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "nulls.parquet")
+        )
 
         # Read and verify nulls
         ds = ray.data.read(os.path.join(tmp_path, "nulls.parquet"))
@@ -716,7 +733,9 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         df = pd.DataFrame({"a": [1], "b": ["x"]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "single.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "single.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "single.parquet"))
         assert ds.count() == 1
@@ -741,7 +760,9 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         df = pd.DataFrame({"a": [None, None, None], "b": [None, None, None]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "empty_rows.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "empty_rows.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "empty_rows.parquet"))
         assert ds.count() == 3
@@ -752,12 +773,16 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         # Special characters in column names
-        df = pd.DataFrame({
-            "col with spaces": [1, 2, 3],
-            "col-with-dashes": [4, 5, 6],
-            "col.with.dots": [7, 8, 9]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "special_cols.parquet"))
+        df = pd.DataFrame(
+            {
+                "col with spaces": [1, 2, 3],
+                "col-with-dashes": [4, 5, 6],
+                "col.with.dots": [7, 8, 9],
+            }
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "special_cols.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "special_cols.parquet"))
         result = ds.take(1)[0]
@@ -798,7 +823,7 @@ class TestReadRobustness:
         symlink_file = os.path.join(tmp_path, "symlink.parquet")
         try:
             os.symlink(actual_file, symlink_file)
-            
+
             # Read symlink
             ds = ray.data.read(symlink_file)
             result = ds.to_pandas()
@@ -816,11 +841,14 @@ class TestReadRobustness:
         # Create some existing files
         for i in range(3):
             df = pd.DataFrame({"a": [i * 10 + j for j in range(5)]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"existing_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"existing_{i}.parquet"),
+            )
 
         # Read existing files
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should successfully read existing files
         assert ds.count() >= 15
 
@@ -840,7 +868,7 @@ class TestReadRobustness:
 
         # Read directory
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should read files
         assert ds.count() >= 3
 
@@ -857,9 +885,9 @@ class TestReadScalability:
         num_cols = 100
         num_rows = 1000
 
-        df = pd.DataFrame({
-            f"col_{i}": np.random.rand(num_rows) for i in range(num_cols)
-        })
+        df = pd.DataFrame(
+            {f"col_{i}": np.random.rand(num_rows) for i in range(num_cols)}
+        )
         parquet_file = os.path.join(tmp_path, "wide.parquet")
         pq.write_table(pa.Table.from_pandas(df), parquet_file)
 
@@ -880,14 +908,16 @@ class TestReadScalability:
         # Create deep nesting
         depth = 10
         current_path = tmp_path
-        
+
         for level in range(depth):
             current_path = os.path.join(current_path, f"level_{level}")
             os.makedirs(current_path)
 
         # Create file at the deepest level
         df = pd.DataFrame({"value": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(current_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(current_path, "data.parquet")
+        )
 
         # Read from top level
         start = time.time()
@@ -906,15 +936,17 @@ class TestReadScalability:
         # Create dataset
         num_files = 20
         for i in range(num_files):
-            df = pd.DataFrame({
-                "id": range(i * 100, (i + 1) * 100),
-                "value": np.random.rand(100)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i:03d}.parquet"))
+            df = pd.DataFrame(
+                {"id": range(i * 100, (i + 1) * 100), "value": np.random.rand(100)}
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"file_{i:03d}.parquet"),
+            )
 
         # Read and process incrementally
         ds = ray.data.read(str(tmp_path))
-        
+
         start = time.time()
         processed_count = 0
         for batch in ds.iter_batches(batch_size=500):
@@ -925,7 +957,9 @@ class TestReadScalability:
         assert processed_count == num_files * 100
         print(f"Processed {processed_count} rows incrementally in {elapsed:.3f}s")
 
-    def test_read_with_transformations_pipeline(self, ray_start_regular_shared, tmp_path):
+    def test_read_with_transformations_pipeline(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test read followed by transformation pipeline."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -933,11 +967,15 @@ class TestReadScalability:
         # Create dataset
         num_files = 10
         for i in range(num_files):
-            df = pd.DataFrame({
-                "value": np.random.rand(1000),
-                "category": np.random.choice(["A", "B", "C"], 1000)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i}.parquet"))
+            df = pd.DataFrame(
+                {
+                    "value": np.random.rand(1000),
+                    "category": np.random.choice(["A", "B", "C"], 1000),
+                }
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i}.parquet")
+            )
 
         # Read and apply transformations
         start = time.time()
@@ -955,7 +993,9 @@ class TestReadScalability:
 class TestReadConcurrency:
     """Test concurrent read operations."""
 
-    def test_read_concurrent_multiple_datasets(self, ray_start_regular_shared, tmp_path):
+    def test_read_concurrent_multiple_datasets(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading multiple datasets concurrently."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -966,13 +1006,15 @@ class TestReadConcurrency:
             dataset_dir = os.path.join(tmp_path, f"dataset_{dataset_id}")
             os.makedirs(dataset_dir)
             datasets_dirs.append(dataset_dir)
-            
+
             for i in range(5):
-                df = pd.DataFrame({
-                    "dataset_id": [dataset_id] * 100,
-                    "value": np.random.rand(100)
-                })
-                pq.write_table(pa.Table.from_pandas(df), os.path.join(dataset_dir, f"file_{i}.parquet"))
+                df = pd.DataFrame(
+                    {"dataset_id": [dataset_id] * 100, "value": np.random.rand(100)}
+                )
+                pq.write_table(
+                    pa.Table.from_pandas(df),
+                    os.path.join(dataset_dir, f"file_{i}.parquet"),
+                )
 
         # Read all datasets concurrently
         start = time.time()
@@ -991,15 +1033,17 @@ class TestReadConcurrency:
         # Create dataset
         num_files = 15
         for i in range(num_files):
-            df = pd.DataFrame({
-                "id": range(i * 100, (i + 1) * 100),
-                "value": np.random.rand(100)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i:03d}.parquet"))
+            df = pd.DataFrame(
+                {"id": range(i * 100, (i + 1) * 100), "value": np.random.rand(100)}
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"file_{i:03d}.parquet"),
+            )
 
         # Read and process concurrently
         ds = ray.data.read(str(tmp_path))
-        
+
         # Start processing before reading completes
         processed = ds.map(lambda row: {**row, "processed": True})
         count = processed.count()
@@ -1032,7 +1076,7 @@ class TestReadErrors:
         """Test error when all files are truly unsupported."""
         # This is hard to test since unknown extensions use binary fallback
         # But we can test the error message structure
-        
+
         # Create only truly problematic files (empty directory triggers error)
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
@@ -1040,7 +1084,9 @@ class TestReadErrors:
         with pytest.raises(ValueError):
             ds = ray.data.read(empty_dir)
 
-    def test_error_message_includes_supported_formats(self, ray_start_regular_shared, tmp_path):
+    def test_error_message_includes_supported_formats(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that error messages include supported format info."""
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
@@ -1052,7 +1098,9 @@ class TestReadErrors:
             # Should mention that no files were found
             assert "No files found" in error_msg or "empty" in error_msg.lower()
 
-    def test_error_on_corrupted_required_format(self, ray_start_regular_shared, tmp_path):
+    def test_error_on_corrupted_required_format(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test error when format-specific file is corrupted."""
         # Create fake parquet file
         fake_parquet = os.path.join(tmp_path, "corrupted.parquet")
@@ -1064,7 +1112,9 @@ class TestReadErrors:
             ds = ray.data.read(fake_parquet)
             ds.count()
 
-    def test_detailed_error_on_read_failure(self, ray_start_regular_shared, tmp_path, caplog):
+    def test_detailed_error_on_read_failure(
+        self, ray_start_regular_shared, tmp_path, caplog
+    ):
         """Test that read failures provide detailed error messages."""
         # Create invalid parquet
         invalid_file = os.path.join(tmp_path, "invalid.parquet")
@@ -1091,8 +1141,14 @@ class TestReadDecisionLogging:
         import pyarrow.parquet as pq
 
         # Create mixed types
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [1]})), os.path.join(tmp_path, "d1.parquet"))
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [2]})), os.path.join(tmp_path, "d2.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [1]})),
+            os.path.join(tmp_path, "d1.parquet"),
+        )
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [2]})),
+            os.path.join(tmp_path, "d2.parquet"),
+        )
         pd.DataFrame({"a": [3]}).to_csv(os.path.join(tmp_path, "d1.csv"), index=False)
 
         with caplog.at_level(logging.INFO):
@@ -1123,7 +1179,10 @@ class TestReadDecisionLogging:
         import pyarrow.parquet as pq
 
         # Create different format files
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [1]})), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [1]})),
+            os.path.join(tmp_path, "data.parquet"),
+        )
         pd.DataFrame({"a": [2]}).to_csv(os.path.join(tmp_path, "data.csv"), index=False)
 
         with caplog.at_level(logging.INFO):
@@ -1131,7 +1190,9 @@ class TestReadDecisionLogging:
 
         # Should log concatenation
         messages = [r.message for r in caplog.records]
-        assert any("concatenat" in msg.lower() or "dataset" in msg.lower() for msg in messages)
+        assert any(
+            "concatenat" in msg.lower() or "dataset" in msg.lower() for msg in messages
+        )
 
 
 class TestReadProgressiveDiscovery:
@@ -1216,18 +1277,24 @@ class TestReadHeuristicsValidation:
         import pandas as pd
 
         df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-        
+
         # Create uncompressed
         df.to_csv(os.path.join(tmp_path, "data.csv"), index=False)
-        
+
         # Create compressed
-        df.to_csv(os.path.join(tmp_path, "data_compressed.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data_compressed.csv.gz"),
+            index=False,
+            compression="gzip",
+        )
 
         # Both should be read with same result structure
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 6  # 3 rows × 2 files
 
-    def test_handles_ambiguous_extensions_consistently(self, ray_start_regular_shared, tmp_path):
+    def test_handles_ambiguous_extensions_consistently(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test consistent handling of potentially ambiguous extensions."""
         # M4A should always be audio
         audio_file = os.path.join(tmp_path, "audio.m4a")
@@ -1343,7 +1410,11 @@ class TestFormatSpecificValidation:
             ds.count()
         except Exception as e:
             # Should indicate image error
-            assert "image" in str(e).lower() or "png" in str(e).lower() or "cannot" in str(e).lower()
+            assert (
+                "image" in str(e).lower()
+                or "png" in str(e).lower()
+                or "cannot" in str(e).lower()
+            )
 
 
 class TestMediaFormats:
@@ -1402,7 +1473,7 @@ class TestMediaFormats:
 
         ds = ray.data.read(os.path.join(tmp_path, "photo.jpg"))
         result = ds.take(1)[0]
-        
+
         # Should have image structure
         assert "image" in result
 
@@ -1433,7 +1504,7 @@ class TestTextAndDocumentFormats:
     def test_htm_same_as_html(self, ray_start_regular_shared, tmp_path):
         """Test that .htm and .html are treated identically."""
         content = "<html><body>Test</body></html>"
-        
+
         with open(os.path.join(tmp_path, "page.html"), "w") as f:
             f.write(content)
         with open(os.path.join(tmp_path, "page.htm"), "w") as f:
@@ -1483,12 +1554,12 @@ class TestStructuredDataFormats:
 
     def test_avro_format(self, ray_start_regular_shared, tmp_path):
         """Test that Avro files are detected."""
-        from fastavro import writer, parse_schema
+        from fastavro import parse_schema, writer
 
         schema = {
             "type": "record",
             "name": "Test",
-            "fields": [{"name": "a", "type": "int"}]
+            "fields": [{"name": "a", "type": "int"}],
         }
         records = [{"a": 1}, {"a": 2}, {"a": 3}]
 
@@ -1532,11 +1603,14 @@ class TestCompressionHandling:
         """Test that .gz compression works for all formats."""
         import gzip
         import json
+
         import pandas as pd
 
         # CSV.GZ
         df = pd.DataFrame({"a": [1, 2, 3]})
-        df.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # JSON.GZ
         data = [{"b": 4}, {"b": 5}]
@@ -1677,7 +1751,9 @@ class TestPerformanceOptimizations:
         # Create multiple files of same type
         for i in range(3):
             df = pd.DataFrame({"a": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
         # Should read efficiently without concatenation overhead
         ds = ray.data.read(str(tmp_path))
@@ -1691,7 +1767,9 @@ class TestPerformanceOptimizations:
         # Create files
         for i in range(10):
             df = pd.DataFrame({"a": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
         # Read with specific parallelism
         ds = ray.data.read(str(tmp_path), override_num_blocks=5)
@@ -1783,7 +1861,7 @@ class TestFormatPrecedence:
 
     def test_parquet_vs_delta_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that Parquet files are not confused with Delta files.
-        
+
         Delta Lake uses Parquet internally but has specific directory structure.
         Regular .parquet files should use read_parquet.
         """
@@ -1805,7 +1883,7 @@ class TestFormatPrecedence:
 
     def test_parquet_vs_iceberg_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that Parquet files are not confused with Iceberg tables.
-        
+
         Iceberg uses Parquet internally but has metadata files.
         Regular .parquet files should use read_parquet.
         """
@@ -1823,7 +1901,7 @@ class TestFormatPrecedence:
 
     def test_image_vs_video_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that images and videos are handled by correct readers.
-        
+
         Some formats could be ambiguous (e.g., motion JPEG).
         """
         from PIL import Image
@@ -1837,15 +1915,17 @@ class TestFormatPrecedence:
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 2
 
-    def test_audio_vs_video_format_distinction(self, ray_start_regular_shared, tmp_path):
+    def test_audio_vs_video_format_distinction(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that audio and video formats are properly distinguished.
-        
+
         M4A is audio, M4V is video - both use MP4 container.
         """
         # Create dummy files (won't be valid media, just testing extension detection)
         audio_file = os.path.join(tmp_path, "audio.m4a")
         video_file = os.path.join(tmp_path, "video.m4v")
-        
+
         # Create empty files just for extension detection
         open(audio_file, "wb").close()
         open(video_file, "wb").close()
@@ -1878,7 +1958,9 @@ class TestFormatPrecedence:
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 4
 
-    def test_compressed_vs_uncompressed_precedence(self, ray_start_regular_shared, tmp_path):
+    def test_compressed_vs_uncompressed_precedence(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that compressed and uncompressed files are handled correctly."""
         import pandas as pd
 
@@ -1888,7 +1970,9 @@ class TestFormatPrecedence:
 
         # Create compressed CSV
         df2 = pd.DataFrame({"a": [4, 5, 6]})
-        df2.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df2.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # Both should be read correctly
         ds = ray.data.read(str(tmp_path))
@@ -1901,12 +1985,15 @@ class TestMixedFileTypes:
     def test_mixed_structured_formats(self, ray_start_regular_shared, tmp_path):
         """Test mixing structured data formats (Parquet, CSV, JSON)."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create Parquet
         df1 = pd.DataFrame({"value": [1, 2]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet")
+        )
 
         # Create CSV
         df2 = pd.DataFrame({"value": [3, 4]})
@@ -1948,9 +2035,15 @@ class TestMixedFileTypes:
             assert count >= 1  # At least the image
         except Exception as e:
             # Expected - audio/video files are not valid
-            assert "image" in str(tmp_path).lower() or "audio" in str(e).lower() or "video" in str(e).lower()
+            assert (
+                "image" in str(tmp_path).lower()
+                or "audio" in str(e).lower()
+                or "video" in str(e).lower()
+            )
 
-    def test_mixed_structured_and_unstructured(self, ray_start_regular_shared, tmp_path):
+    def test_mixed_structured_and_unstructured(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test mixing structured data with text/binary."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -1974,12 +2067,15 @@ class TestMixedFileTypes:
     def test_incompatible_schemas_warning(self, ray_start_regular_shared, tmp_path):
         """Test that mixing files with very different schemas still works."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with numeric columns
         df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet")
+        )
 
         # Create file with different schema
         data2 = [{"x": "text", "y": "more text"}]
@@ -1995,6 +2091,7 @@ class TestMixedFileTypes:
     def test_many_mixed_types_performance(self, ray_start_regular_shared, tmp_path):
         """Test performance with many different file types."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
         from PIL import Image
@@ -2003,7 +2100,9 @@ class TestMixedFileTypes:
         for i in range(5):
             # Parquet
             df = pd.DataFrame({"type": ["parquet"], "value": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
             # CSV
             df.to_csv(os.path.join(tmp_path, f"data_{i}.csv"), index=False)
@@ -2067,7 +2166,9 @@ class TestBinaryFallback:
             ds = ray.data.read(fake_parquet)
             ds.count()
 
-    def test_mixed_known_and_unknown_extensions(self, ray_start_regular_shared, tmp_path):
+    def test_mixed_known_and_unknown_extensions(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test directory with both known and unknown extensions."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -2163,7 +2264,11 @@ class TestExtensionConflicts:
             # May fail on invalid video, but detection should work
         except Exception as e:
             # Expected for invalid video files
-            assert "video" in str(e).lower() or "mpeg" in str(e).lower() or "mpg" in str(e).lower()
+            assert (
+                "video" in str(e).lower()
+                or "mpeg" in str(e).lower()
+                or "mpg" in str(e).lower()
+            )
 
     def test_case_insensitive_detection(self, ray_start_regular_shared, tmp_path):
         """Test that extension detection is case-insensitive."""
@@ -2188,12 +2293,15 @@ class TestSchemaCompatibility:
     def test_compatible_numeric_schemas(self, ray_start_regular_shared, tmp_path):
         """Test mixing files with compatible numeric schemas."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create Parquet with int columns
         df1 = pd.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet")
+        )
 
         # Create JSON with same schema
         data2 = [{"id": 4, "value": 40}, {"id": 5, "value": 50}]
@@ -2230,12 +2338,15 @@ class TestSchemaCompatibility:
     def test_missing_columns_handling(self, ray_start_regular_shared, tmp_path):
         """Test handling when files have different column sets."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with columns a, b
         df1 = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data1.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data1.parquet")
+        )
 
         # Create file with columns a, c
         data2 = [{"a": 5, "c": 6}]
@@ -2250,12 +2361,15 @@ class TestSchemaCompatibility:
     def test_type_mismatch_handling(self, ray_start_regular_shared, tmp_path):
         """Test handling when same column has different types."""
         import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with numeric column
         df1 = pd.DataFrame({"value": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet")
+        )
 
         # Create file with string column
         data2 = [{"value": "text"}]
@@ -2287,7 +2401,9 @@ class TestFormatSpecificBehavior:
         pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "wide.parquet"))
 
         # Read with column selection (Parquet-specific)
-        ds = ray.data.read(os.path.join(tmp_path, "wide.parquet"), columns=["col_0", "col_1"])
+        ds = ray.data.read(
+            os.path.join(tmp_path, "wide.parquet"), columns=["col_0", "col_1"]
+        )
         result = ds.take(1)[0]
 
         # Should have selected columns
@@ -2364,7 +2480,9 @@ class TestEdgeCases:
 
         # Create file like "data.backup.parquet"
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "data.backup.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "data.backup.parquet")
+        )
 
         # Should detect as parquet
         ds = ray.data.read(os.path.join(tmp_path, "data.backup.parquet"))
@@ -2377,10 +2495,14 @@ class TestEdgeCases:
 
         # Create visible file
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "visible.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "visible.parquet")
+        )
 
         # Create hidden file
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, ".hidden.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, ".hidden.parquet")
+        )
 
         # Should read both
         ds = ray.data.read(str(tmp_path))
@@ -2422,15 +2544,16 @@ class TestEdgeCases:
 
         # Create parquet file inside
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(special_dir, "file.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(special_dir, "file.parquet")
+        )
 
         # Should find and read the parquet file
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 3
 
 
-
-
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
