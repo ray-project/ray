@@ -106,7 +106,7 @@ class AutoscalingState:
 
         self._deployment_info = info
         self._config = config
-        self._policy = self._config.get_policy()
+        self._policy = self._config.policy.get_policy()
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
