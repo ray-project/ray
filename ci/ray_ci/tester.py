@@ -335,6 +335,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            python_version=python_version,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
             privileged=privileged,
