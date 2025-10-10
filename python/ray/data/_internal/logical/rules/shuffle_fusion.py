@@ -43,6 +43,11 @@ class ShuffleFusion(Rule):
 
             prev_op = prev_ops[0]
 
+            # NOTE: This str contains outer brackets to show
+            # that it's logical fusion. TODO(justin): Please confirm
+            # if that's ok with team.
+            fused_name = f"[{prev_op.name}->{op.name}]"
+
             # Only fuse if the ops' remote arguments are compatible.
             if not _are_remote_args_compatible(
                 getattr(prev_op, "_ray_remote_args", {}),
@@ -56,111 +61,41 @@ class ShuffleFusion(Rule):
                 return op
 
             if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
-                if _keys_can_fuse(prev_op, op):
-                    _disconnect_op_from_dag(prev_op)
-                    # If one of the operators full shuffles, then new_op should too.
-                    full_shuffle = op._full_shuffle or prev_op._full_shuffle
-
-                    # Similarly, if one of the operators random permutation, then the new_op
-                    # should randomly permute too.
-                    random_permute = op._random_permute or prev_op._random_permute
-
-                    new_op = Repartition(
-                        input_op=prev_op.input_dependencies[0],
-                        num_outputs=op._num_outputs,
-                        full_shuffle=full_shuffle,
-                        random_permute=random_permute,
-                        keys=op._keys,
-                        sort=op._sort,
-                    )
-
-                    return new_op
+                return _try_repartition_repartition_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, StreamingRepartition) and isinstance(
                 op, Repartition
             ):
-                _disconnect_op_from_dag(prev_op)
-                return op
+                return _try_streaming_repartition_repartition_fusion(
+                    prev_op, op, fused_name
+                )
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, RandomShuffle):
-                # We need to make sure at least one of the shuffles is non-deterministic
-                if prev_op._seed is not None or op._seed is not None:
-                    _disconnect_op_from_dag(prev_op)
-                    return op
+                return _try_random_shuffle_random_shuffle_fusion(
+                    prev_op, op, fused_name
+                )
 
             if isinstance(prev_op, Repartition) and isinstance(op, RandomShuffle):
-                _disconnect_op_from_dag(prev_op)
-
-                new_op = RandomShuffle(
-                    input_op=prev_op.input_dependencies[0],
-                    name=op.name,
-                    seed=op._seed,
-                    # NOTE: Fallback
-                    num_outputs=op._num_outputs or prev_op._num_outputs,
-                )
-                return new_op
+                return _try_repartition_random_shuffle_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Repartition):
-                _disconnect_op_from_dag(prev_op)
-                # Create new Repartition with shuffle enabled
-                new_op = Repartition(
-                    input_op=prev_op.input_dependencies[0],
-                    num_outputs=op._num_outputs,
-                    full_shuffle=True,  # NOTE: the shuffle here
-                    random_permute=True,  # NOTE: the random permute here
-                    keys=op._keys,
-                    sort=op._sort,
-                )
-                return new_op
+                return _try_random_shuffle_repartition_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, RandomShuffle) and isinstance(op, Sort):
-                _disconnect_op_from_dag(prev_op)
-                return op
+                return _try_random_shuffle_sort_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, Repartition) and isinstance(op, Aggregate):
-                # The number of outputs must match
-                if prev_op._num_outputs == op._num_partitions and _keys_can_fuse(
-                    prev_op, op
-                ):
-                    _disconnect_op_from_dag(prev_op)
-                    return op
+                return _try_repartition_aggregate_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, Sort) and isinstance(op, Aggregate):
-                ctx = DataContext.get_current()
-                if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
-                    _disconnect_op_from_dag(prev_op)
-                    return op
+                return _try_sort_aggregate_fusion(prev_op, op, fused_name)
 
             if isinstance(prev_op, Sort) and isinstance(op, Sort):
-                if prev_op._batch_format == op._batch_format:
-                    _disconnect_op_from_dag(prev_op)
-                    # Create new Sort with combined columns
-                    from ray.data._internal.planner.exchange.sort_task_spec import (
-                        SortKey,
-                    )
-
-                    # NOTE: sort op first, then prev_op
-                    combined_columns = (
-                        op._sort_key._columns + prev_op._sort_key._columns
-                    )
-                    combined_desending = (
-                        op._sort_key._descending + prev_op._sort_key._descending
-                    )
-                    combined_sort_key = SortKey(
-                        columns=combined_columns,
-                        descending=combined_desending,
-                    )
-                    new_op = Sort(
-                        input_op=prev_op.input_dependencies[0],
-                        sort_key=combined_sort_key,
-                        batch_format=op._batch_format,
-                    )
-                    return new_op
+                return _try_sort_sort_fusion(prev_op, op, fused_name)
 
         return op
 
 
-# TODO(justin): apply this to other Rules
 def _disconnect_op_from_dag(op: Operator):
     """Disconnect an operator from the DAG by connecting
     its prev_ops directly to its next_ops.
@@ -190,7 +125,9 @@ def _keys_can_fuse(
     parent_op: LogicalOperatorContainsPartitionKeys,
     child_op: LogicalOperatorContainsPartitionKeys,
 ) -> bool:
-    """Check if parent and child operators can fuse based on key matching."""
+    """Check if parent and child operators can fuse based on key matching.
+    This helper function is used to compare if two shuffle operators
+    have compatible keys to fuse together."""
     # Get parent keys based on operator type
     parent_keys = parent_op.get_partition_keys()
 
@@ -204,3 +141,201 @@ def _keys_can_fuse(
         return True
     else:
         return False
+
+
+# Helper functions for each fusion pattern
+def _try_repartition_repartition_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse Repartition -> Repartition operations."""
+    if not _keys_can_fuse(prev_op, op):
+        return op
+
+    _disconnect_op_from_dag(prev_op)
+    # If one of the operators full shuffles, then new_op should too.
+    full_shuffle = op._full_shuffle or prev_op._full_shuffle
+
+    # Similarly, if one of the operators randomly permutes, then the new_op
+    # should randomly permute too.
+    random_permute = op._random_permute or prev_op._random_permute
+
+    new_op = Repartition(
+        name=fused_name,
+        input_op=prev_op.input_dependencies[0],
+        num_outputs=op._num_outputs,
+        full_shuffle=full_shuffle,
+        random_permute=random_permute,
+        keys=op._keys,
+        sort=op._sort,
+    )
+
+    return new_op
+
+
+def _try_streaming_repartition_repartition_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse StreamingRepartition -> Repartition operations."""
+    _disconnect_op_from_dag(prev_op)
+
+    new_op = Repartition(
+        input_op=prev_op.input_dependencies[0],
+        num_outputs=op._num_outputs,
+        full_shuffle=op._full_shuffle,
+        name=fused_name,
+        random_permute=op._random_permute,
+        keys=op._keys,
+        sort=op._sort,
+    )
+
+    return new_op
+
+
+def _try_random_shuffle_random_shuffle_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse RandomShuffle -> RandomShuffle operations."""
+    # We need to make sure at least one of the shuffles is non-deterministic
+    if prev_op._seed is None or op._seed is None:
+        _disconnect_op_from_dag(prev_op)
+        return RandomShuffle(
+            name=fused_name,
+            input_op=prev_op.input_dependencies[0],
+            num_outputs=op._num_outputs,
+            seed=None,
+            ray_remote_args=op._ray_remote_args,
+        )
+
+    return op
+
+
+def _try_repartition_random_shuffle_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse Repartition -> RandomShuffle operations."""
+    if op._seed is None:
+        _disconnect_op_from_dag(prev_op)
+
+        new_op = RandomShuffle(
+            input_op=prev_op.input_dependencies[0],
+            name=fused_name,
+            seed=op._seed,
+            # NOTE: Fallback
+            num_outputs=op._num_outputs or prev_op._num_outputs,
+            ray_remote_args=op._ray_remote_args,
+        )
+        return new_op
+
+    return op
+
+
+def _try_random_shuffle_repartition_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse RandomShuffle -> Repartition operations."""
+    if prev_op._seed is None:
+        _disconnect_op_from_dag(prev_op)
+        # Create new Repartition with shuffle enabled
+        new_op = Repartition(
+            name=fused_name,
+            input_op=prev_op.input_dependencies[0],
+            num_outputs=op._num_outputs,
+            full_shuffle=True,  # NOTE: the shuffle here
+            random_permute=True,  # NOTE: the random permute here
+            keys=op._keys,
+            sort=op._sort,
+        )
+        return new_op
+
+    return op
+
+
+def _try_random_shuffle_sort_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse RandomShuffle -> Sort operations."""
+    # NOTE: We don't check if the seed is fixed because sort
+    # will reorder the blocks
+    _disconnect_op_from_dag(prev_op)
+
+    new_op = Sort(
+        name=fused_name,
+        input_op=prev_op.input_dependencies[0],
+        sort_key=op._sort_key,
+        batch_format=op._batch_format,
+    )
+
+    return new_op
+
+
+def _try_repartition_aggregate_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse Repartition -> Aggregate operations."""
+    # The number of outputs must match
+    if prev_op._num_outputs == op._num_partitions and _keys_can_fuse(prev_op, op):
+        _disconnect_op_from_dag(prev_op)
+
+        new_op = Aggregate(
+            name=fused_name,
+            input_op=prev_op.input_dependencies[0],
+            key=op._key,
+            aggs=op._aggs,
+            num_partitions=op._num_partitions,
+            batch_format=op._batch_format,
+        )
+
+        return new_op
+
+    return op
+
+
+def _try_sort_aggregate_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse Sort -> Aggregate operations."""
+    ctx = DataContext.get_current()
+    if _keys_can_fuse(prev_op, op) and ctx.shuffle_strategy.is_sort_based():
+        _disconnect_op_from_dag(prev_op)
+
+        new_op = Aggregate(
+            name=fused_name,
+            input_op=prev_op.input_dependencies[0],
+            key=op._key,
+            aggs=op._aggs,
+            num_partitions=op._num_partitions,
+            batch_format=op._batch_format,
+        )
+
+        return new_op
+
+    return op
+
+
+def _try_sort_sort_fusion(
+    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+) -> LogicalOperator:
+    """Fuse Sort -> Sort operations."""
+    if prev_op._batch_format == op._batch_format:
+        _disconnect_op_from_dag(prev_op)
+        # Create new Sort with combined columns
+        from ray.data._internal.planner.exchange.sort_task_spec import (
+            SortKey,
+        )
+
+        # NOTE: sort op first, then prev_op
+        combined_columns = op._sort_key._columns + prev_op._sort_key._columns
+        combined_desending = op._sort_key._descending + prev_op._sort_key._descending
+        combined_sort_key = SortKey(
+            key=combined_columns,
+            descending=combined_desending,
+        )
+        new_op = Sort(
+            name=fused_name,
+            input_op=prev_op.input_dependencies[0],
+            sort_key=combined_sort_key,
+            batch_format=op._batch_format,
+        )
+        return new_op
+
+    return op

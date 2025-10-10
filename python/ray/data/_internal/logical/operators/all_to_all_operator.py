@@ -114,6 +114,7 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         input_op: LogicalOperator,
         num_outputs: int,
         full_shuffle: bool,
+        name: str = "Repartition",
         random_permute: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
@@ -128,7 +129,7 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         super().__init__(
-            "Repartition",
+            name,
             input_op,
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
@@ -164,10 +165,11 @@ class Sort(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        name: str = "Sort",
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Sort",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
@@ -203,11 +205,12 @@ class Aggregate(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         input_op: LogicalOperator,
         key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
+        name: str = "Aggregate",
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Aggregate",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
