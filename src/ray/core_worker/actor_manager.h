@@ -114,10 +114,10 @@ class ActorManager {
   /// task.
   /// \return True if the handle was added and False if we already had a handle to
   /// the same actor.
-  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &call_site,
-                         const rpc::Address &caller_address,
-                         bool owned);
+  bool EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                             const std::string &call_site,
+                             const rpc::Address &caller_address,
+                             bool owned);
 
   /// Wait for actor reference deletion.
   ///
