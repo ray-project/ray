@@ -2731,6 +2731,13 @@ Status CoreWorker::ExecuteTask(
   --num_get_pin_args_in_flight_;
   if (!pin_args_request_status.ok()) {
     ++num_failed_get_pin_args_;
+    // If this has happened, it's because we are unable to talk to our local raylet.
+    // This very likely means that the raylet has shutdown before this worker
+    // unexpectedly. In whic case we'll trigger shut down.
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR,
+         absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
+                      pin_args_request_status.message()),
+         nullptr);
     return pin_args_request_status;
   }
 
