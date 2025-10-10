@@ -178,11 +178,13 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
         const int64_t running_total = counter_.Get(key);
         const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
         const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+        const int64_t num_pending_args_fetch =
+            pending_args_fetch_counter_.Get({func_name, is_retry});
         const auto is_retry_label = is_retry ? "1" : "0";
-        // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
-        // them out to avoid double-counting.
+        // RUNNING_IN_RAY_GET/WAIT/PENDING_ARGS_FETCH are sub-states of RUNNING, so we
+        // need to subtract them out to avoid double-counting.
         task_by_state_counter_.Record(
-            running_total - num_in_get - num_in_wait,
+            running_total - num_in_get - num_in_wait - num_pending_args_fetch,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name"sv, func_name},
              {"IsRetry"sv, is_retry_label},
@@ -208,6 +210,14 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_coun
         task_by_state_counter_.Record(
             num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
+        // Record sub-state for pending args fetch.
+        task_by_state_counter_.Record(
+            num_pending_args_fetch,
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
              {"Name"sv, func_name},
              {"IsRetry"sv, is_retry_label},
              {"JobId"sv, job_id_},
@@ -250,6 +260,8 @@ void TaskCounter::SetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Increment({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Increment({func_name, is_retry});
+  } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
+    pending_args_fetch_counter_.Increment({func_name, is_retry});
   } else {
     RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -266,6 +278,8 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Decrement({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Decrement({func_name, is_retry});
+  } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
+    pending_args_fetch_counter_.Decrement({func_name, is_retry});
   } else {
     RAY_LOG(FATAL) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -2725,9 +2739,17 @@ Status CoreWorker::ExecuteTask(
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
+
+  // Extract function name and retry status for metrics reporting.
+  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  bool is_retry = task_spec.IsRetry();
+
   ++num_get_pin_args_in_flight_;
+  task_counter_.SetMetricStatus(func_name, rpc::TaskStatus::PENDING_ARGS_FETCH, is_retry);
   Status pin_args_request_status =
       GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
+  task_counter_.UnsetMetricStatus(
+      func_name, rpc::TaskStatus::PENDING_ARGS_FETCH, is_retry);
   --num_get_pin_args_in_flight_;
   if (!pin_args_request_status.ok()) {
     ++num_failed_get_pin_args_;
@@ -2745,14 +2767,13 @@ Status CoreWorker::ExecuteTask(
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
-  std::string func_name = task_spec.FunctionDescriptor()->CallString();
   std::string actor_repr_name;
   {
     absl::MutexLock lock(&mutex_);
     actor_repr_name = actor_repr_name_;
   }
   if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
+    task_counter_.MovePendingToRunning(func_name, is_retry);
 
     const auto update =
         (task_spec.IsActorTask() && !actor_repr_name.empty())
