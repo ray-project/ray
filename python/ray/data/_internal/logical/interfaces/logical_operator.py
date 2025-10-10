@@ -100,3 +100,10 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
 
     def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorContainsPartitionKeys(LogicalOperator):
+    """Mixin for operators containing partition keys"""
+
+    def get_partition_keys(self) -> Optional[List[str]]:
+        return None
