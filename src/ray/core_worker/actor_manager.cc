@@ -126,40 +126,36 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
-  int32_t max_pending_calls = actor_handle->MaxPendingCalls();
-  bool allow_out_of_order_execution = actor_handle->AllowOutOfOrderExecution();
-  int64_t max_task_retries = actor_handle->MaxTaskRetries();
-
+  // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
-    if (!actor_handles_.emplace(actor_id, std::move(actor_handle)).second) {
+    if (actor_handles_.find(actor_id) != actor_handles_.end()) {
       return false;
     }
+    // Place a sentinel value in the map to indicate that the actor handle is being
+    // created.
+    actor_handles_.emplace(actor_id, nullptr);
   }
 
+  // Detached actor doesn't need ref counting.
   if (owned) {
-    // Detached actor doesn't need ref counting.
     reference_counter_.AddOwnedObject(actor_creation_return_id,
-                                      /*inner_ids=*/{},
+                                      /*contained_ids=*/{},
                                       caller_address,
                                       call_site,
-                                      /*object_size=*/-1,
+                                      /*object_size*/ -1,
                                       /*is_reconstructable=*/true,
                                       /*add_local_ref=*/true);
-
-    RAY_CHECK(reference_counter_.AddObjectOutOfScopeOrFreedCallback(
-        actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
-          MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
-        }));
   }
 
-  actor_task_submitter_.AddActorQueueIfNotExists(
-      actor_id,
-      max_pending_calls,
-      allow_out_of_order_execution,
-      /*fail_if_actor_unreachable=*/max_task_retries == 0,
-      owned);
-  return true;
+  return AddActorHandle(std::move(actor_handle),
+                        call_site,
+                        caller_address,
+                        actor_id,
+                        actor_creation_return_id,
+                        /*add_local_ref=*/false,
+                        /*is_self*/ false,
+                        owned);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -182,7 +178,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
-    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    // check if the actor handle is a sentinel value
+    auto it = actor_handles_.find(actor_id);
+    if (it != actor_handles_.end() && it->second == nullptr) {
+      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle)).second;
+      inserted = true;
+    } else {
+      inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    }
   }
 
   if (is_self) {
