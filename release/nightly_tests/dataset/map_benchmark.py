@@ -73,6 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--concurrency",
         default=[1, 1024],
         nargs=2,
+        type=int,
         help="Concurrency to use with 'map_batches'.",
     )
     return parser.parse_args()
