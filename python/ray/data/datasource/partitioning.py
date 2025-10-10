@@ -2,6 +2,7 @@ import posixpath
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+import urllib.parse
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -277,7 +278,10 @@ class PathPartitionParser:
         dictionary for unpartitioned files.
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
-        kv_pairs = [d.split("=") for d in dirs] if dirs else []
+        kv_pairs = dict([d.split("=") for d in dirs] if dirs else [])
+        # url decode the partition values
+        kv_pairs = {k: urllib.parse.unquote(v) for k, v in kv_pairs.items()}
+
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
             if len(kv_pairs) != len(field_names):
@@ -291,7 +295,7 @@ class PathPartitionParser:
                         f"Expected partition key {field_name} but found "
                         f"{kv_pairs[i][0]}"
                     )
-        return dict(kv_pairs)
+        return kv_pairs
 
     def _parse_dir_path(self, dir_path: str) -> Dict[str, str]:
         """Directory partition path parser.
