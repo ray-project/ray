@@ -1,0 +1,92 @@
+# Auto-generate a Pull Request to merge from master to main branch daily
+# Author: mingcheng <mingcheng@apache.org>
+
+name: Auto Create Merge PR
+
+on:
+  schedule:
+    - cron: '30 1 * * 1,2,3,4,5'
+      # timezone: Asia/Shanghai
+
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Source branch to merge from'
+        required: true
+        default: 'master'
+        type: string
+      target_branch:
+        description: 'Target branch to merge into'
+        required: true
+        default: 'main'
+        type: string
+      assignees:
+        description: 'Assignees for the PR'
+        required: false
+        default: 'ffbin'
+        type: string
+
+jobs:
+  create-merge-pr:
+    runs-on: ubuntu-latest
+    # Put commonly used values into job env so steps can reference them clearly
+    env:
+      # these will be overridden by the step that writes to $GITHUB_ENV when the job runs
+      SOURCE_BRANCH: ${{ github.event.inputs.source_branch || 'master' }}
+      TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'main' }}
+      ASSIGNEES: ${{ github.event.inputs.assignees || 'ffbin' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Get current timestamp
+        uses: mingcheng/get-timestamp-action@v1.1.0
+        id: timestamp
+        with:
+          format: '%Y-%m-%d'
+          timezone: 'Asia/Shanghai'
+
+      - name: Prepare variables
+        run: |
+          # Use UTC date for consistency across runners
+          echo "DATE=${{ steps.timestamp.outputs.timestamp }}" >> $GITHUB_ENV
+
+          # Normalize inputs into env vars so later steps can use $SOURCE_BRANCH etc.
+          echo "SOURCE_BRANCH=${{ github.event.inputs.source_branch || 'master' }}" >> $GITHUB_ENV
+          echo "TARGET_BRANCH=${{ github.event.inputs.target_branch || 'main' }}" >> $GITHUB_ENV
+          echo "ASSIGNEES=${{ github.event.inputs.assignees || 'ffbin' }}" >> $GITHUB_ENV
+
+      - name: Fetch source branch and checkout
+        run: |
+          # Fetch only the source branch
+          git fetch --no-tags origin "$SOURCE_BRANCH:$SOURCE_BRANCH"
+          git reset --hard  "$SOURCE_BRANCH"
+          git status --porcelain --branch || true
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          # create the branch from the current HEAD (we checked out 'promote')
+          # branch: auto-merge/${{ env.SOURCE_BRANCH }}-to-${{ env.TARGET_BRANCH }}
+          # branch-suffix: ${{ env.DATE }}
+          base: ${{ env.TARGET_BRANCH }}
+          title: |
+            🔄 daily merge: ${{ env.SOURCE_BRANCH }} → ${{ env.TARGET_BRANCH }} ${{ env.DATE }}
+          body: |
+            This Pull Request was created automatically to merge the latest changes from `${{ env.SOURCE_BRANCH }}` into `${{ env.TARGET_BRANCH }}` branch.
+
+            📅 **Created**: ${{ env.DATE }}
+            🔀 **Merge direction**: `${{ env.SOURCE_BRANCH }}` → `${{ env.TARGET_BRANCH }}`
+            🤖 **Triggered by**: ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'Scheduled' }}
+
+            Please review and merge if everything looks good.
+          labels: |
+            auto-generated
+            daily-merge
+          draft: false
+          delete-branch: true
+          branch-suffix: short-commit-hash
+          assignees: ${{ env.ASSIGNEES }}

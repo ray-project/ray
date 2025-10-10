@@ -1,0 +1,55 @@
+# This workflow automatically syncs the latest changes from the upstream repository's master branch
+# into the forked repository's master branch. It runs on a daily schedule and can also be triggered manually.
+#
+# Author: mingcheng <mingcheng@apache.org>
+#
+
+name: 'Automatic sync upstream with master branch'
+
+on:
+  schedule:
+    - cron: '30 22 * * *'
+      # timezone: Asia/Shanghai
+
+  workflow_dispatch:
+    inputs:
+      sync_test_mode: # Adds a boolean option that appears during manual workflow run for easy test mode config
+        description: 'For testing only: set to true to run in test mode (no commits pushed)'
+        type: boolean
+        default: false
+
+jobs:
+  sync_latest_from_upstream:
+    runs-on: ubuntu-latest
+    name: Sync latest commits from upstream repo
+
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Sync upstream changes
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4.1
+        with:
+          target_sync_branch: master
+          # REQUIRED 'target_repo_token' exactly like this!
+          target_repo_token: ${{ secrets.GH_TOKEN }}
+          upstream_sync_branch: master
+          upstream_sync_repo: ray-project/ray
+          # upstream_repo_access_token: ${{ secrets.UPSTREAM_REPO_SECRET }}
+          # Set test_mode true during manual dispatch to run tests instead of the true action!!
+          test_mode: ${{ inputs.sync_test_mode }}
+
+      # Step 3: Display a sample message based on the sync output var 'has_new_commits'
+      - name: New commits found
+        if: steps.sync.outputs.has_new_commits == 'true'
+        run: echo "New commits were found to sync."
+
+      - name: No new commits
+        if: steps.sync.outputs.has_new_commits == 'false'
+        run: echo "There were no new commits."
+
+      - name: Show value of 'has_new_commits'
+        run: echo ${{ steps.sync.outputs.has_new_commits }}
