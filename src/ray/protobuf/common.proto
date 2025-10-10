@@ -1003,6 +1003,10 @@ message CoreWorkerStats {
   int64 num_owned_actors = 21;
   // Number of running tasks
   int64 num_running_tasks = 22;
+  // Number of in flight arg pinning requests
+  int64 num_in_flight_arg_pinning_requests = 23;
+  // Number of failed arg pinning requests
+  int64 num_of_failed_arg_pinning_requests = 24;
 }
 
 // Resource usage reported by the node reporter.

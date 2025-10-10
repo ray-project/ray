@@ -342,6 +342,8 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
+      num_get_pin_args_in_flight_(0),
+      num_failed_get_pin_args_(0),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
@@ -2725,6 +2727,29 @@ Status CoreWorker::ExecuteTask(
         absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
   }
 
+  std::vector<std::shared_ptr<RayObject>> args;
+  std::vector<rpc::ObjectReference> arg_refs;
+  // This includes all IDs that were passed by reference and any IDs that were
+  // inlined in the task spec. These references will be pinned during the task
+  // execution and unpinned once the task completes. We will notify the caller
+  // about any IDs that we are still borrowing by the time the task completes.
+  std::vector<ObjectID> borrowed_ids;
+  ++num_get_pin_args_in_flight_;
+  Status pin_args_request_status =
+      GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
+  --num_get_pin_args_in_flight_;
+  if (!pin_args_request_status.ok()) {
+    ++num_failed_get_pin_args_;
+    // If this has happened, it's because we are unable to talk to our local raylet.
+    // This very likely means that the raylet has shutdown before this worker
+    // unexpectedly. In whic case we'll trigger shut down.
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR,
+         absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
+                      pin_args_request_status.message()),
+         nullptr);
+    return pin_args_request_status;
+  }
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -2763,15 +2788,6 @@ Status CoreWorker::ExecuteTask(
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
-
-  std::vector<std::shared_ptr<RayObject>> args;
-  std::vector<rpc::ObjectReference> arg_refs;
-  // This includes all IDs that were passed by reference and any IDs that were
-  // inlined in the task spec. These references will be pinned during the task
-  // execution and unpinned once the task completes. We will notify the caller
-  // about any IDs that we are still borrowing by the time the task completes.
-  std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
@@ -4046,6 +4062,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_->GetWorkerType());
   stats->set_num_running_tasks(running_tasks_.size());
+  stats->set_num_in_flight_arg_pinning_requests(num_get_pin_args_in_flight_);
+  stats->set_num_of_failed_arg_pinning_requests(num_failed_get_pin_args_);
   auto *used_resources_map = stats->mutable_used_resources();
   for (auto const &[resource_name, resource_allocations] : resource_ids_) {
     rpc::ResourceAllocations allocations;
