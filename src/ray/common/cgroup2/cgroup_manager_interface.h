@@ -32,7 +32,7 @@ namespace ray {
 
     base_cgroup_path (e.g. /sys/fs/cgroup)
             |
-    ray_node_<node_id>
+    ray-node_<node_id>
       |           |
     system     application
       |           |
