@@ -53,7 +53,7 @@ describe("getStateApiDownloadLogUrl", () => {
       getStateApiDownloadLogUrl({
         actorId: "actor-id",
         suffix: "err",
-        filterAnsiCode: false
+        filterAnsiCode: false,
       }),
     ).toStrictEqual(
       `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&filter_ansi_code=false`,
