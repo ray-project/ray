@@ -19,11 +19,11 @@
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
@@ -42,7 +42,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
     memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-    publisher = std::make_shared<pubsub::MockPublisher>();
+    publisher = std::make_shared<pubsub::FakePublisher>();
     subscriber = std::make_shared<pubsub::FakeSubscriber>();
     reference_counter = std::make_shared<ReferenceCounter>(
         rpc::Address(),
@@ -95,7 +95,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<MockTaskManagerInterface> task_manager;
   std::unique_ptr<ActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
-  std::shared_ptr<pubsub::MockPublisher> publisher;
+  std::shared_ptr<pubsub::FakePublisher> publisher;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber;
   std::shared_ptr<ReferenceCounterInterface> reference_counter;
 };

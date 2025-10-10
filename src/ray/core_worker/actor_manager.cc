@@ -129,7 +129,7 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
-    if (actor_handles_.find(actor_id) != actor_handles_.end()) {
+    if (actor_handles_.contains(actor_id)) {
       return false;
     }
     // Place a sentinel value in the map to indicate that the actor handle is being
@@ -181,7 +181,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // check if the actor handle is a sentinel value
     auto it = actor_handles_.find(actor_id);
     if (it != actor_handles_.end() && it->second == nullptr) {
-      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle)).second;
+      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle));
       inserted = true;
     } else {
       inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
