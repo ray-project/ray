@@ -1,8 +1,8 @@
-# A Step-by-step Guide: Fine-tuning LLMs with Ray Train and DeepSpeed
+# Fine-tune an LLM with Ray Train and DeepSpeed
 
 **Time to complete:** 20 min
 
-This notebook walks through how to combine **DeepSpeed** with **Ray Train** to efficiently scale PyTorch training across GPUs and nodes while minimizing memory usage.
+This notebook walks through how to combine **DeepSpeed** with **Ray Train** to efficiently scale PyTorch training across GPUs and nodes while minimizing GPU memory usage.
 
 It includes:
 - A hands-on example of fine-tuning an LLM
@@ -62,11 +62,7 @@ pip install deepspeed ray[train]
 This notebook uses simple constants instead of `argparse` to simplify execution. Adjust these as needed.
 
 
-
 ```python
-import os
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"  # Ensure Ray Train v2 APIs
-
 # ---- Training constants (edit these) ----
 MODEL_NAME = "gpt2"
 DATASET_NAME = "ag_news"
@@ -86,194 +82,16 @@ STORAGE_PATH = "/mnt/cluster_storage/"
 EXPERIMENT_PREFIX = "deepspeed_sample"
 ```
 
+## 1. Training Iteration
 
-## 1. Set Up the Dataloader
-
-The code below:
-
-1. Downloads a tokenizer from the Hugging Face Hub (`AutoTokenizer`).  
-2. Loads the `ag_news` dataset using Hugging Face's `load_dataset`.  
-3. Applies tokenization with padding and truncation by calling `map`.  
-4. Converts the dataset into a PyTorch `DataLoader`, which handles batching and shuffling.  
-5. Finally, call `ray.train.torch.prepare_data_loader` to make the dataloader distributed-ready.
-
-This example uses only 1% of the dataset for quick testing. Adjust as needed.
-
-
-```python
-import ray.train
-import ray.train.torch
-from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
-from datasets import load_dataset, DownloadConfig
-
-def setup_dataloader(model_name: str, dataset_name: str, seq_length: int, batch_size: int) -> DataLoader:
-    # (1) Get tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    # Set pad token if not already set
-    if tokenizer.pad_token is None:
-        if tokenizer.eos_token is not None:
-            tokenizer.pad_token = tokenizer.eos_token
-        else:
-            # Fallback for models without eos_token
-            tokenizer.pad_token = tokenizer.unk_token
-
-    # (2) Load dataset
-    dataset = load_dataset(dataset_name, split="train[:1%]", download_config=DownloadConfig(disable_tqdm=True))
-
-    # (3) Tokenize
-    def tokenize_function(examples):
-        return tokenizer(examples['text'], padding='max_length', max_length=seq_length, truncation=True)
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=1, keep_in_memory=True)
-    tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
-
-    # (4) Create DataLoader
-    data_loader = DataLoader(tokenized_dataset, batch_size=batch_size, shuffle=True)
-
-    # (5) Use prepare_data_loader for distributed training
-    return ray.train.torch.prepare_data_loader(data_loader)
-```
-
-The following code demonstrates how to use the tokenizer to encode a sample string. 
-- `AutoTokenizer.from_pretrained` downloads and configures the tokenizer for your model.
-- You can encode any text string and inspect the resulting token IDs and attention mask.
-
-
-```python
-# Example usage of get_tokenizer
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-sample_text = "Ray Train and DeepSpeed make distributed training easy!"
-encoded = tokenizer(sample_text, padding='max_length', max_length=32, truncation=True)
-print(encoded)
-```
-
-
-**Making the dataloader distributed-ready with Ray**  
-In **data parallelism**, each GPU worker trains on a unique shard of the dataset while holding its own copy of the model; gradients are synchronized after each step.  
-Ray’s `prepare_data_loader` wraps PyTorch’s `DataLoader` and automatically applies a `DistributedSampler`, ensuring workers see disjoint data, splits are balanced, and epoch boundaries are handled correctly.
-
-
-## 2. Initialize Model and Optimizer
+First, define the training loop function that will be executed on each worker. Note that Ray Train allocates a unique GPU to each worker.
+Ray Train runs this training loop function on every worker to orchestrate the overall training process. The training loop outlines the high-level structure common to most deep learning workflows, showing how setup, data ingestion, optimization, and reporting stages come together on each worker.
 
 The function below:
 
-1. Loads a pretrained model from the Hugging Face Hub (`AutoModelForCausalLM`).  
-2. Defines the optimizer (`AdamW`).  
-3. Initializes DeepSpeed with ZeRO options and returns a `DeepSpeedEngine`.
-
-
-
-```python
-from typing import Dict, Any
-import torch
-from transformers import AutoModelForCausalLM
-import deepspeed
-
-def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
-    # (1) Load pretrained model
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-
-    # (2) Define optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-
-    # (3) Initialize with DeepSpeed (distributed + memory optimizations)
-    ds_engine, _, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=ds_config)
-    return ds_engine
-
-```
-
-
-**Making the model distributed-ready with Ray and DeepSpeed**  
-DeepSpeed’s `initialize` always partitions **optimizer states** (ZeRO Stage 1). Depending on the chosen stage, it can also partition **gradients** (Stage 2) and **model parameters/weights** (Stage 3). This staged approach balances memory savings and communication overhead, and the tutorial covers these stages in more detail [later in the tutorial](#deepspeed-zero-stages).
-
-
-## 3. Checkpointing and Loading
-
-
-Checkpointing is crucial for fault tolerance and for resuming training after interruptions. The functions below:
-
-1. Create a temporary directory for storing checkpoints.
-1. Save the partitioned model and optimizer states with DeepSpeed's `save_checkpoint`.
-1. Synchronize all workers with `torch.distributed.barrier` to ensure every process finishes saving.
-1. Report metrics and checkpoint location to Ray with `ray.train.report`.
-1. Restore a previously saved checkpoint into the DeepSpeed engine using `load_checkpoint`.
-
-
-```python
-import tempfile
-import ray.train
-from ray.train import Checkpoint
-
-def report_metrics_and_save_checkpoint(
-    ds_engine: deepspeed.runtime.engine.DeepSpeedEngine,
-    metrics: Dict[str, Any]
-) -> None:
-    """Save worker checkpoints and report metrics to Ray.
-    Each rank writes its shard to a temp directory so Ray bundles all of them.
-    """
-    ctx = ray.train.get_context()
-    epoch_value = metrics["epoch"]
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
-        ds_engine.save_checkpoint(checkpoint_dir)
-
-        epoch_file = os.path.join(checkpoint_dir, "epoch.txt")
-        with open(epoch_file, "w", encoding="utf-8") as f:
-            f.write(str(epoch_value))
-
-        checkpoint = Checkpoint.from_directory(tmp_dir)
-        ray.train.report(metrics, checkpoint=checkpoint)
-
-        if ctx.get_world_rank() == 0:
-            experiment_name = ctx.get_experiment_name()
-            print(
-                f"Checkpoint saved successfully for experiment {experiment_name} at {checkpoint_dir}. Metrics: {metrics}"
-            )
-
-
-def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: ray.train.Checkpoint) -> int:
-    """Restore DeepSpeed state and determine next epoch."""
-    next_epoch = 0
-    try:
-        with ckpt.as_directory() as checkpoint_dir:
-            print(f"Loading checkpoint from {checkpoint_dir}")
-            epoch_dir = os.path.join(checkpoint_dir, "checkpoint")
-            if not os.path.isdir(epoch_dir):
-                epoch_dir = checkpoint_dir
-
-            ds_engine.load_checkpoint(epoch_dir)
-
-            epoch_file = os.path.join(epoch_dir, "epoch.txt")
-            if os.path.isfile(epoch_file):
-                with open(epoch_file, "r", encoding="utf-8") as f:
-                    last_epoch = int(f.read().strip())
-                next_epoch = last_epoch + 1
-
-            if torch.distributed.is_available() and torch.distributed.is_initialized():
-                torch.distributed.barrier()
-    except Exception as e:
-        raise RuntimeError(f"Checkpoint loading failed: {e}") from e
-    return next_epoch
-```
-
-
-**Making checkpoints distributed-ready with Ray and DeepSpeed**  
-DeepSpeed saves model and optimizer states in a **partitioned format**, where each worker stores only its shard. This requires synchronization across processes, so all workers must reach the same checkpointing point before proceeding. The call to `torch.distributed.barrier()` ensures that every worker finishes saving before moving on.  
-Finally, `ray.train.report` both reports training metrics and saves the checkpoint to persistent storage, making it accessible for resuming training later.
-
-
-
-## 4. Training Iteration
-
-Ray Train runs a training loop function on each GPU worker to orchestrate the entire process. The function below:
-
-1. Initializes the model and optimizer with DeepSpeed.
-1. Restores training from a checkpoint if one is available.
-1. Sets up the dataloader with `setup_dataloader`.
+1. Initializes the model and optimizer with DeepSpeed (`setup_model_and_optimizer`).
+1. Restores training from a checkpoint if one is available (`load_checkpoint`).
+1. Sets up the dataloader (`setup_dataloader`).
 1. Gets the device assigned to this worker.
 1. Iterates through the specified number of epochs.
 1. For multi-GPU training, ensures each worker sees a unique data shard each epoch.
@@ -282,10 +100,17 @@ Ray Train runs a training loop function on each GPU worker to orchestrate the en
    - Runs the forward pass to compute loss.
    - Logs the loss.
 1. Performs backward pass and optimizer step with DeepSpeed.
-1. Aggregates average loss and reports metrics, saving a checkpoint at the end of each epoch.
+1. Aggregates average loss and reports metrics, saving a checkpoint at the end of each epoch. (`report_metrics_and_save_checkpoint`)
+
+We will define helper functions (`setup_model_and_optimizer`, `load_checkpoint`, `setup_dataloader`, `report_metrics_and_save_checkpoint`) in the above steps later.
 
 
 ```python
+from typing import Dict, Any
+
+import os
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"  # Ensure Ray Train v2 APIs
+import ray
 
 def train_loop(config: Dict[str, Any]) -> None:
     # (1) Initialize model + optimizer with DeepSpeed
@@ -347,21 +172,218 @@ def train_loop(config: Dict[str, Any]) -> None:
         # (8) Report metrics + save checkpoint
         report_metrics_and_save_checkpoint(ds_engine, {"loss": running_loss / num_batches, "epoch": epoch})
 
+```
+
+Ray Train runs the `train_loop` on each worker, which naturally supports **data parallelism**. In this setup, each worker processes a unique shard of data, computes gradients locally, and participates in synchronization to keep model parameters consistent. On top of this, DeepSpeed partitions model and optimizer states across GPUs to reduce memory usage and communication overhead.
+
+
+## 2. Set Up the Dataloader
+
+The code below demonstrates how to prepare text data so that each worker can efficiently feed batches during training.
+
+1. Downloads a tokenizer from the Hugging Face Hub (`AutoTokenizer`).  
+2. Loads the `ag_news` dataset using Hugging Face's `load_dataset`.  
+3. Applies tokenization with padding and truncation by calling `map`.  
+4. Converts the dataset into a PyTorch `DataLoader`, which handles batching and shuffling.  
+5. Finally, call `ray.train.torch.prepare_data_loader` to make the dataloader distributed-ready.
+
+As we use **data parallelism**, each GPU worker trains on a unique shard of the dataset while holding its own copy of the model; gradients are synchronized after each step.
+Ray’s `prepare_data_loader` wraps PyTorch’s `DataLoader` and ensures workers see disjoint data, splits are balanced, and epoch boundaries are handled correctly.
+
+
+```python
+import ray.train
+import ray.train.torch
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer
+from datasets import load_dataset, DownloadConfig
+
+def setup_dataloader(model_name: str, dataset_name: str, seq_length: int, batch_size: int) -> DataLoader:
+    # (1) Get tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
+    # Set pad token if not already set
+    if tokenizer.pad_token is None:
+        if tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+        else:
+            # Fallback for models without eos_token
+            tokenizer.pad_token = tokenizer.unk_token
+
+    # (2) Load dataset
+    # This example uses only 1% of the dataset for quick testing. Adjust as needed.
+    dataset = load_dataset(dataset_name, split="train[:1%]", download_config=DownloadConfig(disable_tqdm=True))
+
+    # (3) Tokenize
+    def tokenize_function(examples):
+        return tokenizer(examples['text'], padding='max_length', max_length=seq_length, truncation=True)
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=1, keep_in_memory=True)
+    tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
+
+    # (4) Create DataLoader
+    data_loader = DataLoader(tokenized_dataset, batch_size=batch_size, shuffle=True)
+
+    # (5) Use prepare_data_loader for distributed training
+    return ray.train.torch.prepare_data_loader(data_loader)
+```
+
+The following code demonstrates how to use the tokenizer to encode a sample string. 
+- `AutoTokenizer.from_pretrained` downloads and configures the tokenizer for your model.
+- You can encode any text string and inspect the resulting token IDs and attention mask.
+
+
+```python
+# Example usage of get_tokenizer
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+sample_text = "Ray Train and DeepSpeed make distributed training easy!"
+encoded = tokenizer(sample_text)
+print(encoded)
+```
+
+
+## 2. Initialize Model and Optimizer
+
+After preparing and distributing the dataset, the next step is to set up the model and optimizer for training. The function below:
+
+1. Loads a pretrained model from the Hugging Face Hub (`AutoModelForCausalLM`).  
+2. Defines the optimizer (`AdamW`).  
+3. Initializes DeepSpeed with ZeRO options and returns a `DeepSpeedEngine`.
+
+DeepSpeed’s `initialize` always partitions **optimizer states** (ZeRO Stage 1) across the GPU memory of all workers participating in training. Depending on the chosen stage, it can also partition **gradients** (Stage 2) and **model parameters/weights** (Stage 3). This staged approach balances memory savings and communication overhead, and the tutorial covers these stages in more detail [later in the tutorial](#deepspeed-zero-stages).
+
+
+```python
+from typing import Dict, Any
+import torch
+from transformers import AutoModelForCausalLM
+import deepspeed
+
+def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
+    # (1) Load pretrained model
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+
+    # (2) Define optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+    # (3) Initialize with DeepSpeed (distributed + memory optimizations)
+    ds_engine, _, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=ds_config)
+    return ds_engine
 
 ```
 
 
-**Coordinating distributed training with Ray and DeepSpeed**  
-Ray launches this `train_loop` on each worker, while DeepSpeed manages partitioning and memory optimizations. With **data parallelism**, each worker processes a unique shard of data, computes gradients locally, and participates in synchronization so parameters stay in sync.
+## 3. Checkpoint Saving and Loading
+
+Checkpointing is crucial for fault tolerance and for resuming training after interruptions. In this section, you’ll learn how to save and restore model and optimizer states in a distributed DeepSpeed + Ray Train setup. This demonstrates how each worker saves its own checkpoint shard, how Ray bundles them into a unified checkpoint, and how this enables seamless recovery or further fine-tuning from the saved state.
+
+### Saving Checkpoints
+
+We first define how checkpoints are saved during training. The code below shows how to create temporary directories, store model states, and report checkpoint information and metrics back to Ray for tracking and coordination. Note that DeepSpeed saves model and optimizer states in a **partitioned format**, where each worker stores only its shard.
+
+1. Create a temporary directory for storing checkpoints.
+1. Save the partitioned model and optimizer states with DeepSpeed's `save_checkpoint`.
+1. Report metrics and checkpoint location to Ray with `ray.train.report`.
 
 
+```python
+import tempfile
+import ray.train
+from ray.train import Checkpoint
 
-## 5. Configure DeepSpeed and Launch Trainer
+def report_metrics_and_save_checkpoint(
+    ds_engine: deepspeed.runtime.engine.DeepSpeedEngine,
+    metrics: Dict[str, Any]
+) -> None:
+    """Save worker checkpoints and report metrics to Ray.
+    Each rank writes its shard to a temp directory so Ray bundles all of them.
+    """
+    ctx = ray.train.get_context()
+    epoch_value = metrics["epoch"]
 
-The final step is to configure parameters and launch the distributed training job with Ray's `TorchTrainer`. The function below:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+        ds_engine.save_checkpoint(checkpoint_dir)
+
+        epoch_file = os.path.join(checkpoint_dir, "epoch.txt")
+        with open(epoch_file, "w", encoding="utf-8") as f:
+            f.write(str(epoch_value))
+
+        checkpoint = Checkpoint.from_directory(tmp_dir)
+        ray.train.report(metrics, checkpoint=checkpoint)
+
+        if ctx.get_world_rank() == 0:
+            experiment_name = ctx.get_experiment_name()
+            print(
+                f"Checkpoint saved successfully for experiment {experiment_name} at {checkpoint_dir}. Metrics: {metrics}"
+            )
+```
+
+### Loading Checkpoints
+
+After saving checkpoints, the next step is being able to resume training or evaluation from a saved state.
+This ensures that progress isn’t lost due to interruptions and allows long-running jobs to continue seamlessly across sessions.
+When restarting, Ray provides each worker with the latest checkpoint so that DeepSpeed can rebuild the model, optimizer, and training progress from where it left off.
+
+Restore a previously saved checkpoint into the DeepSpeed engine using `load_checkpoint`.
+
+
+```python
+def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: ray.train.Checkpoint) -> int:
+    """Restore DeepSpeed state and determine next epoch."""
+    next_epoch = 0
+    try:
+        with ckpt.as_directory() as checkpoint_dir:
+            print(f"Loading checkpoint from {checkpoint_dir}")
+            epoch_dir = os.path.join(checkpoint_dir, "checkpoint")
+            if not os.path.isdir(epoch_dir):
+                epoch_dir = checkpoint_dir
+
+            ds_engine.load_checkpoint(epoch_dir)
+
+            epoch_file = os.path.join(epoch_dir, "epoch.txt")
+            if os.path.isfile(epoch_file):
+                with open(epoch_file, "r", encoding="utf-8") as f:
+                    last_epoch = int(f.read().strip())
+                next_epoch = last_epoch + 1
+
+    except Exception as e:
+        raise RuntimeError(f"Checkpoint loading failed: {e}") from e
+    return next_epoch
+```
+
+
+## 4. Configure DeepSpeed
+
+Before launching distributed training, you need to define a DeepSpeed configuration dictionary (`ds_config`) that controls data type settings, batch sizes, optimizations including ZeRO (model state partitioning strategies), etc. This configuration determines how DeepSpeed manages memory, communication, and performance across GPUs.
+
+The example below shows a minimal setup that enables bfloat16 precision, gradient clipping, and ZeRO optimization. You can further customize this configuration based on your model size, hardware, and performance goals. Please refer to [Advanced Configurations](#Advanced-Configurations) for more details.
+
+
+```python
+# DeepSpeed configuration
+ds_config = {
+    "train_micro_batch_size_per_gpu": BATCH_SIZE,
+    "bf16": {"enabled": True},
+    "grad_accum_dtype": "bf16",
+    "zero_optimization": {
+        "stage": ZERO_STAGE,
+        "overlap_comm": True,
+        "contiguous_gradients": True,
+    },
+    "gradient_clipping": 1.0,
+}
+```
+
+## 5. Launch Trainer
+
+The final step is to configure parameters and launch the distributed training job.
+Ray’s `TorchTrainer` automatically starts multiple workers—one per GPU—and executes the `train_loop` on each instance. The **scaling configuration** determines how many workers to launch and what resources they use, while the **run configuration** manages storage and experiment tracking.
+
+The function below:
 1. Parses command-line arguments for training and model settings.
 1. Defines the Ray scaling configuration—for example, the number of workers and GPU usage.
-1. Builds the DeepSpeed configuration dictionary (`ds_config`).
 1. Prepares the training loop configuration with hyperparameters and model details.
 1. Sets up the Ray `RunConfig` to manage storage and experiment metadata. This example sets a random experiment name, but you can specify the name of a previous experiment to load the checkpoint.
 1. Creates a `TorchTrainer` that launches the training loop on multiple GPU workers.
@@ -375,19 +397,6 @@ from ray.train import ScalingConfig, RunConfig
 
 # Ray scaling configuration
 scaling_config = ScalingConfig(num_workers=NUM_WORKERS, use_gpu=USE_GPU)
-
-# DeepSpeed configuration
-ds_config = {
-    "train_micro_batch_size_per_gpu": BATCH_SIZE,
-    "bf16": {"enabled": True},
-    "grad_accum_dtype": "bf16",
-    "zero_optimization": {
-        "stage": ZERO_STAGE,
-        "overlap_comm": True,
-        "contiguous_gradients": True,
-    },
-    "gradient_clipping": 1.0,
-}
 
 # Training loop configuration
 train_loop_config = {
@@ -421,13 +430,17 @@ result = trainer.fit()
 print(f"Training finished. Result: {result}")
 ```
 
-**Launching distributed training with Ray and DeepSpeed**
+## Running as a Standalone Script
 
-Ray’s `TorchTrainer` automatically launches multiple workers—one per GPU—and runs the `train_loop` on each instance. The scaling configuration controls how many workers to start, while the run configuration handles logging, storage, and experiment tracking.
+While this tutorial is designed to run interactively in a Jupyter notebook, you can also launch the same training workflow as a standalone Python script.
+This is useful for running longer experiments, automating jobs, or deploying training on a cluster.
 
-DeepSpeed’s `ds_config` ensures that the right ZeRO stage and optimizations apply inside each worker. Together, this setup makes it easy to scale from a single GPU to a multi-node cluster without changing your training loop code.
+The [full code](https://github.com/ray-project/ray/blob/master/doc/source/train/examples/pytorch/deepspeed_finetune/train.py) is also available.
+To start training from the command line, run:
 
-`train.py` in this directory contains the full code.
+```bash
+python train.py
+```
 
 ## Advanced Configurations
 
