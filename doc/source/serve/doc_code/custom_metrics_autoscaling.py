@@ -9,7 +9,9 @@ from ray import serve
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
-        "policy": {"policy_function": "autoscaling_policy:custom_metrics_autoscaling_policy"},
+        "policy": {
+            "policy_function": "autoscaling_policy:custom_metrics_autoscaling_policy"
+        },
     },
     max_ongoing_requests=5,
 )
