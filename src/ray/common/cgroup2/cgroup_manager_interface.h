@@ -30,13 +30,13 @@ namespace ray {
   Sets up resource isolation for a Ray node using cgroup2 using the following
   cgroup hierachy:
 
-    base_cgroup_path (e.g. /sys/fs/cgroup)
+      base_cgroup_path (e.g. /sys/fs/cgroup)
             |
     ray-node_<node_id>
-      |           |
-    system     application
-      |           |
-     leaf       leaf
+    |                 |
+  system             user
+    |               |    |
+  leaf        workers  non-ray
 */
 class CgroupManagerInterface {
  public:
