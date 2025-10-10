@@ -177,6 +177,9 @@ def _get_logger_names() -> List[str]:
     return list(logger_config.keys())
 
 
+_configured_logger_handlers = {}
+
+
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
@@ -186,36 +189,44 @@ def configure_logging() -> None:
 
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
+
+    Note: This function is idempotent when handlers have been added to ray.data loggers
+    after initial configuration, as reconfiguration would close and invalidate those handlers.
     """
+    global _configured_logger_handlers
+
+    # Check if any ray.data loggers have handlers that weren't added by us
+    # If so, skip reconfiguration to preserve them since dict Config() would close them.
+    has_user_handlers = False
+    for name in logging.root.manager.loggerDict:
+        if name.startswith("ray.data"):
+            logger = logging.getLogger(name)
+            current_handlers = {id(h) for h in logger.handlers}
+            configured_handlers = _configured_logger_handlers.get(name, set())
+            if current_handlers - configured_handlers:
+                # Logger has handlers we didn't add
+                has_user_handlers = True
+                break
+
+    if has_user_handlers:
+        # Skip reconfiguration to preserve user-added handlers
+        return
+
     # Dynamically load env vars
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
-    # Save existing handlers from all loggers before reconfiguration.
-    # dictConfig will clear handlers and call close() which resets handler state.
-    saved_handlers = {}
-    for name in logging.root.manager.loggerDict:
-        logger = logging.getLogger(name)
-        if logger.handlers:
-            # Store a copy of the handler list along with each handler's __dict__
-            # to preserve all handler state that may be cleared by close()
-            saved_handlers[name] = [
-                (handler, handler.__dict__.copy()) for handler in logger.handlers
-            ]
-
     # Configure logging
+    config["disable_existing_loggers"] = False
     logging.config.dictConfig(config)
 
-    # Restore handlers that were cleared by dictConfig
-    for name, handler_states in saved_handlers.items():
-        logger = logging.getLogger(name)
-        for handler, saved_state in handler_states:
-            # Restore handler state that was cleared by close()
-            handler.__dict__.update(saved_state)
-
-            if handler not in logger.handlers:
-                logger.addHandler(handler)
+    # Track which handlers we added
+    _configured_logger_handlers.clear()
+    for name in logging.root.manager.loggerDict:
+        if name.startswith("ray.data"):
+            logger = logging.getLogger(name)
+            _configured_logger_handlers[name] = {id(h) for h in logger.handlers}
 
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
@@ -234,12 +245,14 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
+    global _configured_logger_handlers
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
+    _configured_logger_handlers = {}
 
 
 def get_log_directory() -> Optional[str]:

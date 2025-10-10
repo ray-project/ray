@@ -181,25 +181,31 @@ def test_configure_logging_preserves_existing_handlers(reset_logging, shutdown_o
     memory_handler = logging.handlers.MemoryHandler(capacity=100, target=target_handler)
     test_logger.addHandler(memory_handler)
 
-    # Verify the memory handler is there and target is set
-    assert memory_handler in test_logger.handlers
-    assert memory_handler.target is not None
-    assert memory_handler.target is target_handler
+    try:
+        # Verify the memory handler is there and target is set
+        assert memory_handler in test_logger.handlers
+        assert memory_handler.target is not None
+        assert memory_handler.target is target_handler
 
-    # Configure Ray Data logging
-    configure_logging()
+        # Configure Ray Data logging
+        configure_logging()
 
-    # Verify the memory handler is still present after configuration
-    assert memory_handler in test_logger.handlers
+        # Verify the memory handler is still present after configuration
+        assert memory_handler in test_logger.handlers
 
-    # Verify the target is still set (would be None if handler was closed/recreated)
-    assert memory_handler.target is not None
-    assert memory_handler.target is target_handler
+        # Verify the target is still set (would be None if handler was closed/recreated)
+        assert memory_handler.target is not None
+        assert memory_handler.target is target_handler
 
-    # Verify the memory handler still works
-    test_logger.info("test message")
-    assert len(memory_handler.buffer) == 1
-    assert "test message" in memory_handler.buffer[0].getMessage()
+        # Verify the memory handler still works
+        test_logger.info("test message")
+        assert len(memory_handler.buffer) == 1
+        assert "test message" in memory_handler.buffer[0].getMessage()
+    finally:
+        # Clean up handlers to avoid logging errors during teardown
+        test_logger.removeHandler(memory_handler)
+        memory_handler.close()
+        target_handler.close()
 
 
 if __name__ == "__main__":
