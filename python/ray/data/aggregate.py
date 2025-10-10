@@ -1191,6 +1191,7 @@ class ZeroPercentage(AggregateFnV2):
         return (accumulator[0] / accumulator[1]) * 100.0
 
 
+@PublicAPI(stability="alpha")
 class ApproximateQuantile(AggregateFnV2):
     def _require_datasketches(self):
         try:
