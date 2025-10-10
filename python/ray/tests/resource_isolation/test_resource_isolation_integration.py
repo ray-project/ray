@@ -1,7 +1,6 @@
 import os
 import platform
 import sys
-from math import floor
 from pathlib import Path
 from typing import Set
 
@@ -45,11 +44,11 @@ _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
 #                       /           \
 #                 TEST_CGROUP   LEAF_CGROUP
 #                      |
-#               ray_node_<node_id>
-#             /        |         \
-#           system   workers    user
-#             |        |         |
-#            leaf     leaf      leaf
+#               ray-node_<node_id>
+#              |                 |
+#           system             user
+#              |              |    |
+#            leaf        workers  non-ray
 #
 # NOTE: The test suite does not assume that ROOT_CGROUP is an actual root cgroup. Therefore,
 #   1. setup will migrate all processes from the ROOT_CGROUP -> LEAF_CGROUP
@@ -273,48 +272,43 @@ def assert_cgroup_hierarchy_exists_for_node(
 
             _TEST_CGROUP
                 |
-        ray_node_<node_id>
-        |        |        |
-      system   workers   user
-        |        |        |
-       leaf     leaf     leaf
+        ray-node_<node_id>
+        |                |
+      system            user
+        |             |     |
+       leaf       workers  non-ray
 
     Args:
         node_id: used to find the path of the cgroup subtree
         resource_isolation_config: used to verify constraints enabled on the system, workers, and user cgroups
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     system_cgroup = node_cgroup / "system"
     system_leaf_cgroup = system_cgroup / "leaf"
-    workers_cgroup = node_cgroup / "workers"
-    workers_leaf_cgroup = workers_cgroup / "leaf"
     user_cgroup = node_cgroup / "user"
-    user_leaf_cgroup = user_cgroup / "leaf"
+    workers_cgroup = user_cgroup / "workers"
+    non_ray_cgroup = user_cgroup / "non-ray"
 
     # 1) Check that the cgroup hierarchy is created correctly for the node.
     assert node_cgroup.is_dir()
     assert system_cgroup.is_dir()
     assert system_leaf_cgroup.is_dir()
     assert workers_cgroup.is_dir()
-    assert workers_leaf_cgroup.is_dir()
     assert user_cgroup.is_dir()
-    assert user_leaf_cgroup.is_dir()
+    assert non_ray_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
-    system_cgroup_memory_min = system_cgroup / "memory.min"
-    with open(system_cgroup_memory_min, "r") as memory_min_file:
+    with open(system_cgroup / "memory.min", "r") as memory_min_file:
         contents = memory_min_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_memory)
-    system_cgroup_cpu_weight = system_cgroup / "cpu.weight"
-    with open(system_cgroup_cpu_weight, "r") as cpu_weight_file:
+    with open(system_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_cpu_weight)
-    workers_cgroup_cpu_weight = workers_cgroup / "cpu.weight"
-    with open(workers_cgroup_cpu_weight, "r") as cpu_weight_file:
+    with open(user_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(
-            floor((10000 - resource_isolation_config.system_reserved_cpu_weight) * 0.95)
+            10000 - resource_isolation_config.system_reserved_cpu_weight
         )
 
 
@@ -328,7 +322,7 @@ def assert_system_processes_are_in_system_cgroup(
     expected_count: the number of expected system processes.
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     system_cgroup = node_cgroup / "system"
     system_leaf_cgroup = system_cgroup / "leaf"
 
@@ -355,9 +349,9 @@ def assert_worker_processes_are_in_workers_cgroup(
             leaf cgroup.
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
-    workers_leaf_cgroup_procs = node_cgroup / "workers" / "leaf" / "cgroup.procs"
-    with open(workers_leaf_cgroup_procs, "r") as cgroup_procs_file:
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
+    workers_cgroup_procs = node_cgroup / "user" / "workers" / "cgroup.procs"
+    with open(workers_cgroup_procs, "r") as cgroup_procs_file:
         pids_in_cgroup = set()
         lines = cgroup_procs_file.readlines()
         for line in lines:
@@ -376,7 +370,7 @@ def assert_cgroup_hierarchy_cleaned_up_for_node(
             subtree
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     # If the root cgroup is deleted, there's no need to check anything else.
     assert (
         not node_cgroup.is_dir()

@@ -83,10 +83,11 @@ class CgroupManagerInterface {
   virtual ~CgroupManagerInterface() = default;
 
  protected:
-  inline static const std::string kNodeCgroupName = "ray_node";
+  inline static const std::string kNodeCgroupName = "ray-node";
   inline static const std::string kSystemCgroupName = "system";
-  inline static const std::string kWorkersCgroupName = "workers";
   inline static const std::string kUserCgroupName = "user";
+  inline static const std::string kWorkersCgroupName = "workers";
+  inline static const std::string kNonRayCgroupName = "non-ray";
   inline static const std::string kLeafCgroupName = "leaf";
 
   // TODO(54703): Tune this value for a sane default. Expose a RayConfig for this

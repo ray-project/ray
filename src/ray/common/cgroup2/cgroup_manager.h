@@ -51,7 +51,7 @@ class CgroupManager : public CgroupManagerInterface {
     @return Status::OK with an instance of CgroupManager if everything succeeds.
     @return Status::Invalid if cgroupv2 is not enabled correctly.
     @return Status::InvalidArgument if base_cgroup is not a cgroup.
-    @return Status::NotFound if the base_cgroupd does not exist.
+    @return Status::NotFound if the base_cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and
     execute permissions.
    */
@@ -70,21 +70,21 @@ class CgroupManager : public CgroupManagerInterface {
   CgroupManager &operator=(CgroupManager &&);
 
   /**
-    Moves the process into the workers leaf cgroup (@see
+    Moves the process into the workers cgroup (@see
     CgroupManagerInterface::kLeafCgroupName).
 
     To move the pid, the process must have read, write, and execute permissions for the
       1) the cgroup the pid is currently in i.e. the source cgroup.
-      2) the system leaf cgroup i.e. the destination cgroup.
+      2) the workers cgroup i.e. the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
-    @note If the process does not have adequate cgroup permissions or the workers leaf
+    @note If the process does not have adequate cgroup permissions or the workers
     cgroup does not exist, this will fail a RAY_CHECK.
 
-    @param pid of the process to move into the workers leaf cgroup.
+    @param pid of the process to move into the workers cgroup.
 
     @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the workers leaf cgroup does not exist.
+    @return Status::NotFound if the workers cgroup does not exist.
   */
   Status AddProcessToWorkersCgroup(const std::string &pid) override;
 
@@ -109,10 +109,10 @@ class CgroupManager : public CgroupManagerInterface {
 
   /**
     Performs cleanup in reverse order from the Initialize function:
-      1. remove resource constraints to the system, workers, and user cgroups.
-      2. disable controllers on the base, system, workers, and user cgroups respectively.
-      3. move all processes from the system cgroup into the base cgroup.
-      4. delete the node, system, workers, and user cgroups respectively.
+      1. remove resource constraints to the system, and user cgroups.
+      2. disable controllers on the base, system, and user cgroups respectively.
+      3. move all processes from the system and non-ray cgroup into the base cgroup.
+      4. delete the node, system, user, workers, and non-ray cgroups respectively.
 
     Cleanup is best-effort. If any step fails, it will log a warning.
   */
@@ -128,31 +128,30 @@ class CgroupManager : public CgroupManagerInterface {
 
     To move the pid, the process must have read, write, and execute permissions for the
       1) the cgroup the pid is currently in i.e. the source cgroup.
-      2) the system leaf cgroup i.e. the destination cgroup.
+      2) the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
     NOTE: If the process does not have adequate cgroup permissions or the system leaf
     cgroup does not exist, this will fail a RAY_CHECK.
 
-    @param pid of the process to move into the system leaf cgroup.
+    @param pid of the process to move into the destination cgroup.
 
     @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the system cgroup does not exist.
+    @return Status::NotFound if the destination cgroup does not exist.
   */
   Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid);
 
   /**
     Performs the following operations:
 
-      1. create the node, system, workers, and user cgroups respectively.
-      2. move all processes from the base_cgroup into the system cgroup.
-      3. enable controllers the base, node, system, workers, and user cgroups
-    respectively.
-      4. add resource constraints to the system, workers, and user cgroups.
+      1. create the node, system, user, workers and non-ray cgroups respectively.
+      2. move all processes from the base cgroup into the non-ray cgroup.
+      3. enable controllers the base, node, system, and user cgroups respectively.
+      4. add resource constraints to the system, and user cgroups.
 
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
-    for system processes. The cgroup for application processes gets 10000 -
-    system_reserved_cpu_weight.
+    for system processes. The cgroup for all other processes (including workers) gets
+    10000 - system_reserved_cpu_weight.
     @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
 
     @return Status::OK if no errors encountered.
@@ -184,10 +183,9 @@ class CgroupManager : public CgroupManagerInterface {
   std::string node_cgroup_;
   std::string system_cgroup_;
   std::string system_leaf_cgroup_;
-  std::string workers_cgroup_;
-  std::string workers_leaf_cgroup_;
   std::string user_cgroup_;
-  std::string user_leaf_cgroup_;
+  std::string workers_cgroup_;
+  std::string non_ray_cgroup_;
 
   // This will be popped in reverse order to clean up all side-effects performed
   // during setup.

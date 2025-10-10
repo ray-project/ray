@@ -20,6 +20,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 
@@ -42,14 +43,12 @@ CgroupManager::CgroupManager(std::string base_cgroup,
       node_cgroup_ + std::filesystem::path::preferred_separator + kSystemCgroupName;
   system_leaf_cgroup_ =
       system_cgroup_ + std::filesystem::path::preferred_separator + kLeafCgroupName;
-  workers_cgroup_ =
-      node_cgroup_ + std::filesystem::path::preferred_separator + kWorkersCgroupName;
-  workers_leaf_cgroup_ =
-      workers_cgroup_ + std::filesystem::path::preferred_separator + kLeafCgroupName;
   user_cgroup_ =
       node_cgroup_ + std::filesystem::path::preferred_separator + kUserCgroupName;
-  user_leaf_cgroup_ =
-      user_cgroup_ + std::filesystem::path::preferred_separator + kLeafCgroupName;
+  workers_cgroup_ =
+      user_cgroup_ + std::filesystem::path::preferred_separator + kWorkersCgroupName;
+  non_ray_cgroup_ =
+      user_cgroup_ + std::filesystem::path::preferred_separator + kNonRayCgroupName;
 }
 
 CgroupManager::~CgroupManager() {
@@ -62,10 +61,9 @@ CgroupManager::CgroupManager(CgroupManager &&other)
     : node_cgroup_(std::move(other.node_cgroup_)),
       system_cgroup_(std::move(other.system_cgroup_)),
       system_leaf_cgroup_(std::move(other.system_leaf_cgroup_)),
-      workers_cgroup_(std::move(other.workers_cgroup_)),
-      workers_leaf_cgroup_(std::move(other.workers_leaf_cgroup_)),
       user_cgroup_(std::move(other.user_cgroup_)),
-      user_leaf_cgroup_(std::move(other.workers_leaf_cgroup_)),
+      workers_cgroup_(std::move(other.workers_cgroup_)),
+      non_ray_cgroup_(std::move(other.non_ray_cgroup_)),
       cleanup_operations_(std::move(other.cleanup_operations_)),
       cgroup_driver_(std::move(other.cgroup_driver_)) {}
 
@@ -73,10 +71,9 @@ CgroupManager &CgroupManager::operator=(CgroupManager &&other) {
   node_cgroup_ = std::move(other.node_cgroup_);
   system_cgroup_ = std::move(other.system_cgroup_);
   system_leaf_cgroup_ = std::move(other.system_leaf_cgroup_);
-  workers_cgroup_ = std::move(other.workers_cgroup_);
-  workers_leaf_cgroup_ = std::move(other.workers_leaf_cgroup_);
   user_cgroup_ = std::move(other.user_cgroup_);
-  user_leaf_cgroup_ = std::move(other.user_leaf_cgroup_);
+  workers_cgroup_ = std::move(other.workers_cgroup_);
+  non_ray_cgroup_ = std::move(other.non_ray_cgroup_);
   cleanup_operations_ = std::move(other.cleanup_operations_);
   cgroup_driver_ = std::move(other.cgroup_driver_);
   return *this;
@@ -226,20 +223,16 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   // The cpu.weight is distributed between the system, workers, and user cgroups.
   // The workers and user cgroup gets whatever is leftover from the system cgroup.
-  int64_t non_system_cpu_weight =
-      cpu_weight_constraint_.Max() - system_reserved_cpu_weight;
-
-  int64_t workers_cpu_weight = kWorkersCgroupCpuWeightProportion * non_system_cpu_weight;
-  int64_t user_cpu_weight =
-      (1 - kWorkersCgroupCpuWeightProportion) * non_system_cpu_weight;
+  int64_t user_cpu_weight = cpu_weight_constraint_.Max() - system_reserved_cpu_weight;
 
   RAY_LOG(INFO) << absl::StrFormat(
       "Initializing CgroupManager at base cgroup at '%s'. Ray's cgroup "
-      "hierarchy will under the node cgroup at '%s'. The %s controllers will be "
-      "enabled. "
-      "The system cgroup at '%s' will have constraints [%s=%lld, %s=%lld]. "
-      "The workers cgroup '%s' will have constraints [%s=%lld]. "
-      "The user cgroup '%s' will have constraints [%s=%lld].",
+      "hierarchy will under the node cgroup at '%s' with %s controllers enabled. "
+      "The system cgroup at '%s' will have [memory] controllers enabled with "
+      "[%s=%lld, %s=%lld] constraints. "
+      "The user cgroup '%s' will have no controllers enabled with [%s=%lld] "
+      "constraints. "
+      "The user cgroup will contain the cgroups [%s, %s].",
       base_cgroup_,
       node_cgroup_,
       supported_controllers,
@@ -248,23 +241,23 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       system_reserved_cpu_weight,
       memory_min_constraint_.name_,
       system_reserved_memory_bytes,
-      workers_cgroup_,
-      cpu_weight_constraint_.name_,
-      workers_cpu_weight,
       user_cgroup_,
       cpu_weight_constraint_.name_,
-      user_cpu_weight);
+      user_cpu_weight,
+      workers_cgroup_,
+      non_ray_cgroup_);
 
-  // Create the cgroup heirarchy:
-  //      base_cgroup_path (e.g. /sys/fs/cgroup)
-  //             |
-  //     ray_node_<node_id>
-  //    |        |        |
-  //  system   workers   user
-  //    |        |        |
-  //   leaf     leaf     leaf
+  // Create the cgroup hierarchy:
+  //     base_cgroup_path (e.g. /sys/fs/cgroup)
+  //            |
+  //    ray-node_<node_id>
+  //   |                 |
+  // system             user
+  //   |               |    |
+  //  leaf        workers  non-ray
 
-  // There need to be leaf cgroups because of the no the internal processes constraint.
+  // There need to be leaf cgroups because of the no the internal processes
+  // constraint.
   RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(node_cgroup_));
   RegisterDeleteCgroup(node_cgroup_);
 
@@ -274,41 +267,41 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(system_leaf_cgroup_));
   RegisterDeleteCgroup(system_leaf_cgroup_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(workers_cgroup_));
-  RegisterDeleteCgroup(workers_cgroup_);
-
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(workers_leaf_cgroup_));
-  RegisterDeleteCgroup(workers_leaf_cgroup_);
-
   RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(user_cgroup_));
   RegisterDeleteCgroup(user_cgroup_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(user_leaf_cgroup_));
-  RegisterDeleteCgroup(user_leaf_cgroup_);
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(workers_cgroup_));
+  RegisterDeleteCgroup(workers_cgroup_);
 
-  // Move all processes from the base_cgroup into the user_leaf_cgroup to make sure
+  // Move all processes from the base_cgroup into the system_leaf_cgroup to make sure
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(non_ray_cgroup_));
+  RegisterDeleteCgroup(non_ray_cgroup_);
+
+  // Move all processes from the base_cgroup into the non-ray to make sure
   // that the no internal process constraint is not violated. This is relevant
   // when the base_cgroup is not a root cgroup for the system. This is likely
   // the case if Ray is running inside a container.
-  RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, user_leaf_cgroup_));
-  RegisterMoveAllProcesses(user_leaf_cgroup_, base_cgroup_);
-
+  RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, non_ray_cgroup_));
+  RegisterMoveAllProcesses(non_ray_cgroup_, base_cgroup_);
   // Note: The raylet does not own the lifecycle of all system processes so
-  // there's no guarantee that there are no pids in the system leaf cgroup. Therefore,
-  // pids may need to be migrated out of the cgroup to delete it.
+  // there's no guarantee that there are no pids in the system leaf cgroup.
+  // Therefore,
+  // pids may need to be migrated out of the cgroup to delete it
   RegisterMoveAllProcesses(system_leaf_cgroup_, base_cgroup_);
 
-  for (const auto &ctrl : supported_controllers_) {
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(base_cgroup_, ctrl));
-    RegisterDisableController(base_cgroup_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(node_cgroup_, ctrl));
-    RegisterDisableController(node_cgroup_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(system_cgroup_, ctrl));
-    RegisterDisableController(system_cgroup_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(workers_cgroup_, ctrl));
-    RegisterDisableController(workers_cgroup_, ctrl);
-    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(user_cgroup_, ctrl));
-    RegisterDisableController(user_cgroup_, ctrl);
+  std::array<const std::string *, 2> cpu_controlled_cgroups{&base_cgroup_, &node_cgroup_};
+  std::array<const std::string *, 3> memory_controlled_cgroups{
+      &base_cgroup_, &node_cgroup_, &system_cgroup_};
+
+  for (const std::string *cpu_controlled_cgroup : cpu_controlled_cgroups) {
+    RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(*cpu_controlled_cgroup, "cpu"));
+    RegisterDisableController(*cpu_controlled_cgroup, "cpu");
+  }
+
+  for (const std::string *memory_controlled_cgroup : memory_controlled_cgroups) {
+    RAY_RETURN_NOT_OK(
+        cgroup_driver_->EnableController(*memory_controlled_cgroup, "memory"));
+    RegisterDisableController(*memory_controlled_cgroup, "memory");
   }
 
   RAY_RETURN_NOT_OK(
@@ -324,12 +317,6 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
                                     memory_min_constraint_.name_,
                                     std::to_string(system_reserved_memory_bytes)));
   RegisterRemoveConstraint(system_cgroup_, memory_min_constraint_);
-
-  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(workers_cgroup_,
-                                                  cpu_weight_constraint_.controller_,
-                                                  cpu_weight_constraint_.name_,
-                                                  std::to_string(workers_cpu_weight)));
-  RegisterRemoveConstraint(workers_cgroup_, cpu_weight_constraint_);
 
   RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(user_cgroup_,
                                                   cpu_weight_constraint_.controller_,
@@ -357,7 +344,7 @@ Status CgroupManager::AddProcessToCgroup(const std::string &cgroup,
 }
 
 Status CgroupManager::AddProcessToWorkersCgroup(const std::string &pid) {
-  return AddProcessToCgroup(workers_leaf_cgroup_, pid);
+  return AddProcessToCgroup(workers_cgroup_, pid);
 }
 
 Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
