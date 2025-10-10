@@ -1,25 +1,8 @@
 # __serve_example_begin__
 import time
-from typing import Dict, Any
+from typing import Dict
 
 from ray import serve
-from ray.serve.config import AutoscalingContext
-
-
-def custom_metrics_autoscaling_policy(
-    ctx: AutoscalingContext,
-) -> tuple[int, Dict[str, Any]]:
-    cpu_usage_metric = ctx.aggregated_metrics.get("cpu_usage", {})
-    memory_usage_metric = ctx.aggregated_metrics.get("memory_usage", {})
-    max_cpu_usage = max(cpu_usage_metric.values())
-    max_memory_usage = max(memory_usage_metric.values())
-
-    if max_cpu_usage > 80 or max_memory_usage > 85:
-        return min(ctx.capacity_adjusted_max_replicas, ctx.current_num_replicas + 1), {}
-    elif max_cpu_usage < 30 and max_memory_usage < 40:
-        return max(ctx.capacity_adjusted_min_replicas, ctx.current_num_replicas - 1), {}
-    else:
-        return ctx.current_num_replicas, {}
 
 
 @serve.deployment(
@@ -27,7 +10,7 @@ def custom_metrics_autoscaling_policy(
         "min_replicas": 1,
         "max_replicas": 5,
         "policy": {
-            "name": "doc.source.serve.doc_code.custom_metrics_autoscaling:custom_metrics_autoscaling_policy"
+            "name": "autoscaling_policy:custom_metrics_autoscaling_policy"
         },
     },
     max_ongoing_requests=5,
@@ -55,3 +38,11 @@ class CustomMetricsDeployment:
 # Create the app
 app = CustomMetricsDeployment.bind()
 # __serve_example_end__
+
+# TODO: uncomment after autoscaling context is populated with all metrics
+# if __name__ == "__main__":
+#     import requests  # noqa
+
+#     serve.run(app)
+#     resp = requests.get("http://localhost:8000/")
+#     assert resp.text == "Hello, world!"

@@ -465,6 +465,12 @@ A custom autoscaling policy is a user-provided Python function that takes an [`A
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_scheduled_batch_processing_policy__
+:end-before: __end_scheduled_batch_processing_policy__
+```
+
 ```{literalinclude} ../doc_code/scheduled_batch_processing.py
 :language: python
 :start-after: __serve_example_begin__
@@ -484,23 +490,18 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 
 You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
 
-```python
-@serve.deployment(autoscaling_config={...})
-class MyDeployment:
-    def __init__(self):
-        self.cpu_usage = 50.0
-        self.memory_usage = 60.0
-    
-    def __call__(self, request_data):
-        # Your deployment logic
-        return "processed"
-    
-    def record_autoscaling_stats(self) -> Dict[str, float]:
-        """Provide custom metrics for autoscaling decisions."""
-        return {
-            "cpu_usage": self.cpu_usage,
-            "memory_usage": self.memory_usage,
-        }
+This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_custom_metrics_autoscaling_policy__
+:end-before: __end_custom_metrics_autoscaling_policy__
+```
+
+```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
 ```
 
 :::{note}
@@ -514,11 +515,3 @@ In your policy, access custom metrics via:
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 > Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
-
-This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
-
-```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
-:language: python
-:start-after: __serve_example_begin__
-:end-before: __serve_example_end__
-```
