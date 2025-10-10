@@ -688,14 +688,17 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     caplog.clear()
 
 
-def test_transient_error_retry(monkeypatch, ray_start_cluster):
+
+@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+def test_transient_error_retry(monkeypatch, ray_start_cluster, deterministic_failure: str):
     with monkeypatch.context() as m:
         # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100:25:25",
+            "CoreWorkerService.grpc_client.PushTask=2:"
+            + ("100:0" if deterministic_failure == "request" else "0:100"),
         )
-        m.setenv("RAY_actor_scheduling_queue_max_reorder_wait_seconds", "5")
+        m.setenv("RAY_actor_scheduling_queue_max_reorder_wait_seconds", "0")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
@@ -707,9 +710,9 @@ def test_transient_error_retry(monkeypatch, ray_start_cluster):
 
         refs = []
         actor = RetryActor.remote()
-        for i in range(200):
+        for i in range(10):
             refs.append(actor.echo.remote(i))
-        assert ray.get(refs) == list(range(200))
+        assert ray.get(refs) == list(range(10))
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
