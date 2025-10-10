@@ -192,37 +192,28 @@ def configure_logging() -> None:
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
-    # Save existing handlers from all loggers before reconfiguration,
-    # as dictConfig will clear them and call close() which resets handler state
+    # Save existing handlers from all loggers before reconfiguration.
+    # dictConfig will clear handlers and call close() which resets handler state.
     saved_handlers = {}
-    saved_handler_state = {}
     for name in logging.root.manager.loggerDict:
         logger = logging.getLogger(name)
         if logger.handlers:
-            saved_handlers[name] = list(logger.handlers)
-            # Save state for MemoryHandler specifically (target gets set to None on close)
-            for handler in logger.handlers:
-                if isinstance(handler, logging.handlers.MemoryHandler):
-                    saved_handler_state[id(handler)] = {
-                        "target": handler.target,
-                        "capacity": handler.capacity,
-                    }
+            # Store a copy of the handler list along with each handler's __dict__
+            # to preserve all handler state that may be cleared by close()
+            saved_handlers[name] = [
+                (handler, handler.__dict__.copy()) for handler in logger.handlers
+            ]
 
     # Configure logging
     config["disable_existing_loggers"] = False
     logging.config.dictConfig(config)
 
     # Restore handlers that were cleared by dictConfig
-    for name, handlers in saved_handlers.items():
+    for name, handler_states in saved_handlers.items():
         logger = logging.getLogger(name)
-        for handler in handlers:
-            # Restore MemoryHandler state that was cleared by close()
-            if isinstance(handler, logging.handlers.MemoryHandler):
-                handler_id = id(handler)
-                if handler_id in saved_handler_state:
-                    state = saved_handler_state[handler_id]
-                    handler.target = state["target"]
-                    handler.capacity = state["capacity"]
+        for handler, saved_state in handler_states:
+            # Restore handler state that was cleared by close()
+            handler.__dict__.update(saved_state)
 
             if handler not in logger.handlers:
                 logger.addHandler(handler)
