@@ -150,3 +150,6 @@ constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
 
 /// PID of GCS process to record metrics.
 constexpr char kGcsPidKey[] = "gcs_pid";
+
+// Please keep this in sync with the definition in ray_constants.py.
+const std::string kRayInternalNamespacePrefix = "_ray_internal_";  // NOLINT

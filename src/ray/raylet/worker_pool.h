@@ -219,7 +219,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const = 0;
+      bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
 
   virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                                 const rpc::JobConfig &job_config,
@@ -522,7 +522,8 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \return A list containing all the drivers.
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const override;
+      bool filter_dead_drivers = false,
+      bool filter_system_drivers = false) const override;
 
   /// Returns debug string for class.
   ///
