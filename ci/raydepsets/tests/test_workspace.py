@@ -102,10 +102,7 @@ def test_load_all_configs_first_config():
         config = workspace.load_configs(config_path=Path(tmpdir) / "test.depsets.yaml")
         assert config.depsets is not None
         assert len(config.depsets) == 9
-
-
-# load all configs should always load all depsets
-def test_load_all_configs_second_config():
+    # load all configs should always load all depsets
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
