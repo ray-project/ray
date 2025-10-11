@@ -6082,7 +6082,6 @@ class Dataset:
         Returns:
             A list of remote PyArrow tables created from this dataset.
         """
-        import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
         block_refs: List[
@@ -6735,7 +6734,6 @@ class Schema:
         For non-Arrow compatible types, we return "object".
         """
         import pandas as pd
-        import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
         from ray.data.extensions import ArrowTensorType, TensorDtype
