@@ -2380,6 +2380,11 @@ def read_mcap(
 
     # Convert tuple time_range to TimeRange for backwards compatibility
     if time_range is not None and isinstance(time_range, tuple):
+        if len(time_range) != 2:
+            raise ValueError(
+                "Time range must be a tuple of (start_time, end_time): got "
+                f"{time_range}"
+            )
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
 
     datasource = MCAPDatasource(
