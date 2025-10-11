@@ -16,7 +16,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 # These tests are intended to run in CI inside a container.
 #
 # If you want to run this test locally, you will need to create a cgroup that
-# the raylet can manage and delegate to the correct user.
+# the ray can manage and delegate to the correct user.
 #
 # Run these commands locally before running the test suite:
 #
@@ -50,7 +50,7 @@ _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #              |              |    |
 #            leaf        workers  non-ray
 #
-# NOTE: The test suite does not assume that ROOT_CGROUP is an actual root cgroup. Therefore,
+# NOTE: The test suite does not assume that ROOT_CGROUP is the OS's root cgroup. Therefore,
 #   1. setup will migrate all processes from the ROOT_CGROUP -> LEAF_CGROUP
 #   2. teardown will migrate all processes from the LEAF_CGROUP -> ROOT_CGROUP
 #
@@ -67,7 +67,7 @@ _BASE_CGROUP = _ROOT_CGROUP / ("testing_" + utils.get_random_alphanumeric_string
 _TEST_CGROUP = _BASE_CGROUP / "test"
 _LEAF_GROUP = _BASE_CGROUP / "leaf"
 
-_MOUNT_FILE_PATH = "/etc/mtab"
+_MOUNT_FILE_PATH = "/proc/mounts"
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -313,13 +313,18 @@ def assert_cgroup_hierarchy_exists_for_node(
 
 
 def assert_system_processes_are_in_system_cgroup(
-    node_id, resource_isolation_config, expected_count
+    node_id: str,
+    resource_isolation_config: ResourceIsolationConfig,
+    expected_count: int,
 ):
     """Asserts that the system processes were created in the correct cgroup.
-    node_id: used to construct the path of the cgroup subtree
-    resource_isolation_config: used to construct the path of the cgroup
-        subtree
-    expected_count: the number of expected system processes.
+
+    Args:
+        node_id: used to construct the path of the cgroup subtree
+        resource_isolation_config: used to construct the path of the cgroup
+            subtree
+        expected_count: the number of expected system processes.
+
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
