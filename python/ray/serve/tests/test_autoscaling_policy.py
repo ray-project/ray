@@ -111,8 +111,7 @@ def test_assert_no_replicas_deprovisioned():
 
 
 def get_num_requests(client, dep_id: DeploymentID):
-    ref = client._controller._dump_autoscaling_metrics_for_testing.remote()
-    total_num_requests = ray.get(ref)[dep_id]
+    total_num_requests = client._controller.autoscaling_state_manager.get_total_num_requests_by_deployment_id(dep_id).remote()
     print("total num requests", total_num_requests)
     return total_num_requests
 
