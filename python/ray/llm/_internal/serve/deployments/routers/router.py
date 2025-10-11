@@ -522,7 +522,7 @@ class OpenAiIngress(DeploymentProtocol):
     async def _process_llm_request(
         self,
         body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
-        call_method: CallMethod,
+        call_method: str,
     ) -> Response:
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
@@ -565,7 +565,9 @@ class OpenAiIngress(DeploymentProtocol):
         Returns:
             A response object with completions.
         """
-        return await self._process_llm_request(body, call_method="completions")
+        return await self._process_llm_request(
+            body, call_method=CallMethod.COMPLETIONS.value
+        )
 
     async def chat(self, body: ChatCompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
@@ -578,7 +580,7 @@ class OpenAiIngress(DeploymentProtocol):
             A response object with completions.
         """
 
-        return await self._process_llm_request(body, call_method="chat")
+        return await self._process_llm_request(body, call_method=CallMethod.CHAT.value)
 
     async def embeddings(self, body: EmbeddingRequest) -> Response:
         """Create embeddings for the provided input.
@@ -612,7 +614,9 @@ class OpenAiIngress(DeploymentProtocol):
             A response object with transcriptions.
         """
 
-        return await self._process_llm_request(body, call_method="transcriptions")
+        return await self._process_llm_request(
+            body, call_method=CallMethod.TRANSCRIPTIONS.value
+        )
 
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.
