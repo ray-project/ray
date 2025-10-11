@@ -34,6 +34,19 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
         return 1, {}
 
 
+# Example from doc/source/serve/doc_code/autoscaling_policy.py
+def max_cpu_usage_autoscaling_policy(ctx: AutoscalingContext):
+    cpu_usage_metric = ctx.aggregated_metrics.get("cpu_usage", {})
+    max_cpu_usage = list(cpu_usage_metric.values())[-1] if cpu_usage_metric else 0
+
+    if max_cpu_usage > 80:
+        return min(ctx.capacity_adjusted_max_replicas, ctx.current_num_replicas + 1), {}
+    elif max_cpu_usage < 30:
+        return max(ctx.capacity_adjusted_min_replicas, ctx.current_num_replicas - 1), {}
+    else:
+        return ctx.current_num_replicas, {}
+
+
 class TestCustomServeMetrics:
     """Check that redeploying a deployment doesn't reset its start time."""
 
@@ -174,6 +187,118 @@ class TestCustomServeMetrics:
         wait_for_condition(
             check_num_replicas_eq, name="CustomMetricsDeployment", target=3
         )
+        signal.send.remote()
+
+    def test_max_cpu_usage_autoscaling_policy(self, serve_instance):
+        """Test autoscaling policy based on max CPU usage from documentation example."""
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "upscale_delay_s": 0.5,
+                "downscale_delay_s": 0.5,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 10,
+                "policy": AutoscalingPolicy(
+                    policy_function=max_cpu_usage_autoscaling_policy
+                ),
+            },
+            max_ongoing_requests=100,
+        )
+        class MaxCpuUsageDeployment:
+            def __init__(self):
+                self.cpu_usage = 0
+
+            async def __call__(self) -> str:
+                self.cpu_usage += 1
+                await signal.wait.remote()
+                return "Hello, world"
+
+            def record_autoscaling_stats(self) -> Dict[str, int]:
+                return {"cpu_usage": self.cpu_usage}
+
+        handle = serve.run(MaxCpuUsageDeployment.bind())
+
+        # Test scale up when CPU usage > 80
+        # Set CPU usage to 90 to trigger scale up
+        dep_id = DeploymentID(name="MaxCpuUsageDeployment")
+
+        # Send requests to increase CPU usage
+        [handle.remote() for _ in range(90)]
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 90)
+
+        # Wait for metrics to be recorded and policy to trigger scale up
+        def check_scale_up():
+            metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+            return "cpu_usage" in metrics and metrics["cpu_usage"][-1][0].value >= 90
+
+        wait_for_condition(check_scale_up, timeout=10)
+
+        # Should scale up to 2 replicas due to high CPU usage
+        wait_for_condition(
+            check_num_replicas_eq, name="MaxCpuUsageDeployment", target=2, timeout=15
+        )
+
+        # Release signal and test scale down when CPU usage < 30
+        signal.send.remote()
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+
+        signal = SignalActor.remote()
+        # Reset CPU usage to low value by creating new deployment instance
+        # This simulates low CPU usage scenario
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "upscale_delay_s": 0.5,
+                "downscale_delay_s": 0.5,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 10,
+                "policy": AutoscalingPolicy(
+                    policy_function=max_cpu_usage_autoscaling_policy
+                ),
+            },
+            max_ongoing_requests=100,
+        )
+        class LowCpuUsageDeployment:
+            def __init__(self):
+                self.cpu_usage = 0
+
+            async def __call__(self) -> str:
+                self.cpu_usage += 1
+                await signal.wait.remote()
+                return "Hello, world"
+
+            def record_autoscaling_stats(self) -> Dict[str, int]:
+                # Return low CPU usage to trigger scale down
+                return {"cpu_usage": 20}
+
+        handle = serve.run(LowCpuUsageDeployment.bind())
+
+        # Send a few requests to establish low CPU usage
+        [handle.remote() for _ in range(5)]
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 5)
+
+        # Wait for metrics to be recorded
+        dep_id_low = DeploymentID(name="LowCpuUsageDeployment")
+
+        def check_low_cpu():
+            metrics = get_autoscaling_metrics_from_controller(
+                serve_instance, dep_id_low
+            )
+            return "cpu_usage" in metrics and metrics["cpu_usage"][-1][0].value <= 30
+
+        wait_for_condition(check_low_cpu, timeout=10)
+
+        # Should downscale to 1 replica due to low CPU usage
+        wait_for_condition(
+            check_num_replicas_eq, name="LowCpuUsageDeployment", target=1, timeout=15
+        )
+
         signal.send.remote()
 
 
