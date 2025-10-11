@@ -41,7 +41,7 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._private.utils import get_system_memory
-from ray._raylet import GCS_PID_KEY, WorkerID
+from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -486,6 +486,10 @@ class ReporterAgent(
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
+        self._raylet_client = RayletClient(
+            ip_address=self._ip, port=self._dashboard_agent.node_manager_port
+        )
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -888,6 +892,17 @@ class ReporterAgent(
                 stats.write_count,
             )
 
+    def _get_worker_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get worker pids from raylet via gRPC.
+            return self._raylet_client.get_worker_pids()
+        except TimeoutError as e:
+            logger.debug(f"Failed to get worker pids from raylet: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpectedly failed to get worker pids from raylet: {e}")
+            raise
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
@@ -897,22 +912,16 @@ class ReporterAgent(
         return (proc.pid, proc.create_time())
 
     def _get_worker_processes(self):
-        raylet_proc = self._get_raylet_proc()
-        if raylet_proc is None:
-            return []
-        else:
+        pids = self._get_worker_pids_from_raylet()
+        logger.debug(f"Worker PIDs from raylet: {pids}")
+        if pids:
             workers = {}
-            if sys.platform == "win32":
-                # windows, get the child process not the runner
-                for child in raylet_proc.children():
-                    if child.children():
-                        child = child.children()[0]
-                    workers[self._generate_worker_key(child)] = child
-            else:
-                workers = {
-                    self._generate_worker_key(proc): proc
-                    for proc in raylet_proc.children()
-                }
+            for pid in pids:
+                try:
+                    proc = psutil.Process(pid)
+                    workers[self._generate_worker_key(proc)] = proc
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
             return workers
 
     def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
@@ -936,9 +945,6 @@ class ReporterAgent(
             for k in keys_to_pop:
                 self._workers.pop(k)
 
-            # Remove the current process (reporter agent), which is also a child of
-            # the Raylet.
-            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             # Build process ID -> GPU info mapping for faster lookups
             gpu_pid_mapping = defaultdict(list)
             if gpus is not None:

@@ -2792,6 +2792,22 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
+void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
+                                      rpc::GetWorkerPIDsReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /* filter_io_workers */ true);
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_drivers */ true,
+                                                      /* filter_system_driver */ true);
+  all_workers.insert(all_workers.end(),
+                     std::make_move_iterator(drivers.begin()),
+                     std::make_move_iterator(drivers.end()));
+  for (const auto &worker : all_workers) {
+    reply->add_pids(worker->GetProcess().GetId());
+  }
+  send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
+}
+
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());

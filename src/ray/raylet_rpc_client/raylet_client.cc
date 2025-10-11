@@ -464,6 +464,5 @@ void RayletClient::GetNodeStats(
                   grpc_client_,
                   /*method_timeout_ms*/ -1);
 }
-
 }  // namespace rpc
 }  // namespace ray

@@ -43,12 +43,14 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet.
   ///
   /// \param address The IP address of the worker.
-  /// \param port The port that the worker should listen on for gRPC requests. If
-  /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
+  /// \param raylet_unavailable_timeout_callback callback to be called when the raylet is
+  /// unavailable for a certain period of time.
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback);
+
+  RayletClient() = default;
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
@@ -163,7 +165,7 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
- private:
+ protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
 
