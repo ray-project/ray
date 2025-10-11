@@ -755,19 +755,19 @@ class DifferentiableLearner(Checkpointable):
                 value=module_batch_size,
                 reduce="sum",
             )
-        # Log env steps (all modules).
-        self.metrics.log_value(
-            (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            batch.env_steps(),
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
-            batch.env_steps(),
-            reduce="sum",
-            with_throughput=True,
-        )
+            # Log env steps (all modules).
+            self.metrics.log_value(
+                (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
+                module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                module_batch_size,
+                reduce="sum",
+                with_throughput=True,
+            )
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
