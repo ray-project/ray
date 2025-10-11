@@ -1674,6 +1674,9 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
+    if len(actual) == len(expected) == 0:
+        return True
+
     try:
         pd.testing.assert_frame_equal(
             actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
