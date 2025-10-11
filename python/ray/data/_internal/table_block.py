@@ -530,8 +530,9 @@ class TableBlockAccessor(BlockAccessor):
             if keys:
                 return tuple(r[k] for k in keys)
             else:
-                # If no keys specified, use all columns
-                return tuple(r.values() if hasattr(r, "values") else r)
+                # If no keys specified, use all column values
+                # r is a TableRow (Mapping), which always has .values()
+                return tuple(r.values())
 
         # Replace `None`s and `np.nan` with NULL_SENTINEL for ordering
         def safe_key_fn(r):
