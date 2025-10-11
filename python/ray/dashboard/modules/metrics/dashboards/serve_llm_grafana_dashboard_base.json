@@ -89,6 +89,71 @@
             "$__all"
           ]
         }
+      },
+      {
+        "name": "deployment",
+        "label": "Deployment",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+        "query": {
+          "query": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "interval",
+        "label": "Interval",
+        "type": "custom",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "30s",
+            "value": "30s"
+          },
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "1m"
+          },
+          {
+            "selected": false,
+            "text": "5m",
+            "value": "5m"
+          },
+          {
+            "selected": false,
+            "text": "10m",
+            "value": "10m"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "15m"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "5m"
+        }
       }
     ]
   },

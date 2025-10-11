@@ -180,15 +180,12 @@ class TaskProcessorAdapter(ABC):
         pass
 
     @abstractmethod
-    def cancel_task_sync(self, task_id: str) -> bool:
+    def cancel_task_sync(self, task_id: str):
         """
         Cancel a task synchronously.
 
         Args:
             task_id: Unique identifier of the task to cancel.
-
-        Returns:
-            bool: True if cancellation was requested successfully.
         """
         pass
 
@@ -265,15 +262,12 @@ class TaskProcessorAdapter(ABC):
             "Subclass must implement get_task_status_async function"
         )
 
-    async def cancel_task_async(self, task_id: str) -> bool:
+    async def cancel_task_async(self, task_id: str):
         """
         Cancel a task.
 
         Args:
             task_id: Unique identifier of the task to cancel.
-
-        Returns:
-            bool: True if cancellation was requested successfully.
 
         Raises:
             NotImplementedError: If async task cancellation is not supported by this adapter.
@@ -505,8 +499,12 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         self._app.control.shutdown()
         logger.info("Celery worker shutdown complete...")
 
-    def cancel_task_sync(self, task_id) -> bool:
-        return self._app.AsyncResult(task_id).cancel()
+    def cancel_task_sync(self, task_id):
+        """
+        Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.
+        More details can be found here: https://docs.celeryq.dev/en/stable/userguide/workers.html#revoke-revoking-tasks
+        """
+        self._app.control.revoke(task_id)
 
     def get_metrics_sync(self) -> Dict[str, Any]:
         """

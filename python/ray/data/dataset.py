@@ -290,7 +290,7 @@ class Dataset:
     @transform()
     def map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
+        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,

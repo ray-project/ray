@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from dataclasses import astuple, dataclass
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,10 +10,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
+from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import (
@@ -47,7 +48,9 @@ class RandomBytesDatasource(Datasource):
     def estimate_inmemory_data_size(self):
         return None
 
-    def get_read_tasks(self, parallelism: int):
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
                 if self.use_bytes:
@@ -91,6 +94,7 @@ class RandomBytesDatasource(Datasource):
                     input_files=None,
                     exec_stats=None,
                 ),
+                per_task_row_limit=per_task_row_limit,
             )
         ]
 
@@ -450,7 +454,7 @@ TEST_CASES = [
         target_max_block_size=1024,
         batch_size=int(1024 * 10.125),
         num_batches=1,
-        expected_num_blocks=11,
+        expected_num_blocks=10,
     ),
     # Different batch sizes but same total size should produce a similar number
     # of blocks.

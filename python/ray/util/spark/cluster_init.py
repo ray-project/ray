@@ -1,49 +1,47 @@
 import copy
-import signal
-
-import yaml
 import json
+import logging
 import os
+import signal
 import socket
 import sys
-import time
 import threading
-import logging
+import time
 import uuid
 import warnings
+from threading import Event
+from typing import Dict, Optional, Tuple, Type
+
 import requests
+import yaml
 from packaging.version import Version
-from typing import Optional, Dict, Tuple, Type
 
 import ray
 import ray._private.services
+from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from .start_hook_base import RayOnSparkStartHook
+from .utils import (
+    _get_cpu_cores,
+    _get_local_ray_node_slots,
+    _get_num_physical_gpus,
+    _wait_service_up,
+    calc_mem_ray_head_node,
+    exec_cmd,
+    gen_cmd_exec_failure_msg,
+    get_avail_mem_per_ray_worker_node,
+    get_configured_spark_executor_memory_bytes,
+    get_max_num_concurrent_tasks,
+    get_random_unused_port,
+    get_spark_application_driver_host,
+    get_spark_session,
+    get_spark_task_assigned_physical_gpus,
+    is_in_databricks_runtime,
+    is_port_in_use,
+)
+from ray._common.network_utils import build_address, parse_address
+from ray._common.utils import load_class
 from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._common.utils import load_class
-from ray._common.network_utils import build_address, parse_address
-
-from .utils import (
-    exec_cmd,
-    is_port_in_use,
-    get_random_unused_port,
-    get_spark_session,
-    get_spark_application_driver_host,
-    is_in_databricks_runtime,
-    get_spark_task_assigned_physical_gpus,
-    get_avail_mem_per_ray_worker_node,
-    get_max_num_concurrent_tasks,
-    gen_cmd_exec_failure_msg,
-    calc_mem_ray_head_node,
-    _wait_service_up,
-    _get_local_ray_node_slots,
-    get_configured_spark_executor_memory_bytes,
-    _get_cpu_cores,
-    _get_num_physical_gpus,
-)
-from .start_hook_base import RayOnSparkStartHook
-from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
-from threading import Event
-
 
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(logging.INFO)
@@ -318,8 +316,9 @@ def _preallocate_ray_worker_port_range():
 
     Returns: Allocated port range for current worker ports
     """
-    import psutil
     import fcntl
+
+    import psutil
 
     def acquire_lock(file_path):
         mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC

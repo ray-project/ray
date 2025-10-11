@@ -3,7 +3,6 @@
 # (BSD 2-Clause "Simplified" License)
 
 import errno
-from ray._common.network_utils import build_address
 import inspect
 import json
 import logging
@@ -19,6 +18,7 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
+from ray._common.network_utils import build_address
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI

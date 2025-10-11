@@ -49,6 +49,15 @@ class ExecutionResources:
             memory=resource_dict.get("memory", None),
         )
 
+    def to_resource_dict(self) -> Dict[str, float]:
+        """Convert this ExecutionResources object to a resource dict."""
+        return {
+            "CPU": self.cpu,
+            "GPU": self.gpu,
+            "object_store_memory": self.object_store_memory,
+            "memory": self.memory,
+        }
+
     @classmethod
     def for_limits(
         cls,
@@ -100,6 +109,16 @@ class ExecutionResources:
             and self.gpu == other.gpu
             and self.object_store_memory == other.object_store_memory
             and self.memory == other.memory
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.cpu,
+                self.gpu,
+                self.object_store_memory,
+                self.memory,
+            )
         )
 
     @classmethod

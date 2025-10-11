@@ -128,6 +128,21 @@ class TestDeploymentConfig:
         # Test dynamic default for max_ongoing_requests.
         assert DeploymentConfig().max_ongoing_requests == 5
 
+    def test_max_constructor_retry_count_validation(self):
+        # Test max_constructor_retry_count validation.
+        DeploymentConfig(max_constructor_retry_count=1)
+        DeploymentConfig(max_constructor_retry_count=10)
+
+        with pytest.raises(ValidationError, match="type_error"):
+            DeploymentConfig(max_constructor_retry_count="hello")
+        with pytest.raises(ValidationError, match="value_error"):
+            DeploymentConfig(max_constructor_retry_count=-1)
+        with pytest.raises(ValidationError, match="value_error"):
+            DeploymentConfig(max_constructor_retry_count=0)
+
+        # Test default value
+        assert DeploymentConfig().max_constructor_retry_count == 20
+
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 
@@ -769,7 +784,12 @@ def test_deployment_mode_to_proxy_location():
 
 
 @pytest.mark.parametrize(
-    "policy", [None, fake_policy, "ray.serve.tests.unit.test_config:fake_policy"]
+    "policy",
+    [
+        None,
+        {"policy_function": "ray.serve.tests.unit.test_config:fake_policy"},
+        {"policy_function": fake_policy},
+    ],
 )
 def test_autoscaling_policy_serializations(policy):
     """Test that autoscaling policy can be serialized and deserialized.
@@ -779,16 +799,19 @@ def test_autoscaling_policy_serializations(policy):
     """
     autoscaling_config = AutoscalingConfig()
     if policy:
-        autoscaling_config = AutoscalingConfig(_policy=policy)
+        autoscaling_config = AutoscalingConfig(policy=policy)
 
     config = DeploymentConfig.from_default(autoscaling_config=autoscaling_config)
     deserialized_autoscaling_policy = DeploymentConfig.from_proto_bytes(
         config.to_proto_bytes()
-    ).autoscaling_config.get_policy()
+    ).autoscaling_config.policy.get_policy()
 
-    # Right now we don't allow modifying the autoscaling policy, so this will always
-    # be the default autoscaling policy
-    assert deserialized_autoscaling_policy == default_autoscaling_policy
+    if policy is None:
+        assert deserialized_autoscaling_policy == default_autoscaling_policy
+    else:
+        # Compare function behavior instead of function objects
+        # since serialization/deserialization creates new function objects
+        assert deserialized_autoscaling_policy() == fake_policy()
 
 
 def test_autoscaling_policy_import_fails_for_non_existing_policy():
@@ -799,7 +822,8 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
     """
     # Right now we don't allow modifying the autoscaling policy, so this will not fail
     policy = "i.dont.exist:fake_policy"
-    AutoscalingConfig(_policy=policy)
+    with pytest.raises(ModuleNotFoundError):
+        AutoscalingConfig(policy={"policy_function": policy})
 
 
 def test_default_autoscaling_policy_import_path():

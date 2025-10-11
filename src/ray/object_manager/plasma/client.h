@@ -229,6 +229,11 @@ class PlasmaClientInterface {
   /// \param object_ids The list of IDs of the objects to delete.
   /// \return The return status. If all the objects are non-existent, return OK.
   virtual Status Delete(const std::vector<ObjectID> &object_ids) = 0;
+
+  /// Get the current debug string from the plasma store server.
+  ///
+  /// \return the debug string if successful, otherwise return an error status.
+  virtual StatusOr<std::string> GetMemoryUsage() = 0;
 };
 
 class PlasmaClient : public PlasmaClientInterface {
@@ -282,7 +287,7 @@ class PlasmaClient : public PlasmaClientInterface {
   /// Get the current debug string from the plasma store server.
   ///
   /// \return the debug string if successful, otherwise return an error status.
-  StatusOr<std::string> GetMemoryUsage();
+  StatusOr<std::string> GetMemoryUsage() override;
 
   /// Get the memory capacity of the store.
   ///

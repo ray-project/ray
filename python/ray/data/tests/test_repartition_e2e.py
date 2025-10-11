@@ -43,7 +43,7 @@ def test_key_based_repartition_shuffle(
     context = DataContext.get_current()
 
     context.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    context.hash_shuffle_operator_actor_num_cpus_per_partition_override = 0.001
+    context.hash_shuffle_operator_actor_num_cpus_override = 0.001
 
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10

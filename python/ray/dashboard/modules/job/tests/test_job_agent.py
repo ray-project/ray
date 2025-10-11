@@ -9,11 +9,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
-from ray._common.network_utils import build_address
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -539,7 +539,7 @@ async def test_job_log_in_multiple_node(
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
-            assert result_log in resp.logs, resp.logs
+            assert result_log in resp.logs, f"logs: {resp.logs}"
 
             job_check_status[index] = True
         return True

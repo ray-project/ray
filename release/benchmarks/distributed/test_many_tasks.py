@@ -113,7 +113,6 @@ def test(num_tasks):
         "num_tasks": num_tasks,
         "time": end_time - start_time,
         "used_cpus": used_cpus,
-        "success": "1",
         "_peak_memory": round(used_gb, 2),
         "_peak_process_memory": usage,
         "perf_metrics": [

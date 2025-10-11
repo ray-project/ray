@@ -541,6 +541,8 @@ class DataContext:
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
+    pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
     # Dataset caching configuration
     enable_dataset_caching: bool = True
     dataset_cache_max_size_bytes: int = 1024 * 1024 * 1024  # 1GB default

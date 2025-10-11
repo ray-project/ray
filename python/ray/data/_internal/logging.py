@@ -10,7 +10,7 @@ import ray
 DEFAULT_TEXT_FORMATTER = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"  # noqa: E501
 )
-DEFAULT_JSON_FORMATTER = ray._private.ray_logging.formatters.JSONFormatter
+DEFAULT_JSON_FORMATTER = ray._common.formatters.JSONFormatter
 DEFAULT_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -22,9 +22,7 @@ DEFAULT_CONFIG = {
     },
     "filters": {
         "console_filter": {"()": "ray.data._internal.logging.HiddenRecordFilter"},
-        "core_context_filter": {
-            "()": "ray._private.ray_logging.filters.CoreContextFilter"
-        },
+        "core_context_filter": {"()": "ray._common.filters.CoreContextFilter"},
     },
     "handlers": {
         "file": {

@@ -58,7 +58,20 @@ class ProtocolsProvider:
                 "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        transport_params = {"client": boto3.client("s3")}
+        # Create S3 client, falling back to unsigned for public buckets
+        session = boto3.Session()
+        # session.get_credentials() will return None if no credentials can be found.
+        if session.get_credentials():
+            # If credentials are found, use a standard signed client.
+            s3_client = session.client("s3")
+        else:
+            # No credentials found, fall back to an unsigned client for public buckets.
+            from botocore import UNSIGNED
+            from botocore.config import Config
+
+            s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+
+        transport_params = {"client": s3_client}
         return open_file, transport_params
 
     @classmethod

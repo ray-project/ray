@@ -274,7 +274,7 @@ def run_process_for_sigint_abort(abort_terminates):
         # True,
     ],
 )
-def test_sigint_abort(ray_start_4_cpus, spam_sigint):
+def test_sigint_abort(spam_sigint):
     # Use SignalActor to wait for training to start before sending SIGINT.
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(

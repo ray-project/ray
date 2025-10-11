@@ -3,8 +3,8 @@ from aiohttp.web import Request, Response
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.exceptions
-from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray._raylet import NodeID
+from ray.dashboard.modules.reporter.utils import HealthChecker
 
 routes = optional_utils.DashboardAgentRouteTable
 

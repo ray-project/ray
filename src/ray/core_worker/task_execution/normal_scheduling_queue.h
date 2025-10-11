@@ -22,7 +22,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/task_execution/scheduling_queue.h"
 #include "ray/core_worker/task_execution/scheduling_util.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {
@@ -55,6 +55,9 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
+
+  /// Cancel all queued (waiting or deferred) requests in a thread-safe manner.
+  void CancelAllPending(const Status &status) override;
 
  private:
   /// Protects access to the dequeue below.

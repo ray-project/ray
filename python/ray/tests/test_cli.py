@@ -44,7 +44,6 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.utils as utils
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray.scripts.scripts as scripts
@@ -338,27 +337,6 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
             ],
         )
     )
-
-
-def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
-    runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--cgroup-path=/doesnt/matter"],
-    )
-    assert result.exit_code != 0
-    assert isinstance(result.exception, ValueError)
-
-
-def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
-    runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--head", "--enable-resource-isolation"],
-    )
-    # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
-    _die_on_error(result)
 
 
 @pytest.mark.skipif(

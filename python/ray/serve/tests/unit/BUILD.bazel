@@ -1,0 +1,87 @@
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel:python.bzl", "py_test_module_list", "py_test_module_list_with_env_variants", "py_test_run_all_subdirectory")
+
+py_library(
+    name = "conftest",
+    srcs = ["conftest.py"],
+)
+
+py_test_run_all_subdirectory(
+    size = "small",
+    include = glob(["test_*.py"]),
+    exclude = [],
+    extra_srcs = [],
+    tags = ["team:serve"],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    timeout = "short",
+    env = {
+        "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
+    files = [
+        "test_deployment_scheduler.py",
+        "test_deployment_state.py",
+    ],
+    name_suffix = "_with_compact_scheduling",
+    tags = [
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)
+
+py_test_module_list_with_env_variants(
+    size = "small",
+    env_variants = {
+        "metr_disab": {
+            "env": {
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+            },
+            "name_suffix": "_metr_disab",
+        },
+        "metr_agg_at_controller": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+            },
+            "name_suffix": "_metr_agg_at_controller",
+        },
+        "metr_agg_at_controller_and_replicas": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+            },
+            "name_suffix": "_metr_agg_at_controller_and_replicas",
+        },
+    },
+    files = [
+        "test_autoscaling_policy.py",
+        "test_controller.py",
+        "test_deployment_state.py",
+        "test_router.py",
+    ],
+    tags = [
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)

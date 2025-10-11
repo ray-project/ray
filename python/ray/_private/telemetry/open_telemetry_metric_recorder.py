@@ -23,16 +23,28 @@ class OpenTelemetryMetricRecorder:
     It uses OpenTelemetry's Prometheus exporter to export metrics.
     """
 
+    _metrics_initialized = False
+    _metrics_initialized_lock = threading.Lock()
+
     def __init__(self):
         self._lock = threading.Lock()
         self._registered_instruments = {}
         self._observations_by_name = defaultdict(dict)
         self._histogram_bucket_midpoints = defaultdict(list)
-
-        prometheus_reader = PrometheusMetricReader()
-        provider = MeterProvider(metric_readers=[prometheus_reader])
-        metrics.set_meter_provider(provider)
+        self._init_metrics()
         self.meter = metrics.get_meter(__name__)
+
+    def _init_metrics(self):
+        # Initialize the global metrics provider and meter. We only do this once on
+        # the first initialization of the class, because re-setting the meter provider
+        # can result in loss of metrics.
+        with self._metrics_initialized_lock:
+            if self._metrics_initialized:
+                return
+            prometheus_reader = PrometheusMetricReader()
+            provider = MeterProvider(metric_readers=[prometheus_reader])
+            metrics.set_meter_provider(provider)
+            self._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
         with self._lock:
@@ -47,6 +59,8 @@ class OpenTelemetryMetricRecorder:
                 # Take snapshot of current observations.
                 with self._lock:
                     observations = self._observations_by_name[name]
+                    # Clear the observations to avoid emitting dead observations.
+                    self._observations_by_name[name] = {}
                     # Drop high cardinality from tag_set and sum up the value for
                     # same tag set after dropping
                     aggregated_observations = defaultdict(float)

@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
@@ -193,7 +194,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       }
     }
     const auto &sched_cls_desc =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+        SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
     double total_cpus =
         cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
 
@@ -210,7 +211,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
         const auto &cur_sched_cls_desc =
-            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+            SchedulingClassToIds::GetSchedulingClassDescriptor(entry.first);
         if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
             0) {
           total_cpu_granted_leases += entry.second.granted_leases.size();
@@ -1163,7 +1164,7 @@ ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
-  auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
+  auto sched_cls = SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
   uint64_t total_cpus =
       cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
@@ -1228,7 +1229,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "}\n";
   buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
   for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
-    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    const auto &descriptor =
+        SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
     buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
     for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
       buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
@@ -1241,7 +1243,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   for (const auto &pair : info_by_sched_cls_) {
     const auto &sched_cls = pair.first;
     const auto &info = pair.second;
-    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    const auto &descriptor =
+        SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
     buffer << "    - " << descriptor.DebugString() << ": " << info.granted_leases.size()
            << "/" << info.capacity << "\n";
   }

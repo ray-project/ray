@@ -1,7 +1,7 @@
 """Test the collective group APIs."""
 import pytest
-import ray
 
+import ray
 from ray.util.collective.tests.util import Worker, create_collective_workers
 
 
@@ -111,7 +111,8 @@ def test_destroy_group(ray_start_single_node_2_gpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

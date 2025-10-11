@@ -13,7 +13,7 @@ from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -84,7 +84,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     from ray.train.examples.tf.tensorflow_mnist_example import (
         train_func as tensorflow_mnist_train_func,
     )
-    from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.tensorflow import TensorflowTrainer
 
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,

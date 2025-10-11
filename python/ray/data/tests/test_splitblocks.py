@@ -1,8 +1,13 @@
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.map_transformer import _splitrange
+from ray.data._internal.execution.operators.map_operator import (
+    _split_blocks,
+    _splitrange,
+)
+from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
@@ -17,6 +22,26 @@ def test_splitrange():
         assert _splitrange(n, k) == [len(a) for a in np.array_split(range(n), k)]
 
     f(0, 1)
+    f(5, 1)
+    f(5, 3)
+    f(5, 5)
+    f(5, 10)
+    f(50, 1)
+    f(50, 2)
+    f(50, 3)
+    f(50, 4)
+    f(50, 5)
+
+
+def test_split_blocks():
+    def f(n, k):
+        table = pa.Table.from_arrays([np.arange(n)], names=["value"])
+        in_blocks = [table]
+        out_blocks = list(_split_blocks(in_blocks, k))
+        sizes = [BlockAccessor.for_block(b).num_rows() for b in out_blocks]
+        expected = [len(a) for a in np.array_split(range(n), min(k, n))]
+        assert sizes == expected
+
     f(5, 1)
     f(5, 3)
     f(5, 5)

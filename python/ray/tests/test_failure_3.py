@@ -55,7 +55,15 @@ def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
     (RayletDiedError).
     """
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    system_configs = {
+        "health_check_initial_delay_ms": 0,
+        "health_check_timeout_ms": 10,
+        "health_check_failure_threshold": 1,
+    }
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=system_configs,
+    )
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)

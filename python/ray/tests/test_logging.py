@@ -4,7 +4,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
@@ -49,7 +48,6 @@ from ray._private.test_utils import (
 )
 from ray._private.worker import print_worker_logs
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -624,44 +622,6 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     assert (
         "Fatal Python error: Segmentation fault" in stderr
     ), f"Python stack trace not found in stderr: {stderr}"
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32" or sys.platform == "darwin",
-    reason="TODO(simon): Failing on Windows and OSX.",
-)
-def test_log_java_worker_logs(shutdown_only, capsys):
-    tmp_dir = tempfile.mkdtemp()
-    print("using tmp_dir", tmp_dir)
-    with open(os.path.join(tmp_dir, "MyClass.java"), "w") as f:
-        f.write(
-            """
-public class MyClass {
-    public int printToLog(String line) {
-        System.err.println(line);
-        return 0;
-    }
-}
-        """
-        )
-    subprocess.check_call(["javac", "MyClass.java"], cwd=tmp_dir)
-    subprocess.check_call(["jar", "-cf", "myJar.jar", "MyClass.class"], cwd=tmp_dir)
-
-    ray.init(
-        job_config=ray.job_config.JobConfig(code_search_path=[tmp_dir]),
-    )
-
-    handle = java_actor_class("MyClass").remote()
-    ray.get(handle.printToLog.remote("here's my random line!"))
-
-    def check():
-        out, err = capsys.readouterr()
-        out += err
-        with capsys.disabled():
-            print(out)
-        return "here's my random line!" in out
-
-    wait_for_condition(check)
 
 
 """

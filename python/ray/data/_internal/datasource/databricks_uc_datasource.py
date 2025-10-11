@@ -115,7 +115,9 @@ class DatabricksUCDatasource(Datasource):
         self.num_chunks = num_chunks
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
 
-        def get_read_task(task_index, parallelism):
+        def get_read_task(
+            task_index: int, parallelism: int, per_task_row_limit: Optional[int] = None
+        ):
             # Handle empty chunk list by yielding an empty PyArrow table
             if num_chunks == 0:
                 import pyarrow as pa
@@ -187,17 +189,23 @@ class DatabricksUCDatasource(Datasource):
                 else:
                     yield from _read_fn()
 
-            return ReadTask(read_fn=read_fn, metadata=metadata)
+            return ReadTask(
+                read_fn=read_fn,
+                metadata=metadata,
+                per_task_row_limit=per_task_row_limit,
+            )
 
         self._get_read_task = get_read_task
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._estimate_inmemory_data_size
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:
-            return [self._get_read_task(0, 1)]
+            return [self._get_read_task(0, 1, per_task_row_limit)]
 
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
 
@@ -208,4 +216,7 @@ class DatabricksUCDatasource(Datasource):
                 "insufficient chunk parallelism."
             )
 
-        return [self._get_read_task(index, parallelism) for index in range(parallelism)]
+        return [
+            self._get_read_task(index, parallelism, per_task_row_limit)
+            for index in range(parallelism)
+        ]

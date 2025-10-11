@@ -3,7 +3,6 @@ import datetime
 import json
 import logging
 import os
-import requests
 import socket
 import sys
 import traceback
@@ -11,31 +10,25 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
+import requests
+from grpc.aio import ServicerContext
 from opencensus.stats import stats as stats_module
-from prometheus_client.core import REGISTRY
-from prometheus_client.parser import text_string_to_metric_families
 from opentelemetry.proto.collector.metrics.v1 import (
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
-from grpc.aio import ServicerContext
-
+from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import parse_address
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
-)
-from ray._common.network_utils import parse_address
-from ray._private.utils import get_system_memory
-from ray.dashboard.modules.reporter.gpu_providers import (
-    GpuMetricProvider,
-    GpuUtilizationInfo,
-    TpuUtilizationInfo,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -47,6 +40,7 @@ from ray._private.ray_constants import (
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
+from ray._private.utils import get_system_memory
 from ray._raylet import GCS_PID_KEY, WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -56,13 +50,21 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
-    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
+    TPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    GpuUtilizationInfo,
+    TpuUtilizationInfo,
+)
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
+)
+from ray.dashboard.modules.reporter.reporter_models import (
+    StatsPayload,
 )
 
 import psutil
@@ -1015,7 +1017,7 @@ class ReporterAgent(
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
-            return {}
+            return None
         else:
             return raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
@@ -1067,6 +1069,7 @@ class ReporterAgent(
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
         gpus = self._get_gpu_usage()
+        raylet = self._get_raylet()
         stats = {
             "now": now,
             "hostname": self._hostname,
@@ -1077,7 +1080,7 @@ class ReporterAgent(
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
             "workers": self._get_workers(gpus),
-            "raylet": self._get_raylet(),
+            "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
@@ -1089,7 +1092,7 @@ class ReporterAgent(
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
-            "cmdline": self._get_raylet().get("cmdline", []),
+            "cmdline": raylet.get("cmdline", []) if raylet else [],
         }
         if self._is_head_node:
             stats["gcs"] = self._get_gcs()
@@ -1770,16 +1773,23 @@ class ReporterAgent(
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
+        return self._generate_stats_payload(stats)
+
+    def _generate_stats_payload(self, stats: dict) -> str:
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
         for gpu in stats["gpus"]:
             if isinstance(gpu.get("processes_pids"), dict):
                 gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
-        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
-        # with the Ray Dashboard API and UI code.
+        if StatsPayload is not None:
+            stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
 
-        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
-        return jsonify_asdict(stats)
+            parsed_stats = StatsPayload.parse_obj(stats_dict)
+            out = json.dumps(parsed_stats.dict())
+            return out
+        else:
+            # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
+            return jsonify_asdict(stats)
 
     async def run(self, server):
         if server:

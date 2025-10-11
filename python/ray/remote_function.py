@@ -9,13 +9,13 @@ from typing import Optional
 import ray._common.signature
 from ray import Language, cross_language
 from ray._common import ray_option_utils
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.serialization import pickle_dumps
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
-from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -206,6 +206,8 @@ class RemoteFunction:
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
+                through a list of decorator options to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -247,9 +249,6 @@ class RemoteFunction:
                 task. If set to True, task events such as (task running, finished)
                 are emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             _labels: The key-value labels of a task.
 
         Examples:

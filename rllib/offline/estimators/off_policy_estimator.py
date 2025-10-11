@@ -13,7 +13,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator

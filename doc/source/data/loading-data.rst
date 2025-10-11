@@ -67,7 +67,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: Text
 
@@ -410,7 +410,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             MaterializedDataset(
                num_blocks=1,
                num_rows=3,
-               schema={data: numpy.ndarray(shape=(2, 2), dtype=double)}
+               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
             )
 
     .. tab-item:: pandas
@@ -749,7 +749,7 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
                num_rows=50000,
                schema={
                   id: binary,
-                  image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                  image: ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8),
                   label: int64
                }
             )
@@ -1034,7 +1034,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(64, 64), dtype=int64)
+            data    ArrowTensorTypeV2(shape=(64, 64), dtype=int64)
 
 Loading other datasources
 ==========================

@@ -5,12 +5,13 @@ steps:
     wanda: docker/base-extra-testdeps/cpu.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix}}.lock"
     depends_on:
       - raycpubaseextra
 
@@ -21,6 +22,7 @@ steps:
       setup:
         python:
           - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         cuda:
@@ -29,7 +31,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix.python}}.lock"
     depends_on:
       - raycudabaseextra
 
@@ -57,6 +59,7 @@ steps:
       setup:
         python:
           - "3.9"
+          - "3.10"
         cuda:
           - "12.1.1-cudnn8"
     env:
@@ -70,6 +73,7 @@ steps:
   - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
     key: anyscalebuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -87,6 +91,7 @@ steps:
           # This list should be kept in sync with the list of supported Python in
           # release test suite. We don't have release tests for Python 3.10 yet.
           - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         platform:
@@ -96,6 +101,7 @@ steps:
   - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
     key: anyscalellmbuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -111,6 +117,7 @@ steps:
   - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
     key: anyscalemlbuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -125,3 +132,4 @@ steps:
       # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
       # yet.
       - "3.9"
+      - "3.10"
