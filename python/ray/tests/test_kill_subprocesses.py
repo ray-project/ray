@@ -274,12 +274,20 @@ def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_o
                 stdout=subprocess.PIPE,
                 text=True,
             )
-            return proc.pid
+            child_pid = proc.pid
+            # Wait until the subprocess is running.
+            wait_for_condition(
+                lambda: psutil.pid_exists(child_pid), retry_interval_ms=100
+            )
+            wait_for_condition(
+                lambda: len(psutil.Process(child_pid).children()) > 0,
+                retry_interval_ms=100,
+            )
+            grandchild_pid = psutil.Process(child_pid).children()[0].pid
+            return proc.pid, grandchild_pid
 
     actor = NestedSpawner.remote()
-    child_pid = ray.get(actor.spawn_nested.remote())
-
-    grandchild_pid = psutil.Process(child_pid).children()[0].pid
+    child_pid, grandchild_pid = ray.get(actor.spawn_nested.remote())
 
     # Both child and grandchild should be alive while the actor is alive.
     assert psutil.pid_exists(child_pid)
