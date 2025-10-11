@@ -33,7 +33,7 @@ class StreamingTrigger:
     cron_expression: Optional[str] = None  # e.g., "0 */5 * * *" (every 5 hours)
     max_batches: Optional[int] = None  # For testing/bounded streams
     max_files_per_trigger: Optional[int] = None  # Limit files per trigger
-    processing_time: bool = True  # Use processing time vs event time
+    use_processing_time: bool = True  # Use processing time vs event time
 
     # Watermark and late data handling
     watermark_column: Optional[str] = None  # Column for event time watermarks

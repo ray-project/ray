@@ -175,7 +175,6 @@ class FlinkDatasource(UnboundDatasource):
                         job_id = flink_config["job_id"]
 
                         # Set up authentication
-                        auth = None
                         headers = {}
 
                         if "auth_token" in flink_config:
