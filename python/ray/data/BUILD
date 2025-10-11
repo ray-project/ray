@@ -171,6 +171,51 @@ py_test(
 )
 
 py_test(
+    name = "test_kafka",
+    size = "large",
+    srcs = ["tests/test_kafka.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_kinesis",
+    size = "large",
+    srcs = ["tests/test_kinesis.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_flink",
+    size = "large",
+    srcs = ["tests/test_flink.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_actor_pool_map_operator",
     size = "medium",
     srcs = ["tests/test_actor_pool_map_operator.py"],
