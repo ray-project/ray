@@ -12,8 +12,8 @@ Compute Strategy API
   :nosignatures:
   :toctree: doc/
 
-  TaskPoolStrategy
   ActorPoolStrategy
+  TaskPoolStrategy
 
 Schema
 ------
