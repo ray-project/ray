@@ -469,14 +469,32 @@ class _StatsActor:
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         def _record(
-            prom_metric: Metric, value: Union[int, float], tags: Dict[str, str] = None
+            prom_metric: Metric,
+            value: Union[int, float, List[int]],
+            tags: Dict[str, str] = None,
         ):
             if isinstance(prom_metric, Gauge):
                 prom_metric.set(value, tags)
             elif isinstance(prom_metric, Counter):
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
-                prom_metric.observe(value, tags)
+                # Take the list of samples per bucket and add them to the histogram metric.
+                if isinstance(value, list):
+                    for i in range(len(value)):
+                        # Pick a value between the boundaries so the sample falls into the right bucket.
+                        # We need to calculate the mid point because choosing the exact boundary value
+                        # seems to have unreliable behavior on which bucket it ends up in.
+                        boundary_upper_bound = (
+                            prom_metric.boundaries[i]
+                            if i < len(value) - 1
+                            else prom_metric.boundaries[-1] + 100
+                        )
+                        boundary_lower_bound = (
+                            prom_metric.boundaries[i - 1] if i > 0 else 0
+                        )
+                        bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
+                        for _ in range(value[i]):
+                            prom_metric.observe(bucket_value, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -856,10 +874,35 @@ class _StatsManager:
                                 stats_actor = self._get_or_create_stats_actor()
                                 if stats_actor is None:
                                     continue
+
+                                # We need to convert the metrics to a snapshot that can be passed
+                                # to the stats actor. Primarily, the histogram metrics need to be
+                                # flushed and reset.
+                                formatted_execution_stats = []
+
+                                with self._stats_lock:
+                                    for (
+                                        dataset_tag,
+                                        op_metrics,
+                                        operator_tags,
+                                        state,
+                                        per_node_metrics,
+                                    ) in self._last_execution_stats.values():
+                                        op_metrics_dicts = [
+                                            metric.as_dict(reset_histogram_metrics=True)
+                                            for metric in op_metrics
+                                        ]
+                                        args = (
+                                            dataset_tag,
+                                            op_metrics_dicts,
+                                            operator_tags,
+                                            state,
+                                            per_node_metrics,
+                                        )
+                                        formatted_execution_stats.append(args)
+
                                 stats_actor.update_metrics.remote(
-                                    execution_metrics=list(
-                                        self._last_execution_stats.values()
-                                    ),
+                                    execution_metrics=list(formatted_execution_stats),
                                     iteration_metrics=list(
                                         self._last_iteration_stats.values()
                                     ),
@@ -920,12 +963,21 @@ class _StatsManager:
         state: Dict[str, Any],
         force_update: bool = False,
     ):
-        op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
+            op_metrics_dicts = [
+                metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
+            ]
+            args = (
+                dataset_tag,
+                op_metrics_dicts,
+                operator_tags,
+                state,
+                per_node_metrics,
+            )
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
+            args = (dataset_tag, op_metrics, operator_tags, state, per_node_metrics)
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
             self._start_thread_if_not_running()
