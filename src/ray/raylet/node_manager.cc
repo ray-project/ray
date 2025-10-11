@@ -32,6 +32,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -144,7 +145,8 @@ NodeManager::NodeManager(
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -196,7 +198,8 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -2575,7 +2578,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
 }
 
 namespace {
-
 rpc::ObjectStoreStats AccumulateStoreStats(
     const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;

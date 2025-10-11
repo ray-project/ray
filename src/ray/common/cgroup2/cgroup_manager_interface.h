@@ -13,8 +13,6 @@
 // limitations under the License.
 #pragma once
 
-#include <sys/types.h>
-
 #include <limits>
 #include <memory>
 #include <string>
@@ -50,10 +48,7 @@ class CgroupManagerInterface {
       2) the system leaf cgroup i.e. the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
-    TODO(#54703): There currently is not a good way to signal to the caller that
-    the method can cause a FATAL error. Revisit this once we've settled on a pattern.
-
-    NOTE: If the process does not have adequate cgroup permissions or the application leaf
+    @note If the process does not have adequate cgroup permissions or the application leaf
     cgroup does not exist, this will fail a RAY_CHECK.
 
     @param pid of the process to move into the system leaf cgroup.
