@@ -54,6 +54,7 @@ jobs:
           labels: |
             automated
             merge
-          draft: always-true
+          draft: false
+          branch-suffix: short-commit-hash
           delete-branch: false
           assignees: ${{ github.event.inputs.assignees || 'mingcheng' }}
