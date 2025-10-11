@@ -69,9 +69,13 @@ class ActorPoolStrategy(ComputeStrategy):
     for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
-    To autoscale from ``m`` to ``n`` actors, specify
+    For a fixed-sized pool of size ``n``, use ``ActorPoolStrategy(size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, use
     ``ActorPoolStrategy(min_size=m, max_size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, with an initial size of ``initial``, use
+    ``ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)``.
 
     To increase opportunities for pipelining task dependency prefetching with
     computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
