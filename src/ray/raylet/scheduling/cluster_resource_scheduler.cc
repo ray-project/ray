@@ -289,58 +289,77 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool exclude_local_node,
     bool requires_object_store_memory,
     bool *is_infeasible) {
-  // If the local node is available, we should directly return it instead of
-  // going through the full hybrid policy since we don't want spillback.
-  if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
-      IsSchedulableOnNode(local_node_id_,
-                          lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                          lease_spec.GetLabelSelector(),
-                          requires_object_store_memory)) {
-    *is_infeasible = false;
-    return local_node_id_;
-  }
-
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  scheduling::NodeID best_node =
-      GetBestSchedulableNode(lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                             lease_spec.GetLabelSelector(),
-                             lease_spec.GetMessage().scheduling_strategy(),
-                             requires_object_store_memory,
-                             lease_spec.IsActorCreationTask(),
-                             exclude_local_node,
-                             preferred_node_id,
-                             &_unused,
-                             is_infeasible);
 
-  // There is no other available nodes.
-  if (!best_node.IsNil() &&
-      !IsSchedulableOnNode(best_node,
-                           lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                           lease_spec.GetLabelSelector(),
-                           requires_object_store_memory)) {
-    // Prefer waiting on the local node if possible
-    // since the local node is chosen for a reason (e.g. spread).
-    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
-      auto resource_request = ResourceMapToResourceRequest(
-          lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-          requires_object_store_memory);
-      const auto &selector = lease_spec.GetLabelSelector();
-      resource_request.SetLabelSelector(selector);
-      if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
-                                                          resource_request)) {
-        *is_infeasible = false;
-        return local_node_id_;
+  // Construct list of references to all LabelSelectors, from both the `label_selector`
+  // and `fallback_strategy` arguments.
+  std::vector<std::reference_wrapper<const LabelSelector>> label_selectors;
+  label_selectors.push_back(std::cref(lease_spec.GetLabelSelector()));
+  const auto &fallback_selectors = lease_spec.GetFallbackStrategy();
+  for (const auto &fallback : fallback_selectors) {
+    label_selectors.push_back(std::cref(fallback));
+  }
+
+  // Try each label selector in order until a node is found.
+  scheduling::NodeID best_node = scheduling::NodeID::Nil();
+  for (const auto &selector_ref : label_selectors) {
+    const auto &label_selector = selector_ref.get();
+
+    // If the local node is available, we should directly return it instead of
+    // going through the full hybrid policy since we don't want spillback.
+    if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
+        IsSchedulableOnNode(local_node_id_,
+                            lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+                            label_selector,
+                            requires_object_store_memory)) {
+      *is_infeasible = false;
+      return local_node_id_;
+    }
+
+    best_node = GetBestSchedulableNode(
+        lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+        label_selector,
+        lease_spec.GetMessage().scheduling_strategy(),
+        requires_object_store_memory,
+        lease_spec.IsActorCreationTask(),
+        exclude_local_node,
+        preferred_node_id,
+        &_unused,
+        is_infeasible);
+
+    // There are no other available nodes.
+    if (!best_node.IsNil() &&
+        !IsSchedulableOnNode(best_node,
+                             lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+                             label_selector,
+                             requires_object_store_memory)) {
+      // Prefer waiting on the local node if possible
+      // since the local node is chosen for a reason (e.g. spread).
+      if ((preferred_node_id == local_node_id_.Binary()) &&
+          NodeAvailable(local_node_id_)) {
+        auto resource_request = ResourceMapToResourceRequest(
+            lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+            requires_object_store_memory);
+        resource_request.SetLabelSelector(label_selector);
+        if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
+                                                            resource_request)) {
+          *is_infeasible = false;
+          return local_node_id_;
+        }
+      }
+      // If the task is being scheduled by gcs, return nil to make it stay in the
+      // `cluster_lease_manager`'s queue.
+      if (!is_local_node_with_raylet_) {
+        return scheduling::NodeID::Nil();
       }
     }
-    // If the task is being scheduled by gcs, return nil to make it stay in the
-    // `cluster_lease_manager`'s queue.
-    if (!is_local_node_with_raylet_) {
-      return scheduling::NodeID::Nil();
+    if (!best_node.IsNil()) {
+      return best_node;
     }
   }
 
-  return best_node;
+  return scheduling::NodeID::Nil();
 }
 
 SchedulingResult ClusterResourceScheduler::Schedule(
