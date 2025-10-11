@@ -1,5 +1,7 @@
 from aiohttp.web import Request, Response
 
+import asyncio
+
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.exceptions
@@ -49,6 +51,41 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
         return Response(
             text="success",
+            content_type="application/text",
+        )
+
+    async def local_gcs_health(self) -> Response:
+        # Check GCS health, unless there is no local GCS.
+        if not self._dashboard_agent.is_head:
+            return Response(status=200, text="success (no local gcs)")
+        try:
+            gcs_alive = await self._health_checker.check_gcs_liveness()
+            if not gcs_alive:
+                return Response(status=503, text="GCS health check failed.")
+        except Exception as e:
+            return Response(status=503, text=f"GCS health check failed: {e}")
+        return Response(status=200, text="success")
+
+    @routes.get("/api/healthz")
+    async def unified_health(self, req: Request) -> Response:
+        [raylet_check, gcs_check] = await asyncio.gather(
+            self.health_check(req),
+            self.local_gcs_health(),
+        )
+        checks = {"raylet": raylet_check, "gcs": gcs_check}
+
+        # Collect overall health check status and log any failures.
+        status = 200
+        for name, result in checks.items():
+            if result.status != 200:
+                status = 503
+                logger.warning(
+                    f"health check {name} failed: {result.status} {result.text}"
+                )
+
+        return Response(
+            status=status,
+            text="\n".join([f"{name}: {resp.text}" for name, resp in checks.items()]),
             content_type="application/text",
         )
 
