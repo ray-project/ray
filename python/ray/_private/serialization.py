@@ -165,7 +165,8 @@ class SerializationContext:
         self._enable_zero_copy_tensors = False
         if os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1":
             self._enable_zero_copy_tensors = True
-            self._zero_copy_tensor_maker = "__ray_tensor__"
+            self._zero_copy_tensor_maker = "_ray_zc_tensor_"
+            self._zero_copy_tensor_playload = "_ray_zc_payload_"
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -560,9 +561,9 @@ class SerializationContext:
                 import torch
             except ImportError:
                 # If torch not available, return raw data
-                return obj["data"]
+                return obj[self._zero_copy_tensor_playload]
 
-            data = obj["data"]
+            data = obj[self._zero_copy_tensor_playload]
             tensor = torch.from_numpy(data)
             return tensor
 
@@ -646,7 +647,10 @@ class SerializationContext:
             # Ensure contiguous for safe zero-copy conversion.
             return {
                 self._zero_copy_tensor_maker: True,
-                "data": obj.cpu().contiguous().numpy(),
+                self._zero_copy_tensor_playload: obj.detach()
+                .cpu()
+                .contiguous()
+                .numpy(),
             }
 
         elif isinstance(obj, dict):
