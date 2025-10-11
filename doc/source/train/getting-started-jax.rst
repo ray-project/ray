@@ -7,7 +7,7 @@ This guide provides an overview of the `JaxTrainer` in Ray Train.
 
 What is Jax?
 ------------
-[JAX](https://github.com/jax-ml/jax) is a Python library for accelerator-oriented array computation and
+`JAX <https://github.com/jax-ml/jax>`_ is a Python library for accelerator-oriented array computation and
 program transformation, designed for high-performance numerical computing and large-scale machine learning.
 
 JAX provides an extensible system for transforming numerical functions like `jax.grad`, `jax.jit`, and `jax.vmap`,
@@ -19,7 +19,7 @@ What are TPUs?
 --------------
 Tensor Processing Units (TPUs), are custom-designed accelerators created by Google to optimize machine learning
 workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs are highly specialized for the massive
-matrix and tensor computations involved in deep learning, making them exceptionally efficient. 
+matrix and tensor computations involved in deep learning, making them exceptionally efficient.
 
 The primary advantage of TPUs is performance at scale, as they are designed to be connected into large, multi-host
 configurations called “PodSlices” via a high-speed ICI interconnect, making them ideal for training large models
@@ -39,19 +39,14 @@ The `JaxTrainer` is initialized with your training logic, defined in a `train_lo
 accelerator types.
 
 For TPU training, the `ScalingConfig` is where you define the specifics of your hardware slice. Key fields include:
-- `use_tpu`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. This boolean flag explicitly tells
-             Ray Train to initialize the JAX backend for TPU execution.
-- `topology`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. Topology is a string defining the
-              physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures
-              Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
-              see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology).
-- `num_workers`: Set to the number of VMs in your TPU slice. For a v4-32 slice with a 2x2x4 topology,
-                 this would be 4.
-- `resources_per_worker`: A dictionary specifying the resources each worker needs. For TPUs, you typically request
-                          the number of chips per VM (Ex: {"TPU": 4}).
-- `accelerator_type`: For TPUs, `accelerator_type` specifies the TPU generation you are using (e.g., "TPU-V6E"),
-                      ensuring your workload is scheduled on the desired TPU slice.
-                      
+
+* `use_tpu`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. This boolean flag explicitly tells Ray Train to initialize the JAX backend for TPU execution.
+* `topology`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
+  see the `GKE documentation <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology>`_.
+* `num_workers`: Set to the number of VMs in your TPU slice. For a v4-32 slice with a 2x2x4 topology, this would be 4.
+* `resources_per_worker`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM (Ex: {"TPU": 4}).
+* `accelerator_type`: For TPUs, `accelerator_type` specifies the TPU generation you are using (e.g., "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
+
 Together, these configurations provide a declarative API for defining your entire distributed JAX
 training environment, allowing Ray Train to handle the complex task of launching and coordinating
 workers across a TPU slice.
@@ -83,12 +78,14 @@ Compare a JAX training script with and without Ray Train.
 .. tab-set::
 
     .. tab-item:: JAX + Ray Train
-        .. testcode:: python
+
+        .. testcode::
             :skipif: True
-            
+
             import jax
             import jax.numpy as jnp
             import optax
+            import ray.train
 
             from ray.train.v2.jax import JaxTrainer
             from ray.train import ScalingConfig
@@ -106,7 +103,7 @@ Compare a JAX training script with and without Ray Train.
                 def loss_fn(params, x, y):
                     preds = linear_model(params, x)
                     return jnp.mean((preds - y) ** 2)
-                
+
                 @jax.jit
                 def train_step(params, opt_state, x, y):
                     loss, grads = jax.value_and_grad(loss_fn)(params, x, y)
@@ -139,7 +136,7 @@ Compare a JAX training script with and without Ray Train.
             # Define and run the JaxTrainer.
             trainer = JaxTrainer(
                 train_loop_per_worker=train_func,
-                scaling_config=scaling_config
+                scaling_config=scaling_config,
             )
             result = trainer.fit()
             print(f"Training finished. Final loss: {result.metrics['loss']:.4f}")
@@ -220,20 +217,20 @@ This function is the entry point that Ray will execute on each remote worker.
         # Training loop
         for epoch in range(epochs):
             params, opt_state, loss = train_step(params, opt_state, X, y)
-    -        print(f"Epoch {epoch}, Loss: {loss:.4f}")
-    +        # In Ray Train, you can report metrics back to the trainer
-    +        report({"loss": float(loss), "epoch": epoch})
+    -       print(f"Epoch {epoch}, Loss: {loss:.4f}")
+    +       # In Ray Train, you can report metrics back to the trainer
+    +       report({"loss": float(loss), "epoch": epoch})
 
     -if __name__ == "__main__":
     -    main_logic()
     +# Define the hardware configuration for your distributed job.
     +scaling_config = ScalingConfig(
-    +            num_workers=4,
-    +            use_tpu=True,
-    +            topology="4x4",
-    +            accelerator_type="TPU-V6E",
-    +            placement_strategy="SPREAD"
-    +        )
+    +    num_workers=4,
+    +    use_tpu=True,
+    +    topology="4x4",
+    +    accelerator_type="TPU-V6E",
+    +    placement_strategy="SPREAD"
+    +)
     +
     +# Define and run the JaxTrainer, which executes `train_func`.
     +trainer = JaxTrainer(
