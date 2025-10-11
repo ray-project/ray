@@ -209,6 +209,8 @@ class AutoscalingState:
 
         total_num_requests = self.get_total_num_requests()
         total_queued_requests = self._get_queued_requests()
+        # NOTE: for non additive aggregation functions, total_running_requests is not
+        # accurate, consider this is a approximation.
         total_running_requests = total_num_requests - total_queued_requests
         autoscaling_context: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
@@ -217,13 +219,13 @@ class AutoscalingState:
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
-            total_num_requests=self.get_total_num_requests(),
+            total_num_requests=total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=self._policy_state.copy(),
             current_time=time.time(),
             config=self._config,
-            total_queued_requests=self._get_queued_requests(),
+            total_queued_requests=total_queued_requests,
             total_running_requests=total_running_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics(),
             raw_metrics=self._get_raw_custom_metrics(),
