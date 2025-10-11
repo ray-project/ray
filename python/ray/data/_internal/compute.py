@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, UserDefinedFunction
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class ComputeStrategy:
     pass
 
 
+@PublicAPI
 class TaskPoolStrategy(ComputeStrategy):
     def __init__(
         self,
@@ -52,6 +53,7 @@ class TaskPoolStrategy(ComputeStrategy):
         return f"TaskPoolStrategy(size={self.size})"
 
 
+@PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
