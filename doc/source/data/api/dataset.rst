@@ -5,6 +5,19 @@ Dataset API
 
 .. include:: ray.data.Dataset.rst
 
+Compute Strategy API
+--------------------
+.. currentmodule:: ray.data
+.. autosummary::
+  :nosignatures:
+  :toctree: doc/
+
+  ActorPoolStrategy
+  TaskPoolStrategy
+.. autoclass:: ActorPoolStrategy
+  :members:
+.. autoclass:: TaskPoolStrategy
+  :members:
 
 Schema
 ------

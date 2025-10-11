@@ -30,6 +30,14 @@ class ComputeStrategy:
 
 @PublicAPI
 class TaskPoolStrategy(ComputeStrategy):
+    """Specify the task-based compute strategy for a Dataset transform.
+
+    TaskPoolStrategy executes dataset transformations using Ray tasks that are
+    scheduled through a pool. Provide ``size`` to cap the number of concurrent
+    tasks; leave it unset to allow Ray Data to scale the task count
+    automatically.
+    """
+
     def __init__(
         self,
         size: Optional[int] = None,
@@ -55,7 +63,7 @@ class TaskPoolStrategy(ComputeStrategy):
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Dataset transform.
+    """Specify the actor-based compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
     for a given Dataset transform. This is useful for stateful setup of callable
