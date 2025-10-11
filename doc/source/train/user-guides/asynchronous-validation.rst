@@ -47,7 +47,7 @@ Finally, after training is done, you can access your checkpoints and their assoc
 :class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
 Writing a distributed validation function
-----------------------------------------
+-----------------------------------------
 
 The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
 even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
