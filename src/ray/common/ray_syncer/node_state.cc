@@ -37,30 +37,36 @@ bool NodeState::SetComponent(MessageType message_type,
   return false;
 }
 
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
+std::optional<MergedRaySyncMessage> NodeState::CreateMergedSyncMessage(
+    MessageType message_type) {
   if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
-  auto message = reporters_[message_type]->CreateSyncMessage(
+  auto inner_message = reporters_[message_type]->CreateInnerSyncMessage(
       sync_message_versions_taken_[message_type], message_type);
-  if (message != std::nullopt) {
-    for (const auto &[_, inner_message] : message->batched_messages()) {
-      sync_message_versions_taken_[message_type] = inner_message.version();
-      RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
-                     << ", version:" << inner_message.version()
-                     << ", node:" << NodeID::FromBinary(inner_message.node_id());
-    }
+  if (inner_message != std::nullopt) {
+    sync_message_versions_taken_[message_type] = inner_message->version();
+    RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
+                   << ", version:" << inner_message->version()
+                   << ", node:" << NodeID::FromBinary(inner_message->node_id());
+    MergedRaySyncMessage message;
+    auto batched_message = message.mutable_batched_messages();
+    (*batched_message)[NodeID::FromBinary(inner_message->node_id()).Hex()] =
+        std::move(*inner_message);
+    return message;
+  } else {
+    return std::nullopt;
   }
-  return message;
 }
 
 bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message) {
+bool NodeState::ConsumeMergedSyncMessage(std::shared_ptr<MergedRaySyncMessage> message) {
   auto *mutable_batched_messages = message->mutable_batched_messages();
 
+  int64_t consumed_messages = 0;
   // Iterate through the map, update local state and remove stale messages in one pass
   for (auto it = mutable_batched_messages->begin();
        it != mutable_batched_messages->end();) {
@@ -69,18 +75,25 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message) {
         cluster_view_[inner_message.node_id()][inner_message.message_type()];
 
     if (!inner_current || inner_current->version() < inner_message.version()) {
-      RAY_LOG(INFO) << "ConsumeSyncMessage: local_version="
-                    << (inner_current ? inner_current->version() : -1)
-                    << " message_version=" << inner_message.version()
-                    << ", message_from=" << NodeID::FromBinary(inner_message.node_id())
-                    << ", message_type=" << inner_message.message_type();
+      RAY_LOG(DEBUG) << "ConsumeInnerSyncMessage: local_version="
+                     << (inner_current ? inner_current->version() : -1)
+                     << " message_version=" << inner_message.version()
+                     << ", message_from=" << NodeID::FromBinary(inner_message.node_id())
+                     << ", message_type=" << inner_message.message_type();
       // Update the current message to the newer one
       inner_current = std::make_shared<const InnerRaySyncMessage>(inner_message);
+      ++consumed_messages;
+      auto receiver = receivers_[inner_message.message_type()];
+      if (receiver != nullptr) {
+        RAY_LOG(DEBUG) << "Consume message from: "
+                       << NodeID::FromBinary(inner_message.node_id());
+        receiver->ConsumeInnerSyncMessage(inner_current);
+      }
       ++it;  // Keep this message, move to next
     } else {
-      RAY_LOG(DEBUG) << "Skip to consume message from: "
+      RAY_LOG(DEBUG) << "Skip to consume inner message from: "
                      << NodeID::FromBinary(inner_message.node_id())
-                     << " because the message version " << inner_message.version()
+                     << " because the inner message version " << inner_message.version()
                      << " is older than the local version "
                      << (inner_current ? inner_current->version() : -1);
       // Remove stale message and move to next
@@ -88,18 +101,12 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message) {
     }
   }
 
-  if (message->batched_messages_size() == 0) {
+  if (consumed_messages == 0) {
     RAY_LOG(DEBUG) << "Skip to consume batched message because all messages are older "
                       "than the local version";
     return false;
   }
 
-  auto receiver = receivers_[message->message_type()];
-  if (receiver != nullptr) {
-    RAY_LOG(DEBUG) << "Consume message of type " << message->message_type()
-                   << ", batched_messages_size=" << message->batched_messages_size();
-    receiver->ConsumeSyncMessage(message);
-  }
   return true;
 }
 

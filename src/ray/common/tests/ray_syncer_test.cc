@@ -57,23 +57,21 @@ constexpr size_t kTestComponents = 1;
 using work_guard_type =
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
 
-RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
+MergedRaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
   auto inner_msg = InnerRaySyncMessage();
   inner_msg.set_version(version);
   inner_msg.set_message_type(cid);
   inner_msg.set_node_id(id.Binary());
 
-  auto msg = RaySyncMessage();
-  msg.set_message_type(cid);
+  auto msg = MergedRaySyncMessage();
   (*msg.mutable_batched_messages())[id.Hex()] = std::move(inner_msg);
 
   return msg;
 }
 
-RaySyncMessage MakeMessageWithMultipleInnerMessages(
+MergedRaySyncMessage MakeMessageWithMultipleInnerMessages(
     MessageType cid, const std::vector<std::pair<NodeID, int64_t>> &node_versions) {
-  auto msg = RaySyncMessage();
-  msg.set_message_type(cid);
+  auto msg = MergedRaySyncMessage();
 
   for (const auto &[node_id, version] : node_versions) {
     auto inner_msg = InnerRaySyncMessage();
@@ -96,20 +94,18 @@ class RaySyncerTest : public ::testing::Test {
       auto &reporter = reporters_[cid];
       reporter = std::make_unique<MockReporterInterface>();
       auto take_snapshot =
-          [this, cid](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
+          [this,
+           cid](int64_t curr_version) mutable -> std::optional<InnerRaySyncMessage> {
         if (curr_version >= local_versions_[cid]) {
           return std::nullopt;
         } else {
           auto inner_msg = InnerRaySyncMessage();
           inner_msg.set_message_type(static_cast<MessageType>(cid));
           inner_msg.set_version(++local_versions_[cid]);
-          auto msg = RaySyncMessage();
-          msg.set_message_type(static_cast<MessageType>(cid));
-          (*msg.mutable_batched_messages())[local_id_.Hex()] = std::move(inner_msg);
-          return std::make_optional(std::move(msg));
+          return std::make_optional(std::move(inner_msg));
         }
       };
-      ON_CALL(*reporter, CreateSyncMessage(_, _))
+      ON_CALL(*reporter, CreateInnerSyncMessage(_, _))
           .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
@@ -149,22 +145,23 @@ class RaySyncerTest : public ::testing::Test {
   NodeID local_id_;
 };
 
-TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
+TEST_F(RaySyncerTest, NodeStateCreateMergedSyncMessage) {
   auto node_status = std::make_unique<NodeState>();
   node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, nullptr);
-  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW));
+  ASSERT_EQ(std::nullopt,
+            node_status->CreateMergedSyncMessage(MessageType::RESOURCE_VIEW));
 
   auto reporter = std::make_unique<MockReporterInterface>();
   ASSERT_TRUE(node_status->SetComponent(
       MessageType::RESOURCE_VIEW, GetReporter(MessageType::RESOURCE_VIEW), nullptr));
 
   // Take a snapshot
-  auto msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
+  auto msg = node_status->CreateMergedSyncMessage(MessageType::RESOURCE_VIEW);
   ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW),
             msg->batched_messages().begin()->second.version());
   // Revert one version back.
   LocalVersion(MessageType::RESOURCE_VIEW) -= 1;
-  msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
+  msg = node_status->CreateMergedSyncMessage(MessageType::RESOURCE_VIEW);
   ASSERT_EQ(std::nullopt, msg);
 }
 
@@ -175,12 +172,16 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   auto from_node_id = NodeID::FromRandom();
   // The first time receive the message
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
-  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
-  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_TRUE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
+  ASSERT_FALSE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
 
   msg.mutable_batched_messages()->begin()->second.set_version(1);
-  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
-  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_TRUE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
+  ASSERT_FALSE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
 }
 
 TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
@@ -199,10 +200,12 @@ TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
       {{from_node_id_1, 0}, {from_node_id_2, 0}, {from_node_id_3, 0}});
 
   // First time receiving the message - should consume all inner messages
-  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_TRUE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
 
   // Second time receiving the same message - should not consume any
-  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_FALSE(
+      node_status->ConsumeMergedSyncMessage(std::make_shared<MergedRaySyncMessage>(msg)));
 
   // Test 2: Partially consume inner messages with higher versions
   // Create a message where only some inner messages have higher versions
@@ -215,12 +218,12 @@ TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
       });
 
   // Should consume only the inner messages with higher versions (node_id_1 and node_id_3)
-  ASSERT_TRUE(
-      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_partial)));
+  ASSERT_TRUE(node_status->ConsumeMergedSyncMessage(
+      std::make_shared<MergedRaySyncMessage>(msg_partial)));
 
   // Test 3: Try to consume the same partial message again - should not consume any
-  ASSERT_FALSE(
-      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_partial)));
+  ASSERT_FALSE(node_status->ConsumeMergedSyncMessage(
+      std::make_shared<MergedRaySyncMessage>(msg_partial)));
 
   // Test 4: Create a message with mixed versions (some higher, some lower, some same)
   auto msg_mixed = MakeMessageWithMultipleInnerMessages(
@@ -232,8 +235,8 @@ TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
       });
 
   // Should consume only node_id_2 with version 1
-  ASSERT_TRUE(
-      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_mixed)));
+  ASSERT_TRUE(node_status->ConsumeMergedSyncMessage(
+      std::make_shared<MergedRaySyncMessage>(msg_mixed)));
 
   // Test 5: All inner messages with lower or same versions - should not consume any
   auto msg_no_consume =
@@ -244,14 +247,14 @@ TEST_F(RaySyncerTest, NodeStateConsumeMultipleInnerMessages) {
                                                {from_node_id_3, 1}   // Lower version
                                            });
 
-  ASSERT_FALSE(
-      node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg_no_consume)));
+  ASSERT_FALSE(node_status->ConsumeMergedSyncMessage(
+      std::make_shared<MergedRaySyncMessage>(msg_no_consume)));
 }
 
 struct MockReactor {
-  void StartRead(RaySyncMessage *) { ++read_cnt; }
+  void StartRead(MergedRaySyncMessage *) { ++read_cnt; }
 
-  void StartWrite(const RaySyncMessage *,
+  void StartWrite(const MergedRaySyncMessage *,
                   grpc::WriteOptions opts = grpc::WriteOptions()) {
     ++write_cnt;
   }
@@ -269,14 +272,14 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
       io_context_,
       node_id.Binary(),
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {});
+      [](std::shared_ptr<const ray::rpc::syncer::MergedRaySyncMessage>) {});
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
-  auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
+  auto msg_ptr1 = std::make_shared<MergedRaySyncMessage>(msg);
   msg.mutable_batched_messages()->begin()->second.set_version(2);
-  auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg);
+  auto msg_ptr2 = std::make_shared<MergedRaySyncMessage>(msg);
   msg.mutable_batched_messages()->begin()->second.set_version(3);
-  auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
+  auto msg_ptr3 = std::make_shared<MergedRaySyncMessage>(msg);
 
   // First push will succeed and the second one will be deduplicated.
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
@@ -292,7 +295,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(
       2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
-  // RaySyncMessage that is in the sending_buffer_ will not be deduplicated,
+  // MergedRaySyncMessage that is in the sending_buffer_ will not be deduplicated,
   // since it is a batch of InnerRaySyncMessage from different nodes.
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
   ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
@@ -313,7 +316,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
       io_context_,
       local_node_id.Binary(),
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {});
+      [](std::shared_ptr<const ray::rpc::syncer::MergedRaySyncMessage>) {});
 
   // Create multiple different node IDs for testing
   auto from_node_id_1 = NodeID::FromRandom();
@@ -324,7 +327,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
   auto msg_multi = MakeMessageWithMultipleInnerMessages(
       MessageType::RESOURCE_VIEW,
       {{from_node_id_1, 1}, {from_node_id_2, 2}, {from_node_id_3, 3}});
-  auto msg_multi_ptr = std::make_shared<RaySyncMessage>(msg_multi);
+  auto msg_multi_ptr = std::make_shared<MergedRaySyncMessage>(msg_multi);
 
   // First push should succeed
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_multi_ptr));
@@ -354,7 +357,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
           {from_node_id_2, 4},  // Higher version - should be included
           {from_node_id_3, 2}   // Lower version - should be deduplicated
       });
-  auto msg_partial_ptr = std::make_shared<RaySyncMessage>(msg_partial_update);
+  auto msg_partial_ptr = std::make_shared<MergedRaySyncMessage>(msg_partial_update);
 
   // Should succeed because node_id_2 has a higher version
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_partial_ptr));
@@ -382,7 +385,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
   auto from_node_id_5 = NodeID::FromRandom();
   auto msg_new_nodes = MakeMessageWithMultipleInnerMessages(
       MessageType::RESOURCE_VIEW, {{from_node_id_4, 1}, {from_node_id_5, 2}});
-  auto msg_new_ptr = std::make_shared<RaySyncMessage>(msg_new_nodes);
+  auto msg_new_ptr = std::make_shared<MergedRaySyncMessage>(msg_new_nodes);
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_new_ptr));
   ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
@@ -407,7 +410,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages) {
           {from_node_id_4, 1},  // Duplicate - should be dropped
           {from_node_id_6, 1}   // New - should be included
       });
-  auto msg_mixed_ptr = std::make_shared<RaySyncMessage>(msg_mixed);
+  auto msg_mixed_ptr = std::make_shared<MergedRaySyncMessage>(msg_mixed);
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_mixed_ptr));
   ASSERT_EQ(3, sync_reactor.sending_buffer_.size());
@@ -470,51 +473,45 @@ struct SyncerServerTest {
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
-      auto snapshot_received = [this,
-                                node_id](std::shared_ptr<const RaySyncMessage> message) {
-        for (auto &[_, inner_message] : message->batched_messages()) {
-          RAY_LOG(DEBUG) << "Message received: from "
-                         << NodeID::FromBinary(inner_message.node_id()) << " to "
-                         << node_id;
-          auto iter = received_versions.find(inner_message.node_id());
-          if (iter == received_versions.end()) {
-            for (auto &v : received_versions[inner_message.node_id()]) {
-              v = 0;
+      auto snapshot_received =
+          [this, node_id](std::shared_ptr<const InnerRaySyncMessage> message) {
+            RAY_LOG(DEBUG) << "Message received: from "
+                           << NodeID::FromBinary(message->node_id()) << " to " << node_id;
+            auto iter = received_versions.find(message->node_id());
+            if (iter == received_versions.end()) {
+              for (auto &v : received_versions[message->node_id()]) {
+                v = 0;
+              }
+              iter = received_versions.find(message->node_id());
             }
-            iter = received_versions.find(inner_message.node_id());
-          }
 
-          received_versions[inner_message.node_id()][inner_message.message_type()] =
-              inner_message.version();
-          message_consumed[inner_message.node_id()]++;
-          RAY_LOG(DEBUG) << "Message consumed from "
-                         << NodeID::FromBinary(inner_message.node_id())
-                         << ", local_id=" << node_id;
-        }
-      };
+            received_versions[message->node_id()][message->message_type()] =
+                message->version();
+            message_consumed[message->node_id()]++;
+            RAY_LOG(DEBUG) << "Message consumed from "
+                           << NodeID::FromBinary(message->node_id())
+                           << ", local_id=" << node_id;
+          };
       receivers[cid] = std::make_unique<MockReceiverInterface>();
-      EXPECT_CALL(*receivers[cid], ConsumeSyncMessage(_))
+      EXPECT_CALL(*receivers[cid], ConsumeInnerSyncMessage(_))
           .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
       auto &reporter = reporters[cid];
       auto take_snapshot =
-          [this, cid](int64_t version_after) mutable -> std::optional<RaySyncMessage> {
+          [this,
+           cid](int64_t version_after) mutable -> std::optional<InnerRaySyncMessage> {
         if (local_versions[cid] <= version_after) {
           return std::nullopt;
         } else {
           auto inner_msg = InnerRaySyncMessage();
-          inner_msg.set_message_type(static_cast<MessageType>(cid));
           inner_msg.set_version(local_versions[cid]);
+          inner_msg.set_message_type(static_cast<MessageType>(cid));
           inner_msg.set_node_id(syncer->GetLocalNodeID());
-          auto msg = RaySyncMessage();
-          msg.set_message_type(static_cast<MessageType>(cid));
-          (*msg.mutable_batched_messages())[NodeID::FromBinary(syncer->GetLocalNodeID())
-                                                .Hex()] = std::move(inner_msg);
           snapshot_taken++;
-          return std::make_optional(std::move(msg));
+          return std::make_optional(std::move(inner_msg));
         }
       };
       reporter = std::make_unique<MockReporterInterface>();
-      EXPECT_CALL(*reporter, CreateSyncMessage(_, Eq(cid)))
+      EXPECT_CALL(*reporter, CreateInnerSyncMessage(_, Eq(cid)))
           .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       syncer->Register(
           static_cast<MessageType>(cid), reporter.get(), receivers[cid].get());
@@ -892,13 +889,12 @@ TEST_P(SyncerTest, Broadcast) {
       5));
   ASSERT_EQ(
       0,
-      s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
-          ->batched_messages()
-          .begin()
-          ->second.version());
+      s1.syncer
+          ->GetInnerSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
+          ->version());
   ASSERT_EQ(nullptr,
-            s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
-                                      MessageType::RESOURCE_VIEW));
+            s1.syncer->GetInnerSyncMessage(NodeID::FromRandom().Binary(),
+                                           MessageType::RESOURCE_VIEW));
   s1.syncer->Disconnect(s3.syncer->GetLocalNodeID());
   RAY_LOG(INFO) << "s1.id=" << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
   RAY_LOG(INFO) << "s3.id=" << NodeID::FromBinary(s3.syncer->GetLocalNodeID());
@@ -1076,20 +1072,20 @@ TEST_P(SyncerTest, TestMToN) {
 struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   MockRaySyncerService(
       instrumented_io_context &_io_context,
-      std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
+      std::function<void(std::shared_ptr<const MergedRaySyncMessage>)> _message_processor,
       std::function<void(RaySyncerBidiReactor *reactor, bool)> _cleanup_cb)
       : message_processor(_message_processor),
         cleanup_cb(_cleanup_cb),
         node_id(NodeID::FromRandom()),
         io_context(_io_context) {}
-  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
+  grpc::ServerBidiReactor<MergedRaySyncMessage, MergedRaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override {
     reactor = new RayServerBidiReactor(
         context, io_context, node_id.Binary(), message_processor, cleanup_cb);
     return reactor;
   }
 
-  std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor;
+  std::function<void(std::shared_ptr<const MergedRaySyncMessage>)> message_processor;
   std::function<void(RaySyncerBidiReactor *reactor, bool)> cleanup_cb;
   NodeID node_id;
   instrumented_io_context &io_context;
@@ -1161,8 +1157,8 @@ class SyncerReactorTest : public ::testing::Test {
   }
 
   void ResetPromise() {
-    server_received_message = std::promise<std::shared_ptr<const RaySyncMessage>>();
-    client_received_message = std::promise<std::shared_ptr<const RaySyncMessage>>();
+    server_received_message = std::promise<std::shared_ptr<const MergedRaySyncMessage>>();
+    client_received_message = std::promise<std::shared_ptr<const MergedRaySyncMessage>>();
     server_cleanup = std::promise<std::pair<std::string, bool>>();
     client_cleanup = std::promise<std::pair<std::string, bool>>();
   }
@@ -1172,8 +1168,8 @@ class SyncerReactorTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_;
   std::unique_ptr<MockRaySyncerService> rpc_service_;
   std::unique_ptr<grpc::Server> server;
-  std::promise<std::shared_ptr<const RaySyncMessage>> server_received_message;
-  std::promise<std::shared_ptr<const RaySyncMessage>> client_received_message;
+  std::promise<std::shared_ptr<const MergedRaySyncMessage>> server_received_message;
+  std::promise<std::shared_ptr<const MergedRaySyncMessage>> client_received_message;
   std::promise<std::pair<std::string, bool>> server_cleanup;
   std::promise<std::pair<std::string, bool>> client_cleanup;
 
@@ -1192,7 +1188,7 @@ TEST_F(SyncerReactorTest, TestReactor) {
   auto inner_msg_s = std::make_shared<InnerRaySyncMessage>();
   inner_msg_s->set_version(1);
   inner_msg_s->set_node_id(node_s);
-  auto msg_s = std::make_shared<RaySyncMessage>();
+  auto msg_s = std::make_shared<MergedRaySyncMessage>();
   (*msg_s->mutable_batched_messages())[NodeID::FromBinary(node_s).Hex()] = *inner_msg_s;
 
   s->PushToSendingQueue(msg_s);
@@ -1200,7 +1196,7 @@ TEST_F(SyncerReactorTest, TestReactor) {
   auto inner_msg_c = std::make_shared<InnerRaySyncMessage>();
   inner_msg_c->set_version(2);
   inner_msg_c->set_node_id(node_c);
-  auto msg_c = std::make_shared<RaySyncMessage>();
+  auto msg_c = std::make_shared<MergedRaySyncMessage>();
   (*msg_c->mutable_batched_messages())[NodeID::FromBinary(node_c).Hex()] = *inner_msg_c;
 
   c->PushToSendingQueue(msg_c);

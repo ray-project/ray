@@ -39,7 +39,7 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
       on_rpc_completion_(std::move(on_rpc_completion)),
       batching_enabled_(batching_enabled) {
   stopped_ = std::make_shared<bool>(false);
-  resource_view_batch_timer_ = std::make_unique<boost::asio::steady_timer>(io_context);
+  sync_message_batch_timer_ = std::make_unique<boost::asio::steady_timer>(io_context);
   if (batching_enabled_) {
     batch_size_ = static_cast<size_t>(RayConfig::instance().syncer_batch_size());
     batch_timeout_ =
@@ -54,7 +54,13 @@ RaySyncer::~RaySyncer() {
   *stopped_ = true;
 
   // Cancel batch timer and flush any pending messages
-  FlushResourceViewBatch();
+  if (sync_message_batch_timer_active_) {
+    sync_message_batch_timer_->cancel();
+    sync_message_batch_timer_active_ = false;
+  }
+  if (!sync_message_batch_buffer_.empty()) {
+    MergeAndFlushSyncMessage();
+  }
 
   boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
     for (auto &[_, reactor] : reactors) {
@@ -63,18 +69,13 @@ RaySyncer::~RaySyncer() {
   });
 }
 
-std::shared_ptr<RaySyncMessage> RaySyncer::GetSyncMessage(
+std::shared_ptr<const InnerRaySyncMessage> RaySyncer::GetInnerSyncMessage(
     const std::string &node_id, MessageType message_type) const {
-  auto task = std::packaged_task<std::shared_ptr<RaySyncMessage>()>(
-      [this, &node_id, message_type]() -> std::shared_ptr<RaySyncMessage> {
+  auto task = std::packaged_task<std::shared_ptr<const InnerRaySyncMessage>()>(
+      [this, &node_id, message_type]() -> std::shared_ptr<const InnerRaySyncMessage> {
         auto &view = node_state_->GetClusterView();
         if (auto iter = view.find(node_id); iter != view.end()) {
-          absl::flat_hash_map<
-              std::string,
-              std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage>>
-              messages;
-          messages.emplace(NodeID::FromBinary(node_id).Hex(), iter->second[message_type]);
-          return MergeResourceViewMessages(messages);
+          return iter->second[message_type];
         }
         return nullptr;
       });
@@ -149,36 +150,25 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
                           << " has already registered.";
         // Send the view for new connections.
         absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
-            resource_view_messages;
-        absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
-            commands_messages;
-        for (const auto &[_, messages] : node_state_->GetClusterView()) {
-          for (const auto &message : messages) {
-            if (!message) {
+            batched_inner_messages;
+        for (const auto &[_, inner_messages] : node_state_->GetClusterView()) {
+          for (const auto &inner_message : inner_messages) {
+            if (!inner_message) {
               continue;
             }
             RAY_LOG(DEBUG) << "Push init view from: "
                            << NodeID::FromBinary(GetLocalNodeID()) << " to "
                            << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
-                           << NodeID::FromBinary(message->node_id());
-            if (message->message_type() == MessageType::RESOURCE_VIEW) {
-              resource_view_messages[NodeID::FromBinary(message->node_id()).Hex()] =
-                  message;
-            } else if (message->message_type() == MessageType::COMMANDS) {
-              commands_messages[NodeID::FromBinary(message->node_id()).Hex()] = message;
-            }
+                           << NodeID::FromBinary(inner_message->node_id());
+            batched_inner_messages[NodeID::FromBinary(inner_message->node_id()).Hex()] =
+                inner_message;
           }
         }
 
-        if (!resource_view_messages.empty()) {
-          std::shared_ptr<RaySyncMessage> batched_resource_view_message =
-              MergeResourceViewMessages(resource_view_messages);
-          reactor->PushToSendingQueue(batched_resource_view_message);
-        } else if (!commands_messages.empty()) {
-          // TODO: are we suppose to deduplicate command messages? like global gc.
-          std::shared_ptr<RaySyncMessage> batched_command_message =
-              MergeResourceViewMessages(commands_messages);
-          reactor->PushToSendingQueue(batched_command_message);
+        if (!batched_inner_messages.empty()) {
+          std::shared_ptr<MergedRaySyncMessage> merged_message =
+              MergeInnerSyncMessages(batched_inner_messages);
+          reactor->PushToSendingQueue(merged_message);
         }
       }))
       .get();
@@ -230,59 +220,48 @@ void RaySyncer::Register(MessageType message_type,
 }
 
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
-  auto msg = node_state_->CreateSyncMessage(message_type);
+  auto msg = node_state_->CreateMergedSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->batched_messages_size() == 1);
     RAY_CHECK(msg->batched_messages().begin()->second.node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    BroadcastMessage(std::make_shared<MergedRaySyncMessage>(std::move(*msg)));
     return true;
   }
   return false;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
+void RaySyncer::BroadcastMessage(std::shared_ptr<MergedRaySyncMessage> message) {
   io_context_.dispatch(
       [this, message] {
         RAY_CHECK(message->batched_messages_size() > 0);
-        if (!node_state_->ConsumeSyncMessage(message)) {
+        if (!node_state_->ConsumeMergedSyncMessage(message)) {
           return;
         }
-        if (message->message_type() == MessageType::RESOURCE_VIEW) {
-          BatchResourceViewMessage(message);
-        } else {
-          // Directly push to sending queue for other message types.
-          // NOTE: the message is still batched with size 1 to keep consistency.
-          for (auto &reactor : sync_reactors_) {
-            reactor.second->PushToSendingQueue(message);
-          }
-        }
+        BufferOrFlushSyncMessage(message);
       },
       "RaySyncer.BroadcastMessage");
 }
 
-void RaySyncer::BatchResourceViewMessage(std::shared_ptr<RaySyncMessage> message) {
+void RaySyncer::BufferOrFlushSyncMessage(std::shared_ptr<MergedRaySyncMessage> message) {
   // Add message to batch buffer
-  RAY_CHECK(message->message_type() == MessageType::RESOURCE_VIEW);
   RAY_CHECK(message->batched_messages_size() > 0);
 
   for (const auto &[node_id_hex, inner_message] : message->batched_messages()) {
-    RAY_CHECK(inner_message.message_type() == MessageType::RESOURCE_VIEW);
-
-    RAY_LOG(DEBUG) << "Batching resource view message version: "
-                   << inner_message.version()
-                   << " from node: " << NodeID::FromBinary(inner_message.node_id());
+    RAY_LOG(DEBUG) << "Batching sync message type: " << inner_message.message_type()
+                   << " from node: " << NodeID::FromBinary(inner_message.node_id())
+                   << " version: " << inner_message.version();
 
     std::string node_id = inner_message.node_id();
-    auto it = resource_view_batch_buffer_.find(node_id_hex);
-    if (it == resource_view_batch_buffer_.end() ||
+    auto it = sync_message_batch_buffer_.find(node_id_hex);
+    if (it == sync_message_batch_buffer_.end() ||
         it->second->version() < inner_message.version()) {
       RAY_LOG(DEBUG) << "Updated latest message for node: "
                      << NodeID::FromBinary(inner_message.node_id())
                      << " to version: " << inner_message.version() << " (was: "
-                     << (it == resource_view_batch_buffer_.end() ? -1
-                                                                 : it->second->version())
+                     << (it == sync_message_batch_buffer_.end() ? -1
+                                                                : it->second->version())
                      << ")";
-      resource_view_batch_buffer_[node_id_hex] =
+      sync_message_batch_buffer_[node_id_hex] =
           std::make_shared<const InnerRaySyncMessage>(inner_message);
 
     } else {
@@ -293,92 +272,69 @@ void RaySyncer::BatchResourceViewMessage(std::shared_ptr<RaySyncMessage> message
   }
 
   // Check if buffer size reached the batch size limit
-  if (resource_view_batch_buffer_.size() >= batch_size_) {
+  if (sync_message_batch_buffer_.size() >= batch_size_) {
     // Cancel any pending timer and flush immediately
-    RAY_LOG(DEBUG) << "Batch size reached. Flushing resource view messages immediately.";
-    if (resource_view_batch_timer_active_) {
-      RAY_CHECK(resource_view_batch_timer_ != nullptr);
-      resource_view_batch_timer_->cancel();
-      resource_view_batch_timer_active_ = false;
+    RAY_LOG(DEBUG) << "Batch size reached. Flushing rsync messages immediately.";
+    if (sync_message_batch_timer_active_) {
+      RAY_CHECK(sync_message_batch_timer_ != nullptr);
+      sync_message_batch_timer_->cancel();
+      sync_message_batch_timer_active_ = false;
     }
-    FlushResourceViewBatchInternal();
-  } else if (!resource_view_batch_timer_active_) {
+    MergeAndFlushSyncMessage();
+  } else if (!sync_message_batch_timer_active_) {
     // Start or restart the batch timer for timeout-based flushing
-    resource_view_batch_timer_active_ = true;
-    resource_view_batch_timer_->expires_after(batch_timeout_);
-    resource_view_batch_timer_->async_wait(
+    sync_message_batch_timer_active_ = true;
+    sync_message_batch_timer_->expires_after(batch_timeout_);
+    sync_message_batch_timer_->async_wait(
         [this, stopped = stopped_](const boost::system::error_code &ec) {
-          resource_view_batch_timer_active_ = false;
+          sync_message_batch_timer_active_ = false;
           if (!ec && !*stopped) {
-            RAY_LOG(INFO) << "Batch timeout reached. Flushing resource view messages.";
-            FlushResourceViewBatchInternal();
+            RAY_LOG(INFO) << "Batch timeout reached. Flushing sync messages.";
+            MergeAndFlushSyncMessage();
+          } else if (ec != boost::asio::error::operation_aborted) {
+            RAY_LOG(ERROR) << "Batch timer error: " << ec.message();
           }
         });
   }
 }
 
-void RaySyncer::FlushResourceViewBatch() {
-  if (resource_view_batch_timer_active_) {
-    resource_view_batch_timer_->cancel();
-    resource_view_batch_timer_active_ = false;
-  }
-  if (!resource_view_batch_buffer_.empty()) {
-    FlushResourceViewBatchInternal();
-  }
-}
+void RaySyncer::MergeAndFlushSyncMessage() {
+  RAY_CHECK(sync_message_batch_timer_active_ == false);
+  RAY_CHECK(sync_message_batch_buffer_.size() > 0);
 
-void RaySyncer::FlushResourceViewBatchInternal() {
-  RAY_CHECK(resource_view_batch_timer_active_ == false);
-  RAY_CHECK(resource_view_batch_buffer_.size() > 0);
-
-  RAY_LOG(DEBUG) << "Flushing " << resource_view_batch_buffer_.size()
-                 << " resource view messages internally.";
-  std::shared_ptr<RaySyncMessage> sending_message =
-      MergeResourceViewMessages(resource_view_batch_buffer_);
+  RAY_LOG(DEBUG) << "Merging and flushing " << sync_message_batch_buffer_.size()
+                 << " sync messages internally.";
+  std::shared_ptr<MergedRaySyncMessage> sending_message =
+      MergeInnerSyncMessages(sync_message_batch_buffer_);
   RAY_CHECK(sending_message != nullptr);
   for (auto &reactor : sync_reactors_) {
     reactor.second->PushToSendingQueue(sending_message);
   }
 
   // Clear the buffer
-  resource_view_batch_buffer_.clear();
+  sync_message_batch_buffer_.clear();
 }
 
-std::shared_ptr<RaySyncMessage> RaySyncer::MergeResourceViewMessages(
+std::shared_ptr<MergedRaySyncMessage> RaySyncer::MergeInnerSyncMessages(
     absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
         &inner_messages) const {
-  // Helper function to validate if a string is ASCII hex
-  auto is_ascii_hex = [](const std::string &s) {
-    if (s.empty()) return false;
-    for (unsigned char c : s) {
-      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
-        return false;
-    }
-    return true;
-  };
-
   RAY_CHECK(!inner_messages.empty());
 
   // Create a new batched message
-  auto batched_message = std::make_shared<RaySyncMessage>();
-
-  // Set basic fields from the first message
-  batched_message->set_message_type(MessageType::RESOURCE_VIEW);
+  auto merged_message = std::make_shared<MergedRaySyncMessage>();
 
   // Add all individual messages to the batch
   for (const auto &[node_id_hex, inner_message] : inner_messages) {
     RAY_LOG(DEBUG) << "Adding message version: " << inner_message->version()
                    << " from node: " << NodeID::FromBinary(inner_message->node_id())
                    << " to batched message";
-    RAY_CHECK(is_ascii_hex(node_id_hex)) << "bad key len=" << node_id_hex.size();
-    (*batched_message->mutable_batched_messages())[node_id_hex] = *inner_message;
+    (*merged_message->mutable_batched_messages())[node_id_hex] = *inner_message;
   }
 
-  RAY_LOG(DEBUG) << "Created batched resource view message type: "
-                 << batched_message->message_type() << " containing "
-                 << batched_message->batched_messages_size() << " messages";
+  RAY_LOG(DEBUG) << "Created batched sync message containing "
+                 << merged_message->batched_messages_size() << " messages";
 
-  return batched_message;
+  return merged_message;
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {

@@ -24,7 +24,8 @@
 
 namespace ray::syncer {
 
-using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
+using ServerBidiReactor =
+    grpc::ServerBidiReactor<MergedRaySyncMessage, MergedRaySyncMessage>;
 
 /// Reactor for gRPC server side. It defines the server's specific behavior for a
 /// streaming call.
@@ -34,7 +35,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
       const std::string &local_node_id,
-      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
+      std::function<void(std::shared_ptr<MergedRaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb);
 
   ~RayServerBidiReactor() override = default;

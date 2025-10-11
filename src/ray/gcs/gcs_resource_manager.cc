@@ -36,8 +36,8 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       local_node_id_(std::move(local_node_id)),
       cluster_lease_manager_(cluster_lease_manager) {}
 
-void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<rpc::syncer::RaySyncMessage> message) {
+void GcsResourceManager::ConsumeInnerSyncMessage(
+    std::shared_ptr<const syncer::InnerRaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just
@@ -46,53 +46,22 @@ void GcsResourceManager::ConsumeSyncMessage(
   // io context for thread safety.
   io_context_.dispatch(
       [this, message]() {
-        RAY_CHECK(message->batched_messages_size() > 0);
         if (message->message_type() == syncer::MessageType::COMMANDS) {
-          ProcessBatchedCommandsMessage(message);
+          syncer::CommandsSyncMessage commands_sync_message;
+          commands_sync_message.ParseFromString(message->sync_message());
+          UpdateClusterFullOfActorsDetected(
+              NodeID::FromBinary(message->node_id()),
+              commands_sync_message.cluster_full_of_actors_detected());
         } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-          ProcessBatchedResourceViewMessage(message);
+          syncer::ResourceViewSyncMessage resource_view_sync_message;
+          resource_view_sync_message.ParseFromString(message->sync_message());
+          UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
+                                 resource_view_sync_message);
         } else {
           RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
         }
       },
       "GcsResourceManager::Update");
-}
-
-void GcsResourceManager::ProcessBatchedResourceViewMessage(
-    std::shared_ptr<syncer::RaySyncMessage> message) {
-  RAY_CHECK_EQ(message->message_type(), syncer::MessageType::RESOURCE_VIEW);
-
-  RAY_LOG(DEBUG) << "Processing batched RESOURCE_VIEW message with "
-                 << message->batched_messages_size() << " inner messages";
-
-  for (const auto &[_, inner_message] : message->batched_messages()) {
-    RAY_LOG(DEBUG) << "Processing inner RESOURCE_VIEW message from node "
-                   << NodeID::FromBinary(inner_message.node_id());
-
-    syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(inner_message.sync_message());
-    UpdateFromResourceView(NodeID::FromBinary(inner_message.node_id()),
-                           resource_view_sync_message);
-  }
-}
-
-void GcsResourceManager::ProcessBatchedCommandsMessage(
-    std::shared_ptr<syncer::RaySyncMessage> message) {
-  RAY_CHECK_EQ(message->message_type(), syncer::MessageType::COMMANDS);
-
-  RAY_LOG(DEBUG) << "Processing batched COMMANDS message with "
-                 << message->batched_messages_size() << " inner messages";
-
-  for (const auto &[_, inner_message] : message->batched_messages()) {
-    RAY_LOG(DEBUG) << "Processing inner COMMANDS message from node "
-                   << NodeID::FromBinary(inner_message.node_id());
-
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(inner_message.sync_message());
-    UpdateClusterFullOfActorsDetected(
-        NodeID::FromBinary(inner_message.node_id()),
-        commands_sync_message.cluster_full_of_actors_detected());
-  }
 }
 
 void GcsResourceManager::HandleGetDrainingNodes(

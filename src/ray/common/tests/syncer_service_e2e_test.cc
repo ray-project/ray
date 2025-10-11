@@ -52,21 +52,18 @@ class LocalNode : public ray::syncer::ReporterInterface {
         "LocalNodeStateUpdate");
   }
 
-  std::optional<ray::syncer::RaySyncMessage> CreateSyncMessage(
+  std::optional<ray::syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
       int64_t current_version, ray::syncer::MessageType) const override {
     if (current_version > version_) {
       return std::nullopt;
     }
     ray::rpc::syncer::InnerRaySyncMessage inner_msg;
-    inner_msg.set_message_type(ray::rpc::syncer::MessageType::RESOURCE_VIEW);
+    inner_msg.set_message_type(MessageType::RESOURCE_VIEW);
     inner_msg.set_version(version_);
     inner_msg.set_sync_message(
         std::string(reinterpret_cast<const char *>(&state_), sizeof(state_)));
     inner_msg.set_node_id(node_id_.Binary());
-    ray::rpc::syncer::RaySyncMessage msg;
-    msg.set_message_type(ray::rpc::syncer::MessageType::RESOURCE_VIEW);
-    (*msg.mutable_batched_messages())[node_id_.Hex()] = inner_msg;
-    return msg;
+    return inner_msg;
   }
 
  private:
@@ -79,17 +76,16 @@ class LocalNode : public ray::syncer::ReporterInterface {
 class RemoteNodes : public ReceiverInterface {
  public:
   RemoteNodes() {}
-  void ConsumeSyncMessage(
-      std::shared_ptr<ray::rpc::syncer::RaySyncMessage> msg) override {
-    auto inner_msg = msg->batched_messages().begin()->second;
-    auto version = inner_msg.version();
-    int state = *reinterpret_cast<const int *>(inner_msg.sync_message().data());
-    auto iter = infos_.find(inner_msg.node_id());
+  void ConsumeInnerSyncMessage(
+      std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage> inner_msg) override {
+    auto version = inner_msg->version();
+    int state = *reinterpret_cast<const int *>(inner_msg->sync_message().data());
+    auto iter = infos_.find(inner_msg->node_id());
     if (iter == infos_.end() || iter->second.second < version) {
       RAY_LOG(INFO) << "Update node "
-                    << ray::NodeID::FromBinary(inner_msg.node_id()).Hex() << " to ("
+                    << ray::NodeID::FromBinary(inner_msg->node_id()).Hex() << " to ("
                     << state << ", v:" << version << ")";
-      infos_[inner_msg.node_id()] = std::make_pair(state, version);
+      infos_[inner_msg->node_id()] = std::make_pair(state, version);
     }
   }
 
