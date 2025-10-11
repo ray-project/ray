@@ -1778,7 +1778,7 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._id in self._autoscaling_state_manager._autoscaling_states
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -2156,20 +2156,22 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics.
+    def scale(self, decision_num_replicas: Optional[int] = None) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas: Optional target replica count to apply.
 
         Returns:
-            Whether the target state has changed.
+            bool: True if the target state was updated, False if no change occurred.
         """
 
         if self._target_state.deleting:
             return False
-
-        decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
-            deployment_id=self._id,
-            curr_target_num_replicas=self._target_state.target_num_replicas,
-        )
 
         if (
             decision_num_replicas is None
@@ -3192,6 +3194,13 @@ class DeploymentStateManager:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
 
+    def get_deployment_target_num_replicas(
+        self, deployment_id: DeploymentID
+    ) -> Optional[int]:
+        if deployment_id not in self._deployment_states:
+            return None
+        return self._deployment_states[deployment_id].target_num_replicas
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
@@ -3325,11 +3334,6 @@ class DeploymentStateManager:
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
-            if deployment_state.should_autoscale():
-                target_state_changed = (
-                    deployment_state.autoscale() or target_state_changed
-                )
-
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
@@ -3423,6 +3427,12 @@ class DeploymentStateManager:
             self.save_checkpoint()
 
         return any_recovering
+
+    def scale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+        if deployment_id not in self._deployment_states:
+            return False
+
+        return self._deployment_states[deployment_id].scale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,
