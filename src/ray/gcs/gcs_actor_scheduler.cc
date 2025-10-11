@@ -350,7 +350,9 @@ void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
 }
 
 void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
-    std::shared_ptr<GcsActor> actor, const ray::rpc::RequestWorkerLeaseReply &reply) {
+    std::shared_ptr<GcsActor> actor,
+    const ray::rpc::RequestWorkerLeaseReply &reply,
+    std::shared_ptr<const rpc::GcsNodeInfo> node) {
   const auto &retry_at_raylet_address = reply.retry_at_raylet_address();
   const auto &worker_address = reply.worker_address();
   if (worker_address.node_id().empty()) {
@@ -390,6 +392,11 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     RAY_CHECK(node_to_workers_when_creating_[node_id]
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
+    rpc::Address actor_local_raylet_address;
+    actor_local_raylet_address.set_node_id(node->node_id());
+    actor_local_raylet_address.set_ip_address(node->node_manager_address());
+    actor_local_raylet_address.set_port(node->node_manager_port());
+    actor->UpdateLocalRayletAddress(actor_local_raylet_address);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
     actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
@@ -621,7 +628,7 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
         RAY_LOG(INFO) << "Finished leasing worker from " << node_id << " for actor "
                       << actor->GetActorID()
                       << ", job id = " << actor->GetActorID().JobId();
-        HandleWorkerLeaseGrantedReply(actor, reply);
+        HandleWorkerLeaseGrantedReply(actor, reply, node);
       }
     } else {
       RetryLeasingWorkerFromNode(actor, node);

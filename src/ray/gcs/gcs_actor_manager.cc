@@ -227,6 +227,7 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name)
@@ -234,6 +235,7 @@ GcsActorManager::GcsActorManager(
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
+      raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
@@ -1742,21 +1744,23 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                                   const rpc::ActorDeathCause &death_cause,
                                                   bool force_kill) {
-  rpc::KillActorRequest request;
+  rpc::KillLocalActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
+  request.set_worker_id(actor->GetWorkerID().Binary());
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
-  auto actor_client = worker_client_pool_.GetOrConnect(actor->GetAddress());
+  auto actor_raylet_client =
+      raylet_client_pool_.GetOrConnectByAddress(actor->GetLocalRayletAddress());
   RAY_LOG(DEBUG)
           .WithField(actor->GetActorID())
           .WithField(actor->GetWorkerID())
           .WithField(actor->GetNodeID())
       << "Send request to kill actor to worker at node";
-  actor_client->KillActor(request,
-                          [actor_id = actor->GetActorID()](auto &status, auto &&) {
-                            RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
-                                           << ", actor_id: " << actor_id;
-                          });
+  actor_raylet_client->KillLocalActor(
+      request, [actor_id = actor->GetActorID()](auto &status, auto &&) {
+        RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
+                       << ", actor_id: " << actor_id;
+      });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {

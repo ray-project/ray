@@ -292,6 +292,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `KillLocalActor` request.
+  void HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                            rpc::KillLocalActorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 

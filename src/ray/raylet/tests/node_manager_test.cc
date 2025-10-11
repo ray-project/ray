@@ -33,6 +33,7 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
@@ -1218,6 +1219,51 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
+
+TEST_F(NodeManagerTest, TestHandleKillLocalActorIdempotency) {
+  // Test that calling HandleKillLocalActor twice results in KillActor RPC being
+  // called twice on the core worker, verifying idempotency is handled at the
+  // core worker level, not the raylet level.
+
+  WorkerID worker_id = WorkerID::FromRandom();
+  JobID job_id = JobID::FromInt(1);
+  ActorID actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+
+  auto worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
+  auto fake_rpc_client = std::make_shared<rpc::FakeCoreWorkerClient>();
+  worker->Connect(fake_rpc_client);
+
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+      .Times(2)
+      .WillRepeatedly(Return(worker));
+
+  // Create the request
+  rpc::KillLocalActorRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(false);
+  auto actor_died_ctx = request.mutable_death_cause()->mutable_actor_died_error_context();
+  actor_died_ctx->set_reason(rpc::ActorDiedErrorContext::RAY_KILL);
+  actor_died_ctx->set_error_message("Test kill");
+
+  rpc::KillLocalActorReply reply1;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  rpc::KillLocalActorReply reply2;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(fake_rpc_client->num_kill_actor_requests, 2);
+}
 
 }  // namespace ray::raylet
 

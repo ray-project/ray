@@ -263,6 +263,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_function_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/pubsub:publisher",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -430,6 +431,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_function_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/pubsub:publisher",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_main",
     ],

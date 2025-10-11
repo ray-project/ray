@@ -289,8 +289,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
+  /// \param node The node that the worker will be leased from.
   void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
-                                     const rpc::RequestWorkerLeaseReply &reply);
+                                     const rpc::RequestWorkerLeaseReply &reply,
+                                     std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the cluster resource view and reschedule immediately.

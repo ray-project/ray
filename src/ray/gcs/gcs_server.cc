@@ -514,6 +514,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name);

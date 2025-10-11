@@ -3190,4 +3190,56 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
+void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                                       rpc::KillLocalActorReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  auto worker =
+      worker_pool_.GetRegisteredWorker(WorkerID::FromBinary(request.worker_id()));
+  // If the worker is not registered, then it must have already been killed
+  if (!worker) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  auto worker_id = worker->WorkerId();
+
+  rpc::KillActorRequest kill_actor_request;
+  kill_actor_request.set_intended_actor_id(request.intended_actor_id());
+  kill_actor_request.set_force_kill(request.force_kill());
+  kill_actor_request.mutable_death_cause()->CopyFrom(request.death_cause());
+  auto kill_actor_error = std::make_shared<ray::Status>();
+
+  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+  worker->rpc_client()->KillActor(
+      kill_actor_request,
+      [kill_actor_error, timer](const ray::Status &status, const rpc::KillActorReply &) {
+        *kill_actor_error = status;
+        timer->cancel();
+      });
+
+  timer->expires_from_now(boost::posix_time::milliseconds(
+      RayConfig::instance().kill_worker_timeout_milliseconds()));
+  timer->async_wait([this, send_reply_callback, kill_actor_error, worker_id, timer](
+                        const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      send_reply_callback(*kill_actor_error, nullptr, nullptr);
+      return;
+    }
+    auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+    if (current_worker) {
+      // If the worker is still alive, force kill it
+      RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+                    << " did not exit after "
+                    << RayConfig::instance().kill_worker_timeout_milliseconds()
+                    << "ms, force killing with SIGKILL.";
+      DestroyWorker(current_worker,
+                    rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                    "Actor killed by GCS",
+                    /*force=*/true);
+    }
+
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
+}
+
 }  // namespace ray::raylet

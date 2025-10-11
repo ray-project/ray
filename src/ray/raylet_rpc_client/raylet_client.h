@@ -163,6 +163,10 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
+  void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) override;
+
  private:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;

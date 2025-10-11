@@ -281,6 +281,9 @@ class FakeRayletClient : public RayletClientInterface {
   void GetNodeStats(const GetNodeStatsRequest &request,
                     const ClientCallback<GetNodeStatsReply> &callback) override {}
 
+  void KillLocalActor(const KillLocalActorRequest &request,
+                      const ClientCallback<KillLocalActorReply> &callback) override {}
+
   void GlobalGC(const ClientCallback<GlobalGCReply> &callback) override {}
 
   int64_t GetPinsInFlight() const override { return 0; }

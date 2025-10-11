@@ -105,6 +105,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name);
@@ -477,6 +478,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  /// This is used to communicate with raylets where actors are located.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
   /// Event recorder for emitting actor events
