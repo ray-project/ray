@@ -9,15 +9,97 @@ import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import (Any, Callable, Dict, List, Literal, Optional, Set, Tuple,
-                    Union)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pyarrow.fs as pafs
+
+import ray
 from ray.data import Dataset
-from ray.data.datasource import (BaseFileMetadataProvider, FileShuffleConfig,
-                                 Partitioning, PathPartitionFilter)
+from ray.data.datasource import (
+    BaseFileMetadataProvider,
+    FileShuffleConfig,
+    Partitioning,
+    PathPartitionFilter,
+)
+
+if TYPE_CHECKING:
+    import pyarrow
 
 logger = logging.getLogger(__name__)
+
+
+@ray.remote
+def _collect_path_remote(
+    path: str,
+    filesystem: "pafs.FileSystem",
+    detect_lakehouse: bool,
+    ignore_missing: bool,
+    max_files: Optional[int],
+) -> Tuple[List[str], List[Dict[str, str]], Dict[str, str]]:
+    """Ray task to collect files from a single path in parallel.
+
+    Args:
+        path: Path to collect from.
+        filesystem: PyArrow filesystem.
+        detect_lakehouse: Whether to detect lakehouse tables.
+        ignore_missing: Whether to ignore missing paths.
+        max_files: Maximum files to collect.
+
+    Returns:
+        Tuple of (regular_files, lakehouse_tables_dicts, errors).
+    """
+    regular_files = []
+    lakehouse_tables = []
+    errors = {}
+
+    try:
+        file_info = filesystem.get_file_info(path)
+
+        if file_info.type == pafs.FileType.Directory:
+            if detect_lakehouse:
+                detector = LakehouseDetector(filesystem)
+                lakehouse_format = detector.detect(path)
+                if lakehouse_format:
+                    lakehouse_tables.append(
+                        {"path": path, "format": lakehouse_format.value}
+                    )
+                    return regular_files, lakehouse_tables, errors
+
+            selector = pafs.FileSelector(path, recursive=True)
+            files = filesystem.get_file_info(selector)
+
+            for f in files:
+                if f.type == pafs.FileType.File:
+                    regular_files.append(f.path)
+                    if max_files and len(regular_files) >= max_files:
+                        break
+
+        elif file_info.type == pafs.FileType.File:
+            regular_files.append(path)
+
+        elif file_info.type == pafs.FileType.NotFound:
+            if not ignore_missing:
+                errors[path] = "Path not found"
+
+    except PermissionError as e:
+        if not ignore_missing:
+            errors[path] = f"Permission denied: {e}"
+    except Exception as e:
+        if not ignore_missing:
+            errors[path] = str(e)
+
+    return regular_files, lakehouse_tables, errors
 
 
 class DataSource(str, Enum):
@@ -104,12 +186,11 @@ class ReadConfig:
     concurrency: Optional[int] = None
     override_num_blocks: Optional[int] = None
     reader_args: Dict[str, Any] = field(default_factory=dict)
-    # New configuration options
     max_files: Optional[int] = None
     strict: bool = False
     warn_on_binary_fallback: bool = True
     dry_run: bool = False
-    on_mixed_types: str = "union"  # 'union', 'fail', 'warn'
+    on_mixed_types: str = "union"
 
 
 @dataclass
@@ -282,7 +363,6 @@ class LakehouseDetector:
 class FileTypeDetector:
     """Detects file types based on extensions."""
 
-    # Format aliases for user convenience
     FORMAT_ALIASES = {
         "jpeg": "images",
         "jpg": "images",
@@ -300,9 +380,7 @@ class FileTypeDetector:
         "tar": "webdataset",
     }
 
-    # Map extensions to (format_name, reader_function)
     EXTENSION_MAP = {
-        # Parquet (including compressed)
         "parquet": FileFormat.PARQUET,
         "parquet.gz": FileFormat.PARQUET,
         "parquet.gzip": FileFormat.PARQUET,
@@ -310,14 +388,12 @@ class FileTypeDetector:
         "parquet.snappy": FileFormat.PARQUET,
         "parquet.lz4": FileFormat.PARQUET,
         "parquet.zstd": FileFormat.PARQUET,
-        # CSV
         "csv": FileFormat.CSV,
         "csv.gz": FileFormat.CSV,
         "csv.br": FileFormat.CSV,
         "csv.zst": FileFormat.CSV,
         "csv.lz4": FileFormat.CSV,
         "csv.bz2": FileFormat.CSV,
-        # JSON
         "json": FileFormat.JSON,
         "jsonl": FileFormat.JSON,
         "json.gz": FileFormat.JSON,
@@ -330,9 +406,7 @@ class FileTypeDetector:
         "jsonl.lz4": FileFormat.JSON,
         "json.bz2": FileFormat.JSON,
         "jsonl.bz2": FileFormat.JSON,
-        # Text
         "txt": FileFormat.TEXT,
-        # Images
         "png": FileFormat.IMAGES,
         "jpg": FileFormat.IMAGES,
         "jpeg": FileFormat.IMAGES,
@@ -340,7 +414,6 @@ class FileTypeDetector:
         "tiff": FileFormat.IMAGES,
         "bmp": FileFormat.IMAGES,
         "gif": FileFormat.IMAGES,
-        # Audio
         "mp3": FileFormat.AUDIO,
         "wav": FileFormat.AUDIO,
         "aac": FileFormat.AUDIO,
@@ -353,7 +426,6 @@ class FileTypeDetector:
         "pcm": FileFormat.AUDIO,
         "amr": FileFormat.AUDIO,
         "opus": FileFormat.AUDIO,
-        # Video
         "mp4": FileFormat.VIDEO,
         "mkv": FileFormat.VIDEO,
         "mov": FileFormat.VIDEO,
@@ -365,22 +437,16 @@ class FileTypeDetector:
         "3gp": FileFormat.VIDEO,
         "mpeg": FileFormat.VIDEO,
         "mpg": FileFormat.VIDEO,
-        # NumPy
         "npy": FileFormat.NUMPY,
-        # Avro (including compressed)
         "avro": FileFormat.AVRO,
         "avro.gz": FileFormat.AVRO,
         "avro.gzip": FileFormat.AVRO,
         "avro.bz2": FileFormat.AVRO,
         "avro.snappy": FileFormat.AVRO,
-        # TFRecords
         "tfrecords": FileFormat.TFRECORDS,
-        # HTML
         "html": FileFormat.HTML,
         "htm": FileFormat.HTML,
-        # WebDataset
         "tar": FileFormat.WEBDATASET,
-        # Lance
         "lance": FileFormat.LANCE,
     }
 
@@ -492,6 +558,9 @@ class FileTypeDetector:
 class PathCollector:
     """Collects files from paths, handling directories and lakehouse detection."""
 
+    PARALLEL_THRESHOLD = 3
+    CLOUD_SCHEMES = {"s3", "s3a", "s3n", "gs", "gcs", "az", "abfs", "abfss", "wasb", "wasbs"}
+
     def __init__(
         self,
         filesystem: "pafs.FileSystem",
@@ -507,7 +576,7 @@ class PathCollector:
     def collect(
         self, paths: List[str], detect_lakehouse: bool = True
     ) -> DetectionResult:
-        """Collect files from paths.
+        """Collect files from paths using adaptive parallelism.
 
         Args:
             paths: List of paths to collect from.
@@ -519,13 +588,135 @@ class PathCollector:
         Raises:
             ValueError: If max_files exceeded or path traversal detected.
         """
+        if self._should_parallelize(paths):
+            return self._collect_parallel(paths, detect_lakehouse)
+
+        return self._collect_sequential(paths, detect_lakehouse)
+
+    def _should_parallelize(self, paths: List[str]) -> bool:
+        """Determine if parallel collection would be beneficial.
+
+        Args:
+            paths: List of paths to evaluate.
+
+        Returns:
+            True if parallelization should be used, False otherwise.
+        """
+        if len(paths) < self.PARALLEL_THRESHOLD:
+            return False
+
+        is_cloud = any(self._is_cloud_path(path) for path in paths)
+
+        should_use = is_cloud or len(paths) >= 5
+
+        if should_use:
+            logger.debug(
+                f"Using parallel path collection for {len(paths)} paths "
+                f"(cloud_storage={is_cloud})"
+            )
+
+        return should_use
+
+    def _is_cloud_path(self, path: str) -> bool:
+        """Check if a path is from cloud storage."""
+        if "://" in path:
+            scheme = path.split("://")[0].lower()
+            return scheme in self.CLOUD_SCHEMES
+        return False
+
+    def _collect_parallel(
+        self, paths: List[str], detect_lakehouse: bool = True
+    ) -> DetectionResult:
+        """Collect files from paths using Ray tasks for parallelism.
+
+        Args:
+            paths: List of paths to collect from.
+            detect_lakehouse: Whether to detect lakehouse tables.
+
+        Returns:
+            DetectionResult with regular files and lakehouse tables.
+        """
+        result = DetectionResult()
+        result.detected_sources = SourceDetector.detect_from_paths(paths)
+
+        if result.detected_sources:
+            source_summary = ", ".join(
+                f"{source.value}={count}"
+                for source, count in sorted(result.detected_sources.items())
+            )
+            logger.info(f"Detected data sources: {source_summary}")
+
+        try:
+            available_cpus = int(ray.cluster_resources().get("CPU", 1))
+            max_tasks = min(len(paths), available_cpus * 2, 50)
+
+            logger.debug(
+                f"Launching {min(len(paths), max_tasks)} Ray tasks "
+                f"for parallel path collection"
+            )
+
+            fs_ref = ray.put(self.filesystem)
+
+            futures = []
+            for path in paths:
+                self._validate_path_security(path)
+                future = _collect_path_remote.remote(
+                    path=path,
+                    filesystem=fs_ref,
+                    detect_lakehouse=detect_lakehouse,
+                    ignore_missing=self.ignore_missing,
+                    max_files=self.max_files,
+                )
+                futures.append((path, future))
+
+            results = ray.get([f for _, f in futures])
+
+            all_errors = {}
+            for (path, _), (regular_files, lakehouse_tables_dicts, errors) in zip(
+                futures, results
+            ):
+                result.regular_files.extend(regular_files)
+                all_errors.update(errors)
+
+                for table_dict in lakehouse_tables_dicts:
+                    result.lakehouse_tables.append(
+                        LakehouseTable(
+                            path=table_dict["path"],
+                            format=LakehouseFormat(table_dict["format"]),
+                        )
+                    )
+
+            if all_errors:
+                error_msg = "\n".join(f"  {p}: {e}" for p, e in all_errors.items())
+                if not self.ignore_missing:
+                    raise ValueError(f"Errors during path collection:\n{error_msg}")
+                logger.warning(f"Errors during path collection:\n{error_msg}")
+
+        except Exception as e:
+            logger.warning(
+                f"Parallel collection failed, falling back to sequential: {e}"
+            )
+            return self._collect_sequential(paths, detect_lakehouse)
+
+        return result
+
+    def _collect_sequential(
+        self, paths: List[str], detect_lakehouse: bool = True
+    ) -> DetectionResult:
+        """Collect files from paths sequentially (original implementation).
+
+        Args:
+            paths: List of paths to collect from.
+            detect_lakehouse: Whether to detect lakehouse tables.
+
+        Returns:
+            DetectionResult with regular files and lakehouse tables.
+        """
         result = DetectionResult()
         self._file_count = 0
 
-        # Detect sources from input paths
         result.detected_sources = SourceDetector.detect_from_paths(paths)
 
-        # Log detected sources
         if result.detected_sources:
             source_summary = ", ".join(
                 f"{source.value}={count}"
@@ -535,10 +726,8 @@ class PathCollector:
 
         for path in paths:
             try:
-                # Validate path security (SEC-1)
                 self._validate_path_security(path)
 
-                # Check max_files limit (ERR-4)
                 if self.max_files and self._file_count >= self.max_files:
                     logger.warning(
                         f"Reached max_files limit of {self.max_files}. "
@@ -557,7 +746,6 @@ class PathCollector:
                     self._file_count += 1
                 elif file_info.type == pafs.FileType.NotFound:
                     if not self.ignore_missing:
-                        # ERR-1: Add path suggestions
                         suggestion = self._suggest_similar_path(path)
                         if suggestion:
                             raise FileNotFoundError(
@@ -565,7 +753,6 @@ class PathCollector:
                             )
                         raise FileNotFoundError(f"Path not found: '{path}'")
                 else:
-                    # EDGE-2: Handle symlinks and other types explicitly
                     logger.warning(
                         f"Skipping non-file, non-directory path: {path} (type: {file_info.type})"
                     )
@@ -575,7 +762,6 @@ class PathCollector:
                     raise
                 logger.warning(f"Path not found (ignoring): {path}")
             except PermissionError as e:
-                # TEST-2: Better error for permission issues
                 logger.error(f"Permission denied accessing '{path}': {e}")
                 if not self.ignore_missing:
                     raise ValueError(f"Permission denied: {path}") from e
@@ -587,7 +773,7 @@ class PathCollector:
         return result
 
     def _validate_path_security(self, path: str) -> None:
-        """Validate path for security concerns (SEC-1).
+        """Validate path for security concerns.
 
         Args:
             path: Path to validate.
@@ -610,7 +796,7 @@ class PathCollector:
             )
 
     def _suggest_similar_path(self, path: str) -> Optional[str]:
-        """Suggest a similar path if the given path doesn't exist (ERR-1).
+        """Suggest a similar path if the given path doesn't exist.
 
         Args:
             path: Path that doesn't exist.
@@ -654,7 +840,6 @@ class PathCollector:
         self, path: str, detect_lakehouse: bool, result: DetectionResult
     ):
         """Handle a directory path."""
-        # FUNC-1: Check for lakehouse format (now works for all paths, not just single path)
         if detect_lakehouse:
             lakehouse_format = self.lakehouse_detector.detect(path)
             if lakehouse_format:
@@ -672,7 +857,6 @@ class PathCollector:
             files_added = 0
             for f in files:
                 if f.type == pafs.FileType.File:
-                    # Check max_files limit (ERR-4)
                     if self.max_files and self._file_count >= self.max_files:
                         logger.warning(
                             f"Reached max_files limit of {self.max_files} while listing directory '{path}'. "
@@ -685,12 +869,10 @@ class PathCollector:
                     self._file_count += 1
                     files_added += 1
                 elif f.type == pafs.FileType.NotFound:
-                    # EDGE-2: Handle symlinks explicitly
                     logger.debug(
                         f"Skipping broken symlink or inaccessible file: {f.path}"
                     )
 
-            # EDGE-1: Better error for empty directories
             if files_added == 0 and not result.lakehouse_tables:
                 logger.warning(
                     f"Directory '{path}' is empty or contains no readable files. "
@@ -698,7 +880,6 @@ class PathCollector:
                 )
 
         except PermissionError as e:
-            # TEST-2: Better error for permission issues
             logger.error(f"Permission denied accessing directory '{path}': {e}")
             if not self.ignore_missing:
                 raise ValueError(
@@ -714,27 +895,42 @@ class ReaderRegistry:
     """Registry of format readers."""
 
     def __init__(self):
-        # PERF-5: Lazy import readers to avoid circular imports and reduce startup time
         self._format_readers = None
         self._lakehouse_readers = None
 
     def _ensure_readers_loaded(self):
-        """Lazy load readers on first use (PERF-5)."""
+        """Lazy load readers on first use."""
         if self._format_readers is not None:
             return
 
-        # Import readers here to avoid circular imports
-        from ray.data.read_api import (read_audio, read_avro, read_bigquery,
-                                       read_binary_files, read_clickhouse,
-                                       read_csv, read_databricks_tables,
-                                       read_delta, read_delta_sharing_tables,
-                                       read_html, read_hudi, read_iceberg,
-                                       read_images, read_json, read_lance,
-                                       read_mongo, read_numpy, read_parquet,
-                                       read_parquet_bulk, read_snowflake,
-                                       read_sql, read_text, read_tfrecords,
-                                       read_unity_catalog, read_videos,
-                                       read_webdataset)
+        from ray.data.read_api import (
+            read_audio,
+            read_avro,
+            read_bigquery,
+            read_binary_files,
+            read_clickhouse,
+            read_csv,
+            read_databricks_tables,
+            read_delta,
+            read_delta_sharing_tables,
+            read_html,
+            read_hudi,
+            read_iceberg,
+            read_images,
+            read_json,
+            read_lance,
+            read_mongo,
+            read_numpy,
+            read_parquet,
+            read_parquet_bulk,
+            read_snowflake,
+            read_sql,
+            read_text,
+            read_tfrecords,
+            read_unity_catalog,
+            read_videos,
+            read_webdataset,
+        )
 
         self._format_readers = {
             FileFormat.PARQUET: read_parquet,
@@ -753,7 +949,6 @@ class ReaderRegistry:
             FileFormat.LANCE: read_lance,
         }
 
-        # Map format names to reader functions (includes all 27 readers)
         self._readers = {
             # File-based formats
             "parquet": read_parquet,
@@ -783,7 +978,6 @@ class ReaderRegistry:
             "mongodb": read_mongo,  # Alias
             "clickhouse": read_clickhouse,
             "snowflake": read_snowflake,
-            # Databricks / Unity Catalog
             "databricks": read_databricks_tables,
             "unity_catalog": read_unity_catalog,
         }
@@ -912,10 +1106,8 @@ class DatasetReader:
         reader_sig = inspect.signature(reader_func)
         reader_params = set(reader_sig.parameters.keys())
 
-        # Build kwargs
         kwargs = {}
 
-        # Handle path parameter (different readers use different names)
         if is_lakehouse:
             if "path" in reader_params:
                 kwargs["path"] = paths
@@ -924,13 +1116,11 @@ class DatasetReader:
             elif "uri" in reader_params:
                 kwargs["uri"] = paths
         else:
-            # File-based readers expect a path or paths parameter
             if "paths" in reader_params:
                 kwargs["paths"] = paths
             elif "path" in reader_params:
                 kwargs["path"] = paths
 
-        # Add common arguments if supported
         common_args = {
             "filesystem": self.config.filesystem,
             "parallelism": self.config.parallelism,
@@ -947,19 +1137,15 @@ class DatasetReader:
             "override_num_blocks": self.config.override_num_blocks,
         }
 
-        # Add optional arguments
         if self.config.arrow_open_file_args is not None:
             common_args["arrow_open_file_args"] = self.config.arrow_open_file_args
         if self.config.partitioning is not None:
             common_args["partitioning"] = self.config.partitioning
 
-        # Filter to supported parameters
         for key, value in common_args.items():
             if key in reader_params and value is not None:
                 kwargs[key] = value
 
-        # Add format-specific args from **reader_args
-        # This allows users to pass any reader-specific parameters
         kwargs.update(self.config.reader_args)
 
         try:
@@ -1006,7 +1192,6 @@ def read_impl(
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    # New parameters
     max_files: Optional[int] = None,
     strict: bool = False,
     warn_on_binary_fallback: bool = True,
@@ -1021,17 +1206,14 @@ def read_impl(
 
     See ray.data.read() for full documentation of parameters.
     """
-    # Normalize paths to list
     if isinstance(paths, str):
         paths = [paths]
 
-    # Resolve filesystem
     if filesystem is None:
         from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
         _, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    # Create configuration
     config = ReadConfig(
         paths=paths,
         format=format,
@@ -1053,13 +1235,10 @@ def read_impl(
         reader_args=reader_args,
     )
 
-    # Initialize components
     registry = ReaderRegistry()
     collector = PathCollector(filesystem, ignore_missing_paths, max_files=max_files)
     reader = DatasetReader(config, registry)
 
-    # Early format hint handling - if format is explicitly provided,
-    # skip detection and use that reader directly
     if format is not None:
         detection_result = collector.collect(paths, detect_lakehouse=False)
 
@@ -1080,8 +1259,6 @@ def read_impl(
             is_lakehouse=False,
         )
 
-    # FUNC-1: Collect files and detect lakehouse tables (works for all paths, not just single)
-    # Always detect lakehouse tables unless format hint is provided
     detection_result = collector.collect(paths, detect_lakehouse=True)
 
     # Log source information for single-file reads
@@ -1090,18 +1267,15 @@ def read_impl(
         if sources:
             logger.info(f"Reading from {sources[0].value} source: {paths[0]}")
 
-    # Handle case where all paths are lakehouse tables
     if detection_result.lakehouse_tables and not detection_result.regular_files:
         return reader.read_lakehouse_tables(detection_result.lakehouse_tables)
 
-    # Must have some files to process
     if not detection_result.regular_files and not detection_result.lakehouse_tables:
         raise ValueError(
             f"No files found in paths: {paths}. "
             "Set ignore_missing_paths=True to allow empty reads."
         )
 
-    # Detect file types and group them
     type_detector = FileTypeDetector()
     files_by_type = type_detector.group_files_by_type(
         detection_result.regular_files,
@@ -1109,7 +1283,6 @@ def read_impl(
         warn_on_binary=warn_on_binary_fallback,
     )
 
-    # API-3: Handle dry-run mode
     if dry_run:
         logger.info(
             "Dry-run mode: Returning detection metadata instead of reading data"
@@ -1130,10 +1303,8 @@ def read_impl(
             },
         }
 
-    # FUNC-5: Handle mixed lakehouse and file inputs
     datasets = []
 
-    # Read lakehouse tables first
     if detection_result.lakehouse_tables:
         logger.info(
             f"Reading {len(detection_result.lakehouse_tables)} lakehouse tables"
@@ -1141,7 +1312,6 @@ def read_impl(
         lakehouse_ds = reader.read_lakehouse_tables(detection_result.lakehouse_tables)
         datasets.append(lakehouse_ds)
 
-    # Read regular files
     if files_by_type:
         # Check on_mixed_types setting
         if len(files_by_type) > 1:
@@ -1151,26 +1321,26 @@ def read_impl(
             if on_mixed_types == "fail":
                 raise ValueError(
                     f"Multiple file types detected: {format_summary}. "
-                    f"Set on_mixed_types='union' to combine them or specify format parameter."
+                    "Set on_mixed_types='union' to combine them or specify format parameter."
                 )
             elif on_mixed_types == "warn":
                 logger.warning(
                     f"Multiple file types detected: {format_summary}. "
-                    f"They will be combined using union()."
+                    "They will be combined using union()."
                 )
 
         file_ds = reader.read_file_groups(files_by_type)
         datasets.append(file_ds)
 
-    # Combine all datasets
     if not datasets:
         raise ValueError(f"No data to read from paths: {paths}")
 
     return reader._combine_datasets(datasets)
 
 
-# Expose detector for external use if needed
-def _detect_lakehouse_format(path: str, filesystem: "pafs.FileSystem") -> Optional[str]:
+def _detect_lakehouse_format(
+    path: str, filesystem: "pyarrow.fs.FileSystem"
+) -> Optional[str]:
     """Detect if a path is a Delta Lake, Hudi, or Iceberg table.
 
     Args:
