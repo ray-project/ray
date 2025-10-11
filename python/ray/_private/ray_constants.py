@@ -80,26 +80,30 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
 
 # The following values are only used when resource isolation is enabled
 # ===== The default number of bytes to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
+# The smallest number of bytes that ray system processes can be guaranteed.
+DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MIN_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+)
+DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MAX_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
 )
 # The default proportion available memory to reserve for ray system processes
 DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
     "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
 )
-# The default number of cpu cores to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_CPU_CORES = env_float(
+# The default minimum number of cpu cores to reserve for ray system processes.
+DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES = env_float(
     "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
+)
+# The default minimum number of cpu cores to reserve for ray system processes.
+DEFAULT_MAX_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 3.0
 )
 # The default proportion of cpu cores to reserve for ray system processes
 DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
     "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
 )
-# The smallest number of cores that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_CPU_CORES = 0.5
-# The smallest number of bytes that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES = (100) * (10**6)
-# The default path for cgroupv2
+# The default path for cgroupv2.
 DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
 
 # The smallest cap on the memory used by the object store that we allow.

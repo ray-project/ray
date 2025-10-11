@@ -150,9 +150,17 @@ class ResourceIsolationConfig:
     def _validate_and_get_system_reserved_cpu(
         system_reserved_cpu: Optional[float],
     ) -> int:
-        """If system_reserved_cpu is not specified, returns the default value. Otherwise,
-        checks the type, makes sure that the value is in range, and converts it into cpu.weights
-        for cgroupv2. See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights for more information.
+        """If system_reserved_cpu is specified, validates it, otherwise returns the default value.
+
+        Validation entails checking the type, ensuring that the value is in range, and converts it
+        into cpu.weights for cgroupv2. See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights
+        for more information.
+
+        If system_reserved_cpu is not specified, returns a default value between
+        [DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES, DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES].
+
+        # TODO(54703): The errors from this method are user-facing and thus need
+        to be linked the user-facing documentation once it's available.
 
         Args:
             system_reserved_cpu: The amount of cores reserved for ray system
@@ -160,15 +168,29 @@ class ResourceIsolationConfig:
                 and < the total number of cores available.
 
         Raises:
-            ValueError: If system_reserved_cpu is specified, but invalid.
+            ValueError: If system_reserved_cpu is specified, but invalid or if the system
+                does not have enough available cpus.
+
         """
         available_system_cpus = utils.get_num_cpus()
 
+        if available_system_cpus < ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES:
+            raise ValueError(
+                f"The available number of cpu cores on this system {available_system_cpus} is less than "
+                f"the minimum amount that is required for ray's system processes. "
+                f"Pick a number of cpu cores greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES}"
+            )
+
         if not system_reserved_cpu:
-            system_reserved_cpu = min(
-                ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES,
-                ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION
-                * available_system_cpus,
+            system_reserved_cpu = int(
+                min(
+                    max(
+                        ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES,
+                        ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION
+                        * available_system_cpus,
+                    ),
+                    ray_constants.DEFAULT_MAX_SYSTEM_RESERVED_CPU_PROPORTION,
+                )
             )
 
         if not (
@@ -183,12 +205,12 @@ class ResourceIsolationConfig:
 
         system_reserved_cpu = float(system_reserved_cpu)
 
-        if system_reserved_cpu < ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES:
+        if system_reserved_cpu < ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES:
             raise ValueError(
                 f"The requested system_reserved_cpu={system_reserved_cpu} is less than "
                 f"the minimum number of cpus that can be used for resource isolation. "
                 "Pick a number of cpu cores to reserve for ray system processes "
-                f"greater than or equal to {ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES}"
+                f"greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES}"
             )
 
         if system_reserved_cpu > available_system_cpus:
@@ -200,8 +222,8 @@ class ResourceIsolationConfig:
 
         # Converting the number of cores the user defined into cpu.weights
         # This assumes that ray is allowed to use all available CPU
-        # cores and distribute them between system processes and
-        # application processes
+        # cores and distribute them between system, worker and
+        # user processes
         return int(
             (system_reserved_cpu / float(available_system_cpus))
             * _CGROUP_CPU_MAX_WEIGHT
@@ -227,28 +249,44 @@ class ResourceIsolationConfig:
         """
         available_system_memory = ray._common.utils.get_system_memory()
 
+        if (
+            available_system_memory
+            < ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES
+        ):
+            raise ValueError(
+                f"The available memory on this system {available_system_memory} is less than "
+                f"the minimum amount that is required for ray's system processes. "
+                f"Pick a number of bytes greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES}"
+            )
+
         if not system_reserved_memory:
             system_reserved_memory = int(
                 min(
-                    ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES,
-                    ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
-                    * available_system_memory,
+                    max(
+                        ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES,
+                        ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
+                        * available_system_memory,
+                    ),
+                    ray_constants.DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES,
                 )
             )
 
         if not isinstance(system_reserved_memory, int):
             raise ValueError(
-                f"Invalid value={system_reserved_memory} for system_reserved_memory. "
+                f"Invalid value {system_reserved_memory} for system_reserved_memory. "
                 "Use an integer to represent the number bytes that need to be reserved for "
                 "ray system processes to enable resource isolation."
             )
 
-        if system_reserved_memory < ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES:
+        if (
+            system_reserved_memory
+            < ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES
+        ):
             raise ValueError(
-                f"The requested system_reserved_memory={system_reserved_memory} is less than "
+                f"The requested system_reserved_memory {system_reserved_memory} is less than "
                 f"the minimum number of bytes that can be used for resource isolation. "
                 "Pick a number of bytes to reserve for ray system processes "
-                f"greater than or equal to {ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES}"
+                f"greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES}"
             )
 
         if system_reserved_memory > available_system_memory:

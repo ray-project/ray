@@ -46,8 +46,8 @@ def test_enabled_invalid_reserved_memory_type():
 
 
 def test_enabled_default_config_proportions(monkeypatch):
-    object_store_memory = 10 * 10**9
-    total_system_memory = 128 * 10**9
+    object_store_memory = 10 * (1024**3)
+    total_system_memory = 128 * (1024**3)
     total_system_cpu = 32
     monkeypatch.setattr(
         "ray._common.utils.get_system_memory",
@@ -56,8 +56,8 @@ def test_enabled_default_config_proportions(monkeypatch):
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(enable_resource_isolation=True)
     resource_isolation_config.add_object_store_memory(object_store_memory)
-    # expect the default to be the min(128 * 0.10, 25G) + object_store_memory
-    expected_reserved_memory = 22800000000
+    # Expect the default to be min(max(128G * 0.10, 0.5G), 10G) + object_store_memory
+    expected_reserved_memory = 21474836480
     # expect the default to be the min(32 * 0.05, 1)/32 * 10000
     expected_reserved_cpu_weight = 312
     assert resource_isolation_config.system_reserved_memory == expected_reserved_memory
@@ -68,8 +68,8 @@ def test_enabled_default_config_proportions(monkeypatch):
 
 
 def test_enabled_default_config_values(monkeypatch):
-    object_store_memory = 10 * 10**9
-    total_system_memory = 500 * 10**9
+    object_store_memory = 10 * (1024**3)
+    total_system_memory = 500 * (1024**3)
     total_system_cpu = 64
     monkeypatch.setattr(
         "ray._common.utils.get_system_memory",
@@ -78,10 +78,10 @@ def test_enabled_default_config_values(monkeypatch):
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     resource_isolation_config = ResourceIsolationConfig(enable_resource_isolation=True)
     resource_isolation_config.add_object_store_memory(object_store_memory)
-    # expect the default to be the min(500 * 0.10, 25G) + object_store_memory
-    expected_reserved_memory = 35000000000
-    # expect the default to be the min(64 * 0.05, 1)/64 * 10000
-    expected_reserved_cpu_weight = 156
+    # Expect the default to be min(max(500G * 0.10, 0.5G), 10G) + object_store_memory.
+    expected_reserved_memory = 21474836480
+    # Expect the default to be the min(max(64 * 0.05, 1), 3)/64 * 10000
+    expected_reserved_cpu_weight = 468
     assert resource_isolation_config.system_reserved_memory == expected_reserved_memory
     assert (
         resource_isolation_config.system_reserved_cpu_weight
@@ -103,9 +103,9 @@ def test_enabled_reserved_cpu_default_memory(monkeypatch):
         enable_resource_isolation=True, system_reserved_cpu=system_reserved_cpu
     )
     resource_isolation_config.add_object_store_memory(object_store_memory)
-    # expect the default to be the min(128 * 0.10, 25G) + object_store_memory
-    expected_reserved_memory = 22800000000
-    # expect the default to be the 5/32 * 10000
+    # Expect the default to be the min(max(128G * 0.10, 0.5G), 10G) + object_store_memory.
+    expected_reserved_memory = 20737418240
+    # Expect the default to be the 5/32 * 10000.
     expected_reserved_cpu_weight = 1562
     assert resource_isolation_config.system_reserved_memory == expected_reserved_memory
     assert (
