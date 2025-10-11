@@ -12,7 +12,7 @@ import pytest
 import ray
 from ray._common.network_utils import build_address
 from ray._common.test_utils import (
-    MockTimer,
+    FakeTimer,
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
@@ -370,27 +370,23 @@ async def test_pending_job_timeout_during_new_head_creation(
     gcs_client = ray._private.worker.global_worker.gcs_client
 
     # Submit a job with unsatisfied resource.
-    start_timer = MockTimer()
-    with monkeypatch.context() as m:
-        m.setattr(time, "time", start_timer.time)
+    start_timer = FakeTimer()
 
-        job_manager = JobManager(gcs_client, tmp_path)
-        job_id = "test_job_1"
-        await job_manager.submit_job(
-            submission_id=job_id,
-            entrypoint="echo 'hello world'",
-            entrypoint_num_cpus=2,
-        )
-        await asyncio.sleep(0.1)
+    job_manager = JobManager(gcs_client, tmp_path, timer=start_timer)
+    job_id = "test_job_1"
+    await job_manager.submit_job(
+        submission_id=job_id,
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+    await asyncio.sleep(0.1)
 
     # New head node created.
     timeout = DEFAULT_JOB_START_TIMEOUT_SECONDS
-    timeout_timer = MockTimer(start_timer.time() + timeout + 1)
-    with monkeypatch.context() as m:
-        m.setattr(time, "time", timeout_timer.time)
+    start_timer.advance(timeout + 1)
 
-        new_job_manager = JobManager(gcs_client, tmp_path)
-        await asyncio.sleep(0.1)
+    new_job_manager = JobManager(gcs_client, tmp_path, timer=start_timer)
+    await asyncio.sleep(0.1)
 
     # Wait for the job to timeout.
     await async_wait_for_condition(

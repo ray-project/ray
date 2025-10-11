@@ -250,7 +250,7 @@ def check_library_usage_telemetry(
         ), extra_usage_tags
 
 
-class MockTimer:
+class FakeTimer:
     def __init__(self, start_time: Optional[float] = None):
         self._lock = threading.Lock()
         self.reset(start_time=start_time)

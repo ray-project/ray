@@ -35,6 +35,7 @@ from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
+from ray.serve._private.utils import Timer
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -70,7 +71,7 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_client: GcsClient, logs_dir: str):
+    def __init__(self, gcs_client: GcsClient, logs_dir: str, timer: Timer = None):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
@@ -78,6 +79,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self._timer = timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -185,7 +187,7 @@ class JobManager:
                             job_id, timeout=None
                         )
 
-                    if time.time() - job_info.start_time / 1000 > timeout:
+                    if self._timer.time() - job_info.start_time / 1000 > timeout:
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
