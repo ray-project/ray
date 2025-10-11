@@ -247,5 +247,50 @@ def test_detached_setsido_escape_with_pg_cleanup(enable_pg_cleanup, shutdown_onl
     assert psutil.pid_exists(child_pid)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Orphan process killing only works on Linux and macOS.",
+)
+def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_only):
+    """
+    Test that a subprocess spawned by another subprocess is cleaned up when the actor
+    is killed.
+    """
+    ray.init()
+
+    @ray.remote
+    class NestedSpawner:
+        def spawn_nested(self):
+            # Create a subprocess that spawns another subprocess.
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "import subprocess; "
+                    "p = subprocess.Popen(['sleep', '150']); "
+                    "print(p.pid); "
+                    "import time; time.sleep(100)",
+                ],
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            return proc.pid
+
+    actor = NestedSpawner.remote()
+    child_pid = ray.get(actor.spawn_nested.remote())
+
+    grandchild_pid = psutil.Process(child_pid).children()[0].pid
+
+    # Both child and grandchild should be alive while the actor is alive.
+    assert psutil.pid_exists(child_pid)
+    assert psutil.pid_exists(grandchild_pid)
+
+    del actor
+    wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
+    wait_for_condition(
+        lambda: not psutil.pid_exists(grandchild_pid), retry_interval_ms=100
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
