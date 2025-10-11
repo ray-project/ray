@@ -137,7 +137,6 @@ class TestAutoscalingMetrics:
 
         @serve.deployment(
             autoscaling_config={
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
@@ -197,7 +196,6 @@ class TestAutoscalingMetrics:
         config = {
             "autoscaling_config": {
                 "target_ongoing_requests": 10,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "upscale_delay_s": 0,
@@ -273,7 +271,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -352,7 +349,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -410,7 +406,6 @@ def test_e2e_scale_up_down_basic(
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": 3,
             "look_back_period_s": 0.2,
@@ -463,7 +458,6 @@ def test_e2e_scale_up_down_with_0_replica(
     controller = client._controller
 
     autoscaling_config = {
-        "metrics_interval_s": 0.1,
         "min_replicas": 0,
         "max_replicas": 2,
         "look_back_period_s": 0.2,
@@ -592,7 +586,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
             "look_back_period_s": 0.5,
@@ -658,7 +651,6 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 20,
             "look_back_period_s": 0.2,
@@ -715,7 +707,6 @@ def test_downscaling_with_fractional_scaling_factor(
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 5,
                     "initial_replicas": initial_replicas,
@@ -777,7 +768,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -866,7 +856,6 @@ def test_e2e_raise_min_replicas(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -963,7 +952,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=2,
             downscale_delay_s=600,
             upscale_delay_s=0,
-            metrics_interval_s=1,
             look_back_period_s=1,
         ),
     )
@@ -1027,7 +1015,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=5,
             downscale_delay_s=600,
             upscale_delay_s=600,
-            metrics_interval_s=1,
             look_back_period_s=1,
         )
     )
@@ -1152,7 +1139,6 @@ def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
             max_replicas=3,
             upscale_delay_s=0.5,
             downscale_delay_s=0.5,
-            metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
         max_ongoing_requests=1,

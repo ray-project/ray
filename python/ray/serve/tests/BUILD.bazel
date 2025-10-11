@@ -155,6 +155,12 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "large",
+    env = {
+        # Speed up Serve replica and handle autoscaling metrics pushes,
+        # so that we can test autoscaling more quickly.
+        "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+    },
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -360,6 +366,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
         "env": {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
             # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_disab",
@@ -368,6 +375,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
         "env": {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
             # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_agg_at_controller",
@@ -377,6 +385,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
             # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
         "name_suffix": "_metr_agg_at_controller_and_replicas",
