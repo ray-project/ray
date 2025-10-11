@@ -170,7 +170,7 @@ class HTMLDatasource(FileBasedDatasource):
         soup = None
         parser = None
         parse_error = None
-        
+
         # First try lxml parser (faster)
         try:
             soup = BeautifulSoup(html_content, "lxml")
