@@ -106,7 +106,7 @@ def make_ref_bundle(x):
     "verbose_progress",
     [True, False],
 )
-def test_build_streaming_topology(verbose_progress):
+def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -134,7 +134,7 @@ def test_build_streaming_topology(verbose_progress):
     assert list(topo) == [o1, o2, o3]
 
 
-def test_disallow_non_unique_operators():
+def test_disallow_non_unique_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -164,7 +164,7 @@ def sleep_task_ref():
     ray.cancel(sleep_task_ref, force=True)
 
 
-def test_process_completed_tasks(sleep_task_ref):
+def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -230,7 +230,7 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.mark_execution_finished.assert_called_once()
 
 
-def test_update_operator_states_drains_upstream():
+def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     """Test that update_operator_states drains upstream output queues when
     execution_finished() is called on a downstream operator.
     """
@@ -275,7 +275,7 @@ def test_update_operator_states_drains_upstream():
     )
 
 
-def test_get_eligible_operators_to_run():
+def test_get_eligible_operators_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -358,7 +358,7 @@ def test_get_eligible_operators_to_run():
             assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
-def test_rank_operators():
+def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -392,7 +392,7 @@ def test_rank_operators():
     assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
 
 
-def test_select_ops_to_run():
+def test_select_ops_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
 
     inputs = make_ref_bundles([[x] for x in range(1)])
@@ -452,7 +452,7 @@ def test_select_ops_to_run():
         assert selected is o1
 
 
-def test_dispatch_next_task():
+def test_dispatch_next_task(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o1_state = OpState(o1, [])
@@ -478,7 +478,7 @@ def test_dispatch_next_task():
     o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
-def test_debug_dump_topology():
+def test_debug_dump_topology(ray_start_regular_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -504,7 +504,7 @@ def test_debug_dump_topology():
     _debug_dump_topology(topo, resource_manager)
 
 
-def test_validate_dag():
+def test_validate_dag(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -531,7 +531,7 @@ def test_validate_dag():
     "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
     return_value=1,
 )
-def test_configure_output_locality(mock_scale_up):
+def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -629,7 +629,7 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_streaming_exec_schedule_s():
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
     ds = ray.data.range(1)
     for _ in ds.iter_batches():
         continue
@@ -638,7 +638,7 @@ def test_streaming_exec_schedule_s():
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks():
+def test_execution_callbacks(ray_start_regular_shared):
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
