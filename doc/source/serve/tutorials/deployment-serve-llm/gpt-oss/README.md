@@ -103,11 +103,11 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ### Dependencies
 
-gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.1`.
+gpt-oss integration is available starting from `ray==2.50.0` and `vllm==0.10.2`.
 
 ```bash
-pip install "ray[serve,llm]>=2.49.0"
-pip install "vllm==0.10.1"
+pip install "ray[serve,llm]==2.50.0"
+pip install "vllm==0.10.2"
 ```
 
 ---
@@ -211,7 +211,7 @@ FROM anyscale/ray:2.49.0-slim-py312-cu128
 RUN sudo apt-get update && \
     sudo apt-get install -y --no-install-recommends build-essential
 
-RUN pip install vllm==0.10.1
+RUN pip install vllm==0.10.2
 ```
 
 Create your Anyscale service configuration in a new `service.yaml` file and reference the Dockerfile with `containerfile`:
