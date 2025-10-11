@@ -36,7 +36,7 @@ The implementation avoids driver OOM by materializing the small dataset only in 
 processes, not on the driver. ObjectRefs are stored and materialized lazily.
 """
 
-from typing import Any, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
 from ray.data._internal.logical.operators.join_operator import JoinType
