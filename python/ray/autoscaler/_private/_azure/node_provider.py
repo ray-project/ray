@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -17,6 +18,8 @@ from azure.mgmt.resource.resources.models import DeploymentMode
 
 from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
+    _delete_role_assignments_for_principal,
+    _generate_arm_guid,
     bootstrap_azure,
     get_azure_sdk_function,
 )
@@ -665,6 +668,233 @@ class AzureNodeProvider(NodeProvider):
             and (time.monotonic() - st) < AUTOSCALER_NODE_TERMINATE_WAIT_S
         ):
             time.sleep(0.1)
+
+    def cleanup_cluster_resources(self):
+        """Delete shared cluster infrastructure (MSI, NSG, Subnet, VNet).
+
+        This should only be called after all cluster nodes have been terminated.
+        These resources are referenced by their Azure resource IDs in provider_config.
+
+        Note: Includes retry logic with exponential backoff to handle cases where
+        NICs are still being deleted asynchronously.
+        """
+        resource_group = self.provider_config["resource_group"]
+        msi_principal_id: Optional[str] = None
+
+        # Extract resource names from Azure resource IDs
+        # Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/{provider}/{type}/{name}
+        def get_resource_name_from_id(resource_id):
+            if resource_id:
+                return resource_id.split("/")[-1]
+            return None
+
+        # Helper function to retry deletion with exponential backoff
+        def retry_delete(delete_fn, max_retries=5, initial_delay=2):
+            """Retry a delete operation with exponential backoff."""
+            delay = initial_delay
+            for attempt in range(max_retries):
+                try:
+                    return delete_fn()
+                except Exception as e:
+                    error_msg = str(e)
+                    # Check if error is due to resources still being deleted
+                    if "InUse" in error_msg and attempt < max_retries - 1:
+                        logger.info(
+                            f"Resource still in use, retrying in {delay}s (attempt {attempt + 1}/{max_retries})..."
+                        )
+                        time.sleep(delay)
+                        delay *= 2  # Exponential backoff
+                    else:
+                        raise
+
+        # Delete MSI (Managed Service Identity)
+        msi_id = self.provider_config.get("msi")
+        if msi_id:
+            msi_name = get_resource_name_from_id(msi_id)
+            if msi_name:
+                try:
+                    get_identity = get_azure_sdk_function(
+                        client=self.resource_client.resources,
+                        function_name="get_by_id",
+                    )
+                    existing_msi = get_identity(msi_id, "2023-01-31")
+                    msi_principal_id = getattr(existing_msi, "properties", {}).get(
+                        "principalId"
+                    )
+                except ResourceNotFoundError:
+                    msi_principal_id = None
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to query MSI %s for principal ID prior to deletion: %s",
+                        msi_name,
+                        exc,
+                    )
+                try:
+                    logger.info(f"Deleting Managed Service Identity: {msi_name}")
+                    delete = get_azure_sdk_function(
+                        client=self.resource_client.resources,
+                        function_name="delete_by_id",
+                    )
+                    delete(resource_id=msi_id, api_version="2023-01-31").wait()
+                    logger.info(f"Successfully deleted MSI: {msi_name}")
+                except ResourceNotFoundError:
+                    logger.info(
+                        f"MSI {msi_name} not found, may have been already deleted"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete MSI {msi_name}: {e}")
+
+        # Delete Subnet first (must be deleted before NSG and VNet)
+        # Subnet ID format: .../virtualNetworks/{vnet}/subnets/{subnet}
+        subnet_id = self.provider_config.get("subnet")
+        vnet_name = None
+        if subnet_id:
+            subnet_name = get_resource_name_from_id(subnet_id)
+            # Extract vnet name (second to last component)
+            if subnet_id and "/virtualNetworks/" in subnet_id:
+                parts = subnet_id.split("/")
+                vnet_idx = parts.index("virtualNetworks")
+                if vnet_idx + 1 < len(parts):
+                    vnet_name = parts[vnet_idx + 1]
+
+            if subnet_name and vnet_name:
+                try:
+                    logger.info(f"Deleting Subnet: {subnet_name} in VNet: {vnet_name}")
+
+                    def delete_subnet():
+                        delete = get_azure_sdk_function(
+                            client=self.network_client.subnets, function_name="delete"
+                        )
+                        delete(
+                            resource_group_name=resource_group,
+                            virtual_network_name=vnet_name,
+                            subnet_name=subnet_name,
+                        ).wait()
+
+                    retry_delete(delete_subnet)
+                    logger.info(f"Successfully deleted Subnet: {subnet_name}")
+                except ResourceNotFoundError:
+                    logger.info(
+                        f"Subnet {subnet_name} not found, may have been already deleted"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete Subnet {subnet_name}: {e}")
+
+        # Delete NSG (Network Security Group) after subnet is deleted
+        nsg_id = self.provider_config.get("nsg")
+        if nsg_id:
+            nsg_name = get_resource_name_from_id(nsg_id)
+            if nsg_name:
+                try:
+                    logger.info(f"Deleting Network Security Group: {nsg_name}")
+
+                    def delete_nsg():
+                        delete = get_azure_sdk_function(
+                            client=self.network_client.network_security_groups,
+                            function_name="delete",
+                        )
+                        delete(
+                            resource_group_name=resource_group,
+                            network_security_group_name=nsg_name,
+                        ).wait()
+
+                    retry_delete(delete_nsg)
+                    logger.info(f"Successfully deleted NSG: {nsg_name}")
+                except ResourceNotFoundError:
+                    logger.info(
+                        f"NSG {nsg_name} not found, may have been already deleted"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete NSG {nsg_name}: {e}")
+
+        # Delete VNet (Virtual Network) after subnet and NSG are deleted
+        if subnet_id and vnet_name:
+            try:
+                logger.info(f"Deleting Virtual Network: {vnet_name}")
+
+                def delete_vnet():
+                    delete = get_azure_sdk_function(
+                        client=self.network_client.virtual_networks,
+                        function_name="delete",
+                    )
+                    delete(
+                        resource_group_name=resource_group,
+                        virtual_network_name=vnet_name,
+                    ).wait()
+
+                retry_delete(delete_vnet)
+                logger.info(f"Successfully deleted VNet: {vnet_name}")
+            except ResourceNotFoundError:
+                logger.info(
+                    f"VNet {vnet_name} not found, may have been already deleted"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete VNet {vnet_name}: {e}")
+
+        # Delete the role assignment associated with this cluster (if any)
+        subscription_id = self.provider_config.get("subscription_id")
+        unique_id = self.provider_config.get("unique_id")
+        if subscription_id and unique_id:
+            cluster_id = f"{self.cluster_name}-{unique_id}"
+            role_assignment_name = f"ray-{cluster_id}-ra"
+            role_assignment_guid = _generate_arm_guid(role_assignment_name)
+            role_assignment_id = (
+                f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers"
+                f"/Microsoft.Authorization/roleAssignments/{role_assignment_guid}"
+            )
+
+            if msi_principal_id:
+                _delete_role_assignments_for_principal(
+                    self.resource_client, resource_group, msi_principal_id
+                )
+
+            delete_role_assignment = get_azure_sdk_function(
+                client=self.resource_client.resources, function_name="delete_by_id"
+            )
+            try:
+                delete_lro = delete_role_assignment(
+                    resource_id=role_assignment_id,
+                    api_version="2022-04-01",
+                )
+                if hasattr(delete_lro, "wait"):
+                    delete_lro.wait()
+                logger.info(
+                    "Deleted role assignment %s for cluster %s",
+                    role_assignment_guid,
+                    self.cluster_name,
+                )
+            except ResourceNotFoundError:
+                logger.debug(
+                    "Role assignment %s not found during cleanup",
+                    role_assignment_guid,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete role assignment %s: %s",
+                    role_assignment_guid,
+                    e,
+                )
+
+        # Remove cached references to deleted shared resources.
+        for key in ("msi", "nsg", "subnet"):
+            if key in self.provider_config:
+                self.provider_config.pop(key, None)
+
+        cache_path = self.provider_config.get("_config_cache_path")
+        if cache_path:
+            try:
+                if os.path.exists(cache_path):
+                    os.remove(cache_path)
+                    logger.info(
+                        "Deleted cached Ray config at %s after resource cleanup",
+                        cache_path,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete cached Ray config %s: %s", cache_path, e
+                )
+            finally:
+                self.provider_config.pop("_config_cache_path", None)
 
     def _get_node(self, node_id):
         self._get_filtered_nodes({})  # Side effect: updates cache
