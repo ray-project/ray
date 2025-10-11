@@ -1,0 +1,36 @@
+name: Auto Create Merge PR
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+
+jobs:
+  create-merge-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          branch: master
+          base: main
+          title: '🔄 Daily merge: upstream master branch to main ($(date +%Y-%m-%d))'
+          body: |
+            ## This is auto-generated Merge Pull Request
+
+            This PR is created automatically by a GitHub Action to merge the latest changes from the upstream `master` branch into the `main` branch.
+
+            📅 **Created**: $(date +%Y-%m-%d)
+            🔀 **Merge direction**: upstream master → main
+            🤖 **Created by**: GitHub Actions
+
+            Please review before merging.
+          labels: |
+            automated
+            merge
+          draft: false
+          delete-branch: false
+          assignees: mingcheng
