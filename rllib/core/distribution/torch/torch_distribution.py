@@ -3,18 +3,18 @@ has more explicit input args. So that the input format does not have to be guess
 the code. This matches the design pattern of torch distribution which developers may
 already be familiar with.
 """
+import abc
+from typing import Dict, Iterable, List, Optional
+
 import gymnasium as gym
 import numpy as np
-from typing import Dict, Iterable, List, Optional
 import tree
-import abc
-
 
 from ray.rllib.core.distribution.distribution import Distribution
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, SMALL_NUMBER
-from ray.rllib.utils.typing import TensorType, Union, Tuple
+from ray.rllib.utils.typing import TensorType, Tuple, Union
 
 torch, nn = try_import_torch()
 
