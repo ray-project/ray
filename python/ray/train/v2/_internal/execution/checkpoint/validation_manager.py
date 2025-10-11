@@ -66,6 +66,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
             # TODO: rate limit this by using a queue?
             # TODO: figure out where to place run_validate_fn task:
             # head node is faster but want to avoid putting too much there
+            # TODO: provide option to run this on gpu
             validate_task = run_validate_fn.remote(
                 training_report.validation_spec, training_report.checkpoint
             )
