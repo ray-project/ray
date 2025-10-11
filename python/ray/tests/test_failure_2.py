@@ -384,7 +384,7 @@ def test_gcs_server_crash_cluster(ray_start_cluster):
     GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
-        _system_config={"gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT},
+        _system_config={"gcs_rpc_client_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT},
     )
 
     script = """
