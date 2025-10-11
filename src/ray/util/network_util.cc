@@ -255,73 +255,27 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
 }
 
 std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
-  std::vector<std::pair<std::string, boost::asio::ip::udp>> test_addresses;
-  if (address.has_value()) {
-    auto parts = ParseAddress(*address);
-    if (parts.has_value()) {
-      if (IsIPv6((*parts)[0])) {
-        test_addresses = {{*address, boost::asio::ip::udp::v6()}};
-      } else {
-        test_addresses = {{*address, boost::asio::ip::udp::v4()}};
-      }
-    }
-  } else {
-    test_addresses = {{"8.8.8.8:53", boost::asio::ip::udp::v4()},
-                      {"[2001:4860:4860::8888]:53", boost::asio::ip::udp::v6()}};
-  }
+  const std::string default_addr = "8.8.8.8:53";
+  const std::string& test_addr = address ? *address : default_addr;
 
-  // Try socket-based detection with IPv4/IPv6
-  std::vector<std::string> failed_addresses;
-  for (const auto &[addr_str, protocol] : test_addresses) {
-    auto parts = ParseAddress(addr_str);
-    if (!parts.has_value()) continue;
-
-    try {
-      boost::asio::io_service net_service;
-      boost::asio::ip::udp::resolver resolver(net_service);
-      boost::asio::ip::udp::resolver::query query(protocol, (*parts)[0], (*parts)[1]);
-      auto endpoints = resolver.resolve(query);
-      boost::asio::ip::udp::endpoint ep = *endpoints;
-      boost::asio::ip::udp::socket socket(net_service, protocol);
-      socket.connect(ep);
-      boost::asio::ip::address local_addr = socket.local_endpoint().address();
-      return local_addr.to_string();
-    } catch (const std::exception &ex) {
-      // Continue to next address/protocol combination
-      failed_addresses.push_back(addr_str);
-      continue;
-    }
-  }
-
-  RAY_LOG(WARNING) << "Failed to determine local IP via external connectivity to: "
-                   << absl::StrJoin(failed_addresses, ", ")
-                   << ", falling back to hostname resolution";
+  auto parts = ParseAddress(test_addr);
+  RAY_CHECK(parts.has_value());
   try {
-    boost::asio::io_service net_service;
-    boost::asio::ip::tcp::resolver resolver(net_service);
-    boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
-    auto endpoints = resolver.resolve(query);
-
-    std::string ipv6_candidate;
-    for (const auto &endpoint : endpoints) {
-      if (endpoint.endpoint().address().is_v4()) {
-        return endpoint.endpoint().address().to_string();
-      } else if (endpoint.endpoint().address().is_v6() && ipv6_candidate.empty()) {
-        ipv6_candidate = endpoint.endpoint().address().to_string();
-      }
-    }
-
-    if (!ipv6_candidate.empty()) {
-      return ipv6_candidate;
-    }
-  } catch (const std::exception &ex) {
-    // Hostname resolution failed
-    RAY_LOG(WARNING) << "Hostname resolution failed: " << ex.what();
+    boost::asio::io_service netService;
+    boost::asio::ip::udp::resolver resolver(netService);
+    boost::asio::ip::udp::resolver::query query(
+        boost::asio::ip::udp::v4(), (*parts)[0], (*parts)[1]);
+    boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
+    boost::asio::ip::udp::endpoint ep = *endpoints;
+    boost::asio::ip::udp::socket socket(netService);
+    socket.connect(ep);
+    boost::asio::ip::address addr = socket.local_endpoint().address();
+    return addr.to_string();
+  } catch (std::exception &e) {
+    RAY_LOG(FATAL) << "Could not get the node IP address with socket. Exception: "
+                   << e.what();
+    return "";
   }
-
-  // Final fallback
-  RAY_LOG(WARNING) << "Unable to detect local IP address. Defaulting to 127.0.0.1";
-  return "127.0.0.1";
 }
 
 }  // namespace ray
