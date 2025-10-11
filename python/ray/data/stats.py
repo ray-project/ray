@@ -6,6 +6,7 @@ statistics on Ray Data datasets based on column data types.
 
 import logging
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -537,3 +538,143 @@ def _dtype_aggregators_for_dataset(
         column_to_dtype=column_to_dtype,
         aggregators=all_aggs,
     )
+
+
+class SummaryTableType(str, Enum):
+    """Enum for specifying which table to access in DatasetSummary."""
+
+    SCHEMA_MATCHING = "schema_matching"
+    SCHEMA_CHANGING = "schema_changing"
+
+
+@dataclass
+class DatasetSummary:
+    """Wrapper for dataset summary statistics with type-aware table separation.
+
+    This class provides a two-table structure:
+    - schema_matching_stats: Statistics that preserve the original column dtype
+    - schema_changing_stats: Statistics that don't match the original column dtype
+
+    Attributes:
+        schema_matching_stats: PyArrow table with stats matching original column types
+        schema_changing_stats: PyArrow table with stats that differ from original types
+    """
+
+    schema_matching_stats: pa.Table
+    schema_changing_stats: pa.Table
+
+    def to_pandas(self) -> pd.DataFrame:
+        """Convert summary to a single pandas DataFrame.
+
+        Combines statistics from both schema-matching and schema-changing tables.
+
+        Note: Some PyArrow extension types (like TensorExtensionType) may fail to convert
+        to pandas when all values in a column are None. In such cases, this method will
+        attempt to convert column-by-column, skipping problematic columns and casting them
+        to null type instead.
+
+        Returns:
+            DataFrame with all statistics, where rows are unique statistics from both tables
+        """
+
+        def safe_convert_table(table: pa.Table) -> pd.DataFrame:
+            """Safely convert a PyArrow table to pandas, handling problematic extension types."""
+            try:
+                return table.to_pandas()
+            except (TypeError, ValueError, pa.ArrowInvalid) as e:
+                # If direct conversion fails, try column-by-column conversion
+                # This can happen with extension types that have all None values
+                logger.warning(
+                    f"Direct conversion to pandas failed ({e}), attempting column-by-column conversion"
+                )
+
+                result_data = {}
+                for col_name in table.schema.names:
+                    col = table.column(col_name)
+                    try:
+                        result_data[col_name] = col.to_pandas()
+                    except (TypeError, ValueError, pa.ArrowInvalid):
+                        # If this column can't be converted, cast to null type
+                        null_col = pa.nulls(len(col), type=pa.null())
+                        result_data[col_name] = null_col.to_pandas()
+
+                return pd.DataFrame(result_data)
+
+        # Convert both tables to pandas
+        df_matching = safe_convert_table(self.schema_matching_stats)
+        df_changing = safe_convert_table(self.schema_changing_stats)
+
+        # Merge data from both tables
+        # Get all unique statistics
+        all_stats = sorted(
+            set(df_matching["statistic"].tolist() + df_changing["statistic"].tolist())
+        )
+
+        # Get all column names (excluding 'statistic')
+        all_columns = [
+            col for col in self.schema_matching_stats.schema.names if col != "statistic"
+        ]
+
+        # Build combined DataFrame
+        combined_rows = []
+        for stat in all_stats:
+            row = {"statistic": stat}
+
+            for col in all_columns:
+                value = None
+
+                # Try schema-matching table first
+                stat_row = df_matching[df_matching["statistic"] == stat]
+                if not stat_row.empty and col in df_matching.columns:
+                    value = stat_row[col].iloc[0]
+
+                # If not found or null, try schema-changing table
+                if value is None or pd.isna(value):
+                    stat_row = df_changing[df_changing["statistic"] == stat]
+                    if not stat_row.empty and col in df_changing.columns:
+                        value = stat_row[col].iloc[0]
+
+                row[col] = value
+
+            combined_rows.append(row)
+
+        return pd.DataFrame(combined_rows)
+
+    def get_column_stats(self, column: str) -> pd.DataFrame:
+        """Get all statistics for a specific column, merging from both tables.
+
+        Args:
+            column: Column name to get statistics for
+
+        Returns:
+            DataFrame with all statistics for the column
+        """
+        dfs = []
+
+        # Get from schema-matching table if column exists
+        if column in self.schema_matching_stats.schema.names:
+            df1 = self.schema_matching_stats.to_pandas()[["statistic", column]]
+            df1 = df1.rename(columns={column: "value"})
+            dfs.append(df1)
+
+        # Get from schema-changing table if column exists
+        if column in self.schema_changing_stats.schema.names:
+            df2 = self.schema_changing_stats.to_pandas()[["statistic", column]]
+            df2 = df2.rename(columns={column: "value"})
+            dfs.append(df2)
+
+        if not dfs:
+            raise ValueError(f"Column '{column}' not found in summary tables")
+
+        # Concatenate and return
+        result = pd.concat(dfs, ignore_index=True)
+        return result.sort_values("statistic").reset_index(drop=True)
+
+    def __repr__(self) -> str:
+        """String representation of DatasetSummary."""
+        return (
+            f"DatasetSummary(\n"
+            f"  schema_matching_stats: {self.schema_matching_stats.num_rows} rows × {self.schema_matching_stats.num_columns} columns\n"
+            f"  schema_changing_stats: {self.schema_changing_stats.num_rows} rows × {self.schema_changing_stats.num_columns} columns\n"
+            f")"
+        )

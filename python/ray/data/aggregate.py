@@ -1079,7 +1079,7 @@ class MissingValuePercentage(AggregateFnV2):
 
     def __init__(
         self,
-        on: str,
+        on: Optional[str] = None,
         alias_name: Optional[str] = None,
     ):
         # Initialize with a list accumulator [null_count, total_count]
