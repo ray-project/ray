@@ -181,6 +181,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._progress_manager = RichExecutionProgressManager(
                 self._dataset_id, self._topology
             )
+            self._progress_manager.start()
         else:
             self._global_info = ProgressBar(
                 "Running", dag.num_output_rows_total(), unit="row"
@@ -341,9 +342,6 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         exc: Optional[Exception] = None
         try:
-            if self._use_rich_progress() and self._progress_manager:
-                self._progress_manager.start()
-
             # Run scheduling loop until complete.
             while True:
                 # Use `perf_counter` rather than `process_time` to ensure we include
@@ -728,13 +726,12 @@ class _ClosingIterator(OutputIterator):
             bundle = state.get_output_blocking(output_split_idx)
 
             # Update progress-bars
-            if not self._executor._use_rich_progress() and self._executor._global_info:
+            using_rich = self._executor._use_rich_progress()
+            if not using_rich and self._executor._global_info:
                 self._executor._global_info.update(
                     bundle.num_rows(), op.num_output_rows_total()
                 )
-            elif (
-                self._executor._use_rich_progress() and self._executor._progress_manager
-            ):
+            elif using_rich and self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(
                     bundle.num_rows() or 0, op.num_output_rows_total()
                 )
