@@ -204,19 +204,6 @@ def test_read_mcap_topic_filtering(ray_start_regular_shared, multi_topic_mcap_fi
     assert len(rows) == 6  # 2/3 of messages
 
 
-def test_read_mcap_channel_filtering(ray_start_regular_shared, multi_topic_mcap_file):
-    """Test filtering by channels (which map to topics in MCAP)."""
-
-    # Test channel filtering (channels are identified by topic names in MCAP)
-    topics = {"/topic_a", "/topic_b"}
-    ds = ray.data.read_mcap(multi_topic_mcap_file, topics=topics)
-
-    rows = ds.take_all()
-    actual_topics = {row["topic"] for row in rows}
-    assert actual_topics.issubset(topics)
-    assert len(rows) == 6  # 2/3 of messages
-
-
 def test_read_mcap_time_range_filtering(
     ray_start_regular_shared, time_series_mcap_file
 ):
