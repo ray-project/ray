@@ -84,7 +84,7 @@ EXPERIMENT_PREFIX = "deepspeed_sample"
 
 ## 1. Training Iteration
 
-First, define the training loop function that will be executed on each worker. Note that Ray Train allocates a unique GPU to each worker.
+First, define the training loop function for each worker to execute. Note that Ray Train allocates a unique GPU to each worker.
 Ray Train runs this training loop function on every worker to orchestrate the overall training process. The training loop outlines the high-level structure common to most deep learning workflows, showing how setup, data ingestion, optimization, and reporting stages come together on each worker.
 
 The function below:
