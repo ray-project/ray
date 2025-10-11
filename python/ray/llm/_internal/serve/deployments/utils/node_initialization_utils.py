@@ -1,6 +1,5 @@
 import asyncio
 import os
-from typing import Any, Dict, NamedTuple
 
 import ray
 from ray.llm._internal.common.utils.download_utils import (
@@ -8,11 +7,14 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.callbacks.custom_initialization import (
+    Callback,
+    CallbackCtx,
+)
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.util.placement_group import PlacementGroup
 
 torch = try_import("torch")
 transformers = try_import("transformers")
@@ -23,10 +25,8 @@ logger = get_logger(__name__)
 async def initialize_worker_nodes(
     llm_config: LLMConfig,
     *,
-    placement_group: PlacementGroup,
-    runtime_env: Dict[str, Any],
-    download_model: NodeModelDownloadable,
     download_extra_files: bool,
+    callback: Callback,
 ):
     """Runs the download tasks across all the nodes in the placement groups.
 
@@ -35,8 +35,9 @@ async def initialize_worker_nodes(
     run the download_model_files task for each node in a separate ray.remote call.
     This ensures that we call download_model_files once per node all in parallel.
     """
+    ctx = callback.ctx
     engine_config = VLLMEngineConfig.from_llm_config(llm_config)
-    pg_table = ray.util.placement_group_table(placement_group)
+    pg_table = ray.util.placement_group_table(ctx.placement_group)
 
     node_set = set(pg_table["bundles_to_node_id"].values())
     download_tasks = []
@@ -51,31 +52,29 @@ async def initialize_worker_nodes(
             ray.remote(download_model_files).options(
                 num_cpus=1,
                 scheduling_strategy=node_affinity_strategy,
-                runtime_env=runtime_env,
+                runtime_env=ctx.runtime_env,
             )
         )
 
     logger.info("Running tasks to download model files on worker nodes")
-    await asyncio.gather(
+    paths = await asyncio.gather(
         *[
             download_task.remote(
                 engine_config.actual_hf_model_id,
                 engine_config.mirror_config,
-                download_model=download_model,
+                download_model=ctx.worker_node_download_model,
                 download_extra_files=download_extra_files,
+                callback=callback,
             )
             for download_task in download_tasks
         ]
     )
 
-
-class InitializeNodeOutput(NamedTuple):
-    placement_group: PlacementGroup
-    runtime_env: Dict[str, Any]
-    extra_init_kwargs: Dict[str, Any]
+    # assume that all paths are the same
+    llm_config.get_engine_config().hf_model_id = paths[0]
 
 
-async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
+async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
     """Implements node initialization for LLM engines.
 
     Downloads model, tokenizer, and extra files as necessary.
@@ -84,42 +83,21 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     (as all of the workers must be colocated with this process). Else, the initialization
     will be run across the placement group bundles.
     """
-    local_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
-    worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
-    extra_init_kwargs = {}
+    # Get callback instance (if configured) with context information
+    callback = llm_config.get_or_create_callback()
 
-    engine_config = llm_config.get_engine_config()
-    assert engine_config is not None
-    pg = engine_config.get_or_create_pg()
-    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+    await callback.run_callback("on_before_node_init")
 
-    if engine_config.placement_strategy == "STRICT_PACK":
-        # If the placement strategy is STRICT_PACK, we know that all the
-        # workers run on the same node as the engine. Therefore, we can run
-        # all initialization steps directly instead of in tasks in the PG.
-        # This removes the task launching overhead reducing the initialization
-        # time.
-        local_node_download_model = local_node_download_model.union(
-            worker_node_download_model
-        )
-
-        await _initialize_local_node(
-            llm_config,
-            download_model=local_node_download_model,
-            download_extra_files=True,
-        )
-    else:
+    if callback.ctx.run_downloads:
         await initialize_worker_nodes(
             llm_config,
-            placement_group=pg,
-            runtime_env=runtime_env,
-            download_model=worker_node_download_model,
+            callback=callback,
             download_extra_files=True,
         )
 
-    return InitializeNodeOutput(
-        placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
-    )
+    await callback.run_callback("on_after_node_init")
+
+    return callback.ctx
 
 
 @make_async
