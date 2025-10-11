@@ -81,7 +81,9 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     // (core_worker.cc removes the object from memory store before calling this method),
     // we need to add it back to indicate that it's available.
     // If the object is already in the memory store then the put is a no-op.
-    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
   }
   return true;
 }
@@ -121,7 +123,8 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
               const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
             if (status.ok() && reply.successes(0)) {
               in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                   object_id);
+                                   object_id,
+                                   reference_counter_.HasReference(object_id));
               reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
             } else {
               RAY_LOG(INFO).WithField(object_id)
