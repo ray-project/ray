@@ -1,8 +1,8 @@
 import asyncio
 import json
 import sys
-from enum import Enum
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import (
     Any,
     AsyncGenerator,
@@ -41,20 +41,20 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionStreamResponse,
     EmbeddingRequest,
     EmbeddingResponse,
-    TranscriptionRequest,
-    TranscriptionResponse,
-    TranscriptionStreamResponse,
     ErrorResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
-    LLMTranscriptionResponse,
     LLMScoreResponse,
+    LLMTranscriptionResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+    TranscriptionStreamResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (

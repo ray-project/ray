@@ -16,12 +16,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
-    TranscriptionRequest,
-    TranscriptionResponse,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
-    TranscriptionStreamResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader

@@ -22,12 +22,12 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
-    TranscriptionRequest,
-    TranscriptionResponse,
     ErrorInfo,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
@@ -46,9 +46,9 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
     from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
-    from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
     from vllm.entrypoints.openai.serving_score import ServingScores
+    from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)

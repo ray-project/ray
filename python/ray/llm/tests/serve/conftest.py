@@ -119,6 +119,7 @@ def mock_transcription_request(stream, temperature, language):
     """Fixture for creating transcription requests for mock testing."""
     # Create a mock audio file for testing
     from io import BytesIO
+
     from fastapi import UploadFile
 
     # Create a simple mock audio file (WAV format)

@@ -7,10 +7,10 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionStreamResponse as _CompletionStreamResponse,
     EmbeddingRequest as _EmbeddingRequest,
     EmbeddingResponse as _EmbeddingResponse,
+    ErrorResponse as _ErrorResponse,
     TranscriptionRequest as _TranscriptionRequest,
     TranscriptionResponse as _TranscriptionResponse,
     TranscriptionStreamResponse as _TranscriptionStreamResponse,
-    ErrorResponse as _ErrorResponse,
 )
 from ray.util.annotations import PublicAPI
 
