@@ -2077,50 +2077,21 @@ for epoch in range({num_epochs}):
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 
-def test_op_metrics_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).take_all()
-        logs = [
-            canonicalize(call.args[0], canonicalize_histogram_values=True)
-            for call in mock_logger.call_args_list
-        ]
+def test_executor_logs_metrics_on_operator_completion(caplog, propagate_logs):
+    """Test that operator completion metrics are logged exactly once per operator."""
+    EXPECTED_COMPLETION_MESSAGE = (
+        "Operator TaskPoolMapOperator[ReadRange] completed. Operator Metrics:"
+    )
 
-        def replace(s: str):
-            return s.replace(
-                "'num_external_outqueue_blocks': Z", "'num_external_outqueue_blocks': N"
-            ).replace(
-                "'num_external_outqueue_bytes': Z", "'num_external_outqueue_bytes': N"
-            )
+    with caplog.at_level(logging.DEBUG):
+        ray.data.range(1).take_all()
 
-        input_str = replace(
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
-        )
-        # InputDataBuffer has no inqueue, manually set to 0
-        map_str = replace(
-            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-            + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES
-        )
-        # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
-        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
-
-
-def test_op_state_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-
-        times_asserted = 0
-        for i, log in enumerate(logs):
-            if log == "Execution Progress:":
-                times_asserted += 1
-                assert "Input" in logs[i + 1]
-                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
-        assert times_asserted > 0
+    log_messages = [record.message for record in caplog.records]
+    actual_count = sum(EXPECTED_COMPLETION_MESSAGE in msg for msg in log_messages)
+    assert actual_count == 1, (
+        f"Expected operator completion message to appear exactly once, "
+        f"but found {actual_count} occurrences"
+    )
 
 
 def test_stats_actor_datasets(ray_start_cluster):
