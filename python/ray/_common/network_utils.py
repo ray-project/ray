@@ -4,7 +4,6 @@ from typing import Optional, Tuple, Union
 from ray._raylet import (
     build_address as _build_address,
     is_ipv6 as _is_ipv6,
-    node_ip_address_from_perspective as _node_ip_address_from_perspective,
     parse_address as _parse_address,
 )
 
@@ -46,7 +45,30 @@ def node_ip_address_from_perspective(address: Optional[str] = None) -> str:
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    return _node_ip_address_from_perspective(address)
+    if address is None:
+        address = "8.8.8.8:53"
+
+    ip_address, port = parse_address(address)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # This command will raise an exception if there is no internet
+        # connection.
+        s.connect((ip_address, int(port)))
+        node_ip_address = s.getsockname()[0]
+    except OSError as e:
+        node_ip_address = "127.0.0.1"
+        # [Errno 101] Network is unreachable
+        if e.errno == errno.ENETUNREACH:
+            try:
+                # try get node ip address from host name
+                host_name = socket.getfqdn(socket.gethostname())
+                node_ip_address = socket.gethostbyname(host_name)
+            except Exception:
+                pass
+    finally:
+        s.close()
+
+    return node_ip_address
 
 
 def is_ipv6(host: str) -> bool:
