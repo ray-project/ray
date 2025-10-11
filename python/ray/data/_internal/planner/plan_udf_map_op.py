@@ -24,7 +24,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -49,6 +48,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -59,6 +59,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import AliasExpr, ColumnExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -113,54 +114,102 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    columns = op.cols
-    columns_rename = op.cols_rename
-    exprs = op.exprs
-
     def _project_block(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
-            if not block_accessor.num_rows():
+
+            # Skip projection only for schema-less empty blocks.
+            if (
+                block_accessor.num_rows() == 0
+                and len(block_accessor.column_names()) == 0
+            ):
                 return block
 
-            # 1. evaluate / add expressions
-            if exprs:
-                block_accessor = BlockAccessor.for_block(block)
-                # Add/update with expression results
-                result_block = block
-                for name, expr in exprs.items():
-                    # Use expr.name if available, otherwise fall back to the dict key name
-                    actual_name = expr.name if expr.name is not None else name
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    # fill_column handles both scalars and arrays
-                    result_block = result_block_accessor.fill_column(
-                        actual_name, result
+            # Check if there's an all() expression
+            from ray.data.expressions import AllColumnsExpr
+
+            has_all = any(isinstance(expr, AllColumnsExpr) for expr in op.exprs)
+
+            # Preserve original input column order
+            existing_cols = list(block_accessor.column_names())
+
+            if len(op.exprs) == 0:
+                # No expressions at all - return empty projection
+                if block_accessor.num_rows() > 0:
+                    from ray.data._internal.arrow_block import (
+                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
                     )
-                block = result_block
 
-            # 2. (optional) column projection
-            if columns:
-                block = BlockAccessor.for_block(block).select(columns)
+                    return BlockAccessor.for_block(block).fill_column(_STUB, None)
+                return block_accessor.select([])
 
-            # 3. (optional) rename
-            if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
+            # Handle single all() with no other expressions
+            if len(op.exprs) == 1 and isinstance(op.exprs[0], AllColumnsExpr):
+                return block  # Identity projection
+
+            # Phase 1: Compute non-all() expressions
+            new_output_cols: List[str] = []
+            seen_output_names = set()
+            rename_map: Dict[str, str] = {}
+            computed_outputs: Dict[str, Any] = {}
+
+            for expr in op.exprs:
+                if isinstance(expr, AllColumnsExpr):
+                    continue  # Skip all() for now, handle in Phase 3
+
+                output_name = expr.name
+
+                # Detect simple rename sourced from the input schema
+                if (
+                    isinstance(expr, AliasExpr)
+                    and isinstance(expr.expr, ColumnExpr)
+                    and expr.expr.name != output_name
+                    and expr.expr.name in existing_cols
+                ):
+                    rename_map[expr.expr.name] = output_name
+
+                computed_outputs[output_name] = eval_expr(expr, block)
+                if output_name in seen_output_names:
+                    raise ValueError(f"Column name '{output_name}' is a duplicate.")
+                new_output_cols.append(output_name)
+                seen_output_names.add(output_name)
+
+            # Phase 2: Upsert computed columns onto the block
+            cur_block = block
+            for output_name in new_output_cols:
+                cur_block = BlockAccessor.for_block(cur_block).fill_column(
+                    output_name, computed_outputs[output_name]
                 )
 
-            return block
+            # Phase 3: Finalize output schema based on all() position
+            if has_all:
+                # all() is present: preserve existing columns
+                # Start from input column order, applying renames, then append new columns
+                final_cols: List[str] = []
+                final_seen = set()
+
+                for col in existing_cols:
+                    renamed_col = rename_map.get(col, col)
+                    if renamed_col not in final_seen:
+                        final_cols.append(renamed_col)
+                        final_seen.add(renamed_col)
+
+                for col in new_output_cols:
+                    if col not in final_seen:
+                        final_cols.append(col)
+                        final_seen.add(col)
+            else:
+                # No all(): exact select - only requested outputs (in order)
+                final_cols = new_output_cols
+
+            return BlockAccessor.for_block(cur_block).select(final_cols)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
-
     map_transformer = MapTransformer(
-        [
-            BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block)),
-        ]
+        [BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block))]
     )
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -504,15 +553,19 @@ def _generate_transform_fn_for_map_batches(
         ) -> Iterable[DataBatch]:
             for batch in batches:
                 try:
-                    if (
-                        not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
-                        res = [batch]
+                    if not isinstance(batch, collections.abc.Mapping):
+                        acc = BlockAccessor.for_block(batch)
+                        # Only skip UDF for truly schema-less empty blocks
+                        if acc.num_rows() == 0 and len(acc.column_names()) == 0:
+                            # For empty input blocks, we directly output them without
+                            # calling the UDF.
+                            # TODO(hchen): This workaround is because some all-to-all
+                            # operators output empty blocks with no schema.
+                            res = [batch]
+                        else:
+                            res = fn(batch)
+                            if not isinstance(res, GeneratorType):
+                                res = [res]
                     else:
                         res = fn(batch)
                         if not isinstance(res, GeneratorType):

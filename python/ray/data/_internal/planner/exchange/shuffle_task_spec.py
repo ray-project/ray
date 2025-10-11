@@ -93,7 +93,8 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         # Build a list of slices to return. It's okay to put the results in a
         # list instead of yielding them as a generator because slicing the
         # ArrowBlock is zero-copy.
-        slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
+        n = block.num_rows()
+        slice_sz = math.ceil(n / output_num_blocks) if n > 0 else 0
         slices = []
         for i in range(output_num_blocks):
             slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
@@ -104,8 +105,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             random = np.random.RandomState(seed_i)
             random.shuffle(slices)
 
+        # Verify row count consistency
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
-        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
+        assert num_rows == n, (num_rows, n)
+
         from ray.data.block import BlockMetadataWithSchema
 
         meta = block.get_metadata(exec_stats=stats.build())
