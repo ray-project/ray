@@ -37,7 +37,12 @@ def is_remote_path(path: str) -> bool:
     Returns:
         True if the path is a remote path, False otherwise.
     """
-    return path.startswith("s3://") or path.startswith("gs://")
+    return (
+        path.startswith("s3://")
+        or path.startswith("gs://")
+        or path.startswith("abfss://")
+        or path.startswith("azure://")
+    )
 
 
 class ExtraFiles(BaseModelExtended):
@@ -46,10 +51,10 @@ class ExtraFiles(BaseModelExtended):
 
 
 class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
+    """Unified mirror config for cloud storage (S3, GCS, or Azure).
 
     Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
+        bucket_uri: URI of the bucket (s3://, gs://, abfss://, or azure://)
         extra_files: Additional files to download
     """
 
@@ -65,19 +70,23 @@ class CloudMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
+        """Returns the storage type ('s3', 'gcs', 'abfss', or 'azure') based on the URI prefix."""
         if self.bucket_uri is None:
             return None
         elif self.bucket_uri.startswith("s3://"):
             return "s3"
         elif self.bucket_uri.startswith("gs://"):
             return "gcs"
+        elif self.bucket_uri.startswith("abfss://"):
+            return "abfss"
+        elif self.bucket_uri.startswith("azure://"):
+            return "azure"
         return None
 
 
@@ -96,20 +105,26 @@ class LoraMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
+        for prefix in ["s3://", "gs://", "abfss://", "azure://"]:
             if self.bucket_uri.startswith(prefix):
                 return self.bucket_uri[len(prefix) :]
         return self.bucket_uri
 
     @property
     def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
+        bucket_part = self._bucket_name_and_path.split("/")[0]
+
+        # For ABFSS and Azure URIs, extract container name from container@account format
+        if self.bucket_uri.startswith(("abfss://", "azure://")) and "@" in bucket_part:
+            return bucket_part.split("@")[0]
+
+        return bucket_part
 
     @property
     def bucket_path(self) -> str:
@@ -120,7 +135,7 @@ class CloudFileSystem:
     """A unified interface for cloud file system operations using PyArrow.
 
     This class provides a simple interface for common operations on cloud storage
-    systems (S3, GCS) using PyArrow's filesystem interface.
+    systems (S3, GCS, Azure) using PyArrow's filesystem interface.
     """
 
     @staticmethod
@@ -128,7 +143,7 @@ class CloudFileSystem:
         """Get the appropriate filesystem and path from a URI.
 
         Args:
-            object_uri: URI of the file (s3:// or gs://)
+            object_uri: URI of the file (s3://, gs://, abfss://, or azure://)
                 If URI contains 'anonymous@', anonymous access is used.
                 Example: s3://anonymous@bucket/path
 
@@ -136,9 +151,11 @@ class CloudFileSystem:
             Tuple of (filesystem, path)
         """
         anonymous = False
-        # Check for anonymous access pattern
+        # Check for anonymous access pattern (only for S3/GCS)
         # e.g. s3://anonymous@bucket/path
-        if "@" in object_uri:
+        if "@" in object_uri and not (
+            object_uri.startswith("abfss://") or object_uri.startswith("azure://")
+        ):
             parts = object_uri.split("@", 1)
             # Check if the first part ends with "anonymous"
             if parts[0].endswith("anonymous"):
@@ -159,10 +176,110 @@ class CloudFileSystem:
         elif object_uri.startswith("gs://"):
             fs = pa_fs.GcsFileSystem(anonymous=anonymous)
             path = object_uri[5:]  # Remove "gs://"
+        elif object_uri.startswith("abfss://"):
+            fs, path = CloudFileSystem._create_abfss_filesystem(object_uri)
+        elif object_uri.startswith("azure://"):
+            fs, path = CloudFileSystem._create_azure_filesystem(object_uri)
         else:
             raise ValueError(f"Unsupported URI scheme: {object_uri}")
 
         return fs, path
+
+    @staticmethod
+    def _create_azure_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create an Azure filesystem for Azure Blob Storage or ABFSS.
+
+        Args:
+            object_uri: Azure URI (azure://container@account.blob.core.windows.net/path or
+                       abfss://container@account.dfs.core.windows.net/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without scheme prefix)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If the Azure URI format is invalid.
+        """
+        try:
+            import adlfs
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise ImportError(
+                "You must `pip install adlfs azure-identity` "
+                "to use Azure/ABFSS URIs. "
+                "Note that these must be preinstalled on all nodes in the Ray cluster."
+            )
+
+        from urllib.parse import urlparse
+
+        # Parse and validate the Azure URI
+        parsed = urlparse(object_uri)
+        scheme = parsed.scheme.lower()
+
+        # Validate URI format: scheme://container@account.domain/path
+        if not parsed.netloc or "@" not in parsed.netloc:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - missing container@account: {object_uri}"
+            )
+
+        container_part, hostname_part = parsed.netloc.split("@", 1)
+
+        # Validate container name (must be non-empty)
+        if not container_part:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - empty container name: {object_uri}"
+            )
+
+        # Validate hostname format based on scheme
+        valid_hostname = False
+        if scheme == "abfss":
+            valid_hostname = hostname_part.endswith(".dfs.core.windows.net")
+            expected_domains = ".dfs.core.windows.net"
+        elif scheme == "azure":
+            valid_hostname = hostname_part.endswith(
+                ".blob.core.windows.net"
+            ) or hostname_part.endswith(".dfs.core.windows.net")
+            expected_domains = ".blob.core.windows.net or .dfs.core.windows.net"
+
+        if not hostname_part or not valid_hostname:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - invalid hostname (must end with {expected_domains}): {object_uri}"
+            )
+
+        # Extract and validate account name
+        azure_storage_account_name = hostname_part.split(".")[0]
+        if not azure_storage_account_name:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - empty account name: {object_uri}"
+            )
+
+        # Create the adlfs filesystem
+        adlfs_fs = adlfs.AzureBlobFileSystem(
+            account_name=azure_storage_account_name,
+            credential=DefaultAzureCredential(),
+        )
+
+        # Wrap with PyArrow's PyFileSystem for compatibility
+        fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
+
+        # Return the path without the scheme prefix
+        path = f"{container_part}{parsed.path}"
+
+        return fs, path
+
+    @staticmethod
+    def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create an ABFSS filesystem for Azure Data Lake Storage Gen2.
+
+        This is a wrapper around _create_azure_filesystem for backward compatibility.
+
+        Args:
+            object_uri: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without abfss:// prefix)
+        """
+        return CloudFileSystem._create_azure_filesystem(object_uri)
 
     @staticmethod
     def get_file(

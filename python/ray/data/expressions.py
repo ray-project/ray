@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -131,7 +131,7 @@ class _PyArrowExpressionVisitor(_ExprVisitor):
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
         import pyarrow.compute as pc
 
-        return pc.field(expr._name)
+        return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
         import pyarrow.compute as pc
@@ -246,7 +246,7 @@ class Expr(ABC):
     data_type: DataType
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         """Get the name associated with this expression.
 
         Returns:
@@ -711,7 +711,7 @@ class WhenExpr(Expr):
 
     condition: Expr
     value: Expr
-    next_when: Optional["WhenExpr"] = None
+    next_when: "WhenExpr | None" = None
 
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 

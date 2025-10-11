@@ -27,8 +27,8 @@ from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_driver_job_definition_event_pb2 import (
     DriverJobDefinitionEvent,
 )
-from ray.core.generated.events_driver_job_execution_event_pb2 import (
-    DriverJobExecutionEvent,
+from ray.core.generated.events_driver_job_lifecycle_event_pb2 import (
+    DriverJobLifecycleEvent,
 )
 from ray.core.generated.events_event_aggregator_service_pb2 import (
     AddEventsRequest,
@@ -46,12 +46,10 @@ from ray.core.generated.events_task_execution_event_pb2 import (
 )
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 from ray.core.generated.profile_events_pb2 import ProfileEventEntry, ProfileEvents
-from ray.core.generated.runtime_environment_pb2 import (
-    RuntimeEnvConfig,
-    RuntimeEnvInfo,
-    RuntimeEnvUris,
-)
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
+from ray.dashboard.modules.aggregator.publisher.configs import (
+    PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
@@ -130,8 +128,9 @@ def test_aggregator_agent_http_target_not_enabled(
 ):
     dashboard_agent = MagicMock()
     dashboard_agent.events_export_addr = export_addr
+    dashboard_agent.session_name = "test_session"
+    dashboard_agent.ip = "127.0.0.1"
     agent = AggregatorAgent(dashboard_agent)
-    assert agent._event_http_target_enabled == expected_http_target_enabled
     assert agent._event_processing_enabled == expected_event_processing_enabled
 
 
@@ -472,9 +471,7 @@ def _create_task_definition_event_proto(timestamp):
                 "CPU": 1.0,
                 "GPU": 0.0,
             },
-            runtime_env_info=RuntimeEnvInfo(
-                serialized_runtime_env="{}",
-            ),
+            serialized_runtime_env="{}",
             job_id=b"1",
             parent_task_id=b"1",
             placement_group_id=b"1",
@@ -536,10 +533,7 @@ def _verify_task_definition_event_json(req_json, expected_timestamp):
         "CPU": 1.0,
         "GPU": 0.0,
     }
-    assert (
-        req_json[0]["taskDefinitionEvent"]["runtimeEnvInfo"]["serializedRuntimeEnv"]
-        == "{}"
-    )
+    assert req_json[0]["taskDefinitionEvent"]["serializedRuntimeEnv"] == "{}"
     assert (
         req_json[0]["taskDefinitionEvent"]["jobId"] == base64.b64encode(b"1").decode()
     )
@@ -762,18 +756,7 @@ def test_aggregator_agent_receive_driver_job_definition_event(
                     driver_job_definition_event=DriverJobDefinitionEvent(
                         job_id=b"1",
                         config=DriverJobDefinitionEvent.Config(
-                            runtime_env_info=RuntimeEnvInfo(
-                                serialized_runtime_env="{}",
-                                uris=RuntimeEnvUris(
-                                    working_dir_uri="file:///tmp/ray/runtime_env",
-                                    py_modules_uris=[],
-                                ),
-                                runtime_env_config=RuntimeEnvConfig(
-                                    setup_timeout_seconds=10,
-                                    eager_install=True,
-                                    log_files=[],
-                                ),
-                            ),
+                            serialized_runtime_env="{}",
                             metadata={},
                         ),
                     ),
@@ -790,27 +773,13 @@ def test_aggregator_agent_receive_driver_job_definition_event(
     req_json = json.loads(req.data)
     assert req_json[0]["message"] == "driver job event"
     assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "serializedRuntimeEnv"
-        ]
+        req_json[0]["driverJobDefinitionEvent"]["config"]["serializedRuntimeEnv"]
         == "{}"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
-            "workingDirUri"
-        ]
-        == "file:///tmp/ray/runtime_env"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "runtimeEnvConfig"
-        ]["setupTimeoutSeconds"]
-        == 10.0
     )
 
 
 @_with_aggregator_port
-def test_aggregator_agent_receive_driver_job_execution_event(
+def test_aggregator_agent_receive_driver_job_lifecycle_event(
     ray_start_cluster_head_with_env_vars, httpserver
 ):
     cluster = ray_start_cluster_head_with_env_vars
@@ -827,19 +796,19 @@ def test_aggregator_agent_receive_driver_job_execution_event(
                 RayEvent(
                     event_id=b"1",
                     source_type=RayEvent.SourceType.CORE_WORKER,
-                    event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+                    event_type=RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
                     timestamp=timestamp,
                     severity=RayEvent.Severity.INFO,
-                    message="driver job execution event",
-                    driver_job_execution_event=DriverJobExecutionEvent(
+                    message="driver job lifecycle event",
+                    driver_job_lifecycle_event=DriverJobLifecycleEvent(
                         job_id=b"1",
-                        states=[
-                            DriverJobExecutionEvent.StateTimestamp(
-                                state=DriverJobExecutionEvent.State.CREATED,
+                        state_transitions=[
+                            DriverJobLifecycleEvent.StateTransition(
+                                state=DriverJobLifecycleEvent.State.CREATED,
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
-                            DriverJobExecutionEvent.StateTimestamp(
-                                state=DriverJobExecutionEvent.State.FAILURE,
+                            DriverJobLifecycleEvent.StateTransition(
+                                state=DriverJobLifecycleEvent.State.FINISHED,
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
                         ],
@@ -855,14 +824,72 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     wait_for_condition(lambda: len(httpserver.log) == 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
-    assert req_json[0]["message"] == "driver job execution event"
+    assert req_json[0]["message"] == "driver job lifecycle event"
     assert (
-        req_json[0]["driverJobExecutionEvent"]["jobId"]
+        req_json[0]["driverJobLifecycleEvent"]["jobId"]
         == base64.b64encode(b"1").decode()
     )
-    assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
-    assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
-    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
+    assert len(req_json[0]["driverJobLifecycleEvent"]["stateTransitions"]) == 2
+    assert (
+        req_json[0]["driverJobLifecycleEvent"]["stateTransitions"][0]["state"]
+        == "CREATED"
+    )
+    assert (
+        req_json[0]["driverJobLifecycleEvent"]["stateTransitions"][1]["state"]
+        == "FINISHED"
+    )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "False",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_http_svc_publish_disabled(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"10",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=fake_timestamp[0],
+                    severity=RayEvent.Severity.INFO,
+                    message="should not be sent",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    stub.AddEvents(request)
+
+    with pytest.raises(
+        RuntimeError, match="The condition wasn't met before the timeout expired."
+    ):
+        # Wait for up to 2 seconds (publish interval + 1second buffer) to ensure that the event is never published to the external HTTP service
+        wait_for_condition(
+            lambda: len(httpserver.log) > 0,
+            1 + PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+        )
+
+    assert len(httpserver.log) == 0
 
 
 if __name__ == "__main__":

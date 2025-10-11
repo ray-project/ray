@@ -114,3 +114,22 @@ def py_test_run_all_notebooks(include, exclude, allow_empty=False, **kwargs):
             args = ["--find-recursively", "--path", file],
             **kwargs
         )
+
+def py_test_module_list_with_env_variants(files, env_variants, size="medium", **kwargs):
+    """Create multiple py_test_module_list targets with different environment variable configurations.
+
+    Args:
+        files: List of test files to run
+        env_variants: Dict where keys are variant names and values are dicts containing
+                     'env' and 'name_suffix' keys
+        size: Test size
+        **kwargs: Additional arguments passed to py_test_module_list
+    """
+    for variant_name, variant_config in env_variants.items():
+        py_test_module_list(
+            size = size,
+            files = files,
+            env = variant_config.get("env", {}),
+            name_suffix = variant_config.get("name_suffix", "_{}".format(variant_name)),
+            **kwargs
+        )

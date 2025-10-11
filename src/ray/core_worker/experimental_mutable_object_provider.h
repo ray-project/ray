@@ -17,9 +17,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
 
 namespace ray {
 namespace core {

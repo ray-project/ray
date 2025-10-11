@@ -48,10 +48,12 @@ struct ConcurrencyGroup {
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name,
+  ConcurrencyGroup(std::string name,
                    uint32_t max_concurrency,
-                   const std::vector<ray::FunctionDescriptor> &fds)
-      : name_(name), max_concurrency_(max_concurrency), function_descriptors_(fds) {}
+                   std::vector<ray::FunctionDescriptor> fds)
+      : name_(std::move(name)),
+        max_concurrency_(max_concurrency),
+        function_descriptors_(std::move(fds)) {}
 
   std::string GetName() const { return name_; }
 
@@ -137,7 +139,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int GetRuntimeEnvHash() const;
 
-  uint64_t AttemptNumber() const;
+  int32_t AttemptNumber() const;
 
   bool IsRetry() const;
 

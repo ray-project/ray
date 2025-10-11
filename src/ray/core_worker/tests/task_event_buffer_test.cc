@@ -31,7 +31,7 @@
 #include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
@@ -435,19 +435,17 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
 
     RayEventsTuple ray_events_tuple;
     task_event->ToRpcRayEvents(ray_events_tuple);
-    auto [task_definition_event, task_execution_event, task_profile_event] =
-        ray_events_tuple;
-    if (task_definition_event) {
+    if (ray_events_tuple.task_definition_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_definition_event.value());
+      *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (task_execution_event) {
+    if (ray_events_tuple.task_execution_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_execution_event.value());
     }
-    if (task_profile_event) {
+    if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_profile_event.value());
+      *new_event = std::move(ray_events_tuple.task_profile_event.value());
     }
   }
 
@@ -755,19 +753,17 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
 
     RayEventsTuple ray_events_tuple;
     event->ToRpcRayEvents(ray_events_tuple);
-    auto [task_definition_event, task_execution_event, task_profile_event] =
-        ray_events_tuple;
-    if (task_definition_event) {
+    if (ray_events_tuple.task_definition_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_definition_event.value());
+      *new_event = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (task_execution_event) {
+    if (ray_events_tuple.task_execution_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_execution_event.value());
+      *new_event = std::move(ray_events_tuple.task_execution_event.value());
     }
-    if (task_profile_event) {
+    if (ray_events_tuple.task_profile_event) {
       auto new_event = expected_ray_events_data.add_events();
-      *new_event = std::move(task_profile_event.value());
+      *new_event = std::move(ray_events_tuple.task_profile_event.value());
     }
   }
 
@@ -961,20 +957,17 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   RayEventsTuple ray_events_tuple;
   profile_event->ToRpcRayEvents(ray_events_tuple);
 
-  auto &[task_definition_event, task_execution_event, task_profile_event] =
-      ray_events_tuple;
-
   // Verify that the second event is nullopt (empty)
-  EXPECT_FALSE(task_definition_event.has_value())
-      << "TaskProfileEvent should be populated at the third element of RayEventsTuple";
-  EXPECT_FALSE(task_execution_event.has_value())
-      << "TaskProfileEvent should be populated at the third element of RayEventsTuple";
+  EXPECT_FALSE(ray_events_tuple.task_definition_event.has_value())
+      << "TaskProfileEvent should be populated in RayEventsTuple";
+  EXPECT_FALSE(ray_events_tuple.task_execution_event.has_value())
+      << "TaskProfileEvent should be populated in RayEventsTuple";
 
   // Verify that the first event contains the profile event
-  ASSERT_TRUE(task_profile_event.has_value())
-      << "TaskProfileEvent should populate third element of RayEventsTuple";
+  ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value())
+      << "TaskProfileEvent should populate in RayEventsTuple";
 
-  const auto &ray_event = task_profile_event.value();
+  const auto &ray_event = ray_events_tuple.task_profile_event.value();
 
   // Verify base fields
   EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::CORE_WORKER);
@@ -1089,19 +1082,17 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   RayEventsTuple ray_events_tuple;
   status_event->ToRpcRayEvents(ray_events_tuple);
   profile_event->ToRpcRayEvents(ray_events_tuple);
-  auto [task_definition_event, task_execution_event, task_profile_event] =
-      ray_events_tuple;
-  if (task_definition_event) {
+  if (ray_events_tuple.task_definition_event) {
     auto new_event = expected_ray_events_data.add_events();
-    *new_event = std::move(task_definition_event.value());
+    *new_event = std::move(ray_events_tuple.task_definition_event.value());
   }
-  if (task_execution_event) {
+  if (ray_events_tuple.task_execution_event) {
     auto new_event = expected_ray_events_data.add_events();
-    *new_event = std::move(task_execution_event.value());
+    *new_event = std::move(ray_events_tuple.task_execution_event.value());
   }
-  if (task_profile_event) {
+  if (ray_events_tuple.task_profile_event) {
     auto new_event = expected_ray_events_data.add_events();
-    *new_event = std::move(task_profile_event.value());
+    *new_event = std::move(ray_events_tuple.task_profile_event.value());
   }
 
   // Add Events to the task event buffer
