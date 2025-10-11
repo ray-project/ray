@@ -1844,7 +1844,7 @@ class AlgorithmConfig(_Config):
         create_local_env_runner: Optional[bool] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
-        gym_env_vectorize_mode: Optional[str] = NotProvided,
+        gym_env_vectorize_mode: Optional[Union[str, gym.envs.registration.VectorizeMode]] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1907,7 +1907,10 @@ class AlgorithmConfig(_Config):
                 Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
                 Default is SYNC. Set this to ASYNC to parallelize the individual sub
                 environments within the vector. This can speed up your EnvRunners
-                significantly when using heavier environments.
+                significantly when using heavier environments. Set this to
+                VECTOR_ENTRY_POINT in case your env creator, also known as
+                "gym entry point", already returns a gym.vector.VectorEnv and you
+                don't need RLlib to take care of the vectorization anymore.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
