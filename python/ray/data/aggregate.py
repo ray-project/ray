@@ -1252,7 +1252,7 @@ class ApproximateQuantile(AggregateFnV2):
         Args:
             on: The name of the column to calculate the quantile on. Must be a numeric column.
             quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
-            k: Controls the accuracy and memory footprint of the sketch; higher k yields lower error but uses more memory. Defaults to 800.
+            k: Controls the accuracy and memory footprint of the sketch; higher k yields lower error but uses more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
             alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
         """
         self._require_datasketches()
