@@ -32,6 +32,9 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.cache.dataset_cache import (
+    cache_result,
+)
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -83,9 +86,22 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.operation_decorators import (
+    aggregate,
+    combine,
+    consume,
+    expression,
+    filter_op,
+    inspect,
+    limit_op,
+    row_and_schema_change,
+    shuffle,
+    transform,
+)
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -94,7 +110,6 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_rows_per_file_args,
     get_compute_strategy,
-    merge_resources_to_ray_remote_args,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -110,7 +125,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
-from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -273,6 +287,7 @@ class Dataset:
             return _as(ds._plan.copy(), ds._logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def map(
         self,
         fn: Callable[[Dict[str, Any]], Dict[str, Any]],
@@ -285,7 +300,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -332,7 +347,7 @@ class Dataset:
 
                 Column    Type
                 ------    ----
-                image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+                image     numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
                 path      string
                 filename  string
 
@@ -372,9 +387,6 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -404,12 +416,14 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         map_op = MapRows(
@@ -454,6 +468,7 @@ class Dataset:
         return self._plan.get_dataset_id()
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @row_and_schema_change()
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -469,7 +484,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -594,8 +609,7 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used. Note that
+                ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -635,9 +649,6 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -661,7 +672,7 @@ class Dataset:
             task, until their total size is equal to or greater than the given
             ``batch_size``.
             If ``batch_size`` is not set, the bundling will not be performed. Each task
-            will receive entire input block as a batch.
+            will receive only one input block.
 
         .. seealso::
 
@@ -728,7 +739,7 @@ class Dataset:
         num_cpus: Optional[float],
         num_gpus: Optional[float],
         memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -789,6 +800,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    @expression()
     def with_column(
         self,
         column_name: str,
@@ -861,6 +873,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def add_column(
         self,
         col: str,
@@ -977,6 +990,7 @@ class Dataset:
         )
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def drop_columns(
         self,
         cols: List[str],
@@ -1035,6 +1049,7 @@ class Dataset:
         )
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def select_columns(
         self,
         cols: Union[str, List[str]],
@@ -1093,6 +1108,9 @@ class Dataset:
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
 
+        if not cols:
+            raise ValueError("select_columns requires at least one column to select.")
+
         if len(cols) != len(set(cols)):
             raise ValueError(
                 "select_columns expected unique column names, "
@@ -1116,11 +1134,12 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform()
     def rename_columns(
         self,
         names: Union[List[str], Dict[str, str]],
         *,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ):
         """Rename columns in the dataset.
@@ -1242,6 +1261,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @row_and_schema_change()
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -1254,7 +1274,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1335,9 +1355,6 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -1365,12 +1382,14 @@ class Dataset:
             concurrency=concurrency,
         )
 
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         op = FlatMap(
@@ -1388,6 +1407,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @filter_op()
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
@@ -1398,49 +1418,36 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class or an expression to
+        You can use either a function or a callable class or an expression string to
         perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-           If you use the `expr` parameter with a predicate expression, Ray Data
+           If you use the `expr` parameter with a Python expression string, Ray Data
            optimizes your filter with native Arrow interfaces.
-
-        .. deprecated::
-           String expressions are deprecated and will be removed in a future version.
-           Use predicate expressions from `ray.data.expressions` instead.
 
         Examples:
 
             >>> import ray
-            >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> # String expressions (deprecated - will warn)
             >>> ds.filter(expr="id <= 4").take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
-            >>> # Using predicate expressions (preferred)
-            >>> ds.filter(expr=(col("id") > 10) & (col("id") < 20)).take_all()
-            [{'id': 11}, {'id': 12}, {'id': 13}, {'id': 14}, {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            expr: An expression that represents a predicate (boolean condition) for filtering.
-                Can be either a string expression (deprecated) or a predicate expression
-                from `ray.data.expressions`.
+            expr: An expression string needs to be a valid Python expression that
+                will be converted to ``pyarrow.dataset.Expression`` type.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1452,11 +1459,6 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
                 * If ``fn`` is a function and ``concurrency`` isn't set (default), the
@@ -1472,9 +1474,6 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -1489,12 +1488,10 @@ class Dataset:
                 :func:`ray.remote` for details.
         """
         # Ensure exactly one of fn or expr is provided
-        provided_params = sum([fn is not None, expr is not None])
-        if provided_params != 1:
+        resolved_expr = None
+        if not ((fn is None) ^ (expr is None)):
             raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
-
-        # Helper function to check for incompatible function parameters
-        def _check_fn_params_incompatible(param_type):
+        elif expr is not None:
             if (
                 fn_args is not None
                 or fn_kwargs is not None
@@ -1502,98 +1499,55 @@ class Dataset:
                 or fn_constructor_kwargs is not None
             ):
                 raise ValueError(
-                    f"when '{param_type}' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used."
+                    "when 'expr' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' can not be used."
                 )
-
-        # Merge ray remote args early
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
-
-        # Initialize Filter operator arguments with proper types
-        input_op = self._logical_plan.dag
-        predicate_expr: Optional[Expr] = None
-        filter_fn: Optional[UserDefinedFunction] = None
-        filter_fn_args: Optional[Iterable[Any]] = None
-        filter_fn_kwargs: Optional[Dict[str, Any]] = None
-        filter_fn_constructor_args: Optional[Iterable[Any]] = None
-        filter_fn_constructor_kwargs: Optional[Dict[str, Any]] = None
-        filter_compute: Optional[ComputeStrategy] = None
-
-        if expr is not None:
-            _check_fn_params_incompatible("expr")
             from ray.data._internal.compute import TaskPoolStrategy
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
+                ExpressionEvaluator,
+            )
 
-            # Check if expr is a string (deprecated) or Expr object
-            if isinstance(expr, str):
-                warnings.warn(
-                    "String expressions are deprecated and will be removed in a future version. "
-                    "Use predicate expressions from ray.data.expressions instead. "
-                    "For example: from ray.data.expressions import col; "
-                    "ds.filter(expr=col('column_name') > 5)",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
+            # TODO: (srinathk) bind the expression to the actual schema.
+            # If fn is a string, convert it to a pyarrow.dataset.Expression
+            # Initialize ExpressionEvaluator with valid columns, if available
+            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
 
-                from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
-                    ExpressionEvaluator,
-                )
-
-                # TODO: (srinathk) bind the expression to the actual schema.
-                # If expr is a string, convert it to a pyarrow.dataset.Expression
-                # Initialize ExpressionEvaluator with valid columns, if available
-                # str -> Ray Data's Expression
-                predicate_expr = ExpressionEvaluator.parse_native_expression(expr)
-            else:
-                # expr is an Expr object (predicate expression)
-                predicate_expr = expr
-
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            compute = TaskPoolStrategy(size=concurrency)
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
             )
 
-            if not callable(fn):
+            if callable(fn):
+                compute = get_compute_strategy(
+                    fn=fn,
+                    fn_constructor_args=fn_constructor_args,
+                    compute=compute,
+                    concurrency=concurrency,
+                )
+            else:
                 raise ValueError(
                     f"fn must be a UserDefinedFunction, but got "
                     f"{type(fn).__name__} instead."
                 )
 
-            filter_fn = fn
-            filter_fn_args = fn_args
-            filter_fn_kwargs = fn_kwargs
-            filter_fn_constructor_args = fn_constructor_args
-            filter_fn_constructor_kwargs = fn_constructor_kwargs
-            filter_compute = get_compute_strategy(
-                fn=fn,
-                fn_constructor_args=fn_constructor_args,
-                compute=compute,
-                concurrency=concurrency,
-            )
-
-        # Create Filter operator with explicitly typed arguments
-        filter_op = Filter(
-            input_op=input_op,
-            predicate_expr=predicate_expr,
-            fn=filter_fn,
-            fn_args=filter_fn_args,
-            fn_kwargs=filter_fn_kwargs,
-            fn_constructor_args=filter_fn_constructor_args,
-            fn_constructor_kwargs=filter_fn_constructor_kwargs,
-            compute=filter_compute,
+        plan = self._plan.copy()
+        op = Filter(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            filter_expr=resolved_expr,
+            compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-
-        plan = self._plan.copy()
-        logical_plan = LogicalPlan(filter_op, self.context)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def repartition(
         self,
         num_blocks: Optional[int] = None,
@@ -1619,7 +1573,7 @@ class Dataset:
 
              * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
              * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
-             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block`` rows. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
+             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block``. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -1719,8 +1673,8 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def random_shuffle(
         self,
         *,
@@ -1807,6 +1761,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @transform("random_sample")
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset":
@@ -1870,7 +1825,6 @@ class Dataset:
             random_sample,
             fn_args=[seed],
             batch_format=None,
-            batch_size=None,
         )
 
     @ConsumptionAPI
@@ -2513,152 +2467,8 @@ class Dataset:
             )
         return ds_length
 
-    @PublicAPI(stability="alpha", api_group=SMJ_API_GROUP)
-    def streaming_train_test_split(
-        self,
-        test_size: float,
-        *,
-        split_type: Literal["hash", "random"] = "random",
-        hash_column: Optional[str] = None,
-        seed: Optional[int] = None,
-        **ray_remote_kwargs,
-    ) -> Tuple["Dataset", "Dataset"]:
-        """split the dataset into train and test subsets in a streaming manner.
-        This method is recommended for large datasets.
-
-        The split type can be either "hash" or "random".
-        - "random": The dataset is split into random train and test subsets.
-        - "hash": The dataset is split into train and test subsets based on the hash of the key column.
-
-        .. tip::
-            Make sure to set the `preserve_order` flag in the `ExecutionOptions` to True
-            to ensure that the split is deterministic across pipeline executions. This is important
-            to avoid test rows to end up in the train set and vice versa on multiple executions.
-            This can be set with ``ray.data.DataContext.get_current().execution_options.preserve_order = True``.
-
-        Examples:
-            Examples with Random split:
-
-            >>> import ray
-            >>> ctx = ray.data.DataContext.get_current()
-            >>> ctx.execution_options.preserve_order = True
-            >>> ds = ray.data.range(8)
-            >>> train, test = ds.streaming_train_test_split(test_size=0.25, seed=0)
-            >>> train.count()
-            6
-            >>> test.count()
-            2
-            >>> ctx.execution_options.preserve_order = False
-
-            Examples with Hash split:
-
-            >>> import ray
-            >>> ds = ray.data.range(8)
-            >>> train, test = ds.streaming_train_test_split(test_size=0.25, split_type="hash", hash_column="id")
-            >>> train.take_batch()
-            {'id': array([0, 2, 3, 4, 5, 6])}
-            >>> test.take_batch()
-            {'id': array([1, 7])}
-
-        Args:
-            test_size: The proportion of the dataset to include in the test split.
-                Must be between 0.0 and 1.0.
-            split_type: The type of split to perform. Can be "hash" or "random".
-            hash_column: The column to use for the hash split. Required for hash split and
-                ignored for random split.
-            seed: The seed to use for the random split. Ignored for hash split.
-            **ray_remote_kwargs: Additional kwargs to pass to the Ray remote function.
-
-        Returns:
-            Train and test subsets as two ``Dataset``.
-
-        .. seealso::
-
-            :meth:`Dataset.train_test_split`
-        """
-        import hashlib
-
-        import pyarrow as pa
-
-        from ray.data._internal.execution.interfaces.task_context import TaskContext
-
-        if test_size <= 0 or test_size >= 1:
-            raise ValueError("test_size must be between 0 and 1.")
-
-        if seed is not None and split_type == "hash":
-            raise ValueError("seed is not supported for hash split")
-
-        if hash_column is not None and split_type == "random":
-            raise ValueError("hash_column is not supported for random split")
-
-        def random_split(batch: pa.Table):
-            """
-            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
-            or to test otherwise.
-
-            This version ensures that the random choices are **stable per Ray task execution** by seeding
-            the RNG with a combination of a user-specified seed and the Ray task ID.
-            """
-            ctx = TaskContext.get_current()
-            if "train_test_split_rng" in ctx.kwargs:
-                rng = ctx.kwargs["train_test_split_rng"]
-            elif seed is None:
-                rng = np.random.default_rng([ctx.task_idx])
-                ctx.kwargs["train_test_split_rng"] = rng
-            else:
-                rng = np.random.default_rng([ctx.task_idx, seed])
-                ctx.kwargs["train_test_split_rng"] = rng
-
-            # Draw Bernoulli samples: 1 = train, 0 = test
-            is_train = rng.random(batch.num_rows) < (1 - test_size)
-            return batch.append_column(
-                _TRAIN_TEST_SPLIT_COLUMN, pa.array(is_train, type=pa.bool_())
-            )
-
-        def hash_split(batch: pa.Table) -> tuple[pa.Table, pa.Table]:
-            def key_to_bucket(key: Any) -> int:
-                # 64-bit integer in [0, 2^64)
-                h = int.from_bytes(
-                    hashlib.blake2b(str(key).encode(), digest_size=8).digest(), "big"
-                )
-                return True if h < (1 - test_size) * (1 << 64) else False
-
-            if hash_column in batch.column_names:
-                # Use provided key for hashing
-                keys = batch[hash_column].to_numpy()
-            else:
-                raise ValueError(f"Key column {hash_column} not found in batch")
-
-            bucket_arr = pa.array([key_to_bucket(key) for key in keys], type=pa.bool_())
-            return batch.append_column(_TRAIN_TEST_SPLIT_COLUMN, bucket_arr)
-
-        if split_type == "random":
-            bucketted = self.map_batches(
-                random_split,
-                batch_format="pyarrow",
-                **ray_remote_kwargs,
-            )
-        elif split_type == "hash":
-            if hash_column is None:
-                raise ValueError("hash_column is required for hash split")
-            bucketted = self.map_batches(
-                hash_split,
-                batch_format="pyarrow",
-                **ray_remote_kwargs,
-            )
-        else:
-            raise ValueError(f"Invalid split type: {split_type}")
-
-        ds_train = bucketted.filter(
-            expr=f"{_TRAIN_TEST_SPLIT_COLUMN} == True"
-        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
-        ds_test = bucketted.filter(
-            expr=f"{_TRAIN_TEST_SPLIT_COLUMN} == False"
-        ).drop_columns([_TRAIN_TEST_SPLIT_COLUMN])
-
-        return ds_train, ds_test
-
     @PublicAPI(api_group=SMJ_API_GROUP)
+    @combine()
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
@@ -2704,8 +2514,8 @@ class Dataset:
             logical_plan,
         )
 
-    @AllToAllAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
+    @combine()
     def join(
         self,
         ds: "Dataset",
@@ -2880,8 +2690,8 @@ class Dataset:
 
         return Dataset(plan, LogicalPlan(op, self.context))
 
-    @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @aggregate()
     def groupby(
         self,
         key: Union[str, List[str], None],
@@ -2900,7 +2710,7 @@ class Dataset:
                 import ray
 
                 def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop(columns=["variety"]).columns:
+                    for feature in group.drop("variety").columns:
                         group[feature] = group[feature] / group[feature].abs().max()
                     return group
 
@@ -2945,6 +2755,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("unique", include_params=["column"])
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -2952,7 +2763,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
-            >>> sorted(ds.unique("item"))
+            >>> ds.unique("item")
             [1, 2, 3]
 
             This function is very useful for computing labels
@@ -3030,6 +2841,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("sum", include_params=["on", "ignore_nulls"])
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3074,6 +2886,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("min", include_params=["on", "ignore_nulls"])
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3118,6 +2931,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("max", include_params=["on", "ignore_nulls"])
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3162,6 +2976,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("mean", include_params=["on", "ignore_nulls"])
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3206,6 +3021,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("std", include_params=["on", "ignore_nulls", "ddof"])
     def std(
         self,
         on: Optional[Union[str, List[str]]] = None,
@@ -3227,12 +3043,11 @@ class Dataset:
             >>> import ray
             >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
-            >>> result = ray.data.from_items([
+            >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
             ...     for i in range(100)
             ... ]).std(["A", "B"])
-            >>> [(key, round(value, 10)) for key, value in result.items()]
-            [('std(A)', 29.0114919759), ('std(B)', 2968.1748039269)]
+            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -3262,8 +3077,8 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
+    @shuffle()
     def sort(
         self,
         key: Union[str, List[str]],
@@ -3335,7 +3150,8 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    @combine()
+    def zip(self, other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3354,29 +3170,24 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
-            >>> ds3 = ray.data.range(5)
-            >>> ds1.zip(ds2, ds3).take_batch()
-            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
+            >>> ds1.zip(ds2).take_batch()
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
 
         Args:
-            *other: List of datasets to combine with this one. The datasets
-                must have the same row count as this dataset, otherwise the
-                ValueError is raised.
+            other: The dataset to zip with on the right hand side.
 
         Returns:
             A :class:`Dataset` containing the columns of the second dataset
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
-
-        Raises:
-            ValueError: If the datasets have different row counts.
         """
         plan = self._plan.copy()
-        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
+        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @limit_op()
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -3403,8 +3214,8 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @consume(["batch_size", "batch_format"])
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -3463,8 +3274,8 @@ class Dataset:
         self._plan._snapshot_stats = limited_ds._plan.stats()
         return res
 
-    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @consume(["limit"])
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -3514,8 +3325,8 @@ class Dataset:
         self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
-    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @consume(["limit"])
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -3591,6 +3402,7 @@ class Dataset:
         pattern="Examples:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @inspect()
     def count(self) -> int:
         """Count the number of rows in the dataset.
 
@@ -3618,7 +3430,7 @@ class Dataset:
 
         plan = self._plan.copy()
 
-        # NOTE: Project the dataset to avoid the need to carry actual
+        # NOTE: Project the dataset to avoid the need to carrying actual
         #       data when we're only interested in the total count
         count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
@@ -3642,6 +3454,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("schema", include_params=["fetch_if_missing"])
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
@@ -3689,6 +3502,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("columns", include_params=["fetch_if_missing"])
     def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
         """Returns the columns of this Dataset.
 
@@ -3737,6 +3551,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("size_bytes")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -3761,6 +3576,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("input_files")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -5119,24 +4935,17 @@ class Dataset:
                     return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-
-            iter_, stats = self._write_ds._execute_to_iterator()
-            write_results = []
-
-            for bundle in iter_:
-                res = ray.get(bundle.block_refs)
-                # Generate write result report
-                write_results.append(_gen_datasink_write_result(res))
-
-            combined_write_result = WriteResult.combine(*write_results)
-
+            # TODO: Get and handle the blocks with an iterator instead of getting
+            # everything in a blocking way, so some blocks can be freed earlier.
+            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
+            write_result = gen_datasink_write_result(raw_write_results)
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
                 datasink.get_name(),
-                combined_write_result.num_rows,
-                memory_string(combined_write_result.size_bytes),
+                write_result.num_rows,
+                memory_string(write_result.size_bytes),
             )
-            datasink.on_write_complete(combined_write_result)
+            datasink.on_write_complete(write_result)
 
         except Exception as e:
             datasink.on_write_failed(e)
@@ -5443,6 +5252,137 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+        )
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    @Deprecated
+    def to_torch(
+        self,
+        *,
+        label_column: Optional[str] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
+        label_column_dtype: Optional["torch.dtype"] = None,
+        feature_column_dtypes: Optional[
+            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
+        ] = None,
+        batch_size: int = 1,
+        prefetch_batches: int = 1,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        unsqueeze_label_tensor: bool = True,
+        unsqueeze_feature_tensors: bool = True,
+    ) -> "torch.utils.data.IterableDataset":
+        """Return a
+        `Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`_
+        over this :class:`~ray.data.Dataset`.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a torch ``DataLoader``.
+
+        Each element in ``IterableDataset`` is a tuple consisting of 2
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features is
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features is
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          is a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor is
+        of shape (N, 1). Otherwise, it is of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` is treated as the label, and the output label tensor
+        is ``None``.
+
+        Note that you probably want to call :meth:`Dataset.split` on this dataset if
+        there are to be multiple Torch workers consuming the data.
+
+        Time complexity: O(1)
+
+        Args:
+            label_column: The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns: The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If ``None``, then use all columns except the label column as
+                the features.
+            label_column_dtype: The torch dtype to
+                use for the label column. If ``None``, then automatically infer
+                the dtype.
+            feature_column_dtypes: The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it is applied to
+                all tensors. If ``None``, then automatically infer the dtype.
+            batch_size: How many samples per batch to yield at a time.
+                Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to fetch. If set to greater than 0, a separate threadpool is used
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1.
+            drop_last: Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of the stream is not divisible by the batch
+                size, then the last batch is smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer are drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+            unsqueeze_label_tensor: If set to True, the label tensor
+                is unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
+            unsqueeze_feature_tensors: If set to True, the features tensors
+                are unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they are left as is, that is
+                (N, ). Defaults to True.
+
+        Returns:
+            A `Torch IterableDataset`_.
+        """  # noqa: E501
+        warnings.warn(
+            "`to_torch` is deprecated and will be removed after May 2025. Use "
+            "`iter_torch_batches` instead.",
+            DeprecationWarning,
+        )
+        return self.iterator().to_torch(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            label_column_dtype=label_column_dtype,
+            feature_column_dtypes=feature_column_dtypes,
+            batch_size=batch_size,
+            prefetch_batches=prefetch_batches,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            unsqueeze_feature_tensors=unsqueeze_feature_tensors,
         )
 
     @ConsumptionAPI
@@ -5964,12 +5904,12 @@ class Dataset:
         """
         import pyarrow as pa
 
-        ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
-        # self._plan.execute(), which will cache the schema
+        # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
@@ -6012,6 +5952,9 @@ class Dataset:
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     @PublicAPI(api_group=E_API_GROUP)
+    @cache_result(
+        "materialize"
+    )  # Caches MaterializedDataset object (ObjectRef[Block] refs), not raw data
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
@@ -6062,6 +6005,7 @@ class Dataset:
         return output
 
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("stats")
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 
@@ -6380,9 +6324,6 @@ class Dataset:
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
 
-        Args:
-            **kwargs: Additional arguments passed to the widget's _repr_mimebundle_ method.
-
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
@@ -6590,13 +6531,6 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
-        """
-        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
-
-        Args:
-            base_schema: The underlying Arrow or Pandas schema.
-            data_context: The data context to use for this schema.
-        """
         self.base_schema = base_schema
 
         # Snapshot the current context, so that the config of Datasets is always
@@ -6614,23 +6548,9 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
-        import pandas as pd
         import pyarrow as pa
-        from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
         from ray.data.extensions import ArrowTensorType, TensorDtype
-
-        def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
-        ) -> pa.DataType:
-            if isinstance(dtype, pd.ArrowDtype):
-                return dtype.pyarrow_dtype
-            elif isinstance(dtype, pd.StringDtype):
-                # StringDtype is not a BaseMaskedDtype, handle separately
-                return pa.string()
-            elif isinstance(dtype, BaseMaskedDtype):
-                dtype = dtype.numpy_dtype
-            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6646,13 +6566,13 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(_convert_to_pa_type(dtype))
+                    arrow_types.append(pa.from_numpy_dtype(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:
