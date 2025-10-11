@@ -256,7 +256,7 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
 
 std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
   const std::string default_addr = "8.8.8.8:53";
-  const std::string& test_addr = address ? *address : default_addr;
+  const std::string &test_addr = address ? *address : default_addr;
 
   auto parts = ParseAddress(test_addr);
   RAY_CHECK(parts.has_value());
