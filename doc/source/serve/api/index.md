@@ -395,6 +395,8 @@ Content-Type: application/json
    schema.TaskProcessorConfig
    schema.TaskResult
    schema.ScaleDeploymentRequest
+   schema.AsyncCapability
+   schema.TaskProcessorAdapter
 ```
 
 (serve-rest-api-response-schema)=
