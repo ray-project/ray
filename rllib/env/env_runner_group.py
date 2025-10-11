@@ -1,8 +1,8 @@
-import gymnasium as gym
-import logging
 import importlib.util
+import logging
 import os
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,12 +11,17 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     TypeVar,
     Union,
 )
 
+import gymnasium as gym
+
 import ray
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core import (
@@ -28,18 +33,14 @@ from ray.rllib.core import (
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray._common.deprecation import (
-    deprecation_warning,
-    DEPRECATED_VALUE,
-)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (

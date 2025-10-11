@@ -1,32 +1,32 @@
-import gymnasium as gym
 import math
-import numpy
-import ray
-
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Collection,
     Dict,
     Iterable,
     List,
     Optional,
-    TYPE_CHECKING,
     Union,
 )
 
+import gymnasium as gym
+import numpy
+
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
     ALL_MODULES,
-    DEFAULT_AGENT_ID,
-    DEFAULT_MODULE_ID,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_RL_MODULE,
+    DEFAULT_AGENT_ID,
+    DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable

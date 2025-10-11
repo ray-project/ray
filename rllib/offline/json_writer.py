@@ -1,24 +1,26 @@
-from datetime import datetime
 import json
 import logging
-import numpy as np
 import os
-from urllib.parse import urlparse
 import time
+from datetime import datetime
+from urllib.parse import urlparse
+
+import numpy as np
 
 try:
     from smart_open import smart_open
 except ImportError:
     smart_open = None
 
+from typing import Any, Dict, List
+
 from ray.air._internal.json import SafeFallbackEncoder
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.compression import pack, compression_supported
+from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.annotations import PublicAPI, override
+from ray.rllib.utils.compression import compression_supported, pack
 from ray.rllib.utils.typing import FileType, SampleBatchType
-from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
