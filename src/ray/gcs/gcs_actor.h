@@ -310,7 +310,7 @@ class GcsActor {
   /// Event recorder and session name for Ray events
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
-  /// Cached address of the local raylet where this actor is running
+  /// Address of the local raylet of the worker where this actor is running
   rpc::Address local_raylet_address_;
 };
 

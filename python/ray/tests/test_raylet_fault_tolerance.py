@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -65,8 +66,6 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
             return "pong"
 
         def get_pid(self):
-            import os
-
             return os.getpid()
 
     actor = SimpleActor.remote()
@@ -76,6 +75,8 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
 
     worker_pid = ray.get(actor.get_pid.remote())
 
+    # NOTE: checking the process is still alive rather than checking the actor state from the GCS
+    # since as long as KillActor is sent the GCS will mark the actor as dead even though it may not actually be
     assert psutil.pid_exists(worker_pid)
 
     ray.kill(actor)

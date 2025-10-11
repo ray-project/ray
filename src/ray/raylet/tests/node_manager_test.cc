@@ -1222,8 +1222,9 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
 
 TEST_F(NodeManagerTest, TestHandleKillLocalActorIdempotency) {
   // Test that calling HandleKillLocalActor twice results in KillActor RPC being
-  // called twice on the core worker, verifying idempotency is handled at the
-  // core worker level, not the raylet level.
+  // called twice on the core worker client. HandleKillLocalActor is a simple wrapper
+  // that calls KillActor on the core worker client, so idempotency is really handled in
+  // KillActor and documented in the ShutdownCoordinator tests.
 
   WorkerID worker_id = WorkerID::FromRandom();
   JobID job_id = JobID::FromInt(1);
