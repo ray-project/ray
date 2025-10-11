@@ -225,6 +225,65 @@ class TestOpenAiIngress:
 
         await router.check_health()
 
+    @pytest.mark.asyncio
+    async def test_raw_request_passed_to_deployment_handle(self, llm_config: LLMConfig):
+        """Test that raw_request is passed to the deployment handle."""
+        from fastapi import Request
+
+        from ray.llm._internal.serve.configs.openai_api_models import (
+            ChatCompletionRequest,
+            ChatCompletionResponse,
+        )
+
+        # Track if raw_request was received
+        captured_raw_request = []
+
+        # Create a mock deployment handle that captures raw_request
+        async def mock_chat_generator(request, raw_request):
+            captured_raw_request.append(raw_request)
+            # Return a valid response
+            yield ChatCompletionResponse(
+                id="test_id",
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Hello!"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                model="llm_model_id",
+                object="chat.completion",
+            )
+
+        mock_handle = MagicMock()
+        mock_handle.llm_config = MagicMock()
+        mock_handle.llm_config.remote = AsyncMock(return_value=llm_config)
+        mock_handle.chat = MagicMock()
+        mock_handle.chat.remote = mock_chat_generator
+
+        # Create router with mock handle
+        router = OpenAiIngress(llm_deployments=[mock_handle])
+        await router._init_completed.wait()
+
+        # Create a mock FastAPI request
+        from starlette.datastructures import Headers
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = Headers({"content-type": "application/json"})
+
+        # Make a request through the router
+        request_body = ChatCompletionRequest(
+            model="llm_model_id",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=False,
+        )
+
+        await router.chat(request_body, mock_request)
+
+        # Verify that raw_request was passed to the deployment handle
+        assert len(captured_raw_request) == 1
+        assert captured_raw_request[0] is mock_request
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

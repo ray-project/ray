@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
+from fastapi import Request
+
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.openai_api_models import (
         ChatCompletionRequest,
@@ -40,7 +42,7 @@ class LLMServerProtocol(DeploymentProtocol):
 
     @abstractmethod
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self, request: "ChatCompletionRequest", raw_request: Optional[Request] = None
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """
         Inferencing to the engine for chat, and return the response.
@@ -49,7 +51,7 @@ class LLMServerProtocol(DeploymentProtocol):
 
     @abstractmethod
     async def completions(
-        self, request: "CompletionRequest"
+        self, request: "CompletionRequest", raw_request: Optional[Request] = None
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
