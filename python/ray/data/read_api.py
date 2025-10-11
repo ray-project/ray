@@ -2253,7 +2253,6 @@ def read_tfrecords(
 def read_mcap(
     paths: Union[str, List[str]],
     *,
-    channels: Optional[Union[List[str], Set[str]]] = None,
     topics: Optional[Union[List[str], Set[str]]] = None,
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
@@ -2278,7 +2277,7 @@ def read_mcap(
 
     MCAP is a format commonly used in robotics and autonomous systems for storing
     ROS2 messages and other time-series data. This reader provides predicate pushdown
-    optimization for efficient filtering by channels, topics, and time ranges.
+    optimization for efficient filtering by topics, time ranges, and message types.
 
     Examples:
         :noindex:
@@ -2289,12 +2288,12 @@ def read_mcap(
         >>> ds = ray.data.read_mcap("s3://bucket/mcap-data/") # doctest: +SKIP
         >>> ds.schema() # doctest: +SKIP
 
-        Read with filtering for specific channels and time range.
+        Read with filtering for specific topics and time range.
 
         >>> from ray.data.datasource import TimeRange  # doctest: +SKIP
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
         ...     "s3://bucket/mcap-data/", # doctest: +SKIP
-        ...     channels={"camera", "lidar"}, # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
         ...     time_range=TimeRange(start_time=1000000000, end_time=5000000000), # doctest: +SKIP
         ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"} # doctest: +SKIP
         ... ) # doctest: +SKIP
@@ -2303,7 +2302,7 @@ def read_mcap(
 
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
         ...     "s3://bucket/mcap-data/", # doctest: +SKIP
-        ...     channels={"camera", "lidar"}, # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
         ...     time_range=(1000000000, 5000000000), # doctest: +SKIP
         ... ) # doctest: +SKIP
 
@@ -2326,10 +2325,8 @@ def read_mcap(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        channels: Optional list or set of channel names to include. If specified, only
-            messages from these channels will be read. Mutually exclusive with `topics`.
         topics: Optional list or set of topic names to include. If specified, only
-            messages from these topics will be read. Mutually exclusive with `channels`.
+            messages from these topics will be read.
         time_range: Optional time range for filtering messages by timestamp. Can be either
             a tuple of (start_time, end_time) in nanoseconds (for backwards compatibility)
             or a TimeRange object. Both values must be non-negative and start_time < end_time.
@@ -2381,19 +2378,12 @@ def read_mcap(
     if file_extensions is None:
         file_extensions = ["mcap"]
 
-    # Validate that channels and topics are not both specified
-    if channels is not None and topics is not None:
-        raise ValueError(
-            "Cannot specify both 'channels' and 'topics'. Use one or the other."
-        )
-
     # Convert tuple time_range to TimeRange for backwards compatibility
     if time_range is not None and isinstance(time_range, tuple):
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
 
     datasource = MCAPDatasource(
         paths,
-        channels=channels,
         topics=topics,
         time_range=time_range,
         message_types=message_types,
