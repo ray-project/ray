@@ -64,9 +64,25 @@ class Operation(Enum):
 
 
 class _ExprVisitor(ABC):
-    """Base visitor with generic dispatch for Ray Data expressions."""
+    """Base visitor with generic dispatch for Ray Data expressions.
+
+    This implements the Visitor pattern for traversing expression trees.
+    Subclasses implement specific conversion logic for each expression type.
+    """
 
     def visit(self, expr: "Expr") -> Any:
+        """Dispatch to the appropriate visitor method based on expression type.
+
+        Args:
+            expr: Expression to visit
+
+        Returns:
+            Result of the specific visitor method
+
+        Raises:
+            TypeError: If expression type is not supported
+        """
+        # Dispatch to type-specific visitor methods
         if isinstance(expr, ColumnExpr):
             return self.visit_column(expr)
         elif isinstance(expr, LiteralExpr):
@@ -126,26 +142,41 @@ class _ExprVisitor(ABC):
 
 
 class _PyArrowExpressionVisitor(_ExprVisitor):
-    """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
+    """Visitor that converts Ray Data expressions to PyArrow compute expressions.
+
+    This visitor enables filter pushdown and other optimizations by converting
+    Ray Data expression trees into equivalent PyArrow compute expressions.
+    """
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
+        """Convert column reference to PyArrow field reference."""
         import pyarrow.compute as pc
 
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
+        """Convert literal value to PyArrow scalar."""
         import pyarrow.compute as pc
 
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
+        """Convert binary operation to PyArrow compute expression.
+
+        Special handling for IN/NOT_IN operations which require the right operand
+        to be a literal list for PyArrow's is_in function.
+        """
         import pyarrow as pa
         import pyarrow.compute as pc
 
+        # Handle IN and NOT_IN operations specially
         if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
+
+            # Right operand must be a literal list for PyArrow
             if isinstance(expr.right, LiteralExpr):
                 right_value = expr.right.value
+                # Convert to PyArrow array
                 right = (
                     pa.array(right_value)
                     if isinstance(right_value, list)
@@ -156,9 +187,12 @@ class _PyArrowExpressionVisitor(_ExprVisitor):
                     f"is_in/not_in operations require the right operand to be a "
                     f"literal list, got {type(expr.right).__name__}."
                 )
+
+            # Apply is_in and optionally invert for NOT_IN
             result = pc.is_in(left, right)
             return pc.invert(result) if expr.op == Operation.NOT_IN else result
 
+        # Standard binary operations
         left = self.visit(expr.left)
         right = self.visit(expr.right)
         from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
@@ -179,24 +213,23 @@ class _PyArrowExpressionVisitor(_ExprVisitor):
         return self.visit(expr.expr)
 
     def visit_case(self, expr: "CaseExpr") -> "pyarrow.compute.Expression":
-        """Convert CaseExpr to PyArrow case_when expression.
+        """Convert CaseExpr to PyArrow if_else chain.
 
-        PyArrow's case_when expects:
-        - cond: a struct array of boolean conditions
-        - *cases: the case values (one for each condition, plus default)
+        PyArrow doesn't support expression-based case_when directly, so we build
+        a nested if_else structure:
+        - if_else(cond1, val1, if_else(cond2, val2, default))
+
+        Conditions are evaluated in order until one is True.
         """
         import pyarrow.compute as pc
 
-        # Convert all conditions to PyArrow expressions
+        # Convert all components to PyArrow expressions
         conditions = [self.visit(cond) for cond, _ in expr.when_clauses]
-        # Convert all values to PyArrow expressions
         choices = [self.visit(val) for _, val in expr.when_clauses]
-        # Convert default to PyArrow expression
         default = self.visit(expr.default)
 
-        # Build the case_when expression
-        # Note: This creates a nested if_else structure since PyArrow's case_when
-        # is designed for constant values, not expressions
+        # Build nested if_else structure in reverse order
+        # Start from default and work backwards through conditions
         result = default
         for cond, choice in reversed(list(zip(conditions, choices))):
             result = pc.if_else(cond, choice, result)
@@ -288,8 +321,10 @@ class Expr(ABC):
             A new BinaryExpr representing the operation
 
         Note:
-            If other is not an Expr, it will be automatically converted to a LiteralExpr.
+            If other is not an Expr, it will be automatically converted to a
+            LiteralExpr. This enables natural Python syntax like col("x") + 5.
         """
+        # Auto-wrap non-expression values as literals
         if not isinstance(other, Expr):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
@@ -511,6 +546,11 @@ class LiteralExpr(Expr):
     data_type: DataType = field(init=False)
 
     def __post_init__(self):
+        """Initialize data_type by inferring from the literal value.
+
+        Since the dataclass is frozen, we use object.__setattr__ to set the
+        data_type field after construction.
+        """
         # Infer the type from the value using DataType.infer_dtype
         inferred_dtype = DataType.infer_dtype(self.value)
 
@@ -744,14 +784,15 @@ class WhenExpr(Expr):
             >>> expr = when(col("age") > 30, lit("Senior"))
             >>> expr = expr.otherwise(lit("Junior"))
         """
-        # Build the when_clauses list by traversing the chain
+        # Build the when_clauses list by traversing the linked list chain
         when_clauses = []
         current = self
         while current is not None:
             when_clauses.append((current.condition, current.value))
             current = current.next_when
 
-        # Reverse to get the correct order (first when should be evaluated first)
+        # Reverse to get the correct evaluation order
+        # (first when() call should be evaluated first)
         when_clauses.reverse()
 
         return CaseExpr(when_clauses, default)
@@ -825,10 +866,23 @@ class UDFExpr(Expr):
 def _create_udf_callable(
     fn: Callable[..., BatchColumn], return_dtype: DataType
 ) -> Callable[..., UDFExpr]:
-    """Create a callable that generates UDFExpr when called with expressions."""
+    """Create a callable that generates UDFExpr when called with expressions.
+
+    This wrapper enables UDFs to be called with a mix of expressions and literal
+    values, automatically converting literals to LiteralExpr nodes.
+
+    Args:
+        fn: The original UDF function
+        return_dtype: The return data type of the UDF
+
+    Returns:
+        A callable that creates UDFExpr instances
+    """
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
-        # Convert arguments to expressions if they aren't already
+        # Convert all arguments to expressions
+        # This allows calls like: my_udf(col("x"), 5)
+        # where 5 gets wrapped as LiteralExpr(5)
         expr_args = []
         for arg in args:
             if isinstance(arg, Expr):
@@ -843,6 +897,7 @@ def _create_udf_callable(
             else:
                 expr_kwargs[k] = LiteralExpr(v)
 
+        # Create the UDF expression node
         return UDFExpr(
             fn=fn,
             args=expr_args,
@@ -850,7 +905,7 @@ def _create_udf_callable(
             data_type=return_dtype,
         )
 
-    # Preserve original function metadata
+    # Preserve original function metadata (name, docstring, etc.)
     functools.update_wrapper(udf_callable, fn)
 
     # Store the original function for access if needed
