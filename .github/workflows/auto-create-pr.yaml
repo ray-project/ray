@@ -33,11 +33,15 @@ jobs:
         with:
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 0
+      - name: Reset promotion branch
+        run: |
+          git fetch origin ${{ github.event.inputs.source_branch || 'master' }}:${{ github.event.inputs.source_branch || 'master' }}
+          git reset --hard ${{ github.event.inputs.source_branch || 'master' }}
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GH_TOKEN }}
-          branch: ${{ github.event.inputs.source_branch || 'master' }}
+          # branch: ${{ github.event.inputs.source_branch || 'master' }}
           base: ${{ github.event.inputs.target_branch || 'main' }}
           title: '🔄 Daily merge: upstream master branch to main ($(date +%Y-%m-%d))'
           body: |
@@ -56,5 +60,5 @@ jobs:
             merge
           draft: false
           branch-suffix: short-commit-hash
-          delete-branch: false
+          delete-branch: true
           assignees: ${{ github.event.inputs.assignees || 'mingcheng' }}
