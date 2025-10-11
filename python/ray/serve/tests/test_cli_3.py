@@ -178,7 +178,7 @@ class TestRun:
                 arithmetic_config_dict = yaml.safe_load(config_file)
 
             config_path = tmp_path / "config.yaml"
-            if proxy_location:
+            if with_proxy_location:
                 arithmetic_config_dict["proxy_location"] = with_proxy_location
             with open(config_path, "w") as f:
                 yaml.dump(arithmetic_config_dict, f)
