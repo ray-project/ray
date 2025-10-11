@@ -129,7 +129,11 @@ def test_case_expression_complex_conditions():
 def test_new_operators_pandas():
     """Test new operators with pandas DataFrames."""
     # Create test data
-    data = {"a": [10, 7, 15], "b": [3, 2, 4], "status": ["active", "pending", "inactive"]}
+    data = {
+        "a": [10, 7, 15],
+        "b": [3, 2, 4],
+        "status": ["active", "pending", "inactive"],
+    }
     df = pd.DataFrame(data)
 
     # Test != operator

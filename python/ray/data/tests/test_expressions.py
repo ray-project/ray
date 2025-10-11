@@ -428,7 +428,9 @@ def test_new_operators(ray_start_regular_shared):
     assert rows[3]["in_list"] is True
 
     # Test not_in()
-    result = ds.with_column("not_in_list", col("status").not_in(["inactive", "rejected"]))
+    result = ds.with_column(
+        "not_in_list", col("status").not_in(["inactive", "rejected"])
+    )
     rows = result.take_all()
     assert rows[0]["not_in_list"] is True
     assert rows[1]["not_in_list"] is True
@@ -566,11 +568,14 @@ def test_case_with_complex_conditions(ray_start_regular_shared):
     result = ds.with_column(
         "loan_category",
         when(
-            (col("age") >= 30) & (col("income") >= 100000) & (col("credit_score") >= 700),
+            (col("age") >= 30)
+            & (col("income") >= 100000)
+            & (col("credit_score") >= 700),
             lit("Premium"),
         )
         .when(
-            ((col("age") >= 25) & (col("income") >= 50000)) | (col("credit_score") >= 750),
+            ((col("age") >= 25) & (col("income") >= 50000))
+            | (col("credit_score") >= 750),
             lit("Standard"),
         )
         .when(col("credit_score") >= 650, lit("Basic"))
@@ -578,9 +583,13 @@ def test_case_with_complex_conditions(ray_start_regular_shared):
     )
 
     rows = result.take_all()
-    assert rows[0]["loan_category"] == "Standard"  # age >= 25, income >= 50000, credit >= 750
+    assert (
+        rows[0]["loan_category"] == "Standard"
+    )  # age >= 25, income >= 50000, credit >= 750
     assert rows[1]["loan_category"] == "Standard"  # age >= 25, income >= 50000
-    assert rows[2]["loan_category"] == "Premium"  # age >= 30, income >= 100000, credit >= 700
+    assert (
+        rows[2]["loan_category"] == "Premium"
+    )  # age >= 30, income >= 100000, credit >= 700
     assert rows[3]["loan_category"] == "Declined"  # credit_score < 650
 
 
@@ -641,7 +650,9 @@ def test_case_to_pyarrow_conversion():
     assert pa_expr is not None
 
     # Case with new operators
-    expr = when(col("status").is_in(["active", "approved"]), lit("Active")).otherwise(lit("Inactive"))
+    expr = when(col("status").is_in(["active", "approved"]), lit("Active")).otherwise(
+        lit("Inactive")
+    )
 
     pa_expr = expr.to_pyarrow()
     assert pa_expr is not None
