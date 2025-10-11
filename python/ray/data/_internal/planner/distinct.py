@@ -25,20 +25,16 @@ def generate_distinct_fn(
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to remove duplicate rows by the specified key columns.
-    
+
     Args:
         key: List of column names to consider for identifying duplicates.
             If None, all columns are used.
         data_context: The data context configuration.
         _debug_limit_shuffle_execution_to_num_blocks: Debug parameter to limit shuffle.
-    
+
     Returns:
         A transform function that performs deduplication.
     """
-    assert data_context.shuffle_strategy in [
-        ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
-        ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED,
-    ]
 
     def fn(
         refs: List[RefBundle],
@@ -53,7 +49,7 @@ def generate_distinct_fn(
             return (blocks, {})
 
         unified_schema = unify_ref_bundles_schema(refs)
-        
+
         # If key is None, use all columns
         if key is None:
             key_columns = list(unified_schema.names)
@@ -86,12 +82,8 @@ def generate_distinct_fn(
 
         if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(distinct_spec)
-        elif data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED:
-            scheduler = PullBasedShuffleTaskScheduler(distinct_spec)
         else:
-            raise ValueError(
-                f"Invalid shuffle strategy '{data_context.shuffle_strategy}'"
-            )
+            scheduler = PullBasedShuffleTaskScheduler(distinct_spec)
 
         return scheduler.execute(
             refs,

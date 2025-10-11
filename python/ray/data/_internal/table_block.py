@@ -559,12 +559,12 @@ class TableBlockAccessor(BlockAccessor):
                     next_row = next(iter)
 
                 current_key = _key_fn(next_row)
-                
+
                 # Only add row if it's the first with this key
                 if last_key is None or not keys_equal(current_key, last_key):
                     builder.add(next_row)
                     last_key = current_key
-                
+
                 next_row = next(iter)
             except StopIteration:
                 break
