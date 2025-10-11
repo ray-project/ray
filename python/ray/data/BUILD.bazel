@@ -1715,6 +1715,20 @@ py_test(
 )
 
 py_test(
+    name = "test_mcap",
+    size = "medium",
+    srcs = ["tests/test_mcap.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_delta_sharing",
     size = "small",
     srcs = ["tests/test_delta_sharing.py"],
