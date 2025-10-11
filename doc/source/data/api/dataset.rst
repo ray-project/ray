@@ -12,12 +12,8 @@ Compute Strategy API
   :nosignatures:
   :toctree: doc/
 
-  ActorPoolStrategy
   TaskPoolStrategy
-.. autoclass:: ActorPoolStrategy
-  :members:
-.. autoclass:: TaskPoolStrategy
-  :members:
+  ActorPoolStrategy
 
 Schema
 ------
