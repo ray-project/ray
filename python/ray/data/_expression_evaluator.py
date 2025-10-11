@@ -10,6 +10,7 @@ import pyarrow.compute as pc
 
 from ray.data.block import DataBatch
 from ray.data.expressions import (
+    AliasExpr,
     BinaryExpr,
     CaseExpr,
     ColumnExpr,
@@ -26,11 +27,13 @@ _PANDAS_EXPR_OPS_MAP = {
     Operation.SUB: operator.sub,
     Operation.MUL: operator.mul,
     Operation.DIV: operator.truediv,
+    Operation.FLOORDIV: operator.floordiv,
     Operation.GT: operator.gt,
     Operation.LT: operator.lt,
     Operation.GE: operator.ge,
     Operation.LE: operator.le,
     Operation.EQ: operator.eq,
+    Operation.NE: operator.ne,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
     Operation.NOT: operator.not_,
@@ -41,14 +44,18 @@ _ARROW_EXPR_OPS_MAP = {
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
+    Operation.FLOORDIV: pc.floor_divide,
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
     Operation.GE: pc.greater_equal,
     Operation.LE: pc.less_equal,
     Operation.EQ: pc.equal,
+    Operation.NE: pc.not_equal,
     Operation.AND: pc.and_,
     Operation.OR: pc.or_,
     Operation.NOT: pc.invert,
+    Operation.IS_NULL: pc.is_null,
+    Operation.IS_NOT_NULL: lambda x: pc.invert(pc.is_null(x)),
 }
 
 
@@ -63,16 +70,51 @@ def _eval_expr_recursive(
         return batch[expr.name]
     if isinstance(expr, LiteralExpr):
         return expr.value
+    if isinstance(expr, AliasExpr):
+        # For alias expressions, evaluate the underlying expression
+        return _eval_expr_recursive(expr.expr, batch, ops)
     if isinstance(expr, BinaryExpr):
+        # Handle IN and NOT_IN operations specially
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            left_val = _eval_expr_recursive(expr.left, batch, ops)
+            right_val = _eval_expr_recursive(expr.right, batch, ops)
+
+            # For pandas, use isin()
+            if isinstance(batch, pd.DataFrame):
+                if isinstance(left_val, pd.Series):
+                    result = left_val.isin(right_val)
+                else:
+                    # Scalar value
+                    result = pd.Series([left_val in right_val] * len(batch))
+                return ~result if expr.op == Operation.NOT_IN else result
+            # For Arrow, use is_in()
+            elif isinstance(batch, pa.Table):
+                if not isinstance(right_val, (pa.Array, pa.ChunkedArray)):
+                    right_val = pa.array(right_val)
+                result = pc.is_in(left_val, right_val)
+                return pc.invert(result) if expr.op == Operation.NOT_IN else result
+
         return ops[expr.op](
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
 
     if isinstance(expr, UnaryExpr):
-        return ops[expr.op](
-            _eval_expr_recursive(expr.operand, batch, ops),
-        )
+        operand = _eval_expr_recursive(expr.operand, batch, ops)
+
+        # Handle IS_NULL and IS_NOT_NULL for pandas
+        if expr.op == Operation.IS_NULL and isinstance(batch, pd.DataFrame):
+            if isinstance(operand, pd.Series):
+                return operand.isna()
+            else:
+                return pd.Series([pd.isna(operand)] * len(batch))
+        elif expr.op == Operation.IS_NOT_NULL and isinstance(batch, pd.DataFrame):
+            if isinstance(operand, pd.Series):
+                return operand.notna()
+            else:
+                return pd.Series([pd.notna(operand)] * len(batch))
+
+        return ops[expr.op](operand)
 
     if isinstance(expr, CaseExpr):
         # Evaluate case statement using vectorized operations for batch processing

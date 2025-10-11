@@ -126,6 +126,149 @@ def test_case_expression_complex_conditions():
     assert list(result) == expected
 
 
+def test_new_operators_pandas():
+    """Test new operators with pandas DataFrames."""
+    # Create test data
+    data = {"a": [10, 7, 15], "b": [3, 2, 4], "status": ["active", "pending", "inactive"]}
+    df = pd.DataFrame(data)
+
+    # Test != operator
+    expr = col("a") != 10
+    result = eval_expr(expr, df)
+    expected = [False, True, True]
+    assert list(result) == expected
+
+    # Test // operator (floor division)
+    expr = col("a") // col("b")
+    result = eval_expr(expr, df)
+    expected = [3, 3, 3]  # 10//3=3, 7//2=3, 15//4=3
+    assert list(result) == expected
+
+    # Test is_null()
+    data_with_nulls = {"a": [10, None, 15], "b": [1, 2, 3]}
+    df_nulls = pd.DataFrame(data_with_nulls)
+    expr = col("a").is_null()
+    result = eval_expr(expr, df_nulls)
+    expected = [False, True, False]
+    assert list(result) == expected
+
+    # Test is_not_null()
+    expr = col("a").is_not_null()
+    result = eval_expr(expr, df_nulls)
+    expected = [True, False, True]
+    assert list(result) == expected
+
+    # Test is_in()
+    expr = col("status").is_in(["active", "approved"])
+    result = eval_expr(expr, df)
+    expected = [True, False, False]
+    assert list(result) == expected
+
+    # Test not_in()
+    expr = col("status").not_in(["inactive", "rejected"])
+    result = eval_expr(expr, df)
+    expected = [True, True, False]
+    assert list(result) == expected
+
+
+def test_new_operators_arrow():
+    """Test new operators with PyArrow Tables."""
+    # Create test data
+    data = {
+        "a": pa.array([10, 7, 15]),
+        "b": pa.array([3, 2, 4]),
+        "status": pa.array(["active", "pending", "inactive"]),
+    }
+    table = pa.table(data)
+
+    # Test != operator
+    expr = col("a") != 10
+    result = eval_expr(expr, table)
+    expected = [False, True, True]
+    assert result.to_pylist() == expected
+
+    # Test // operator (floor division)
+    expr = col("a") // col("b")
+    result = eval_expr(expr, table)
+    expected = [3, 3, 3]  # 10//3=3, 7//2=3, 15//4=3
+    assert result.to_pylist() == expected
+
+    # Test is_null()
+    data_with_nulls = {"a": pa.array([10, None, 15]), "b": pa.array([1, 2, 3])}
+    table_nulls = pa.table(data_with_nulls)
+    expr = col("a").is_null()
+    result = eval_expr(expr, table_nulls)
+    expected = [False, True, False]
+    assert result.to_pylist() == expected
+
+    # Test is_not_null()
+    expr = col("a").is_not_null()
+    result = eval_expr(expr, table_nulls)
+    expected = [True, False, True]
+    assert result.to_pylist() == expected
+
+    # Test is_in()
+    expr = col("status").is_in(["active", "approved"])
+    result = eval_expr(expr, table)
+    expected = [True, False, False]
+    assert result.to_pylist() == expected
+
+    # Test not_in()
+    expr = col("status").not_in(["inactive", "rejected"])
+    result = eval_expr(expr, table)
+    expected = [True, True, False]
+    assert result.to_pylist() == expected
+
+
+def test_case_with_nested_expressions_pandas():
+    """Test nested case expressions with pandas."""
+    data = {"score": [95, 82, 70, 88], "extra_credit": [5, 0, 10, 2]}
+    df = pd.DataFrame(data)
+
+    # Nested case expression
+    expr = (
+        when(
+            col("score") >= 90,
+            when(col("extra_credit") > 0, lit("A+")).otherwise(lit("A")),
+        )
+        .when(
+            col("score") >= 80,
+            when(col("extra_credit") >= 5, lit("B+")).otherwise(lit("B")),
+        )
+        .otherwise(when(col("extra_credit") >= 10, lit("C+")).otherwise(lit("C")))
+    )
+
+    result = eval_expr(expr, df)
+    expected = ["A+", "B", "C+", "B"]
+    assert list(result) == expected
+
+
+def test_case_with_nested_expressions_arrow():
+    """Test nested case expressions with PyArrow."""
+    data = {
+        "score": pa.array([95, 82, 70, 88]),
+        "extra_credit": pa.array([5, 0, 10, 2]),
+    }
+    table = pa.table(data)
+
+    # Nested case expression
+    expr = (
+        when(
+            col("score") >= 90,
+            when(col("extra_credit") > 0, lit("A+")).otherwise(lit("A")),
+        )
+        .when(
+            col("score") >= 80,
+            when(col("extra_credit") >= 5, lit("B+")).otherwise(lit("B")),
+        )
+        .otherwise(when(col("extra_credit") >= 10, lit("C+")).otherwise(lit("C")))
+    )
+
+    result = eval_expr(expr, table)
+    expected = ["A+", "B", "C+", "B"]
+    assert result.to_pylist() == expected
+
+
 if __name__ == "__main__":
     import sys
 

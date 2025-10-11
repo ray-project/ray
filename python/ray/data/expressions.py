@@ -23,27 +23,40 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
         GE: Greater than or equal comparison (>=)
         LE: Less than or equal comparison (<=)
         EQ: Equality comparison (==)
+        NE: Not equal comparison (!=)
         AND: Logical AND operation (&)
         OR: Logical OR operation (|)
+        NOT: Logical NOT operation (~)
+        IS_NULL: Check if value is null
+        IS_NOT_NULL: Check if value is not null
+        IN: Check if value is in a list
+        NOT_IN: Check if value is not in a list
     """
 
     ADD = "add"
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
     GE = "ge"
     LE = "le"
     EQ = "eq"
+    NE = "ne"
     AND = "and"
     OR = "or"
     NOT = "not"
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+    IN = "in"
+    NOT_IN = "not_in"
 
 
 @DeveloperAPI(stability="alpha")
@@ -128,6 +141,14 @@ class Expr(ABC):
         """Reverse division operator (for literal / expr)."""
         return LiteralExpr(other)._bin(self, Operation.DIV)
 
+    def __floordiv__(self, other: Any) -> "Expr":
+        """Floor division operator (//)."""
+        return self._bin(other, Operation.FLOORDIV)
+
+    def __rfloordiv__(self, other: Any) -> "Expr":
+        """Reverse floor division operator (for literal // expr)."""
+        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
@@ -149,6 +170,10 @@ class Expr(ABC):
         """Equality operator (==)."""
         return self._bin(other, Operation.EQ)
 
+    def __ne__(self, other: Any) -> "Expr":
+        """Not equal operator (!=)."""
+        return self._bin(other, Operation.NE)
+
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
@@ -161,6 +186,89 @@ class Expr(ABC):
     def __invert__(self) -> "Expr":
         """Logical NOT operator (~)."""
         return UnaryExpr(Operation.NOT, self)
+
+    # predicate methods
+    def is_null(self) -> "Expr":
+        """Check if the expression value is null.
+
+        Returns:
+            A boolean expression that is True where values are null
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Filter rows where age column is null
+            >>> expr = col("age").is_null()
+        """
+        return UnaryExpr(Operation.IS_NULL, self)
+
+    def is_not_null(self) -> "Expr":
+        """Check if the expression value is not null.
+
+        Returns:
+            A boolean expression that is True where values are not null
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Filter rows where age column is not null
+            >>> expr = col("age").is_not_null()
+        """
+        return UnaryExpr(Operation.IS_NOT_NULL, self)
+
+    def is_in(self, values: List[Any]) -> "Expr":
+        """Check if the expression value is in a list of values.
+
+        Args:
+            values: List of values to check membership against
+
+        Returns:
+            A boolean expression that is True where values are in the list
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Check if status is in a list
+            >>> expr = col("status").is_in(["active", "pending", "approved"])
+        """
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.IN)
+
+    def not_in(self, values: List[Any]) -> "Expr":
+        """Check if the expression value is not in a list of values.
+
+        Args:
+            values: List of values to check membership against
+
+        Returns:
+            A boolean expression that is True where values are not in the list
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Check if status is not in a list
+            >>> expr = col("status").not_in(["rejected", "failed"])
+        """
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.NOT_IN)
+
+    def alias(self, name: str) -> "Expr":
+        """Rename the expression.
+
+        This method allows you to assign a new name to an expression result.
+        This is particularly useful when you want to specify the output column name
+        directly within the expression rather than as a separate parameter.
+
+        Args:
+            name: The new name for the expression
+
+        Returns:
+            An AliasExpr that wraps this expression with the specified name
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Create an expression with an alias
+            >>> expr = (col("price") * col("quantity")).alias("total_cost")
+        """
+        return AliasExpr(expr=self, _name=name)
 
 
 @DeveloperAPI(stability="alpha")
@@ -291,6 +399,43 @@ class UnaryExpr(Expr):
             isinstance(other, UnaryExpr)
             and self.op is other.op
             and self.operand.structurally_equals(other.operand)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class AliasExpr(Expr):
+    """Expression that represents an alias for an expression.
+
+    This expression type allows you to assign a new name to the result
+    of an expression. It's particularly useful when you want to specify
+    the output column name directly in the expression.
+
+    Args:
+        expr: The expression to alias
+        _name: The alias name for the expression
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Create an expression with an alias
+        >>> expr = (col("price") * col("quantity")).alias("total_cost")
+    """
+
+    expr: Expr
+    _name: str
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @property
+    def name(self) -> str:
+        """Get the alias name."""
+        return self._name
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, AliasExpr)
+            and self.expr.structurally_equals(other.expr)
+            and self.name == other.name
         )
 
 
@@ -661,9 +806,12 @@ def lit(value: Any) -> LiteralExpr:
 def when(condition: Expr, value: Expr) -> WhenExpr:
     """Create conditional case statements using method chaining.
 
-    This function creates case statements similar to PySpark and Polars, using
-    an intuitive method chaining pattern. Chain multiple conditions with .when()
+    This function creates case statements similar to SQL CASE WHEN, PySpark, and Polars,
+    using an intuitive method chaining pattern. Chain multiple conditions with .when()
     and complete with .otherwise() for the default case.
+
+    Case expressions are evaluated in order - the first condition that evaluates to True
+    determines the result. This is similar to if-elif-else statements in Python.
 
     Args:
         condition: The boolean condition expression for the first WHEN clause
@@ -673,29 +821,96 @@ def when(condition: Expr, value: Expr) -> WhenExpr:
         A WhenExpr that can be chained with more .when() calls or completed
         with .otherwise()
 
-    Example:
+    Examples:
+        Basic usage with simple conditions:
+
         >>> from ray.data.expressions import col, lit, when
-        >>> # Simple case statement
-        >>> expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
-        >>>
-        >>> # Multiple conditions (evaluated in order)
-        >>> expr = when(col("age") > 50, lit("Elder")) \
-        ...        .when(col("age") > 30, lit("Adult")) \
-        ...        .when(col("age") > 18, lit("Young")) \
-        ...        .otherwise(lit("Minor"))
-        >>>
-        >>> # Complex conditions
-        >>> expr = when((col("age") > 30) & (col("income") > 50000), lit("Target")) \
-        ...        .otherwise(lit("Other"))
-        >>>
-        >>> # Use with Dataset operations
         >>> import ray
         >>> ds = ray.data.from_items([{"age": 25}, {"age": 35}, {"age": 55}])
-        >>> ds = ds.with_column("age_group",
+        >>>
+        >>> # Simple case statement
+        >>> ds = ds.with_column(
+        ...     "age_group",
+        ...     when(col("age") > 50, lit("Elder")).otherwise(lit("Young"))
+        ... )
+
+        Multiple conditions evaluated in order:
+
+        >>> ds = ds.with_column(
+        ...     "category",
         ...     when(col("age") > 50, lit("Elder"))
         ...     .when(col("age") > 30, lit("Adult"))
-        ...     .otherwise(lit("Young"))
+        ...     .when(col("age") > 18, lit("Young"))
+        ...     .otherwise(lit("Minor"))
         ... )
+
+        Complex conditions with boolean operators:
+
+        >>> ds = ray.data.from_items([
+        ...     {"age": 25, "income": 50000, "credit_score": 750}
+        ... ])
+        >>> ds = ds.with_column(
+        ...     "loan_category",
+        ...     when(
+        ...         (col("age") >= 30) & (col("income") >= 100000) & (col("credit_score") >= 700),
+        ...         lit("Premium")
+        ...     )
+        ...     .when((col("age") >= 25) | (col("credit_score") >= 750), lit("Standard"))
+        ...     .otherwise(lit("Basic"))
+        ... )
+
+        Handling null values:
+
+        >>> ds = ray.data.from_items([
+        ...     {"score": 95, "age": None},
+        ...     {"score": 82, "age": 25}
+        ... ])
+        >>> ds = ds.with_column(
+        ...     "age_status",
+        ...     when(col("age").is_null(), lit("Unknown"))
+        ...     .when(col("age") < 30, lit("Young"))
+        ...     .otherwise(lit("Experienced"))
+        ... )
+
+        Using new operators (!=, //, is_in):
+
+        >>> ds = ray.data.from_items([
+        ...     {"status": "active", "score": 95},
+        ...     {"status": "pending", "score": 82}
+        ... ])
+        >>> ds = ds.with_column(
+        ...     "priority",
+        ...     when(col("score") != 100, lit("Standard")).otherwise(lit("Perfect"))
+        ... )
+        >>> ds = ds.with_column(
+        ...     "state",
+        ...     when(col("status").is_in(["active", "approved"]), lit("Active"))
+        ...     .otherwise(lit("Inactive"))
+        ... )
+
+        Nested case expressions for complex logic:
+
+        >>> ds = ray.data.from_items([
+        ...     {"score": 95, "extra_credit": 5},
+        ...     {"score": 82, "extra_credit": 0}
+        ... ])
+        >>> ds = ds.with_column(
+        ...     "final_grade",
+        ...     when(
+        ...         col("score") >= 90,
+        ...         when(col("extra_credit") > 0, lit("A+")).otherwise(lit("A"))
+        ...     )
+        ...     .when(col("score") >= 80, lit("B"))
+        ...     .otherwise(lit("C"))
+        ... )
+
+    Note:
+        Case expressions are evaluated lazily and vectorized for efficiency. They work
+        with both pandas and PyArrow backends transparently.
+
+    See Also:
+        - :class:`~ray.data.expressions.CaseExpr`: The result of a completed case statement
+        - :class:`~ray.data.expressions.WhenExpr`: The intermediate chained expression
     """
     return WhenExpr(condition, value)
 
@@ -742,6 +957,7 @@ __all__ = [
     "LiteralExpr",
     "BinaryExpr",
     "UnaryExpr",
+    "AliasExpr",
     "CaseExpr",
     "WhenExpr",
     "col",

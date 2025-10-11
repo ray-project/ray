@@ -370,6 +370,255 @@ def test_when_expressions_parametrized(
             assert key in row
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_new_operators(ray_start_regular_shared):
+    """Test new operators: !=, //, is_null, is_not_null, is_in, not_in."""
+    import ray
+
+    # Test data with some nulls
+    ds = ray.data.from_items(
+        [
+            {"a": 10, "b": 3, "status": "active"},
+            {"a": 7, "b": 2, "status": "pending"},
+            {"a": None, "b": 5, "status": "inactive"},
+            {"a": 15, "b": 4, "status": "active"},
+        ]
+    )
+
+    # Test != operator
+    result = ds.with_column("not_equal", col("a") != 10)
+    rows = result.take_all()
+    # Expect [False, True, null, True] for "a != 10"
+    assert rows[0]["not_equal"] is False
+    assert rows[1]["not_equal"] is True
+    assert rows[3]["not_equal"] is True
+
+    # Test // operator (floor division)
+    result = ds.with_column("floor_div", col("a") // col("b"))
+    rows = result.take_all()
+    assert rows[0]["floor_div"] == 3  # 10 // 3 = 3
+    assert rows[1]["floor_div"] == 3  # 7 // 2 = 3
+    assert rows[3]["floor_div"] == 3  # 15 // 4 = 3
+
+    # Test is_null()
+    result = ds.with_column("is_null_a", col("a").is_null())
+    rows = result.take_all()
+    assert rows[0]["is_null_a"] is False
+    assert rows[1]["is_null_a"] is False
+    assert rows[2]["is_null_a"] is True
+    assert rows[3]["is_null_a"] is False
+
+    # Test is_not_null()
+    result = ds.with_column("is_not_null_a", col("a").is_not_null())
+    rows = result.take_all()
+    assert rows[0]["is_not_null_a"] is True
+    assert rows[1]["is_not_null_a"] is True
+    assert rows[2]["is_not_null_a"] is False
+    assert rows[3]["is_not_null_a"] is True
+
+    # Test is_in()
+    result = ds.with_column("in_list", col("status").is_in(["active", "approved"]))
+    rows = result.take_all()
+    assert rows[0]["in_list"] is True
+    assert rows[1]["in_list"] is False
+    assert rows[2]["in_list"] is False
+    assert rows[3]["in_list"] is True
+
+    # Test not_in()
+    result = ds.with_column("not_in_list", col("status").not_in(["inactive", "rejected"]))
+    rows = result.take_all()
+    assert rows[0]["not_in_list"] is True
+    assert rows[1]["not_in_list"] is True
+    assert rows[2]["not_in_list"] is False
+    assert rows[3]["not_in_list"] is True
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_case_with_new_operators(ray_start_regular_shared):
+    """Test case expressions with new operators (!=, //, is_null, etc.)."""
+    import ray
+
+    ds = ray.data.from_items(
+        [
+            {"score": 95, "age": None, "status": "active"},
+            {"score": 82, "age": 25, "status": "pending"},
+            {"score": 70, "age": 30, "status": "inactive"},
+            {"score": 88, "age": 35, "status": "active"},
+        ]
+    )
+
+    # Test case with != operator
+    result = ds.with_column(
+        "grade_type",
+        when(col("score") != 95, lit("Standard")).otherwise(lit("Perfect")),
+    )
+    rows = result.take_all()
+    assert rows[0]["grade_type"] == "Perfect"
+    assert rows[1]["grade_type"] == "Standard"
+    assert rows[2]["grade_type"] == "Standard"
+    assert rows[3]["grade_type"] == "Standard"
+
+    # Test case with is_null()
+    result = ds.with_column(
+        "age_status",
+        when(col("age").is_null(), lit("Unknown"))
+        .when(col("age") < 30, lit("Young"))
+        .otherwise(lit("Experienced")),
+    )
+    rows = result.take_all()
+    assert rows[0]["age_status"] == "Unknown"
+    assert rows[1]["age_status"] == "Young"
+    assert rows[2]["age_status"] == "Experienced"
+    assert rows[3]["age_status"] == "Experienced"
+
+    # Test case with is_not_null()
+    result = ds.with_column(
+        "has_age",
+        when(col("age").is_not_null(), lit("Yes")).otherwise(lit("No")),
+    )
+    rows = result.take_all()
+    assert rows[0]["has_age"] == "No"
+    assert rows[1]["has_age"] == "Yes"
+    assert rows[2]["has_age"] == "Yes"
+    assert rows[3]["has_age"] == "Yes"
+
+    # Test case with is_in()
+    result = ds.with_column(
+        "active_status",
+        when(col("status").is_in(["active", "approved"]), lit("Active"))
+        .when(col("status").is_in(["pending"]), lit("Pending"))
+        .otherwise(lit("Inactive")),
+    )
+    rows = result.take_all()
+    assert rows[0]["active_status"] == "Active"
+    assert rows[1]["active_status"] == "Pending"
+    assert rows[2]["active_status"] == "Inactive"
+    assert rows[3]["active_status"] == "Active"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_nested_case_expressions(ray_start_regular_shared):
+    """Test nested case expressions where case expressions are used as values."""
+    import ray
+
+    ds = ray.data.from_items(
+        [
+            {"score": 95, "extra_credit": 5},
+            {"score": 82, "extra_credit": 0},
+            {"score": 70, "extra_credit": 10},
+            {"score": 88, "extra_credit": 2},
+        ]
+    )
+
+    # Nested case: outer case determines grade category, inner case adjusts for extra credit
+    result = ds.with_column(
+        "grade",
+        when(
+            col("score") >= 90,
+            # Nested case for high scores
+            when(col("extra_credit") > 0, lit("A+")).otherwise(lit("A")),
+        )
+        .when(
+            col("score") >= 80,
+            # Nested case for medium scores
+            when(col("extra_credit") >= 5, lit("B+")).otherwise(lit("B")),
+        )
+        .otherwise(
+            # Nested case for low scores
+            when(col("extra_credit") >= 10, lit("C+")).otherwise(lit("C"))
+        ),
+    )
+
+    rows = result.take_all()
+    assert rows[0]["grade"] == "A+"  # 95 >= 90, extra_credit > 0
+    assert rows[1]["grade"] == "B"  # 82 >= 80, extra_credit < 5
+    assert rows[2]["grade"] == "C+"  # 70 < 80, extra_credit >= 10
+    assert rows[3]["grade"] == "B"  # 88 >= 80, extra_credit < 5
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_case_with_complex_conditions(ray_start_regular_shared):
+    """Test case expressions with complex boolean combinations."""
+    import ray
+
+    ds = ray.data.from_items(
+        [
+            {"age": 25, "income": 50000, "credit_score": 750},
+            {"age": 35, "income": 80000, "credit_score": 680},
+            {"age": 45, "income": 120000, "credit_score": 720},
+            {"age": 22, "income": 30000, "credit_score": 600},
+        ]
+    )
+
+    # Complex case with multiple conditions using AND, OR
+    result = ds.with_column(
+        "loan_category",
+        when(
+            (col("age") >= 30) & (col("income") >= 100000) & (col("credit_score") >= 700),
+            lit("Premium"),
+        )
+        .when(
+            ((col("age") >= 25) & (col("income") >= 50000)) | (col("credit_score") >= 750),
+            lit("Standard"),
+        )
+        .when(col("credit_score") >= 650, lit("Basic"))
+        .otherwise(lit("Declined")),
+    )
+
+    rows = result.take_all()
+    assert rows[0]["loan_category"] == "Standard"  # age >= 25, income >= 50000, credit >= 750
+    assert rows[1]["loan_category"] == "Standard"  # age >= 25, income >= 50000
+    assert rows[2]["loan_category"] == "Premium"  # age >= 30, income >= 100000, credit >= 700
+    assert rows[3]["loan_category"] == "Declined"  # credit_score < 650
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_case_with_alias(ray_start_regular_shared):
+    """Test that case expressions work with alias."""
+    import ray
+
+    ds = ray.data.from_items(
+        [
+            {"score": 95},
+            {"score": 82},
+            {"score": 70},
+            {"score": 88},
+        ]
+    )
+
+    # Note: alias() should work on the full case expression
+    # The column name would come from the alias, not the with_column parameter
+    result = ds.with_column(
+        "final_grade",
+        when(col("score") >= 90, lit("A"))
+        .when(col("score") >= 80, lit("B"))
+        .when(col("score") >= 70, lit("C"))
+        .otherwise(lit("F")),
+    )
+
+    rows = result.take_all()
+    assert "final_grade" in rows[0]
+    assert rows[0]["final_grade"] == "A"
+    assert rows[1]["final_grade"] == "B"
+    assert rows[2]["final_grade"] == "C"
+    assert rows[3]["final_grade"] == "B"
+
+
 if __name__ == "__main__":
     import sys
 
