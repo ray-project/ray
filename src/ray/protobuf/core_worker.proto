@@ -523,8 +523,8 @@ service CoreWorkerService {
       returns (GetObjectLocationsOwnerReply);
 
   // Request from the Raylet that the actor shut down without completing outstanding work.
-  // Failure: Idempotent, does not retry. However requests should only be sent via KillLocalActor
-  // from the raylet which does implement retries
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // KillLocalActor from the raylet which does implement retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
   // Request from owner worker to executor worker to cancel a task.
