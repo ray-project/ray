@@ -4,11 +4,15 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+    import pyarrow.compute
 
 
 @DeveloperAPI(stability="alpha")
@@ -59,6 +63,161 @@ class Operation(Enum):
     NOT_IN = "not_in"
 
 
+class _ExprVisitor(ABC):
+    """Base visitor with generic dispatch for Ray Data expressions."""
+
+    def visit(self, expr: "Expr") -> Any:
+        if isinstance(expr, ColumnExpr):
+            return self.visit_column(expr)
+        elif isinstance(expr, LiteralExpr):
+            return self.visit_literal(expr)
+        elif isinstance(expr, BinaryExpr):
+            return self.visit_binary(expr)
+        elif isinstance(expr, UnaryExpr):
+            return self.visit_unary(expr)
+        elif isinstance(expr, AliasExpr):
+            return self.visit_alias(expr)
+        elif isinstance(expr, CaseExpr):
+            return self.visit_case(expr)
+        elif isinstance(expr, WhenExpr):
+            return self.visit_when(expr)
+        elif isinstance(expr, UDFExpr):
+            return self.visit_udf(expr)
+        elif isinstance(expr, DownloadExpr):
+            return self.visit_download(expr)
+        else:
+            raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
+
+    @abstractmethod
+    def visit_column(self, expr: "ColumnExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_literal(self, expr: "LiteralExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_binary(self, expr: "BinaryExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_unary(self, expr: "UnaryExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_alias(self, expr: "AliasExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_case(self, expr: "CaseExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_when(self, expr: "WhenExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_udf(self, expr: "UDFExpr") -> Any:
+        pass
+
+    @abstractmethod
+    def visit_download(self, expr: "DownloadExpr") -> Any:
+        pass
+
+
+class _PyArrowExpressionVisitor(_ExprVisitor):
+    """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
+
+    def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
+        import pyarrow.compute as pc
+
+        return pc.field(expr._name)
+
+    def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
+        import pyarrow.compute as pc
+
+        return pc.scalar(expr.value)
+
+    def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            left = self.visit(expr.left)
+            if isinstance(expr.right, LiteralExpr):
+                right_value = expr.right.value
+                right = (
+                    pa.array(right_value)
+                    if isinstance(right_value, list)
+                    else pa.array([right_value])
+                )
+            else:
+                raise ValueError(
+                    f"is_in/not_in operations require the right operand to be a "
+                    f"literal list, got {type(expr.right).__name__}."
+                )
+            result = pc.is_in(left, right)
+            return pc.invert(result) if expr.op == Operation.NOT_IN else result
+
+        left = self.visit(expr.left)
+        right = self.visit(expr.right)
+        from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+
+        if expr.op in _ARROW_EXPR_OPS_MAP:
+            return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
+        raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
+
+    def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
+        operand = self.visit(expr.operand)
+        from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+
+        if expr.op in _ARROW_EXPR_OPS_MAP:
+            return _ARROW_EXPR_OPS_MAP[expr.op](operand)
+        raise ValueError(f"Unsupported unary operation for PyArrow: {expr.op}")
+
+    def visit_alias(self, expr: "AliasExpr") -> "pyarrow.compute.Expression":
+        return self.visit(expr.expr)
+
+    def visit_case(self, expr: "CaseExpr") -> "pyarrow.compute.Expression":
+        """Convert CaseExpr to PyArrow case_when expression.
+
+        PyArrow's case_when expects:
+        - cond: a struct array of boolean conditions
+        - *cases: the case values (one for each condition, plus default)
+        """
+        import pyarrow.compute as pc
+
+        # Convert all conditions to PyArrow expressions
+        conditions = [self.visit(cond) for cond, _ in expr.when_clauses]
+        # Convert all values to PyArrow expressions
+        choices = [self.visit(val) for _, val in expr.when_clauses]
+        # Convert default to PyArrow expression
+        default = self.visit(expr.default)
+
+        # Build the case_when expression
+        # Note: This creates a nested if_else structure since PyArrow's case_when
+        # is designed for constant values, not expressions
+        result = default
+        for cond, choice in reversed(list(zip(conditions, choices))):
+            result = pc.if_else(cond, choice, result)
+
+        return result
+
+    def visit_when(self, expr: "WhenExpr") -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "WhenExpr cannot be converted to PyArrow expression directly. "
+            "Use .otherwise() to complete the case statement first."
+        )
+
+    def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
+
+    def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Download expressions cannot be converted to PyArrow expressions"
+        )
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class Expr(ABC):
@@ -86,10 +245,37 @@ class Expr(ABC):
 
     data_type: DataType
 
+    @property
+    def name(self) -> Optional[str]:
+        """Get the name associated with this expression.
+
+        Returns:
+            The name for expressions that have one (ColumnExpr, AliasExpr),
+            None otherwise.
+        """
+        return None
+
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
         """Compare two expression ASTs for structural equality."""
         raise NotImplementedError
+
+    def to_pyarrow(self) -> "pyarrow.compute.Expression":
+        """Convert this expression to a PyArrow compute expression.
+
+        Returns:
+            A PyArrow compute expression equivalent to this Ray Data expression
+
+        Raises:
+            TypeError: If the expression cannot be converted to PyArrow
+            ValueError: If the expression uses unsupported operations
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> expr = col("age") > 30
+            >>> pa_expr = expr.to_pyarrow()
+        """
+        return _PyArrowExpressionVisitor().visit(self)
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
@@ -214,7 +400,7 @@ class Expr(ABC):
         """
         return UnaryExpr(Operation.IS_NOT_NULL, self)
 
-    def is_in(self, values: List[Any]) -> "Expr":
+    def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is in a list of values.
 
         Args:
@@ -232,7 +418,7 @@ class Expr(ABC):
             values = LiteralExpr(values)
         return self._bin(values, Operation.IN)
 
-    def not_in(self, values: List[Any]) -> "Expr":
+    def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is not in a list of values.
 
         Args:
@@ -289,8 +475,13 @@ class ColumnExpr(Expr):
         >>> age_expr = col("age") # Creates ColumnExpr(name="age")
     """
 
-    name: str
+    _name: str
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @property
+    def name(self) -> str:
+        """Get the column name."""
+        return self._name
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -524,7 +715,7 @@ class WhenExpr(Expr):
 
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
-    def when(self, condition: Expr, value: Expr) -> "WhenExpr":
+    def when(self, condition: "Expr", value: "Expr") -> "WhenExpr":
         """Add another WHEN clause to the case statement.
 
         Args:
@@ -540,7 +731,7 @@ class WhenExpr(Expr):
         """
         return WhenExpr(condition, value, next_when=self)
 
-    def otherwise(self, default: Expr) -> CaseExpr:
+    def otherwise(self, default: "Expr") -> "CaseExpr":
         """Complete the case statement with a default value.
 
         Args:
@@ -765,7 +956,7 @@ def col(name: str) -> ColumnExpr:
         >>> ds = ray.data.from_items([{"price": 10, "quantity": 2}])
         >>> ds = ds.with_column("total", col("price") * col("quantity"))
     """
-    return ColumnExpr(name)
+    return ColumnExpr(_name=name)
 
 
 @PublicAPI(stability="beta")
@@ -803,7 +994,7 @@ def lit(value: Any) -> LiteralExpr:
 
 
 @PublicAPI(stability="beta")
-def when(condition: Expr, value: Expr) -> WhenExpr:
+def when(condition: "Expr", value: "Expr") -> "WhenExpr":
     """Create conditional case statements using method chaining.
 
     This function creates case statements similar to SQL CASE WHEN, PySpark, and Polars,

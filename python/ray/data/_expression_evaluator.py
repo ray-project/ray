@@ -67,7 +67,7 @@ def _eval_expr_recursive(
     # and resolved expressions (bound to a schema) for better error handling
 
     if isinstance(expr, ColumnExpr):
-        return batch[expr.name]
+        return batch[expr._name]
     if isinstance(expr, LiteralExpr):
         return expr.value
     if isinstance(expr, AliasExpr):

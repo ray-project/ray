@@ -619,6 +619,47 @@ def test_case_with_alias(ray_start_regular_shared):
     assert rows[3]["final_grade"] == "B"
 
 
+def test_case_to_pyarrow_conversion():
+    """Test that case expressions can be converted to PyArrow expressions."""
+    from ray.data.expressions import col, lit, when
+
+    # Simple case expression
+    expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
+
+    # Convert to PyArrow - should not raise
+    pa_expr = expr.to_pyarrow()
+    assert pa_expr is not None
+
+    # Complex case expression with multiple conditions
+    expr = (
+        when(col("age") > 50, lit("Elder"))
+        .when(col("age") > 30, lit("Adult"))
+        .otherwise(lit("Young"))
+    )
+
+    pa_expr = expr.to_pyarrow()
+    assert pa_expr is not None
+
+    # Case with new operators
+    expr = when(col("status").is_in(["active", "approved"]), lit("Active")).otherwise(lit("Inactive"))
+
+    pa_expr = expr.to_pyarrow()
+    assert pa_expr is not None
+
+
+def test_when_to_pyarrow_fails():
+    """Test that incomplete WhenExpr cannot be converted to PyArrow."""
+    from ray.data.expressions import col, lit, when, WhenExpr
+
+    # Create incomplete when expression
+    when_expr = when(col("age") > 30, lit("Senior"))
+    assert isinstance(when_expr, WhenExpr)
+
+    # Should raise TypeError when trying to convert
+    with pytest.raises(TypeError, match="WhenExpr cannot be converted to PyArrow"):
+        when_expr.to_pyarrow()
+
+
 if __name__ == "__main__":
     import sys
 
