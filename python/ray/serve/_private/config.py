@@ -811,8 +811,8 @@ def prepare_http_options(
     location provided by the user is used.
 
     Args:
-        proxy_location: provided ProxyLocation
-        http_options: provided HTTPOptions
+        proxy_location: provided ProxyLocation or its str representation
+        http_options: provided HTTPOptions or its dict representation
 
     Returns:
         HTTPOptions: A new `HTTPOptions` instance with resolved location.

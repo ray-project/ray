@@ -30,7 +30,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve.config import (
     DeploymentMode,
-    HTTPOptions,
     ProxyLocation,
     gRPCOptions,
 )
@@ -541,7 +540,7 @@ def run(
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         proxy_location = config.proxy_location
-        http_options = HTTPOptions(**config.http_options.dict())
+        http_options = config.http_options.dict()
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     http_options = prepare_http_options(proxy_location, http_options)

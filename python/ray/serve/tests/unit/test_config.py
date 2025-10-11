@@ -665,13 +665,17 @@ def test_prepare_http_options():
         http_options={},
     ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
-    assert (
-        prepare_http_options(
-            proxy_location=None,
-            http_options=HTTPOptions(),
-        )
-        == HTTPOptions()
-    )
+    assert prepare_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(**{}),
+    ) == HTTPOptions(
+        location=DeploymentMode.HeadOnly
+    )  # in this case we can't know whether location was provided or not
+
+    assert prepare_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(),
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
 
     assert prepare_http_options(
         proxy_location=None,
