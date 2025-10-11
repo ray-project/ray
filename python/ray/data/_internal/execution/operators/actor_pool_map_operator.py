@@ -182,11 +182,14 @@ class ActorPoolMapOperator(MapOperator):
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
 
-    def internal_queue_size(self) -> int:
+    def internal_input_queue_size(self) -> int:
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
         return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
+
+    def internal_output_queue_size(self) -> int:
+        return 0
 
     def completed(self) -> bool:
         # TODO separate marking as completed from the check

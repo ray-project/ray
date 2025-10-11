@@ -15,8 +15,13 @@ from ray.data.context import DataContext
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
     @abc.abstractmethod
-    def internal_queue_size(self) -> int:
-        """Returns Operator's internal queue size"""
+    def internal_input_queue_size(self) -> int:
+        """Returns Operator's internal input queue size"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_size(self) -> int:
+        """Returns Operator's internal output queue size"""
         ...
 
 
@@ -107,7 +112,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
 
-    def internal_queue_size(self) -> int:
+    def internal_input_queue_size(self) -> int:
         return len(self._input_buffer)
 
     def all_inputs_done(self) -> None:
