@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     ONGOING_REQUESTS_KEY,
+    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
@@ -591,7 +592,7 @@ class AutoscalingState:
                 return 0.0
 
             queued_metrics = [
-                {ONGOING_REQUESTS_KEY: timeseries} for timeseries in queued_timeseries
+                {QUEUED_REQUESTS_KEY: timeseries} for timeseries in queued_timeseries
             ]
             return self._aggregate_ongoing_requests(queued_metrics)
         else:
