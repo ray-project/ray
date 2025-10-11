@@ -24,6 +24,20 @@
 
 namespace {
 
+// Dedicated io_context for lag probe timer scheduling.
+// This prevents timer scheduling overhead from affecting the lag measurements
+// of the main io_context being monitored.
+boost::asio::io_context &GetLagProbeTimerIOContext() {
+  static boost::asio::io_context timer_io_context;
+  static boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work =
+      boost::asio::make_work_guard(timer_io_context);
+  static std::thread timer_thread([]() {
+    SetThreadName("LagProbeTimer");
+    timer_io_context.run();
+  });
+  return timer_io_context;
+}
+
 // Post a probe. Records the lag and schedule another probe.
 // Requires: `interval_ms` > 0.
 void LagProbeLoop(instrumented_io_context &io_context,
@@ -48,12 +62,22 @@ void LagProbeLoop(instrumented_io_context &io_context,
         if (delay <= 0) {
           LagProbeLoop(io_context, interval_ms, context_name);
         } else {
-          execute_after(
-              io_context,
-              [&io_context, interval_ms, context_name]() {
-                LagProbeLoop(io_context, interval_ms, context_name);
-              },
-              std::chrono::milliseconds(delay));
+          // Use the dedicated timer io_context for scheduling to avoid timer
+          // overhead on the io_context being measured.
+          auto timer = std::make_shared<boost::asio::deadline_timer>(
+              GetLagProbeTimerIOContext());
+          timer->expires_from_now(boost::posix_time::milliseconds(delay));
+          timer->async_wait([timer, &io_context, interval_ms, context_name](
+                                const boost::system::error_code &error) {
+            if (error != boost::asio::error::operation_aborted) {
+              // Post back to the main io_context to continue the probe loop
+              io_context.post(
+                  [&io_context, interval_ms, context_name]() {
+                    LagProbeLoop(io_context, interval_ms, context_name);
+                  },
+                  "event_loop_lag_probe");
+            }
+          });
         }
       },
       "event_loop_lag_probe");
