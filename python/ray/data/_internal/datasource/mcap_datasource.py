@@ -126,6 +126,11 @@ class MCAPDatasource(FileBasedDatasource):
 
         _check_import(self, module="mcap", package="mcap")
 
+        if channels is not None and topics is not None:
+            raise ValueError(
+                "Cannot specify both channels and topics. Use one or the other."
+            )
+
         # Convert to sets for faster lookup
         self._channels = set(channels) if channels else None
         self._topics = set(topics) if topics else None

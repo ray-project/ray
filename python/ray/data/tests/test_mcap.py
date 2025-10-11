@@ -61,8 +61,24 @@ def create_test_mcap_file(file_path: str, messages: list) -> None:
         writer.finish()
 
 
-def test_read_mcap_basic(ray_start_regular_shared, tmp_path):
-    """Test basic MCAP file reading."""
+@pytest.fixture
+def simple_mcap_file(tmp_path):
+    """Fixture providing a simple MCAP file with one message."""
+    path = os.path.join(tmp_path, "test.mcap")
+    messages = [
+        {
+            "topic": "/test",
+            "data": {"value": 1},
+            "log_time": 1000000000,
+        }
+    ]
+    create_test_mcap_file(path, messages)
+    return path
+
+
+@pytest.fixture
+def basic_mcap_file(tmp_path):
+    """Fixture providing a basic MCAP file with two different topics."""
     path = os.path.join(tmp_path, "test.mcap")
     messages = [
         {
@@ -77,12 +93,53 @@ def test_read_mcap_basic(ray_start_regular_shared, tmp_path):
         },
     ]
     create_test_mcap_file(path, messages)
+    return path
 
-    ds = ray.data.read_mcap(path)
+
+@pytest.fixture
+def multi_topic_mcap_file(tmp_path):
+    """Fixture providing an MCAP file with 9 messages across 3 topics."""
+    path = os.path.join(tmp_path, "multi_topic.mcap")
+    base_time = 1000000000
+    messages = []
+    for i in range(9):
+        topics = ["/topic_a", "/topic_b", "/topic_c"]
+        topic = topics[i % 3]
+        messages.append(
+            {
+                "topic": topic,
+                "data": {"seq": i, "topic": topic},
+                "log_time": base_time + i * 1000000,
+            }
+        )
+    create_test_mcap_file(path, messages)
+    return path
+
+
+@pytest.fixture
+def time_series_mcap_file(tmp_path):
+    """Fixture providing an MCAP file with 10 time-sequenced messages."""
+    path = os.path.join(tmp_path, "time_test.mcap")
+    base_time = 1000000000
+    messages = [
+        {
+            "topic": "/test_topic",
+            "data": {"seq": i},
+            "log_time": base_time + i * 1000000,
+        }
+        for i in range(10)
+    ]
+    create_test_mcap_file(path, messages)
+    return path, base_time
+
+
+def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
+    """Test basic MCAP file reading."""
+    ds = ray.data.read_mcap(basic_mcap_file)
 
     # Test metadata operations
     assert ds.count() == 2
-    assert ds.input_files() == [_unwrap_protocol(path)]
+    assert ds.input_files() == [_unwrap_protocol(basic_mcap_file)]
 
     # Verify basic fields are present
     rows = ds.take_all()
@@ -135,29 +192,11 @@ def test_read_mcap_directory(ray_start_regular_shared, tmp_path):
     assert ds.count() == 2
 
 
-def test_read_mcap_topic_filtering(ray_start_regular_shared, tmp_path):
+def test_read_mcap_topic_filtering(ray_start_regular_shared, multi_topic_mcap_file):
     """Test filtering by topics."""
-    path = os.path.join(tmp_path, "multi_topic.mcap")
-    base_time = 1000000000
-    messages = []
-
-    # Create messages across 3 topics
-    for i in range(9):
-        topics = ["/topic_a", "/topic_b", "/topic_c"]
-        topic = topics[i % 3]
-        messages.append(
-            {
-                "topic": topic,
-                "data": {"seq": i, "topic": topic},
-                "log_time": base_time + i * 1000000,
-            }
-        )
-
-    create_test_mcap_file(path, messages)
-
     # Test topic filtering
     topics = {"/topic_a", "/topic_b"}
-    ds = ray.data.read_mcap(path, topics=topics)
+    ds = ray.data.read_mcap(multi_topic_mcap_file, topics=topics)
 
     rows = ds.take_all()
     actual_topics = {row["topic"] for row in rows}
@@ -165,29 +204,11 @@ def test_read_mcap_topic_filtering(ray_start_regular_shared, tmp_path):
     assert len(rows) == 6  # 2/3 of messages
 
 
-def test_read_mcap_channel_filtering(ray_start_regular_shared, tmp_path):
+def test_read_mcap_channel_filtering(ray_start_regular_shared, multi_topic_mcap_file):
     """Test filtering by channels (which map to topics in MCAP)."""
-    path = os.path.join(tmp_path, "multi_channel.mcap")
-    base_time = 1000000000
-    messages = []
-
-    # Create messages across 3 channels (topics)
-    for i in range(9):
-        channels = ["/camera/image", "/lidar/points", "/gps/location"]
-        channel = channels[i % 3]
-        messages.append(
-            {
-                "topic": channel,
-                "data": {"seq": i, "channel": channel},
-                "log_time": base_time + i * 1000000,
-            }
-        )
-
-    create_test_mcap_file(path, messages)
-
     # Test channel filtering (channels are identified by topic names in MCAP)
-    channels = {"/camera/image", "/lidar/points"}
-    ds = ray.data.read_mcap(path, channels=channels)
+    channels = {"/topic_a", "/topic_b"}
+    ds = ray.data.read_mcap(multi_topic_mcap_file, channels=channels)
 
     rows = ds.take_all()
     actual_channels = {row["topic"] for row in rows}
@@ -195,22 +216,11 @@ def test_read_mcap_channel_filtering(ray_start_regular_shared, tmp_path):
     assert len(rows) == 6  # 2/3 of messages
 
 
-def test_read_mcap_time_range_filtering(ray_start_regular_shared, tmp_path):
+def test_read_mcap_time_range_filtering(
+    ray_start_regular_shared, time_series_mcap_file
+):
     """Test filtering by time range."""
-    path = os.path.join(tmp_path, "time_test.mcap")
-    base_time = 1000000000
-    messages = []
-
-    for i in range(10):
-        messages.append(
-            {
-                "topic": "/test_topic",
-                "data": {"seq": i},
-                "log_time": base_time + i * 1000000,
-            }
-        )
-
-    create_test_mcap_file(path, messages)
+    path, base_time = time_series_mcap_file
 
     # Filter to first 5 messages
     time_range = (base_time, base_time + 5000000)
@@ -222,43 +232,23 @@ def test_read_mcap_time_range_filtering(ray_start_regular_shared, tmp_path):
         assert base_time <= row["log_time"] <= base_time + 5000000
 
 
-def test_read_mcap_message_type_filtering(ray_start_regular_shared, tmp_path):
+def test_read_mcap_message_type_filtering(ray_start_regular_shared, simple_mcap_file):
     """Test filtering by message types."""
-    path = os.path.join(tmp_path, "schema_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        },
-    ]
-    create_test_mcap_file(path, messages)
-
     # Filter with existing schema
-    ds = ray.data.read_mcap(path, message_types={"test_schema"})
+    ds = ray.data.read_mcap(simple_mcap_file, message_types={"test_schema"})
     assert ds.count() == 1
 
     # Filter with non-existent schema
-    ds = ray.data.read_mcap(path, message_types={"nonexistent"})
+    ds = ray.data.read_mcap(simple_mcap_file, message_types={"nonexistent"})
     assert ds.count() == 0
 
 
 @pytest.mark.parametrize("include_metadata", [True, False])
 def test_read_mcap_include_metadata(
-    ray_start_regular_shared, tmp_path, include_metadata
+    ray_start_regular_shared, simple_mcap_file, include_metadata
 ):
     """Test include_metadata option."""
-    path = os.path.join(tmp_path, "metadata_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
-    ds = ray.data.read_mcap(path, include_metadata=include_metadata)
+    ds = ray.data.read_mcap(simple_mcap_file, include_metadata=include_metadata)
     rows = ds.take_all()
 
     if include_metadata:
@@ -269,80 +259,44 @@ def test_read_mcap_include_metadata(
         assert "channel_id" not in rows[0]
 
 
-def test_read_mcap_include_paths(ray_start_regular_shared, tmp_path):
+def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
     """Test include_paths option."""
-    path = os.path.join(tmp_path, "path_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
-    ds = ray.data.read_mcap(path, include_paths=True)
+    ds = ray.data.read_mcap(simple_mcap_file, include_paths=True)
     rows = ds.take_all()
 
     for row in rows:
         assert "path" in row
-        assert path in row["path"]
+        assert simple_mcap_file in row["path"]
 
 
-def test_read_mcap_invalid_time_range(ray_start_regular_shared, tmp_path):
+def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
     """Test validation of time range parameters."""
-    path = os.path.join(tmp_path, "validation_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
     # Start time >= end time
     with pytest.raises(ValueError, match="start_time must be less than end_time"):
-        ray.data.read_mcap(path, time_range=(2000, 1000))
+        ray.data.read_mcap(simple_mcap_file, time_range=(2000, 1000))
 
     # Negative times
     with pytest.raises(ValueError, match="time values must be non-negative"):
-        ray.data.read_mcap(path, time_range=(-1000, 2000))
+        ray.data.read_mcap(simple_mcap_file, time_range=(-1000, 2000))
 
 
-def test_read_mcap_mutually_exclusive_filters(ray_start_regular_shared, tmp_path):
+def test_read_mcap_mutually_exclusive_filters(
+    ray_start_regular_shared, simple_mcap_file
+):
     """Test that channels and topics are mutually exclusive."""
-    path = os.path.join(tmp_path, "exclusive_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
     with pytest.raises(ValueError, match="Cannot specify both 'channels' and 'topics'"):
-        ray.data.read_mcap(path, channels={"camera"}, topics={"/camera/image"})
+        ray.data.read_mcap(
+            simple_mcap_file, channels={"camera"}, topics={"/camera/image"}
+        )
 
 
-def test_read_mcap_missing_dependency(ray_start_regular_shared, tmp_path):
+def test_read_mcap_missing_dependency(ray_start_regular_shared, simple_mcap_file):
     """Test graceful failure when mcap library is missing."""
-    path = os.path.join(tmp_path, "dependency_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
     from unittest.mock import patch
 
     with patch.dict("sys.modules", {"mcap": None}):
         with pytest.raises(ImportError, match="MCAPDatasource.*depends on 'mcap'"):
-            ray.data.read_mcap(path)
+            ray.data.read_mcap(simple_mcap_file)
 
 
 def test_read_mcap_nonexistent_file(ray_start_regular_shared):
@@ -403,25 +357,15 @@ def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
 def test_read_mcap_ignore_missing_paths(
-    ray_start_regular_shared, tmp_path, ignore_missing_paths
+    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths
 ):
     """Test ignore_missing_paths parameter."""
-    path = os.path.join(tmp_path, "existing.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
-    paths = [path, "/nonexistent/missing.mcap"]
+    paths = [simple_mcap_file, "/nonexistent/missing.mcap"]
 
     if ignore_missing_paths:
         ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
         assert ds.count() == 1
-        assert ds.input_files() == [_unwrap_protocol(path)]
+        assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
     else:
         with pytest.raises(Exception):  # FileNotFoundError or similar
             ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
