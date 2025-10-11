@@ -2202,7 +2202,7 @@ void NodeManager::HandleNotifyWorkerBlocked(
 
 void NodeManager::HandleNotifyWorkerUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
-  if (!worker || worker->GetGrantedLeaseId().IsNil()) {
+  if (!worker) {
     return;  // The worker may have died or is no longer processing the task.
   }
 
@@ -2210,9 +2210,10 @@ void NodeManager::HandleNotifyWorkerUnblocked(
   // if we don't need to unblock the worker below.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (worker->IsBlocked()) {
-    local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
-    cluster_lease_manager_.ScheduleAndGrantLeases();
+  if (!worker->GetGrantedLeaseId().IsNil()) {
+    if (local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker)) {
+      cluster_lease_manager_.ScheduleAndGrantLeases();
+    }
   }
 }
 
