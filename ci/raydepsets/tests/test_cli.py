@@ -276,6 +276,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 append_flags=[],
                 override_flags=[],
+                config_name="test.depsets.yaml",
             )
             with self.assertRaises(RuntimeError):
                 manager.check_subset_exists(
@@ -437,6 +438,7 @@ class TestCli(unittest.TestCase):
                 operation="invalid_op",
                 requirements=["requirements_test.txt"],
                 output="requirements_compiled_invalid_op.txt",
+                config_name="test.depsets.yaml",
             )
             _overwrite_config_file(tmpdir, depset)
             with self.assertRaises(ValueError):
@@ -608,6 +610,7 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 output="requirements_compiled_test.txt",
+                config_name="test.depsets.yaml",
             )
             _overwrite_config_file(tmpdir, depset)
             manager = _create_test_manager(tmpdir, check=True)
@@ -632,6 +635,7 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 output="requirements_compiled_test.txt",
+                config_name="test.depsets.yaml",
             )
             _overwrite_config_file(tmpdir, depset)
             manager = _create_test_manager(tmpdir, check=True)
@@ -666,6 +670,7 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 output="requirements_compiled_test.txt",
+                config_name="test.depsets.yaml",
             )
             _overwrite_config_file(tmpdir, depset)
             manager = _create_test_manager(tmpdir, check=True)
