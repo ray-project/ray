@@ -24,7 +24,7 @@ and an optional ``validate_config`` dictionary. This dictionary can contain argu
 for validation, such as the validation dataset. Your function should return a dictionary of metrics
 from that validation. Here is a simple example:
 
-.. literalinclude:: ../doc_code/checkpoints.py
+.. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
     :start-after: __validate_fn_simple_start__
     :end-before: __validate_fn_simple_end__
@@ -38,7 +38,7 @@ from that validation. Here is a simple example:
 Next, within your training loop, call :func:`~ray.train.report` with ``validate_fn`` and
 ``validate_config`` as arguments like so.
 
-.. literalinclude:: ../doc_code/checkpoints.py
+.. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
     :start-after: __validate_fn_report_start__
     :end-before: __validate_fn_report_end__
@@ -58,7 +58,7 @@ to calculate average cross entropy loss on a validation set. Note the following 
 * Because training generally has a higher GPU memory requirement than inference, you can set different
   resource requirements for training and validation e.g. A100 for training and A10G for validation.
 
-.. literalinclude:: ../doc_code/checkpoints.py
+.. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
     :start-after: __validate_fn_torch_trainer_start__
     :end-before: __validate_fn_torch_trainer_end__
@@ -68,7 +68,7 @@ This time, it uses :func:`~ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
 ``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
 
-.. literalinclude:: ../doc_code/checkpoints.py
+.. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
     :start-after: __validate_fn_map_batches_start__
     :end-before: __validate_fn_map_batches_end__
