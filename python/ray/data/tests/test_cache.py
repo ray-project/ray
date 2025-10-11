@@ -1037,7 +1037,9 @@ def test_cache_key_context_settings(ray_start_regular_shared):
 
     # Keys should be different when context settings differ
     # (This verifies context is properly serialized, not using id())
-    assert key1 != key2, "Different context settings should produce different cache keys"
+    assert key1 != key2, (
+        "Different context settings should produce different cache keys"
+    )
 
     # Restore original setting
     ctx.target_max_block_size = original_block_size
@@ -1263,7 +1265,9 @@ def test_size_bytes_computed_after_limit(ray_start_regular_shared):
     actual_ratio = limited_size / original_size
 
     # Allow for some overhead variation (within 50%)
-    assert 0.05 < actual_ratio < 0.20, f"Size ratio {actual_ratio} not close to expected {expected_ratio}"
+    assert 0.05 < actual_ratio < 0.20, (
+        f"Size ratio {actual_ratio} not close to expected {expected_ratio}"
+    )
 
 
 def test_size_bytes_invalidated_after_map(ray_start_regular_shared):
@@ -1316,7 +1320,9 @@ def test_random_sample_count_estimated(ray_start_regular_shared):
 
     # Count should be roughly 10% of original (allow variation)
     # Allow 50% variation due to randomness (50-150 rows)
-    assert 50 < sampled_count < 150, f"Sampled count {sampled_count} outside expected range"
+    assert 50 < sampled_count < 150, (
+        f"Sampled count {sampled_count} outside expected range"
+    )
 
 
 def test_random_sample_aggregations_invalidated(ray_start_regular_shared):
@@ -1352,6 +1358,7 @@ def test_input_files_preserved_after_sort(ray_start_regular_shared):
         # Write test data
         data_file = os.path.join(tmpdir, "test.json")
         import json
+
         with open(data_file, "w") as f:
             for i in range(100):
                 json.dump({"id": i}, f)
