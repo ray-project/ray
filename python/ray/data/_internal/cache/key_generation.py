@@ -76,7 +76,7 @@ def _serialize_logical_plan(logical_plan: LogicalPlan) -> Dict[str, Any]:
     """Serialize logical plan to a stable dictionary representation."""
     return {
         "dag": _serialize_operator(logical_plan.dag),
-        "context_id": id(logical_plan.context),  # Context identity for uniqueness
+        "context": _serialize_relevant_context(logical_plan),
     }
 
 

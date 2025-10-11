@@ -323,3 +323,61 @@ def test_cache_different_datasets(ray_start_regular_shared, operation):
         result1 = ds1.sum("id")
         result2 = ds2.sum("id")
         assert result1 != result2  # Different sums
+
+
+def test_cache_key_stability(ray_start_regular_shared):
+    """Test that cache keys are stable and content-based, not memory-address based."""
+    from ray.data._internal.cache.key_generation import make_cache_key
+
+    # Create same dataset twice
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100)
+
+    # Get cache keys for same operation on equivalent datasets
+    key1 = make_cache_key(ds1._logical_plan, "count")
+    key2 = make_cache_key(ds2._logical_plan, "count")
+
+    # Keys should be identical for equivalent logical plans
+    # (This verifies we're not using memory addresses like id())
+    assert key1 == key2, "Cache keys should be stable and content-based"
+
+    # Keys for different datasets should be different
+    ds3 = ray.data.range(200)
+    key3 = make_cache_key(ds3._logical_plan, "count")
+    assert key1 != key3, "Different datasets should have different cache keys"
+
+    # Keys for different operations should be different
+    key4 = make_cache_key(ds1._logical_plan, "schema")
+    assert key1 != key4, "Different operations should have different cache keys"
+
+    # Keys with different parameters should be different
+    key5 = make_cache_key(ds1._logical_plan, "count", limit=50)
+    key6 = make_cache_key(ds1._logical_plan, "count", limit=100)
+    assert key5 != key6, "Different parameters should produce different cache keys"
+
+
+def test_cache_key_context_settings(ray_start_regular_shared):
+    """Test that cache keys include context settings that affect results."""
+    from ray.data._internal.cache.key_generation import make_cache_key
+    from ray.data.context import DataContext
+
+    ds = ray.data.range(100)
+
+    # Get key with default context
+    key1 = make_cache_key(ds._logical_plan, "count")
+
+    # Change a context setting that affects results
+    ctx = DataContext.get_current()
+    original_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = original_block_size * 2
+
+    # Create same dataset with modified context
+    ds2 = ray.data.range(100)
+    key2 = make_cache_key(ds2._logical_plan, "count")
+
+    # Keys should be different when context settings differ
+    # (This verifies context is properly serialized, not using id())
+    assert key1 != key2, "Different context settings should produce different cache keys"
+
+    # Restore original setting
+    ctx.target_max_block_size = original_block_size
