@@ -358,6 +358,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   mutable absl::Mutex mutex_;
 
   observability::RayEventRecorderInterface &ray_event_recorder_;
+  absl::flat_hash_set<NodeID> draining_node_ids_ ABSL_GUARDED_BY(mutex_);
   std::string session_name_;
 
   // Debug info.
