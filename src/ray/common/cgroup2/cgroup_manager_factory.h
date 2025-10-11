@@ -27,7 +27,7 @@ class CgroupManagerFactory {
   /**
 
     This feature is only enabled in Linux. If using Linux, validates inputs, creates the
-    ray cgroup heirarchy, enables constraints, and moves all system processes into the
+    ray's cgroup hierarchy, enables constraints, and moves all system processes into the
     system cgroup.
 
     On non-Linux platforms, this will return a noop implementation.
@@ -37,8 +37,8 @@ class CgroupManagerFactory {
     @param cgroup_path the cgroup that the process will take ownership of.
     @param node_id used to create a unique cgroup subtree per running ray node.
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
-    for system processes. The cgroup for application processes gets 10000 -
-    system_reserved_cpu_weight.
+    for system processes. The cgroup for all other processes (including workers) gets
+    10000 - system_reserved_cpu_weight.
     @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
     @param system_pids a comma-separated list of pids of ray system processes to move into
     the system cgroup.
@@ -47,7 +47,7 @@ class CgroupManagerFactory {
 
     @note any of the following is undefined behavior and will cause a RAY_CHECK to fail
       1. enable_resource_isolation is true and either
-        a. cgroup_path is empty
+        a. cgroup_path is empty.
         b. system_reserved_cpu_weight or system_reserved_memory_bytes are -1.
       2. The CgroupManager's precondition checks fail
         a. cgroupv2 is not mounted correctly in unified mode (see @ref
