@@ -495,7 +495,7 @@ def _get_custom_resources(
                 f"custom resources specified in both the top-level 'resources' field and in 'rayStartParams'. "
                 f"Using the values from 'resources': {group_resources}."
             )
-        standard_keys = {"CPU", "GPU", "memory"}
+        standard_keys = {"CPU", "GPU", "TPU", "memory"}
         try:
             custom_resources = {
                 k: _round_up_k8s_quantity(v)
