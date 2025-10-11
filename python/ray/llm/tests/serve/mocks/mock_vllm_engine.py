@@ -12,12 +12,11 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionResponse,
     EmbeddingRequest,
     EmbeddingResponse,
-    TranscriptionRequest,
-    TranscriptionResponse,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
-    TranscriptionStreamResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,

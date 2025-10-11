@@ -49,11 +49,11 @@ if TYPE_CHECKING:
         CompletionResponse,
         EmbeddingRequest,
         EmbeddingResponse,
-        TranscriptionRequest,
-        TranscriptionResponse,
         ErrorResponse,
         ScoreRequest,
         ScoreResponse,
+        TranscriptionRequest,
+        TranscriptionResponse,
     )
 
 logger = get_logger(__name__)
