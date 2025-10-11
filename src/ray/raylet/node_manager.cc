@@ -2860,7 +2860,7 @@ void NodeManager::ConsumeInnerSyncMessage(
   }
 }
 
-std::optional<const syncer::InnerRaySyncMessage> NodeManager::CreateInnerSyncMessage(
+std::optional<syncer::InnerRaySyncMessage> NodeManager::CreateInnerSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
 

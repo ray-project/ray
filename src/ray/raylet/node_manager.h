@@ -197,7 +197,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ConsumeInnerSyncMessage(
       std::shared_ptr<const syncer::InnerRaySyncMessage> message) override;
 
-  std::optional<const syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
+  std::optional<syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }

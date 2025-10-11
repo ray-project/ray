@@ -53,23 +53,21 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
 
-  std::packaged_task<void()> cleanup_task([this] {
-    // Cancel batch timer and flush any pending messages
-    if (sync_message_batch_timer_active_) {
-      sync_message_batch_timer_->cancel();
-      sync_message_batch_timer_active_ = false;
-    }
-    if (!sync_message_batch_buffer_.empty()) {
-      MergeAndFlushSyncMessage();
-    }
-    for (auto &[_, reactor] : sync_reactors_) {
-      reactor->Disconnect();
-    }
-  });
+  boost::asio::dispatch(io_context_.get_executor(),
+                        [reactors = sync_reactors_,
+                         timer_ptr = sync_message_batch_timer_.get(),
+                         timer_active = sync_message_batch_timer_active_,
+                         buffer = std::move(sync_message_batch_buffer_)]() mutable {
+                          if (timer_active && timer_ptr) {
+                            timer_ptr->cancel();
+                          }
 
-  auto future = cleanup_task.get_future();
-  boost::asio::dispatch(io_context_.get_executor(), std::move(cleanup_task));
-  future.get();
+                          buffer.clear();  // Simply clear the buffer
+
+                          for (auto &[_, reactor] : reactors) {
+                            reactor->Disconnect();
+                          }
+                        });
 }
 
 std::shared_ptr<const InnerRaySyncMessage> RaySyncer::GetInnerSyncMessage(

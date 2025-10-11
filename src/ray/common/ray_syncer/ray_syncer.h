@@ -54,7 +54,7 @@ struct ReporterInterface {
   /// \return std::nullopt if the reporter doesn't have such component or the current
   /// snapshot of the component is not newer the asked one. Otherwise, return the
   /// actual message.
-  virtual std::optional<const InnerRaySyncMessage> CreateInnerSyncMessage(
+  virtual std::optional<InnerRaySyncMessage> CreateInnerSyncMessage(
       int64_t version_after, MessageType message_type) const = 0;
   virtual ~ReporterInterface() {}
 };

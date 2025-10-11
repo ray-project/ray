@@ -136,7 +136,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
-  std::optional<const syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
+  std::optional<syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
   void PopulateResourceViewSyncMessage(

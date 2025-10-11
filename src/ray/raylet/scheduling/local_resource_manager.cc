@@ -364,9 +364,8 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 }
 
-std::optional<const syncer::InnerRaySyncMessage>
-LocalResourceManager::CreateInnerSyncMessage(int64_t after_version,
-                                             syncer::MessageType message_type) const {
+std::optional<syncer::InnerRaySyncMessage> LocalResourceManager::CreateInnerSyncMessage(
+    int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
   // We check the memory inside version, so version is not a const function.
   // Ideally, we need to move the memory check somewhere else.

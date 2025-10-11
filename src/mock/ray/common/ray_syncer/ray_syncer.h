@@ -23,7 +23,7 @@ namespace syncer {
 
 class MockReporterInterface : public ReporterInterface {
  public:
-  MOCK_METHOD(std::optional<const InnerRaySyncMessage>,
+  MOCK_METHOD(std::optional<InnerRaySyncMessage>,
               CreateInnerSyncMessage,
               (int64_t current_version, MessageType message_type),
               (const, override));
