@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 import numpy as np
 import pandas as pd
@@ -12,22 +12,17 @@ from ray.data.block import DataBatch
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
+    CaseExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
     UDFExpr,
     UnaryExpr,
+    WhenExpr,
 )
 
-
-def _pa_is_in(left: Any, right: Any) -> Any:
-    if not isinstance(right, (pa.Array, pa.ChunkedArray)):
-        right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
-    return pc.is_in(left, right)
-
-
-_PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
+_PANDAS_EXPR_OPS_MAP = {
     Operation.ADD: operator.add,
     Operation.SUB: operator.sub,
     Operation.MUL: operator.mul,
@@ -42,72 +37,48 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
     Operation.NOT: operator.not_,
-    Operation.IS_NULL: pd.isna,
-    Operation.IS_NOT_NULL: pd.notna,
-    Operation.IN: lambda left, right: left.is_in(right),
-    Operation.NOT_IN: lambda left, right: ~left.is_in(right),
 }
 
 
-def _is_pa_string_type(t: pa.DataType) -> bool:
-    return pa.types.is_string(t) or pa.types.is_large_string(t)
+def _pa_add_or_concat(left, right):
+    """Add numeric values or concatenate strings with proper type validation."""
+    # Convert scalars to arrays if needed for type checking
+    left_is_scalar = isinstance(left, (int, float, str, bool, type(None)))
+    right_is_scalar = isinstance(right, (int, float, str, bool, type(None)))
 
+    if left_is_scalar:
+        left = pa.scalar(left)
+    if right_is_scalar:
+        right = pa.scalar(right)
 
-def _is_pa_string_like(x: Union[pa.Array, pa.ChunkedArray]) -> bool:
-    t = x.type
-    if pa.types.is_dictionary(t):
-        t = t.value_type
-    return _is_pa_string_type(t)
+    # Get the type, handling both scalars and arrays
+    left_type = left.type if hasattr(left, "type") else pa.from_numpy_dtype(type(left))
+    right_type = (
+        right.type if hasattr(right, "type") else pa.from_numpy_dtype(type(right))
+    )
 
+    # Unwrap dictionary-encoded types
+    if pa.types.is_dictionary(left_type):
+        left_type = left_type.value_type
+    if pa.types.is_dictionary(right_type):
+        right_type = right_type.value_type
 
-def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
-    """Convert Arrow dictionary-encoded string arrays to regular string arrays.
+    # Check if either operand is a string type
+    is_string_op = (
+        pa.types.is_string(left_type)
+        or pa.types.is_large_string(left_type)
+        or pa.types.is_string(right_type)
+        or pa.types.is_large_string(right_type)
+    )
 
-    Dictionary encoding stores strings as indices into a dictionary of unique values.
-    This function converts them back to regular string arrays for string operations.
-
-    Example:
-        # Input: pa.array(['a', 'b']).dictionary_encode()
-        #   -- dictionary: ["a", "b"]
-        #   -- indices: [0, 1]
-        # Output: regular string array ["a", "b"]
-    Args:
-        x: The input array to convert.
-    Returns:
-        The converted string array.
-    """
-    if pa.types.is_dictionary(x.type) and _is_pa_string_type(x.type.value_type):
-        return pc.cast(x, pa.string())
-    return x
-
-
-def _to_pa_string_input(x: Any) -> Any:
-    if isinstance(x, str):
-        return pa.scalar(x)
-    elif _is_pa_string_like(x) and isinstance(x, (pa.Array, pa.ChunkedArray)):
-        x = _pa_decode_dict_string_array(x)
+    if is_string_op:
+        # Use binary_join_element_wise with correct argument order: (*arrays, separator)
+        return pc.binary_join_element_wise(left, right, "")
     else:
-        raise
-    return x
+        return pc.add(left, right)
 
 
-def _pa_add_or_concat(left: Any, right: Any) -> Any:
-    # If either side is string-like, perform string concatenation.
-    if (
-        isinstance(left, str)
-        or isinstance(right, str)
-        or (isinstance(left, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(left))
-        or (
-            isinstance(right, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(right)
-        )
-    ):
-        left_input = _to_pa_string_input(left)
-        right_input = _to_pa_string_input(right)
-        return pc.binary_join_element_wise(left_input, right_input, "")
-    return pc.add(left, right)
-
-
-_ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
+_ARROW_EXPR_OPS_MAP = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
@@ -123,9 +94,7 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.OR: pc.or_kleene,
     Operation.NOT: pc.invert,
     Operation.IS_NULL: pc.is_null,
-    Operation.IS_NOT_NULL: pc.is_valid,
-    Operation.IN: _pa_is_in,
-    Operation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
+    Operation.IS_NOT_NULL: lambda x: pc.invert(pc.is_null(x)),
 }
 
 
@@ -137,17 +106,108 @@ def _eval_expr_recursive(
     # and resolved expressions (bound to a schema) for better error handling
 
     if isinstance(expr, ColumnExpr):
-        return batch[expr.name]
+        return batch[expr._name]
     if isinstance(expr, LiteralExpr):
         return expr.value
+    if isinstance(expr, AliasExpr):
+        # For alias expressions, evaluate the underlying expression
+        return _eval_expr_recursive(expr.expr, batch, ops)
     if isinstance(expr, BinaryExpr):
+        # Handle IN and NOT_IN operations specially
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            left_val = _eval_expr_recursive(expr.left, batch, ops)
+            right_val = _eval_expr_recursive(expr.right, batch, ops)
+
+            # For pandas, use isin()
+            if isinstance(batch, pd.DataFrame):
+                if isinstance(left_val, pd.Series):
+                    result = left_val.isin(right_val)
+                else:
+                    # Scalar value
+                    result = pd.Series([left_val in right_val] * len(batch))
+                return ~result if expr.op == Operation.NOT_IN else result
+            # For Arrow, use is_in()
+            elif isinstance(batch, pa.Table):
+                if not isinstance(right_val, (pa.Array, pa.ChunkedArray)):
+                    right_val = pa.array(right_val)
+                result = pc.is_in(left_val, right_val)
+                return pc.invert(result) if expr.op == Operation.NOT_IN else result
+
         return ops[expr.op](
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
+
     if isinstance(expr, UnaryExpr):
-        # TODO: Use Visitor pattern here and store ops in shared state.
-        return ops[expr.op](_eval_expr_recursive(expr.operand, batch, ops))
+        operand = _eval_expr_recursive(expr.operand, batch, ops)
+
+        # Handle IS_NULL and IS_NOT_NULL for pandas
+        if expr.op == Operation.IS_NULL and isinstance(batch, pd.DataFrame):
+            if isinstance(operand, pd.Series):
+                return operand.isna()
+            else:
+                return pd.Series([pd.isna(operand)] * len(batch))
+        elif expr.op == Operation.IS_NOT_NULL and isinstance(batch, pd.DataFrame):
+            if isinstance(operand, pd.Series):
+                return operand.notna()
+            else:
+                return pd.Series([pd.notna(operand)] * len(batch))
+
+        return ops[expr.op](operand)
+
+    if isinstance(expr, CaseExpr):
+        # Evaluate case statement using vectorized operations for batch processing
+        # For pandas: use numpy.select for efficient vectorized evaluation
+        # For Arrow: use pyarrow.compute.case_when for efficient vectorized evaluation
+
+        # Evaluate all conditions and values first
+        conditions = [
+            _eval_expr_recursive(condition, batch, ops)
+            for condition, _ in expr.when_clauses
+        ]
+        choices = [
+            _eval_expr_recursive(value, batch, ops) for _, value in expr.when_clauses
+        ]
+        default = _eval_expr_recursive(expr.default, batch, ops)
+
+        # Handle edge case: no when clauses (just return default)
+        if not conditions:
+            return default
+
+        # Use appropriate vectorized operation based on batch type
+        if isinstance(batch, pd.DataFrame):
+            # For pandas, use numpy.select which handles Series efficiently
+            return np.select(conditions, choices, default=default)
+        elif isinstance(batch, pa.Table):
+            # For Arrow, use pyarrow.compute.case_when
+            # PyArrow case_when expects:
+            # - cond: a struct array of boolean conditions
+            # - *cases: the case values (one for each condition, plus default)
+
+            # Create a struct array from the conditions
+            if len(conditions) == 1:
+                # Single condition case
+                cond_struct = pa.StructArray.from_arrays(
+                    [conditions[0]], names=["cond0"]
+                )
+                return pc.case_when(cond_struct, choices[0], default)
+            else:
+                # Multiple conditions case
+                cond_names = [f"cond{i}" for i in range(len(conditions))]
+                cond_struct = pa.StructArray.from_arrays(conditions, names=cond_names)
+                # Pass all choices plus default as separate arguments
+                return pc.case_when(cond_struct, *choices, default)
+        else:
+            # Fallback for other types (should not happen in practice)
+            raise TypeError(
+                f"Unsupported batch type for CaseExpr: {type(batch).__name__}"
+            )
+
+    if isinstance(expr, WhenExpr):
+        # WhenExpr should not be evaluated directly - it should be converted to CaseExpr first
+        raise TypeError(
+            "WhenExpr cannot be evaluated directly. Use .otherwise() to complete the case statement."
+        )
 
     if isinstance(expr, UDFExpr):
         args = [_eval_expr_recursive(arg, batch, ops) for arg in expr.args]
@@ -165,10 +225,6 @@ def _eval_expr_recursive(
             )
 
         return result
-
-    if isinstance(expr, AliasExpr):
-        # The renaming of the column is handled in the project op planner stage.
-        return _eval_expr_recursive(expr.expr, batch, ops)
 
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
