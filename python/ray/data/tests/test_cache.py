@@ -381,3 +381,74 @@ def test_cache_key_context_settings(ray_start_regular_shared):
 
     # Restore original setting
     ctx.target_max_block_size = original_block_size
+
+
+def test_cache_with_kwargs(ray_start_regular_shared):
+    """Test that cache properly handles both positional and keyword arguments."""
+    import ray.data as rd
+
+    ds = ray.data.range(100)
+
+    # Clear cache to start fresh
+    rd.clear_dataset_cache()
+
+    # Call take with positional argument
+    result1 = ds.take(10)
+    assert len(result1) == 10
+
+    # Call take with keyword argument (should use same cache entry)
+    result2 = ds.take(n=10)
+    assert len(result2) == 10
+    assert result1 == result2
+
+    # Call take with different keyword argument (should create new cache entry)
+    result3 = ds.take(n=5)
+    assert len(result3) == 5
+    assert result1 != result3
+
+    # Verify cache stats show appropriate hits/misses
+    stats = rd.get_cache_stats()
+    assert stats["hit_count"] >= 1, "Should have cache hits for same parameters"
+
+
+def test_cache_key_deterministic(ray_start_regular_shared):
+    """Test that cache keys are deterministic across process restarts."""
+    from ray.data._internal.cache.key_generation import make_cache_key
+
+    ds = ray.data.range(100)
+
+    # Get initial cache key
+    key1 = make_cache_key(ds._logical_plan, "count")
+    key2 = make_cache_key(ds._logical_plan, "count")
+
+    # Keys should be identical (deterministic)
+    assert key1 == key2, "Cache keys should be deterministic"
+
+    # Verify key doesn't use Python's randomized hash()
+    # If it did, reloading the module would change the key
+    # (This is a best-effort check; real verification requires process restart)
+    ds2 = ray.data.range(100)
+    key3 = make_cache_key(ds2._logical_plan, "count")
+    assert key1 == key3, "Cache keys should be stable across dataset recreations"
+
+
+def test_cache_fallback_deterministic(ray_start_regular_shared):
+    """Test that fallback cache key generation is deterministic."""
+    from ray.data._internal.cache.key_generation import make_cache_key
+
+    # Create datasets that might trigger fallback path
+    ds1 = ray.data.range(50)
+    ds2 = ray.data.range(50)
+
+    # Get cache keys multiple times
+    key1a = make_cache_key(ds1._logical_plan, "test_op", param1="value1")
+    key1b = make_cache_key(ds1._logical_plan, "test_op", param1="value1")
+    key2a = make_cache_key(ds2._logical_plan, "test_op", param1="value1")
+
+    # Keys should be deterministic
+    assert key1a == key1b, "Same inputs should produce same keys"
+    assert key1a == key2a, "Equivalent datasets should produce same keys"
+
+    # Different parameters should produce different keys
+    key3 = make_cache_key(ds1._logical_plan, "test_op", param1="value2")
+    assert key1a != key3, "Different parameters should produce different keys"

@@ -17,10 +17,6 @@ from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan
 # 16 characters provides excellent collision resistance while keeping keys readable.
 CACHE_KEY_HASH_LENGTH = 16
 
-# Simple fallback hash modulo for error cases.
-# Used when serialization fails, provides reasonable distribution.
-FALLBACK_HASH_MODULO = 10000000
-
 
 def make_cache_key(logical_plan: LogicalPlan, operation_name: str, **params) -> str:
     """Create a stable, unique cache key from logical plan and parameters.
@@ -61,15 +57,20 @@ def make_cache_key(logical_plan: LogicalPlan, operation_name: str, **params) -> 
         return f"{operation_name}_{hash_hex}"
 
     except Exception:
-        # Fallback to simple hash
+        # Fallback to deterministic hash (avoid Python's randomized hash())
         try:
             fallback_input = f"{operation_name}|{str(logical_plan.dag)}|{str(params)}"
-            return f"{operation_name}_{hash(fallback_input) % FALLBACK_HASH_MODULO:07d}"
+            fallback_hash = hashlib.sha256(fallback_input.encode("utf-8")).hexdigest()
+            return f"{operation_name}_{fallback_hash[:CACHE_KEY_HASH_LENGTH]}"
         except Exception:
-            # Last resort fallback
-            return (
-                f"{operation_name}_{hash(str(logical_plan)) % FALLBACK_HASH_MODULO:07d}"
-            )
+            # Last resort fallback - still use deterministic hash
+            try:
+                last_resort = f"{operation_name}|{str(logical_plan)}"
+                fallback_hash = hashlib.sha256(last_resort.encode("utf-8")).hexdigest()
+                return f"{operation_name}_{fallback_hash[:CACHE_KEY_HASH_LENGTH]}"
+            except Exception:
+                # If even encoding fails, use a constant fallback
+                return f"{operation_name}_fallback_error"
 
 
 def _serialize_logical_plan(logical_plan: LogicalPlan) -> Dict[str, Any]:

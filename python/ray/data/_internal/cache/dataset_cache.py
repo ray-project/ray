@@ -37,13 +37,16 @@ def cache_result(operation_name: str, include_params: Optional[List[str]] = None
             if not getattr(context, "enable_dataset_caching", True):
                 return func(self, *args, **kwargs)
 
-            # Simple parameter extraction
+            # Extract parameters from both args and kwargs
             cache_params = {}
-            if include_params and args:
-                # Just use positional args for simplicity
+            if include_params:
                 for i, param_name in enumerate(include_params):
+                    # First try positional args
                     if i < len(args):
                         cache_params[param_name] = args[i]
+                    # Then try keyword args
+                    elif param_name in kwargs:
+                        cache_params[param_name] = kwargs[param_name]
 
             # Try cache first
             cache = _get_cache()
