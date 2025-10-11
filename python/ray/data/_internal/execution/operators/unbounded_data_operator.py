@@ -32,14 +32,14 @@ class UnboundedDataOperator(PhysicalOperator):
     - Triggers control when new batches are created (continuous, interval, once)
     - For continuous: create new batches immediately when previous completes
     - For interval: wait for time interval between batches
-    
+
     **For Kafka example:**
     - Trigger creates tasks (one per topic/partition)
     - Each task reads up to max_records_per_task messages
     - Task yields tables every 1000 records (incremental)
     - Task completes and Kafka auto-commits offsets
     - Next trigger creates new tasks starting from latest offset
-    
+
     This provides continuous data flow while maintaining bounded resource usage.
 
     Note: "streaming" in this context refers to unbounded data sources, not
@@ -112,12 +112,12 @@ class UnboundedDataOperator(PhysicalOperator):
     def _should_trigger_new_batch(self) -> bool:
         """Determine if a new batch should be triggered based on trigger configuration
         and backpressure.
-        
+
         This method implements the core triggering logic for different streaming modes:
         - once: Trigger exactly one batch
         - continuous: Trigger new batch whenever previous batch completes
         - fixed_interval: Trigger at regular time intervals
-        
+
         Returns:
             True if a new batch should be triggered, False otherwise
         """
@@ -150,14 +150,14 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _check_backpressure(self) -> bool:
         """Check if backpressure conditions are met to prevent overwhelming the system.
-        
+
         Backpressure detection helps prevent:
         - Memory overflow from producing data faster than it can be consumed
         - Task queue buildup that could cause OOM errors
         - Overwhelming downstream operators
-        
+
         Checks both memory pressure and concurrent task limits.
-        
+
         Returns:
             True if backpressure is detected and we should pause new batch creation
         """
@@ -224,13 +224,13 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _create_read_tasks(self) -> None:
         """Create new read tasks from the datasource.
-        
+
         This method:
         1. Retrieves ReadTask objects from the datasource
         2. Submits them as remote Ray tasks for distributed execution
         3. Tracks task references and start times for monitoring
         4. Applies resource optimization based on task characteristics
-        
+
         The read tasks are executed remotely to enable:
         - Distributed reading across multiple Ray workers
         - Parallel data ingestion from multiple sources (topics, shards, etc.)
@@ -253,7 +253,9 @@ class UnboundedDataOperator(PhysicalOperator):
 
             # Execute read tasks remotely on Ray workers
             self._current_read_tasks = []
-            self._task_start_times = []  # Track when each task was created for timeout detection
+            self._task_start_times = (
+                []
+            )  # Track when each task was created for timeout detection
             for i, task in enumerate(read_tasks):
                 try:
                     # Validate ray_remote_args to prevent security issues
@@ -289,9 +291,13 @@ class UnboundedDataOperator(PhysicalOperator):
                     # - Ray streams them back without buffering all in memory
                     # - When generator completes, we get all yielded values
                     remote_fn = ray.remote(**validated_args)(task.read_fn)
-                    task_ref = remote_fn.remote()  # Returns ObjectRefGenerator if read_fn is generator
+                    task_ref = (
+                        remote_fn.remote()
+                    )  # Returns ObjectRefGenerator if read_fn is generator
                     self._current_read_tasks.append(task_ref)
-                    self._task_start_times.append(datetime.now())  # Track start time for timeout detection
+                    self._task_start_times.append(
+                        datetime.now()
+                    )  # Track start time for timeout detection
 
                     # Log task creation with resource details for debugging
                     logger.debug(
@@ -326,10 +332,10 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def should_add_input(self) -> bool:
         """Check if operator can accept more input.
-        
+
         Streaming operators are source operators - they generate data from external
         systems rather than processing input from upstream operators.
-        
+
         Returns:
             Always False for streaming operators
         """
@@ -337,11 +343,11 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Add input to this operator (not supported for streaming sources).
-        
+
         Args:
             refs: Input bundle to add
             input_index: Index of the input dependency
-            
+
         Raises:
             RuntimeError: Always, as streaming operators don't accept input
         """
@@ -349,15 +355,15 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def has_next(self) -> bool:
         """Check if there are available results or if more batches should be triggered.
-        
+
         This is a key method in Ray Data's execution engine interface. It's called
         repeatedly to determine if the operator can produce more output.
-        
+
         The logic handles different trigger modes:
         - once: Has next until single batch is consumed
         - continuous: Always has next unless explicitly stopped
         - fixed_interval: Has next when interval triggers or tasks are pending
-        
+
         Returns:
             True if operator can produce more output, False otherwise
         """
@@ -388,12 +394,12 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _check_task_timeouts(self) -> None:
         """Check for timed-out tasks and clean them up.
-        
+
         Long-running tasks can indicate:
         - Network issues connecting to external systems (Kafka, Kinesis, Flink)
         - Deadlocks in the read function
         - Resource starvation on workers
-        
+
         This method identifies and cancels stuck tasks to prevent indefinite blocking.
         Configurable timeout via data_context.streaming_task_timeout (default: 5 minutes).
         """
@@ -469,16 +475,16 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _get_next_inner(self) -> RefBundle:
         """Get the next result from completed read tasks.
-        
+
         This method implements the core output logic for the operator:
         1. Wait for at least one read task to complete
         2. Retrieve the result (PyArrow tables)
         3. Convert to RefBundle for Ray Data's execution engine
         4. Update performance metrics
-        
+
         Returns:
             RefBundle containing blocks from the completed read task
-            
+
         Raises:
             StopIteration: When no tasks are ready or an error occurs
         """
@@ -548,9 +554,9 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def input_done(self, input_index: int) -> None:
         """Called when upstream input is done.
-        
+
         Not applicable for source operators as they have no upstream dependencies.
-        
+
         Args:
             input_index: Index of the completed input dependency
         """
@@ -558,19 +564,19 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def all_inputs_done(self) -> None:
         """Called when all upstream inputs are done.
-        
+
         Not applicable for source operators as they have no upstream dependencies.
         """
         pass
 
     def completed(self) -> bool:
         """Check if the streaming operator has completed execution.
-        
+
         Completion logic varies by trigger type:
         - once: Complete when single batch is produced and consumed
         - continuous: Never complete (runs until explicitly stopped)
         - fixed_interval: Runs until explicitly stopped
-        
+
         Returns:
             True if operator has completed execution
         """
@@ -584,11 +590,11 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def throttling_disabled(self) -> bool:
         """Check if execution throttling should be disabled for this operator.
-        
+
         Streaming operators implement their own throttling via trigger configurations
         (continuous, fixed_interval, etc.), so Ray Data's default throttling should
         be disabled to avoid conflicts.
-        
+
         Returns:
             Always True for streaming operators
         """
@@ -596,10 +602,10 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def get_active_tasks(self) -> List[Any]:
         """Get list of active streaming tasks for monitoring.
-        
+
         Returns task wrappers that implement the OpTask interface, allowing
         Ray Data's execution engine to monitor and manage streaming tasks.
-        
+
         Returns:
             List of _StreamingTaskWrapper objects representing active tasks
         """
@@ -611,10 +617,10 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def num_active_tasks(self) -> int:
         """Get the number of currently active streaming tasks.
-        
+
         Used by Ray Data's execution engine for progress tracking and
         resource management decisions.
-        
+
         Returns:
             Number of active streaming read tasks
         """
@@ -622,12 +628,12 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _apply_online_data_remote_args(self) -> None:
         """Apply streaming-specific Ray remote args for optimal performance.
-        
+
         This configures Ray's task execution to work well with streaming data:
         1. Generator backpressure: Prevents overwhelming object store
         2. Streaming returns: Enables incremental result delivery
         3. Operator labels: Enables tracking and debugging
-        
+
         Note: "streaming" here refers to Ray Data's execution engine, not the
         unbounded data source. Both concepts work together for efficient processing.
         """
@@ -677,7 +683,7 @@ class UnboundedDataOperator(PhysicalOperator):
         - Data size is unknown until read from external system
         - Records arrive continuously with varying sizes
         - Exact tracking would add significant overhead
-        
+
         The estimates are conservative to prevent OOM errors.
 
         Returns:
@@ -690,7 +696,7 @@ class UnboundedDataOperator(PhysicalOperator):
 
         Called by Ray Data's execution engine when the system enters or exits
         backpressure. This allows the operator to adapt its behavior dynamically.
-        
+
         For streaming operators, we could potentially:
         - Pause trigger firing during backpressure
         - Increase batch sizes to reduce task overhead

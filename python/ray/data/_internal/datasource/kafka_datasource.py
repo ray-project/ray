@@ -25,6 +25,7 @@ def _check_kafka_available():
     """Check if kafka-python is available."""
     try:
         import kafka  # noqa: F401
+
         return True
     except ImportError:
         raise ImportError(
@@ -122,15 +123,16 @@ class KafkaDatasource(UnboundDatasource):
                 end_offset: Optional[str] = end_offset,
             ):
                 """Create a Kafka read function with captured variables.
-                
+
                 This factory function captures configuration variables as default arguments
                 to avoid serialization issues when the read function is executed remotely
                 by Ray. Using default arguments ensures all needed config is available
                 in the remote task without requiring 'self' to be serialized.
                 """
+
                 def kafka_read_fn() -> Iterator[pa.Table]:
                     """Read function for Kafka topic using kafka-python.
-                    
+
                     This function runs remotely in a Ray task. It creates a KafkaConsumer,
                     reads messages from the assigned topic, and yields PyArrow tables
                     incrementally for efficient streaming processing.
@@ -142,36 +144,55 @@ class KafkaDatasource(UnboundDatasource):
                     # Build consumer configuration from provided settings
                     # We disable auto-commit by default to give Ray Data control over offset management
                     consumer_config = {
-                        'bootstrap_servers': kafka_config['bootstrap_servers'],
-                        'auto_offset_reset': kafka_config.get('auto_offset_reset', start_offset),
-                        'enable_auto_commit': kafka_config.get('enable_auto_commit', False),
-                        'group_id': kafka_config.get('group_id'),
-                        'session_timeout_ms': kafka_config.get('session_timeout_ms', 30000),
+                        "bootstrap_servers": kafka_config["bootstrap_servers"],
+                        "auto_offset_reset": kafka_config.get(
+                            "auto_offset_reset", start_offset
+                        ),
+                        "enable_auto_commit": kafka_config.get(
+                            "enable_auto_commit", False
+                        ),
+                        "group_id": kafka_config.get("group_id"),
+                        "session_timeout_ms": kafka_config.get(
+                            "session_timeout_ms", 30000
+                        ),
                         # Limit poll records to support incremental yielding
-                        'max_poll_records': min(
+                        "max_poll_records": min(
                             max_records_per_task,
-                            kafka_config.get('max_poll_records', 500)
+                            kafka_config.get("max_poll_records", 500),
                         ),
                     }
 
                     # Add security configuration if present
                     # Supports PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
-                    if 'security_protocol' in kafka_config:
-                        consumer_config['security_protocol'] = kafka_config['security_protocol']
-                    
+                    if "security_protocol" in kafka_config:
+                        consumer_config["security_protocol"] = kafka_config[
+                            "security_protocol"
+                        ]
+
                     # Add SASL authentication if configured
                     # Supports PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI mechanisms
-                    if 'sasl_mechanism' in kafka_config:
-                        consumer_config['sasl_mechanism'] = kafka_config['sasl_mechanism']
-                    if 'sasl_plain_username' in kafka_config:
-                        consumer_config['sasl_plain_username'] = kafka_config['sasl_plain_username']
-                    if 'sasl_plain_password' in kafka_config:
-                        consumer_config['sasl_plain_password'] = kafka_config['sasl_plain_password']
+                    if "sasl_mechanism" in kafka_config:
+                        consumer_config["sasl_mechanism"] = kafka_config[
+                            "sasl_mechanism"
+                        ]
+                    if "sasl_plain_username" in kafka_config:
+                        consumer_config["sasl_plain_username"] = kafka_config[
+                            "sasl_plain_username"
+                        ]
+                    if "sasl_plain_password" in kafka_config:
+                        consumer_config["sasl_plain_password"] = kafka_config[
+                            "sasl_plain_password"
+                        ]
 
                     # Add SSL/TLS configuration if present
                     # These allow secure connections to Kafka brokers
-                    ssl_keys = ['ssl_cafile', 'ssl_certfile', 'ssl_keyfile', 
-                               'ssl_check_hostname', 'ssl_ciphers']
+                    ssl_keys = [
+                        "ssl_cafile",
+                        "ssl_certfile",
+                        "ssl_keyfile",
+                        "ssl_check_hostname",
+                        "ssl_ciphers",
+                    ]
                     for key in ssl_keys:
                         if key in kafka_config:
                             consumer_config[key] = kafka_config[key]
@@ -183,18 +204,20 @@ class KafkaDatasource(UnboundDatasource):
                             return None
                         try:
                             # Attempt to parse as JSON (handles objects, arrays, etc.)
-                            return json.loads(value.decode('utf-8'))
+                            return json.loads(value.decode("utf-8"))
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             # Not JSON, return as plain string with error replacement
-                            return value.decode('utf-8', errors='replace')
+                            return value.decode("utf-8", errors="replace")
 
-                    consumer_config['value_deserializer'] = deserialize_value
+                    consumer_config["value_deserializer"] = deserialize_value
                     # Key deserializer - simple UTF-8 decode or None
-                    consumer_config['key_deserializer'] = lambda k: k.decode('utf-8') if k else None
+                    consumer_config["key_deserializer"] = (
+                        lambda k: k.decode("utf-8") if k else None
+                    )
 
                     # Create the Kafka consumer with all configuration
                     consumer = KafkaConsumer(**consumer_config)
-                    
+
                     try:
                         # Query Kafka to get all partitions for this topic
                         # This returns a set of partition IDs (integers)
@@ -202,31 +225,37 @@ class KafkaDatasource(UnboundDatasource):
                         if not partitions:
                             # Topic doesn't exist or no partitions available - exit early
                             return
-                        
+
                         # Use manual assignment instead of subscribe() for better control
                         # This allows us to explicitly manage offsets and seeking
                         # which is important for bounded reads (start_offset -> end_offset)
-                        topic_partitions = [TopicPartition(topic_name, p) for p in partitions]
+                        topic_partitions = [
+                            TopicPartition(topic_name, p) for p in partitions
+                        ]
                         consumer.assign(topic_partitions)
-                        
+
                         # Seek to the requested starting position
                         # Supports: numeric offsets, 'earliest', 'latest'
                         if start_offset and start_offset.isdigit():
                             # Numeric offset - seek all partitions to this absolute offset
                             for tp in topic_partitions:
                                 consumer.seek(tp, int(start_offset))
-                        elif start_offset == 'earliest':
+                        elif start_offset == "earliest":
                             # Start from the beginning of all partitions
                             consumer.seek_to_beginning(*topic_partitions)
-                        elif start_offset == 'latest':
+                        elif start_offset == "latest":
                             # Start from the end (only read new messages)
                             consumer.seek_to_end(*topic_partitions)
 
                         records = []
                         records_read = 0
                         # Parse end offset if specified (for bounded reads)
-                        end_offset_int = int(end_offset) if end_offset and end_offset.isdigit() else None
-                        
+                        end_offset_int = (
+                            int(end_offset)
+                            if end_offset and end_offset.isdigit()
+                            else None
+                        )
+
                         # For streaming execution: yield blocks incrementally (in batches of 1000)
                         # rather than accumulating all data in memory. This allows Ray Data's
                         # streaming execution engine to start processing while we're still reading,
@@ -239,8 +268,10 @@ class KafkaDatasource(UnboundDatasource):
                             # timeout_ms: how long to wait if no messages available
                             # max_records: limit batch size to support incremental yielding
                             msg_batch = consumer.poll(
-                                timeout_ms=kafka_config.get('poll_timeout_ms', 1000),
-                                max_records=min(batch_size, max_records_per_task - records_read)
+                                timeout_ms=kafka_config.get("poll_timeout_ms", 1000),
+                                max_records=min(
+                                    batch_size, max_records_per_task - records_read
+                                ),
                             )
 
                             if not msg_batch:
@@ -256,7 +287,10 @@ class KafkaDatasource(UnboundDatasource):
                             for topic_partition, messages in msg_batch.items():
                                 for msg in messages:
                                     # Check if we've reached the end offset (for bounded reads)
-                                    if end_offset_int is not None and msg.offset >= end_offset_int:
+                                    if (
+                                        end_offset_int is not None
+                                        and msg.offset >= end_offset_int
+                                    ):
                                         # Yield final batch and stop reading
                                         if records:
                                             table = pa.Table.from_pylist(records)
@@ -265,16 +299,20 @@ class KafkaDatasource(UnboundDatasource):
 
                                     # Extract all message metadata into a flat record
                                     # This includes offset, key, value, headers, timestamps
-                                    records.append({
-                                        "offset": msg.offset,  # Unique offset within partition
-                                        "key": msg.key,  # Message key (already deserialized)
-                                        "value": msg.value,  # Message value (already deserialized)
-                                        "topic": msg.topic,  # Topic name
-                                        "partition": msg.partition,  # Partition ID
-                                        "timestamp": msg.timestamp,  # Message timestamp (ms since epoch)
-                                        "timestamp_type": msg.timestamp_type,  # 0=CreateTime, 1=LogAppendTime
-                                        "headers": dict(msg.headers) if msg.headers else {},  # Message headers
-                                    })
+                                    records.append(
+                                        {
+                                            "offset": msg.offset,  # Unique offset within partition
+                                            "key": msg.key,  # Message key (already deserialized)
+                                            "value": msg.value,  # Message value (already deserialized)
+                                            "topic": msg.topic,  # Topic name
+                                            "partition": msg.partition,  # Partition ID
+                                            "timestamp": msg.timestamp,  # Message timestamp (ms since epoch)
+                                            "timestamp_type": msg.timestamp_type,  # 0=CreateTime, 1=LogAppendTime
+                                            "headers": dict(msg.headers)
+                                            if msg.headers
+                                            else {},  # Message headers
+                                        }
+                                    )
                                     records_read += 1
 
                                     # Yield incrementally when we hit batch size

@@ -126,7 +126,7 @@ def test_read_flink_trigger_formats(ray_start_regular_shared):
 def test_flink_import_check():
     """Test that ImportError is raised when requests is not available."""
     from ray.data._internal.datasource.flink_datasource import _check_requests_available
-    
+
     try:
         _check_requests_available()
         # If we get here, requests is installed
@@ -142,7 +142,7 @@ def test_flink_datasource_estimate_inmemory_data_size(ray_start_regular_shared):
         source_type="rest_api",
         flink_config=flink_config,
     )
-    
+
     # Unbounded sources should return None (unknown size)
     assert ds.estimate_inmemory_data_size() is None
 

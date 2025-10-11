@@ -74,14 +74,14 @@ def test_kafka_datasource_config_validation(ray_start_regular_shared):
             topics=["test"],
             kafka_config={},
         )
-    
+
     # Empty topics
     with pytest.raises(ValueError, match="topics cannot be empty"):
         KafkaDatasource(
             topics=[],
             kafka_config={"bootstrap_servers": "localhost:9092"},
         )
-    
+
     # Invalid max_records_per_task
     with pytest.raises(ValueError, match="max_records_per_task must be positive"):
         KafkaDatasource(
@@ -118,7 +118,7 @@ def test_read_kafka_trigger_formats(ray_start_regular_shared):
 def test_kafka_import_check():
     """Test that ImportError is raised when kafka-python is not available."""
     from ray.data._internal.datasource.kafka_datasource import _check_kafka_available
-    
+
     # This will raise ImportError if kafka-python not installed
     # If installed, it will pass
     try:
@@ -133,7 +133,7 @@ def test_kafka_datasource_estimate_inmemory_data_size(ray_start_regular_shared):
     """Test that unbounded sources return None for memory estimation."""
     kafka_config = {"bootstrap_servers": "localhost:9092"}
     ds = KafkaDatasource(topics=["test"], kafka_config=kafka_config)
-    
+
     # Unbounded sources should return None (unknown size)
     assert ds.estimate_inmemory_data_size() is None
 

@@ -25,6 +25,7 @@ def _check_requests_available():
     """Check if requests library is available."""
     try:
         import requests  # noqa: F401
+
         return True
     except ImportError:
         raise ImportError(
@@ -92,31 +93,33 @@ class FlinkDatasource(UnboundDatasource):
     def _get_job_parallelism(self) -> int:
         """Query Flink job parallelism via REST API."""
         import requests
-        
-        base_url = self.flink_config['rest_api_url'].rstrip('/')
-        job_id = self.flink_config['job_id']
-        
+
+        base_url = self.flink_config["rest_api_url"].rstrip("/")
+        job_id = self.flink_config["job_id"]
+
         headers = {}
-        if 'auth_token' in self.flink_config:
-            auth_type = self.flink_config.get('auth_type', 'bearer')
-            if auth_type.lower() == 'bearer':
-                headers['Authorization'] = f"Bearer {self.flink_config['auth_token']}"
-        
-        verify_ssl = self.flink_config.get('verify_ssl', True)
-        timeout = self.flink_config.get('timeout', 30)
-        
+        if "auth_token" in self.flink_config:
+            auth_type = self.flink_config.get("auth_type", "bearer")
+            if auth_type.lower() == "bearer":
+                headers["Authorization"] = f"Bearer {self.flink_config['auth_token']}"
+
+        verify_ssl = self.flink_config.get("verify_ssl", True)
+        timeout = self.flink_config.get("timeout", 30)
+
         try:
             # Get job configuration to determine parallelism
             job_url = f"{base_url}/jobs/{job_id}"
-            response = requests.get(job_url, headers=headers, verify=verify_ssl, timeout=timeout)
+            response = requests.get(
+                job_url, headers=headers, verify=verify_ssl, timeout=timeout
+            )
             response.raise_for_status()
             job_info = response.json()
-            
+
             # Get parallelism from job vertices
-            vertices = job_info.get('vertices', [])
+            vertices = job_info.get("vertices", [])
             if vertices:
                 # Use max parallelism across all vertices
-                return max(v.get('parallelism', 1) for v in vertices)
+                return max(v.get("parallelism", 1) for v in vertices)
             return 1
         except Exception:
             # Default to 1 if cannot determine
@@ -165,47 +168,55 @@ class FlinkDatasource(UnboundDatasource):
                     import requests
                     import json
                     from datetime import datetime
-                    
+
                     if source_type_val == "rest_api":
                         # Read from Flink REST API
-                        base_url = flink_config['rest_api_url'].rstrip('/')
-                        job_id = flink_config['job_id']
-                        
+                        base_url = flink_config["rest_api_url"].rstrip("/")
+                        job_id = flink_config["job_id"]
+
                         # Set up authentication
                         auth = None
                         headers = {}
-                        
-                        if 'auth_token' in flink_config:
-                            auth_type = flink_config.get('auth_type', 'bearer')
-                            if auth_type.lower() == 'bearer':
-                                headers['Authorization'] = f"Bearer {flink_config['auth_token']}"
-                            elif auth_type.lower() == 'basic':
+
+                        if "auth_token" in flink_config:
+                            auth_type = flink_config.get("auth_type", "bearer")
+                            if auth_type.lower() == "bearer":
+                                headers[
+                                    "Authorization"
+                                ] = f"Bearer {flink_config['auth_token']}"
+                            elif auth_type.lower() == "basic":
                                 import base64
+
                                 credentials = f"{flink_config.get('username', '')}:{flink_config.get('password', '')}"
-                                encoded = base64.b64encode(credentials.encode()).decode()
-                                headers['Authorization'] = f"Basic {encoded}"
-                        
+                                encoded = base64.b64encode(
+                                    credentials.encode()
+                                ).decode()
+                                headers["Authorization"] = f"Basic {encoded}"
+
                         # SSL verification
-                        verify_ssl = flink_config.get('verify_ssl', True)
+                        verify_ssl = flink_config.get("verify_ssl", True)
                         cert = None
-                        if 'ssl_cert' in flink_config:
-                            cert = (flink_config['ssl_cert'], flink_config.get('ssl_key'))
-                        
-                        timeout = flink_config.get('timeout', 30)
-                        
+                        if "ssl_cert" in flink_config:
+                            cert = (
+                                flink_config["ssl_cert"],
+                                flink_config.get("ssl_key"),
+                            )
+
+                        timeout = flink_config.get("timeout", 30)
+
                         try:
                             # Get job details
                             job_url = f"{base_url}/jobs/{job_id}"
                             response = requests.get(
-                                job_url, 
-                                headers=headers, 
+                                job_url,
+                                headers=headers,
                                 verify=verify_ssl,
                                 cert=cert,
-                                timeout=timeout
+                                timeout=timeout,
                             )
                             response.raise_for_status()
                             job_info = response.json()
-                            
+
                             # Get task-specific metrics/accumulators
                             # Note: Actual implementation depends on what data you want to read
                             # This is a simplified example reading job metrics
@@ -215,73 +226,88 @@ class FlinkDatasource(UnboundDatasource):
                                 headers=headers,
                                 verify=verify_ssl,
                                 cert=cert,
-                                timeout=timeout
+                                timeout=timeout,
                             )
                             response.raise_for_status()
                             metrics = response.json()
-                            
+
                             records = []
-                            
+
                             # Extract records from metrics/accumulators
                             # This is a template - actual implementation depends on your Flink job structure
                             for metric in metrics[:max_records_per_task]:
-                                records.append({
-                                    "job_id": job_id,
-                                    "job_name": job_info.get('name', 'unknown'),
-                                    "task_id": task_num,
-                                    "record_id": metric.get('id', f'metric_{task_num}'),
-                                    "data": json.dumps(metric),
-                                    "processing_time": datetime.utcnow().isoformat(),
-                                    "watermark": int(datetime.utcnow().timestamp() * 1000),
-                                })
-                            
+                                records.append(
+                                    {
+                                        "job_id": job_id,
+                                        "job_name": job_info.get("name", "unknown"),
+                                        "task_id": task_num,
+                                        "record_id": metric.get(
+                                            "id", f"metric_{task_num}"
+                                        ),
+                                        "data": json.dumps(metric),
+                                        "processing_time": datetime.utcnow().isoformat(),
+                                        "watermark": int(
+                                            datetime.utcnow().timestamp() * 1000
+                                        ),
+                                    }
+                                )
+
                             if records:
                                 table = pa.Table.from_pylist(records)
                                 yield table
-                                
+
                         except requests.exceptions.RequestException as e:
                             # Log error but don't fail completely
                             logger.error(f"Error reading from Flink REST API: {e}")
-                            
+
                     elif source_type_val == "table":
                         # Read from Flink table - requires pyflink
                         try:
-                            from pyflink.table import EnvironmentSettings, TableEnvironment
-                            
+                            from pyflink.table import (
+                                EnvironmentSettings,
+                                TableEnvironment,
+                            )
+
                             # Create table environment
                             env_settings = EnvironmentSettings.in_streaming_mode()
                             table_env = TableEnvironment.create(env_settings)
-                            
+
                             # Execute query
-                            table_name = flink_config['table_name']
-                            result = table_env.execute_sql(f"SELECT * FROM {table_name} LIMIT {max_records_per_task}")
-                            
+                            table_name = flink_config["table_name"]
+                            result = table_env.execute_sql(
+                                f"SELECT * FROM {table_name} LIMIT {max_records_per_task}"
+                            )
+
                             records = []
                             for row in result.collect():
                                 # Convert Flink row to dict
-                                records.append({
-                                    "job_id": "table_read",
-                                    "job_name": table_name,
-                                    "task_id": task_num,
-                                    "record_id": f"table_{task_num}_{len(records)}",
-                                    "data": str(row),
-                                    "processing_time": datetime.utcnow().isoformat(),
-                                    "watermark": int(datetime.utcnow().timestamp() * 1000),
-                                })
-                                
+                                records.append(
+                                    {
+                                        "job_id": "table_read",
+                                        "job_name": table_name,
+                                        "task_id": task_num,
+                                        "record_id": f"table_{task_num}_{len(records)}",
+                                        "data": str(row),
+                                        "processing_time": datetime.utcnow().isoformat(),
+                                        "watermark": int(
+                                            datetime.utcnow().timestamp() * 1000
+                                        ),
+                                    }
+                                )
+
                                 if len(records) >= max_records_per_task:
                                     break
-                            
+
                             if records:
                                 table = pa.Table.from_pylist(records)
                                 yield table
-                                
+
                         except ImportError:
                             raise ImportError(
                                 "pyflink is required for table source type. "
                                 "Install with: pip install apache-flink"
                             )
-                    
+
                     elif source_type_val == "checkpoint":
                         # Read from Flink checkpoint/savepoint
                         # This would require parsing checkpoint metadata and state
