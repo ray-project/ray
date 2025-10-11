@@ -14,9 +14,9 @@ if TYPE_CHECKING:
         CompletionResponse,
         EmbeddingRequest,
         EmbeddingResponse,
+        ErrorResponse,
         TranscriptionRequest,
         TranscriptionResponse,
-        ErrorResponse,
     )
 
 

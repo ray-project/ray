@@ -21,13 +21,13 @@ from vllm.entrypoints.openai.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
-    TranscriptionRequest as vLLMTranscriptionRequest,
-    TranscriptionResponse as vLLMTranscriptionResponse,
-    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
     ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
+    TranscriptionRequest as vLLMTranscriptionRequest,
+    TranscriptionResponse as vLLMTranscriptionResponse,
+    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
 )
 from vllm.utils import random_uuid
 
