@@ -8,16 +8,16 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .cache_strategies import CacheStrategy, get_cache_strategy
+from .constants import (
+    DEFAULT_MAX_CACHE_SIZE_BYTES,
+    LOCAL_CACHE_THRESHOLD_BYTES,
+    MAX_CACHE_ENTRIES,
+    RAY_CACHE_THRESHOLD_BYTES,
+)
 from .key_generation import make_cache_key
 from .smart_updates import SmartCacheUpdater
 from .validation import validate_cached_value
 from ray.data._internal.logical.interfaces import LogicalPlan
-
-# Configuration constants
-
-# Maximum number of entries in each cache (local and Ray).
-# This prevents unbounded cache growth in terms of number of items.
-MAX_CACHE_ENTRIES = 1000
 
 
 @dataclass
@@ -25,9 +25,9 @@ class CacheConfiguration:
     """Configuration for dataset cache behavior."""
 
     max_entries: int = MAX_CACHE_ENTRIES
-    local_threshold_bytes: int = 50 * 1024  # 50KB
-    ray_threshold_bytes: int = 10 * 1024 * 1024  # 10MB
-    max_size_bytes: int = 1024 * 1024 * 1024  # 1GB default
+    local_threshold_bytes: int = LOCAL_CACHE_THRESHOLD_BYTES
+    ray_threshold_bytes: int = RAY_CACHE_THRESHOLD_BYTES
+    max_size_bytes: int = DEFAULT_MAX_CACHE_SIZE_BYTES
     enable_smart_updates: bool = True
 
     @classmethod
@@ -35,10 +35,10 @@ class CacheConfiguration:
         """Create cache configuration from DataContext."""
         return cls(
             max_entries=MAX_CACHE_ENTRIES,
-            local_threshold_bytes=50 * 1024,  # 50KB
-            ray_threshold_bytes=10 * 1024 * 1024,  # 10MB
+            local_threshold_bytes=LOCAL_CACHE_THRESHOLD_BYTES,
+            ray_threshold_bytes=RAY_CACHE_THRESHOLD_BYTES,
             max_size_bytes=getattr(
-                context, "dataset_cache_max_size_bytes", 1024 * 1024 * 1024
+                context, "dataset_cache_max_size_bytes", DEFAULT_MAX_CACHE_SIZE_BYTES
             ),
             enable_smart_updates=True,
         )

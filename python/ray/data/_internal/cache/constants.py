@@ -5,6 +5,19 @@ Type-safe constants and enums for Ray Data caching.
 from dataclasses import dataclass
 from enum import Enum
 
+# Cache placement thresholds (in bytes)
+LOCAL_CACHE_THRESHOLD_BYTES = 50 * 1024  # 50KB - Small objects cached locally
+RAY_CACHE_THRESHOLD_BYTES = 10 * 1024 * 1024  # 10MB - Medium objects in Ray store
+
+# Ray object size estimates (in bytes)
+RAY_OBJECTREF_SIZE_BYTES = 64  # ObjectRef pointer size
+RAY_BLOCK_OVERHEAD_BYTES = 64  # Block ObjectRef + metadata overhead
+RAY_DATASET_METADATA_SIZE_BYTES = 1024  # MaterializedDataset metadata size
+
+# Cache size limits
+MAX_CACHE_ENTRIES = 1000  # Maximum number of entries per cache
+DEFAULT_MAX_CACHE_SIZE_BYTES = 1024 * 1024 * 1024  # 1GB default max size
+
 
 class CacheableOperation(Enum):
     """Operations that can be cached."""
@@ -58,7 +71,7 @@ class TransformationType(Enum):
     DATASET_SPLITTING = "dataset_splitting"
 
 
-@dataclass
+@dataclass(frozen=True)
 class CachePreservationRules:
     """Defines what cache entries can be preserved for each transformation type."""
 
@@ -70,35 +83,49 @@ class CachePreservationRules:
     can_compute_count: bool = False
     can_compute_columns: bool = False
 
+    @classmethod
+    def structure_and_count_preserving(cls) -> "CachePreservationRules":
+        """Rules for transformations that preserve structure and count (map, add_column, etc.)."""
+        return cls(
+            preserves_count=True,
+            preserves_schema=True,
+            preserves_columns=True,
+        )
 
-# What each transformation type preserves
+    @classmethod
+    def reordering_only(cls) -> "CachePreservationRules":
+        """Rules for transformations that only reorder data (sort, shuffle)."""
+        return cls(
+            preserves_count=True,
+            preserves_aggregations=True,
+            preserves_schema=True,
+            preserves_columns=True,
+            preserves_size_metadata=True,
+        )
+
+    @classmethod
+    def structure_preserving_count_changing(cls) -> "CachePreservationRules":
+        """Rules for transformations that preserve structure but change count (limit, filter)."""
+        return cls(
+            preserves_schema=True,
+            preserves_columns=True,
+            can_compute_count=True,
+        )
+
+    @classmethod
+    def no_preservation(cls) -> "CachePreservationRules":
+        """Rules for complex transformations that preserve nothing (safe default)."""
+        return cls()
+
+
+# What each transformation type preserves (using factory methods for clarity)
 CACHE_PRESERVATION_RULES = {
-    TransformationType.STRUCTURE_AND_COUNT_PRESERVING: CachePreservationRules(
-        preserves_count=True,
-        preserves_aggregations=False,  # Data might change (except for map)
-        preserves_schema=True,
-        preserves_columns=True,
-        preserves_size_metadata=False,
-        can_compute_count=False,
-        can_compute_columns=True,  # Can compute for add/drop/select columns
+    TransformationType.STRUCTURE_AND_COUNT_PRESERVING: (
+        CachePreservationRules.structure_and_count_preserving()
     ),
-    TransformationType.REORDERING_ONLY: CachePreservationRules(
-        preserves_count=True,
-        preserves_aggregations=True,  # Order doesn't affect aggregations!
-        preserves_schema=True,
-        preserves_columns=True,
-        preserves_size_metadata=True,  # Size and blocks unchanged
-        can_compute_count=False,
-        can_compute_columns=False,
-    ),
-    TransformationType.STRUCTURE_PRESERVING_COUNT_CHANGING: CachePreservationRules(
-        preserves_count=False,
-        preserves_aggregations=False,
-        preserves_schema=True,
-        preserves_columns=True,
-        preserves_size_metadata=False,
-        can_compute_count=True,  # Can compute for limit, estimate for sample
-        can_compute_columns=False,
+    TransformationType.REORDERING_ONLY: CachePreservationRules.reordering_only(),
+    TransformationType.STRUCTURE_PRESERVING_COUNT_CHANGING: (
+        CachePreservationRules.structure_preserving_count_changing()
     ),
     # All other types preserve nothing (safe default)
 }

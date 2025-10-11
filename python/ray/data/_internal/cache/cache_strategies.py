@@ -5,17 +5,8 @@ Simple cache placement strategy for Ray Data caching.
 from enum import Enum
 from typing import Any
 
+from .constants import LOCAL_CACHE_THRESHOLD_BYTES, RAY_CACHE_THRESHOLD_BYTES
 from .size_utils import get_object_size
-
-# Configuration constants
-
-# Objects smaller than this threshold are cached in local memory for fastest access.
-# This should be kept small to avoid memory pressure on the driver.
-LOCAL_CACHE_THRESHOLD_BYTES = 50 * 1024  # 50KB
-
-# Objects smaller than this threshold but larger than LOCAL_CACHE_THRESHOLD_BYTES
-# are cached in Ray's object store, which provides automatic disk spilling.
-RAY_CACHE_THRESHOLD_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 class CacheStrategy(Enum):

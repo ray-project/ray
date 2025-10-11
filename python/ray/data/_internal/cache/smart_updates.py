@@ -3,7 +3,7 @@ Simple smart cache updates for Ray Data caching.
 """
 
 from collections import OrderedDict
-from typing import Dict
+from typing import Any, Dict, Optional
 
 from .constants import (
     CACHE_PRESERVATION_RULES,
@@ -18,6 +18,27 @@ class SmartCacheUpdater:
     def __init__(self, local_cache: OrderedDict, ray_cache: OrderedDict):
         self._local_cache = local_cache
         self._ray_cache = ray_cache
+
+    @staticmethod
+    def _extract_param(
+        params: Dict, index: int = 0, param_name: Optional[str] = None
+    ) -> Any:
+        """Extract parameter from args or kwargs.
+
+        Args:
+            params: Parameter dictionary with 'args' and/or 'kwargs' keys
+            index: Index in args list to extract (default: 0)
+            param_name: Name in kwargs to extract (if not found in args)
+
+        Returns:
+            Extracted parameter value or None if not found
+        """
+        args = params.get("args", [])
+        if args and index < len(args):
+            return args[index]
+        if param_name:
+            return params.get("kwargs", {}).get(param_name, params.get(param_name))
+        return None
 
     def invalidate_for_transform(
         self,
@@ -83,11 +104,8 @@ class SmartCacheUpdater:
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
         """Update count and size for limit operation."""
-        # Extract limit value from args
-        args = params.get("args", [])
-        limit_value = (
-            args[0] if args and isinstance(args[0], int) else params.get("limit")
-        )
+        # Extract limit value using helper
+        limit_value = self._extract_param(params, index=0, param_name="limit")
         if not isinstance(limit_value, int) or limit_value <= 0:
             return
 
@@ -110,55 +128,49 @@ class SmartCacheUpdater:
                         target_size_key = f"size_bytes_{target_prefix}_"
                         self._local_cache[target_size_key] = new_size
 
+    def _preserve_cache_entries(
+        self, source_prefix: str, target_prefix: str, operations: list[str]
+    ) -> None:
+        """Preserve cache entries for specified operations.
+
+        Args:
+            source_prefix: Source cache key prefix
+            target_prefix: Target cache key prefix
+            operations: List of operation names to preserve (e.g., ['count', 'schema'])
+        """
+        for op in operations:
+            source_key = f"{op}_{source_prefix}_"
+            if source_key in self._local_cache:
+                value = self._local_cache[source_key]
+                target_key = f"{op}_{target_prefix}_"
+                self._local_cache[target_key] = value
+
     def _preserve_count(self, source_prefix: str, target_prefix: str) -> None:
         """Preserve count for 1:1 transformations."""
-        source_count_key = f"count_{source_prefix}_"
-        if source_count_key in self._local_cache:
-            count = self._local_cache[source_count_key]
-            target_count_key = f"count_{target_prefix}_"
-            self._local_cache[target_count_key] = count
+        self._preserve_cache_entries(source_prefix, target_prefix, ["count"])
 
     def _preserve_aggregations(self, source_prefix: str, target_prefix: str) -> None:
         """Preserve aggregations for reordering operations."""
-        preserve_ops = ["count", "sum", "min", "max", "mean", "std"]
-        for op in preserve_ops:
-            source_key = f"{op}_{source_prefix}_"
-            if source_key in self._local_cache:
-                value = self._local_cache[source_key]
-                target_key = f"{op}_{target_prefix}_"
-                self._local_cache[target_key] = value
+        self._preserve_cache_entries(
+            source_prefix, target_prefix, ["count", "sum", "min", "max", "mean", "std"]
+        )
 
     def _preserve_metadata(self, source_prefix: str, target_prefix: str) -> None:
         """Preserve schema and columns for structure-preserving operations."""
-        metadata_ops = ["schema", "columns"]
-        for op in metadata_ops:
-            source_key = f"{op}_{source_prefix}_"
-            if source_key in self._local_cache:
-                value = self._local_cache[source_key]
-                target_key = f"{op}_{target_prefix}_"
-                self._local_cache[target_key] = value
+        self._preserve_cache_entries(source_prefix, target_prefix, ["schema", "columns"])
 
     def _preserve_size_metadata(self, source_prefix: str, target_prefix: str) -> None:
         """Preserve size and block metadata for reordering operations."""
-        size_ops = ["size_bytes", "num_blocks", "input_files"]
-        for op in size_ops:
-            source_key = f"{op}_{source_prefix}_"
-            if source_key in self._local_cache:
-                value = self._local_cache[source_key]
-                target_key = f"{op}_{target_prefix}_"
-                self._local_cache[target_key] = value
+        self._preserve_cache_entries(
+            source_prefix, target_prefix, ["size_bytes", "num_blocks", "input_files"]
+        )
 
     def _update_sample_count(
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
         """Update count for random_sample operation."""
-        # Extract fraction from args (random_sample typically takes a fraction)
-        args = params.get("args", [])
-        fraction = (
-            args[0]
-            if args and isinstance(args[0], (int, float))
-            else params.get("fraction")
-        )
+        # Extract fraction using helper
+        fraction = self._extract_param(params, index=0, param_name="fraction")
         if not isinstance(fraction, (int, float)) or fraction <= 0:
             return
 
@@ -176,8 +188,8 @@ class SmartCacheUpdater:
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
         """Smart update for add_column: compute new columns list."""
-        # Get column name from params
-        col_name = params.get("args", [None])[0] if params.get("args") else None
+        # Get column name using helper
+        col_name = self._extract_param(params, index=0)
         if not isinstance(col_name, str):
             return
 
@@ -194,8 +206,8 @@ class SmartCacheUpdater:
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
         """Smart update for drop_columns: compute new columns list."""
-        # Get columns to drop from params
-        cols_to_drop = params.get("args", [None])[0] if params.get("args") else None
+        # Get columns to drop using helper
+        cols_to_drop = self._extract_param(params, index=0)
         if isinstance(cols_to_drop, str):
             cols_to_drop = [cols_to_drop]
         if not isinstance(cols_to_drop, list):
@@ -215,8 +227,8 @@ class SmartCacheUpdater:
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
         """Smart update for select_columns: set new columns list."""
-        # Get columns to select from params
-        cols_to_select = params.get("args", [None])[0] if params.get("args") else None
+        # Get columns to select using helper
+        cols_to_select = self._extract_param(params, index=0)
         if isinstance(cols_to_select, str):
             cols_to_select = [cols_to_select]
         if isinstance(cols_to_select, list):

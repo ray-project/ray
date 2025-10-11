@@ -7,19 +7,11 @@ For Ray objects, measures only the pointer size, not the data.
 import sys
 from typing import Any
 
-# Configuration constants
-
-# Estimated size of a Ray ObjectRef pointer.
-# ObjectRefs are lightweight references that don't contain the actual data.
-RAY_OBJECTREF_SIZE_BYTES = 64
-
-# Estimated overhead per block in a MaterializedDataset.
-# This accounts for the ObjectRef pointer plus some metadata overhead.
-RAY_BLOCK_OVERHEAD_BYTES = 64
-
-# Base metadata size for MaterializedDataset objects.
-# This covers the dataset structure itself, excluding the block ObjectRefs.
-RAY_DATASET_METADATA_SIZE_BYTES = 1024
+from .constants import (
+    RAY_BLOCK_OVERHEAD_BYTES,
+    RAY_DATASET_METADATA_SIZE_BYTES,
+    RAY_OBJECTREF_SIZE_BYTES,
+)
 
 
 def get_object_size(obj: Any) -> int:
