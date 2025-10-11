@@ -621,14 +621,13 @@ class AutoscalingState:
                 continue
 
             for metric_name, timeseries in replica_metric_report.metrics.items():
-                if metric_name != RUNNING_REQUESTS_KEY:
-                    # Aggregate the timeseries for this custom metric
-                    # Use the actual metric name as the key
-                    metrics = [{metric_name: timeseries}]
-                    aggregated_value = self._aggregate_timeseries_metric(
-                        metrics, metric_name
-                    )
-                    aggregated_metrics[metric_name][replica_id] = aggregated_value
+                # Aggregate the timeseries for this custom metric
+                # Use the actual metric name as the key
+                metrics = [{metric_name: timeseries}]
+                aggregated_value = self._aggregate_timeseries_metric(
+                    metrics, metric_name
+                )
+                aggregated_metrics[metric_name][replica_id] = aggregated_value
 
         return dict(aggregated_metrics)
 
@@ -651,9 +650,8 @@ class AutoscalingState:
                 continue
 
             for metric_name, timeseries in replica_metric_report.metrics.items():
-                if metric_name != RUNNING_REQUESTS_KEY:
-                    # Extract values from TimeStampedValue list
-                    raw_metrics[metric_name][replica_id] = timeseries
+                # Extract values from TimeStampedValue list
+                raw_metrics[metric_name][replica_id] = timeseries
 
         return dict(raw_metrics)
 
