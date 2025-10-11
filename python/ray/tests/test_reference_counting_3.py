@@ -24,21 +24,16 @@ from ray._private.internal_api import memory_summary
 logger = logging.getLogger(__name__)
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+def _fill_object_store_and_get(obj, object_MiB=20, num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
     if type(obj) is bytes:
         obj = ray.ObjectRef(obj)
 
-    if succeed:
-        wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
-        )
-    else:
-        wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
-        )
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+    )
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
