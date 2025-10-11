@@ -100,3 +100,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "gcs_client_injectable_test",
+    size = "small",
+    srcs = [
+        "gcs_client_injectable_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs_rpc_client:gcs_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
