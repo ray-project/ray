@@ -42,10 +42,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    _create_sub_pb,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.execution.progress_manager import SubProgressBar
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
@@ -375,6 +375,35 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
     def reduce_name(self) -> str:
         ...
 
+    def initialize_sub_progress_bars(self, position: int) -> int:
+        """Display all sub progres bars in the termainl, and return the number of bars."""
+
+        # shuffle
+        progress_bars_created = 0
+        self.shuffle_bar = None
+        if self.shuffle_name is not None:
+            self.shuffle_bar, position = _create_sub_pb(
+                self.shuffle_name, self.num_output_rows_total(), position
+            )
+            progress_bars_created += 1
+        self.shuffle_metrics = OpRuntimeMetrics(self)
+
+        # reduce
+        self.reduce_bar = None
+        if self.reduce_name is not None:
+            self.reduce_bar, position = _create_sub_pb(
+                self.reduce_name, self.num_output_rows_total(), position
+            )
+            progress_bars_created += 1
+        self.reduce_metrics = OpRuntimeMetrics(self)
+
+        return progress_bars_created
+
+    def close_sub_progress_bars(self):
+        """Close all internal sub progress bars."""
+        self.shuffle_bar.close()
+        self.reduce_bar.close()
+
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         names = []
 
@@ -391,7 +420,9 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
             names.append(self.reduce_name)
         return names if names else None
 
-    def set_sub_progress_bar(self, name: str, pg: SubProgressBar):
+    def set_sub_progress_bar(self, name, pg):
+        # No type-hints due to circular imports. `name` should be a `str`
+        # and `pg` should be a `SubProgressBar`
         if self.shuffle_name is not None and self.shuffle_name == name:
             self.shuffle_bar = pg
         elif self.reduce_name is not None and self.reduce_name == name:

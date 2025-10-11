@@ -469,36 +469,8 @@ class RichExecutionProgressManager:
             if self._live.is_started:
                 self._update_resource_status_no_lock(resource_manager)
 
-    def _update_resource_status_no_lock(self, resource_manager: ResourceManager):
-        # running_usage is the amount of resources that have been requested but
-        # not necessarily available
-        # TODO(sofian) https://github.com/ray-project/ray/issues/47520
-        # We need to split the reported resources into running, pending-scheduling,
-        # pending-node-assignment.
-        running_usage = resource_manager.get_global_running_usage()
-        pending_usage = resource_manager.get_global_pending_usage()
-        limits = resource_manager.get_global_limits()
-
-        resource_usage = _RESOURCE_REPORT_HEADER
-        resource_usage += f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-        if running_usage.gpu > 0:
-            resource_usage += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-        resource_usage += (
-            f"{running_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object store"
-        )
-
-        # Only include pending section when there are pending resources.
-        if pending_usage.cpu or pending_usage.gpu:
-            pending = []
-            if pending_usage.cpu:
-                pending.append(f"{pending_usage.cpu:.4g} CPU")
-            if pending_usage.gpu:
-                pending.append(f"{pending_usage.gpu:.4g} GPU")
-            pending_str = ", ".join(pending)
-            resource_usage += f" (pending: {pending_str})"
-
-        self._total_resources.plain = resource_usage
+    def _update_resource_status_no_lock(self, resource_status: str):
+        self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
 
     def _can_update_operator(self, op_state: OpState) -> bool:
         if not self._mode.show_op():
