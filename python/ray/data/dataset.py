@@ -32,6 +32,9 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.cache.dataset_cache import (
+    cache_result,
+)
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -59,21 +62,6 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.cache.dataset_cache import (
-    cache_result,
-)
-from ray.data._internal.operation_decorators import (
-    transform,
-    shuffle,
-    combine,
-    consume,
-    inspect,
-    filter_op,
-    limit_op,
-    row_and_schema_change,
-    expression,
-    aggregate,
-)
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -98,6 +86,18 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.operation_decorators import (
+    aggregate,
+    combine,
+    consume,
+    expression,
+    filter_op,
+    inspect,
+    limit_op,
+    row_and_schema_change,
+    shuffle,
+    transform,
+)
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey

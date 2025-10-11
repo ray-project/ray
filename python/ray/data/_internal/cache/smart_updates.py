@@ -46,7 +46,6 @@ from .constants import (
     TransformationType,
 )
 
-
 # =============================================================================
 # SMART CACHE UPDATER
 # =============================================================================
@@ -299,7 +298,9 @@ class SmartCacheUpdater:
         This preserves both schema (column names and types) and the columns
         list (just column names).
         """
-        self._preserve_cache_entries(source_prefix, target_prefix, ["schema", "columns"])
+        self._preserve_cache_entries(
+            source_prefix, target_prefix, ["schema", "columns"]
+        )
 
     def _preserve_size_metadata(self, source_prefix: str, target_prefix: str) -> None:
         """Preserve size and block metadata for reordering operations.

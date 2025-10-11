@@ -22,8 +22,6 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ray.data._internal.logical.interfaces import LogicalPlan
-
 from .cache_strategies import CacheStrategy, get_cache_strategy
 from .constants import (
     DEFAULT_MAX_CACHE_SIZE_BYTES,
@@ -34,7 +32,7 @@ from .constants import (
 from .key_generation import make_cache_key
 from .smart_updates import SmartCacheUpdater
 from .validation import validate_cached_value
-
+from ray.data._internal.logical.interfaces import LogicalPlan
 
 # =============================================================================
 # CONFIGURATION

@@ -24,7 +24,9 @@ from enum import Enum
 # Cache placement thresholds (in bytes)
 # These determine where objects are cached based on size
 LOCAL_CACHE_THRESHOLD_BYTES = 50 * 1024  # 50KB - Small objects cached in local memory
-RAY_CACHE_THRESHOLD_BYTES = 10 * 1024 * 1024  # 10MB - Medium objects in Ray object store
+RAY_CACHE_THRESHOLD_BYTES = (
+    10 * 1024 * 1024
+)  # 10MB - Medium objects in Ray object store
 
 # Ray object size estimates (in bytes)
 # Used to estimate sizes of Ray-specific objects

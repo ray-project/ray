@@ -36,10 +36,9 @@ Example Usage:
 import functools
 from typing import Any, Callable, Dict, List, Optional
 
-from ray.data.context import DataContext
-
 from .constants import CacheableOperation
 from .core_cache import CacheStats, DatasetCache
+from ray.data.context import DataContext
 
 # =============================================================================
 # GLOBAL CACHE INSTANCE
@@ -66,9 +65,8 @@ def _get_cache() -> DatasetCache:
     global _global_cache
     if _global_cache is None:
         # Import here to avoid circular dependencies
-        from ray.data.context import DataContext
-
         from .core_cache import CacheConfiguration
+        from ray.data.context import DataContext
 
         # Get configuration from DataContext
         context = DataContext.get_current()

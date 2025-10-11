@@ -18,7 +18,6 @@ from ray.data.dataset import MaterializedDataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-
 # =============================================================================
 # BASIC CACHING TESTS
 # =============================================================================
