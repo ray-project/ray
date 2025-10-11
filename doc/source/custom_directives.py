@@ -452,6 +452,7 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    ETL = "ETL"
 
     @classmethod
     def formatted_name(cls):
@@ -493,6 +494,7 @@ class Framework(ExampleEnum):
     HUGGINGFACE = "Hugging Face"
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
+    PANDAS = "pandas"
     ANY = "Any"
 
     @classmethod

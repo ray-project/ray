@@ -7,7 +7,7 @@ Dask
 [Dd]iscretizer(s)?
 dtype
 FLAC
-[Gg]roupby
+[Gg]roup[bB]y
 [Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
