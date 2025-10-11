@@ -110,7 +110,7 @@ Install the requirements:
 Fine-tune LLMs with DeepSpeed
 -----------------------------
 
-A step-by-step guide Jupyter notebook to fine-tuning large language models (LLMs) with DeepSpeed and Ray Train is available in the `examples/pytorch/deepspeed_finetune <https://github.com/ray-project/ray/blob/master/doc/source/train/examples/pytorch/deepspeed_finetune/README.ipynb>`_.
+See this step-by-step guide for how to fine-tune large language models (LLMs) with Ray Train and DeepSpeed: :doc:`Fine-tune an LLM with Ray Train and DeepSpeed <examples/pytorch/deepspeed_finetune>`.
 
 
 Run DeepSpeed with Other Frameworks
