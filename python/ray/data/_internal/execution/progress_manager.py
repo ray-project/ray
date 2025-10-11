@@ -9,7 +9,6 @@ from typing import Any, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 from ray.data._internal.progress_bar import AbstractProgressBar, truncate_operator_name
 from ray.util.debug import log_once
@@ -462,12 +461,12 @@ class RichExecutionProgressManager:
             count_str=count_str,
         )
 
-    def update_resource_status(self, resource_manager: ResourceManager):
+    def update_resource_status(self, resource_status: str):
         if not self._can_update_total():
             return
         with self._lock:
             if self._live.is_started:
-                self._update_resource_status_no_lock(resource_manager)
+                self._update_resource_status_no_lock(resource_status)
 
     def _update_resource_status_no_lock(self, resource_status: str):
         self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
