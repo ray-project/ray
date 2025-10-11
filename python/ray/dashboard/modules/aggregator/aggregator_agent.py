@@ -47,7 +47,9 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
-EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
+EVENTS_EXPORT_ADDR = os.environ.get(
+    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:8365"
+)
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
@@ -199,6 +201,18 @@ class AggregatorAgent(
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
             )
+
+        # def record_event_loop_lag(lag_s):
+        #     self._max_event_loop_lag_s = max(self._max_event_loop_lag_s or 0, lag_s)
+        #     self._counter += 1
+        #     if self._counter % 100 == 0:
+        #         logger.info(
+        #             f"AggregatorAgent: Event loop lag: {self._max_event_loop_lag_s} seconds"
+        #         )
+
+        # self._max_event_loop_lag_s = 0
+        # self._counter = 0
+        # enable_monitor_loop_lag(record_event_loop_lag)
 
         try:
             await asyncio.gather(
