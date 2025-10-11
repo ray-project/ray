@@ -1,6 +1,8 @@
 import logging
 import threading
 import traceback
+import os
+import numpy as np
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
@@ -158,6 +160,12 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
+        # Enable zero-copy deserialization of PyTorch tensors if the environment variable is set.
+        # The special marker key identifies zero copy tensor in serialized objects.
+        self._enable_zero_copy_tensors = False
+        if os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1":
+            self._enable_zero_copy_tensors = True
+            self._zero_copy_tensor_maker = "__ray_tensor__"
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -543,6 +551,43 @@ class SerializationContext:
             # throws an exception.
             return PlasmaObjectNotAvailable
 
+    def _convert_numpy_to_tensors(self, obj: Any) -> Any:
+        # Recursively restores PyTorch tensors from marked NumPy arrays.
+        # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
+        # Non-marked values (e.g., str, int, raw np.ndarray) are returned unchanged.
+        if isinstance(obj, dict) and obj.get(self._zero_copy_tensor_maker) is True:
+            try:
+                import torch
+            except ImportError:
+                # If torch not available, return raw data
+                return obj["data"]
+
+            data = obj["data"]
+            tensor = torch.from_numpy(data)
+            return tensor
+
+        elif isinstance(obj, dict):
+            return {k: self._convert_numpy_to_tensors(v) for k, v in obj.items()}
+
+        elif isinstance(obj, (list, tuple)):
+            converted = [self._convert_numpy_to_tensors(item) for item in obj]
+            return type(obj)(converted)
+
+        elif hasattr(obj, "__dict__") and not isinstance(obj, (str, bytes, np.ndarray)):
+            try:
+                new_obj = object.__new__(type(obj))
+                new_obj.__dict__ = {
+                    k: self._convert_numpy_to_tensors(v)
+                    for k, v in obj.__dict__.items()
+                }
+                return new_obj
+            except (TypeError, AttributeError):
+                return obj
+
+        else:
+            # Return primitives or unsupported types as-is.
+            return obj
+
     def deserialize_objects(
         self,
         serialized_ray_objects: List[SerializedRayObject],
@@ -579,8 +624,52 @@ class SerializationContext:
                 # Must clear ObjectRef to not hold a reference.
                 if self._thread_local.object_ref_stack:
                     self._thread_local.object_ref_stack.pop()
+            # Restore PyTorch tensors from marked NumPy arrays if
+            # zero-copy mode is enabled.
+            if self._enable_zero_copy_tensors:
+                obj = self._convert_numpy_to_tensors(obj)
             results.append(obj)
         return results
+
+    def _convert_tensors_to_numpy(self, obj: Any) -> Any:
+        # Recursively converts PyTorch tensors in an object to NumPy arrays.
+        # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
+        # Non-tensor values (e.g., str, int, np.ndarray) are returned unchanged.
+        try:
+            import torch
+        except ImportError:
+            return obj
+
+        if isinstance(obj, torch.Tensor):
+            # Mark as serialized tensor for zero-copy restoration in deserialization.
+            # Move to CPU for .numpy() compatibility.
+            # Ensure contiguous for safe zero-copy conversion.
+            return {
+                self._zero_copy_tensor_maker: True,
+                "data": obj.cpu().contiguous().numpy(),
+            }
+
+        elif isinstance(obj, dict):
+            return {k: self._convert_tensors_to_numpy(v) for k, v in obj.items()}
+
+        elif isinstance(obj, (list, tuple)):
+            converted = [self._convert_tensors_to_numpy(item) for item in obj]
+            return type(obj)(converted)
+
+        elif hasattr(obj, "__dict__") and not isinstance(obj, (str, bytes, np.ndarray)):
+            try:
+                new_obj = object.__new__(type(obj))
+                new_obj.__dict__ = {
+                    k: self._convert_tensors_to_numpy(v)
+                    for k, v in obj.__dict__.items()
+                }
+                return new_obj
+            except (TypeError, AttributeError):
+                return obj
+
+        else:
+            # Return primitives or unsupported types as-is.
+            return obj
 
     def _serialize_to_pickle5(self, metadata, value):
         writer = Pickle5Writer()
@@ -633,6 +722,10 @@ class SerializationContext:
             value = serialized + (b"1" if weak_ref else b"0")
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+
+        # Enable zero-copy by converting tensors to NumPy (if enabled).
+        if self._enable_zero_copy_tensors:
+            value = self._convert_tensors_to_numpy(value)
 
         python_objects = []
 
