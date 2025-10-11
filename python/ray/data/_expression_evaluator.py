@@ -40,19 +40,28 @@ _PANDAS_EXPR_OPS_MAP = {
 }
 
 _ARROW_EXPR_OPS_MAP = {
-    Operation.ADD: pc.add,
+    Operation.ADD: lambda left, right: (
+        pc.binary_join_element_wise(left, "", right)
+        if (
+            pa.types.is_string(left.type)
+            or pa.types.is_large_string(left.type)
+            or pa.types.is_string(right.type)
+            or pa.types.is_large_string(right.type)
+        )
+        else pc.add(left, right)
+    ),
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
-    Operation.FLOORDIV: pc.floor_divide,
+    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
     Operation.GE: pc.greater_equal,
     Operation.LE: pc.less_equal,
     Operation.EQ: pc.equal,
     Operation.NE: pc.not_equal,
-    Operation.AND: pc.and_,
-    Operation.OR: pc.or_,
+    Operation.AND: pc.and_kleene,
+    Operation.OR: pc.or_kleene,
     Operation.NOT: pc.invert,
     Operation.IS_NULL: pc.is_null,
     Operation.IS_NOT_NULL: lambda x: pc.invert(pc.is_null(x)),

@@ -220,6 +220,48 @@ def test_new_operators_arrow():
     assert result.to_pylist() == expected
 
 
+def test_string_concatenation_arrow():
+    """Test string concatenation with ADD operator for PyArrow."""
+    data = {
+        "first_name": pa.array(["John", "Jane", "Bob"]),
+        "last_name": pa.array(["Doe", "Smith", "Johnson"]),
+    }
+    table = pa.table(data)
+
+    # Test string concatenation
+    expr = col("first_name") + lit(" ") + col("last_name")
+    result = eval_expr(expr, table)
+    expected = ["John Doe", "Jane Smith", "Bob Johnson"]
+    assert result.to_pylist() == expected
+
+
+def test_boolean_null_handling_arrow():
+    """Test AND/OR operations with null values using Kleene logic for PyArrow."""
+    data = {
+        "a": pa.array([True, True, False, None]),
+        "b": pa.array([True, None, False, True]),
+    }
+    table = pa.table(data)
+
+    # Test AND with nulls (Kleene logic)
+    expr = col("a") & col("b")
+    result = eval_expr(expr, table)
+    # True AND True = True
+    # True AND None = None
+    # False AND False = False
+    # None AND True = None
+    assert result.to_pylist() == [True, None, False, None]
+
+    # Test OR with nulls (Kleene logic)
+    expr = col("a") | col("b")
+    result = eval_expr(expr, table)
+    # True OR True = True
+    # True OR None = True
+    # False OR False = False
+    # None OR True = True
+    assert result.to_pylist() == [True, True, False, True]
+
+
 def test_case_with_nested_expressions_pandas():
     """Test nested case expressions with pandas."""
     data = {"score": [95, 82, 70, 88], "extra_credit": [5, 0, 10, 2]}
