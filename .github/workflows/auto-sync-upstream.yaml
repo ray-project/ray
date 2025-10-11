@@ -1,3 +1,9 @@
+# This workflow automatically syncs the latest changes from the upstream repository's master branch
+# into the forked repository's master branch. It runs on a daily schedule and can also be triggered manually.
+#
+# Author: mingcheng <mingcheng@apache.org>
+#
+
 name: 'Automatic sync upstream with master branch'
 
 on:
