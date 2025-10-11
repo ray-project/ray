@@ -43,7 +43,7 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
@@ -332,6 +332,16 @@ class ApplicationState:
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
+        # Restore app-level autoscaling policy from checkpoint
+        if (
+            checkpoint_data.config
+            and checkpoint_data.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                AutoscalingPolicy(**checkpoint_data.config.autoscaling_policy),
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -438,7 +448,6 @@ class ApplicationState:
 
     def should_autoscale(self) -> bool:
         """Determine if autoscaling should be enabled for the application."""
-
         return self._autoscaling_state_manager.should_autoscale_application(self._name)
 
     def autoscale(self) -> bool:
@@ -876,6 +885,17 @@ class ApplicationState:
                         self._build_app_task_info.target_capacity_direction
                     ),
                 )
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if self._target_state.config.autoscaling_policy is not None:
+                    self._autoscaling_state_manager.register_application(
+                        self._name,
+                        AutoscalingPolicy(
+                            **self._target_state.config.autoscaling_policy
+                        ),
+                    )
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
             elif task_status == BuildAppStatus.FAILED:
                 self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
@@ -891,7 +911,10 @@ class ApplicationState:
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return self.is_deleted(), target_state_changed
+            is_deleted = self.is_deleted()
+            if is_deleted:
+                self._autoscaling_state_manager.deregister_application(self._name)
+            return is_deleted, target_state_changed
         return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
