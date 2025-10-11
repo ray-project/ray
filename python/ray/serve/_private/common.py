@@ -757,6 +757,7 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
+QUEUED_REQUESTS_KEY = "queued_requests"
 
 
 @dataclass(order=True)
