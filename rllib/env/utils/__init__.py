@@ -1,5 +1,5 @@
 import logging
-from typing import Type, Union
+from typing import Optional, Type, Union
 
 import gymnasium as gym
 
