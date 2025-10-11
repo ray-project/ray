@@ -45,6 +45,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _create_sub_pb,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
@@ -363,7 +364,7 @@ class _PartitionStats:
         )
 
 
-class HashShuffleProgressBarMixin(abc.ABC):
+class HashShuffleProgressBarMixin(SubProgressBarMixin):
     @property
     @abc.abstractmethod
     def shuffle_name(self) -> str:
@@ -402,6 +403,30 @@ class HashShuffleProgressBarMixin(abc.ABC):
         """Close all internal sub progress bars."""
         self.shuffle_bar.close()
         self.reduce_bar.close()
+
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        names = []
+
+        # shuffle
+        self.shuffle_bar = None
+        self.shuffle_metrics = OpRuntimeMetrics(self)
+        if self.shuffle_name is not None:
+            names.append(self.shuffle_name)
+
+        # reduce
+        self.reduce_bar = None
+        self.reduce_metrics = OpRuntimeMetrics(self)
+        if self.reduce_name is not None:
+            names.append(self.reduce_name)
+        return names if names else None
+
+    def set_sub_progress_bar(self, name, pg):
+        # No type-hints due to circular imports. `name` should be a `str`
+        # and `pg` should be a `SubProgressBar`
+        if self.shuffle_name is not None and self.shuffle_name == name:
+            self.shuffle_bar = pg
+        elif self.reduce_name is not None and self.reduce_name == name:
+            self.reduce_bar = pg
 
 
 def _derive_max_shuffle_aggregators(
