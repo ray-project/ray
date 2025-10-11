@@ -93,29 +93,34 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     pg = engine_config.get_or_create_pg()
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
-    if engine_config.placement_strategy == "STRICT_PACK":
-        # If the placement strategy is STRICT_PACK, we know that all the
-        # workers run on the same node as the engine. Therefore, we can run
-        # all initialization steps directly instead of in tasks in the PG.
-        # This removes the task launching overhead reducing the initialization
-        # time.
-        local_node_download_model = local_node_download_model.union(
-            worker_node_download_model
-        )
+    # If the load format is runai_streamer, we don't need to do any model download.
+    if llm_config.engine_kwargs.get("load_format", "") not in (
+        "runai_streamer",
+        "runai_streamer_sharded",
+    ):
+        if engine_config.placement_strategy == "STRICT_PACK":
+            # If the placement strategy is STRICT_PACK, we know that all the
+            # workers run on the same node as the engine. Therefore, we can run
+            # all initialization steps directly instead of in tasks in the PG.
+            # This removes the task launching overhead reducing the initialization
+            # time.
+            local_node_download_model = local_node_download_model.union(
+                worker_node_download_model
+            )
 
-        await _initialize_local_node(
-            llm_config,
-            download_model=local_node_download_model,
-            download_extra_files=True,
-        )
-    else:
-        await initialize_worker_nodes(
-            llm_config,
-            placement_group=pg,
-            runtime_env=runtime_env,
-            download_model=worker_node_download_model,
-            download_extra_files=True,
-        )
+            await _initialize_local_node(
+                llm_config,
+                download_model=local_node_download_model,
+                download_extra_files=True,
+            )
+        else:
+            await initialize_worker_nodes(
+                llm_config,
+                placement_group=pg,
+                runtime_env=runtime_env,
+                download_model=worker_node_download_model,
+                download_extra_files=True,
+            )
 
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
