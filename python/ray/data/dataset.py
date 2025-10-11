@@ -2533,8 +2533,9 @@ class Dataset:
             join_type: The kind of join that should be performed, one of ("inner",
                 "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
                 "left_anti", "right_anti"). Note that when using broadcast=True, only
-                these 4 join types are supported: "inner", "left_outer", "right_outer",
-                and "full_outer".
+                these 3 join types are supported: "inner", "left_outer", and
+                "right_outer". The "full_outer" join type falls back to hash shuffle
+                join for correctness.
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2716,22 +2717,19 @@ class Dataset:
 
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
-        # Validate that num_partitions is provided for non-broadcast joins
+        # Set default num_partitions for non-broadcast joins if not provided
         if not broadcast and num_partitions is None:
-            raise ValueError(
-                "num_partitions must be provided when broadcast=False. "
-                "For broadcast joins (broadcast=True), num_partitions is optional."
-            )
+            num_partitions = 16  # Default value for hash shuffle joins
 
         plan = self._plan.copy()
 
         if broadcast:
             # Validate that the join type is supported for broadcast joins
+            # Note: full_outer is not included as it always falls back to hash shuffle
             supported_broadcast_join_types = {
                 "inner",
                 "left_outer",
                 "right_outer",
-                "full_outer",
             }
             if join_type not in supported_broadcast_join_types:
                 raise ValueError(

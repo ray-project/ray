@@ -409,15 +409,21 @@ class BroadcastJoinFunction:
             raise ValueError(error_msg) from e
 
     def _get_swapped_join_type(self, original_join_type: str) -> str:
-        """Get the appropriate join type when datasets are swapped."""
-        # When datasets are swapped, we need to reverse left/right semantics
-        join_type_mapping = {
-            "inner": "inner",
-            "left outer": "right outer",
-            "right outer": "left outer",
-            "full outer": "full outer",
-        }
-        return join_type_mapping.get(original_join_type, original_join_type)
+        """Get the appropriate join type when datasets are swapped.
+
+        When datasets are physically swapped in the PyArrow join operation,
+        the join type semantics are preserved relative to the original datasets.
+        The join type describes the relationship between the original left and right
+        datasets, not the physical left/right positions in the PyArrow join call.
+
+        For example, a "right_outer" join means "keep all rows from the original right
+        dataset". If we swap so the original right is now on the right side of the
+        PyArrow join, we still use "right outer" to preserve this semantic.
+
+        Therefore, we do NOT reverse left/right join types when swapping datasets.
+        """
+        # No reversal needed - join type semantics are relative to original datasets
+        return original_join_type
 
     def _create_empty_result_table(self, batch: "pa.Table") -> "pa.Table":
         """Create an empty result table with proper schema for join operations.
