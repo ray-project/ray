@@ -1411,7 +1411,7 @@ class Dataset:
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
-        expr: Optional[str] = None,
+        expr: Optional[Union[str, Expr]] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
