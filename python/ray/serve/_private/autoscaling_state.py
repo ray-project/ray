@@ -594,7 +594,9 @@ class AutoscalingState:
             queued_metrics = [
                 {QUEUED_REQUESTS_KEY: timeseries} for timeseries in queued_timeseries
             ]
-            return self._aggregate_ongoing_requests(queued_metrics)
+            return self._aggregate_timeseries_metric(
+                queued_metrics, QUEUED_REQUESTS_KEY
+            )
         else:
             # Simple mode: sum pre-aggregated values
             return sum(
