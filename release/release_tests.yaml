@@ -2841,6 +2841,7 @@
 #########################
 
 - name: single_node
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2849,7 +2850,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
@@ -2868,6 +2868,7 @@
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2876,7 +2877,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store.yaml
@@ -2896,6 +2896,7 @@
         cluster_compute: object_store_gce.yaml
 
 - name: small_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2904,7 +2905,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/small_objects.yaml
@@ -2919,6 +2919,7 @@
     - __suffix__: aws
 
 - name: large_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2927,7 +2928,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/large_objects.yaml
@@ -2942,6 +2942,7 @@
     - __suffix__: aws
 
 - name: many_actors
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2950,7 +2951,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -2970,6 +2970,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2977,7 +2978,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -2990,6 +2990,7 @@
 
 
 - name: many_tasks
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2998,7 +2999,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3018,6 +3018,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3026,7 +3027,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3047,6 +3047,7 @@
 
 
 - name: many_pgs_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3054,7 +3055,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3067,6 +3067,7 @@
 
 
 - name: many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3075,7 +3076,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: many_nodes.yaml
@@ -3095,6 +3095,7 @@
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3102,7 +3103,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
