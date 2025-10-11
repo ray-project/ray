@@ -311,9 +311,6 @@ class ServeController:
             handle_metric_report
         )
 
-    def _dump_all_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_all_metrics()
-
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
 
