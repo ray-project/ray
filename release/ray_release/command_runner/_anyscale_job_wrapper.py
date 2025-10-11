@@ -18,6 +18,7 @@ import logging
 from urllib.parse import urlparse
 from typing import Optional, List, Tuple
 
+AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
@@ -69,6 +70,8 @@ def run_storage_cp(source: str, target: str):
         return False
 
     storage_service = urlparse(target).scheme
+    if target.startswith(f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"):
+        storage_service = "azure_blob"
     cp_cmd_args = []
     if storage_service == "s3":
         cp_cmd_args = [
@@ -88,7 +91,7 @@ def run_storage_cp(source: str, target: str):
             source,
             target,
         ]
-    elif storage_service == "abfss":
+    elif storage_service == "azure_blob":
         subprocess.run(["azcopy", "login", "--identity"], check=True)
         cp_cmd_args = [
             "azcopy",
