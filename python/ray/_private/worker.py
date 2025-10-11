@@ -1605,6 +1605,9 @@ def init(
             and the API is subject to change.
         _node_name: User-provided node name or identifier. Defaults to
             the node IP address.
+        _python_version_match_level: Specify the required python version match
+            level between the driver and the workers. The options are "minor"
+            and "patch". Default to "patch".
 
     Returns:
         If the provided address includes a protocol, for example by prepending
@@ -1664,6 +1667,9 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
+    _python_version_match_level: str = kwargs.pop(
+        "_python_version_match_level", "patch"
+    )
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -2023,6 +2029,7 @@ def init(
         namespace=namespace,
         job_config=job_config,
         entrypoint=ray._private.utils.get_entrypoint_name(),
+        python_version_match_level=_python_version_match_level,
     )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -2464,6 +2471,7 @@ def connect(
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
+    python_version_match_level: str = "patch",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2492,6 +2500,9 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
+        python_version_match_level: Specify the required python version match
+            level between the driver and the workers. The options are "minor"
+            and "patch". Default to "patch".
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2544,7 +2555,7 @@ def connect(
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        node.check_version_info()
+        node.check_version_info(python_version_match_level=python_version_match_level)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
