@@ -321,42 +321,55 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
 Validating checkpoints asynchronously
 -------------------------------------
 
-You can also asynchronously validate checkpoints that you :func:`~ray.train.report` as follows:
+Motivation
+~~~~~~~~~~
 
-* Define your own ``validate_fn`` that takes a :class:`~ray.train.Checkpoint` to validate
-  and an optional ``validate_config`` dictionary, which contain arguments needed for validation
-  such as the validation dataset, and returns a dictionary of metrics from that validation. See
-  :ref:`train-validate-fn` for more details on how to do this.
-* Call :func:`~ray.train.report` with your ``validate_fn`` and a ``validate_config`` dict.
-  Ray Train runs your ``validate_fn`` with the ``validation_config`` and ``checkpoint``
-  in a new Ray task. When that task completes, Ray Train associates the metrics returned by
-  ``validate_fn`` with that ``checkpoint``.
+During training, you may want to validate the model periodically to monitor training progress.
+The standard way to do this is to periodically switch between training and validation within
+the training loop. Instead, Ray Train allows you to asynchronously validate the model in a
+separate Ray task, which has following benefits:
 
-The main benefits of validating with :func:`~ray.train.report` over performing the validation
-in the training loop include:
-
-* Running validation in parallel with the training loop
+* Running validation in parallel without blocking the training loop
 * Running validation on different hardware than training
 * Leveraging :ref:`Autoscaling <vms-autoscaling>` to rent user-specified machines only for the duration of the validation
 
 .. _train-validate-fn:
 
-Writing your own validation function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Basic instructions
+~~~~~~~~~~~~~~~~~~
 
-``validate_fn`` can be any function that validates the ``checkpoint`` using information from
-``validation_config``. Here is a simple example:
+First, define a ``validate_fn`` that takes a :class:`~ray.train.Checkpoint` to validate
+and an optional ``validate_config`` dictionary. This dictionary can contain arguments needed
+for validation, such as the validation dataset. Your function should return a dictionary of metrics
+from that validation. Here is a simple example:
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
     :start-after: __validate_fn_simple_start__
     :end-before: __validate_fn_simple_end__
 
+Next, within your training loop, call :func:`~ray.train.report` with ``validate_fn`` and
+``validate_config`` as arguments like so:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __validate_fn_report_start__
+    :end-before: __validate_fn_report_end__
+
+Finally, after training is done, you can access your checkpoints and their associated metrics via the
+:class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
+
+Writing a distributed validation function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
 even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
-to calculate average cross entropy loss on a validation set. Note that this ``report``\s
-a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics. Also note that while
-the ``TorchTrainer`` is typically used for training, it can also be used for validation.
+to calculate average cross entropy loss on a validation set. Note the following about this example:
+
+* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
+* While the ``TorchTrainer`` is typically used for training, it can be used solely for validation like in this example.
+* Because training generally has a higher GPU memory requirement than inference, you can set different
+  resource requirements for training and validation e.g. A100 for training and A10G for validation.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -389,38 +402,23 @@ You should use ``map_batches`` if:
   aggregation manually using low-level collective operations or rely on third-party libraries
   such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
 
-Reporting with your validation function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Once you've defined your ``validate_fn``, you can ``report`` it along with a ``validation_config``,
-which can contain information such as the validation dataset.
-
-.. literalinclude:: ../doc_code/checkpoints.py
-    :language: python
-    :start-after: __validate_fn_report_start__
-    :end-before: __validate_fn_report_end__
-
-Because training generally has a higher GPU memory requirement than inference, you can set different
-resource requirements for training and validation e.g. A100 for training and A10G for validation as
-shown above.
-
-
 Checkpoint Metrics Lifecycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This is what happens when you ``report`` a checkpoint with metrics and a ``validate_fn``:
+This is what happens to your checkpoints and metrics during the training loop:
 
-1. Report a checkpoint with some initial metrics, such as training loss.
-2. Ray Train asynchronously runs ``validate_fn`` with that checkpoint in a new Ray task.
-3. When that validation task completes, Ray Train associates the metrics returned by ``validate_fn``
+1. You report a checkpoint with some initial metrics, such as training loss, as well as a
+   ``validate_fn`` and ``validate_config``.
+2. Ray Train asynchronously runs your ``validate_fn`` with that checkpoint and ``validate_config``
+   in a new Ray task.
+3. When that validation task completes, Ray Train associates the metrics returned by your ``validate_fn``
    with that checkpoint.
-4. After training is done, you can access checkpoints and their associated metrics via the
+4. After training is done, you can access your checkpoints and their associated metrics via the
    :class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
 .. figure:: ../images/checkpoint_metrics_lifecycle.png
 
     How checkpoint metrics get populated during training and accessed after training.
-
 
 Using checkpoints after training
 --------------------------------
