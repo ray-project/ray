@@ -6,9 +6,10 @@ import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
-import ray
 from gymnasium.wrappers.vector import DictInfoToList
+from gymnasium.envs.registration import VectorizeMode
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.callbacks.utils import make_callback
@@ -668,18 +669,24 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 env_descriptor=self.config.env,
                 env_context=env_ctx,
             )
-        gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
         vectorize_mode = self.config.gym_env_vectorize_mode
+        vectorize_mode = (
+            vectorize_mode if isinstance(vectorize_mode, VectorizeMode)
+            else VectorizeMode(vectorize_mode.lower())
+        )
+
+        # User defined env is already vectorized.
+        if vectorize_mode is VectorizeMode.VECTOR_ENTRY_POINT:
+            gym.register("rllib-single-agent-env-v0", vector_entry_point=entry_point)
+        # User defined env is a single, non-vectorized env.
+        else:
+            gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
         self.env = DictInfoToList(
             gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    vectorize_mode
-                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
-                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
-                ),
+                vectorization_mode=vectorize_mode,
             )
         )
 
