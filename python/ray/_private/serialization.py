@@ -161,12 +161,14 @@ class SerializationContext:
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
         # Enable zero-copy deserialization of PyTorch tensors if the environment variable is set.
-        # The special marker key identifies zero copy tensor in serialized objects.
+        # `_zero_copy_maker_key` and `_zero_copy_maker_value` together identify a serialized tensor;
+        # `_zero_copy_payload` stores the underlying NumPy array data.
         self._enable_zero_copy_tensors = False
         if os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1":
             self._enable_zero_copy_tensors = True
-            self._zero_copy_tensor_maker = "_ray_zc_tensor_"
-            self._zero_copy_tensor_playload = "_ray_zc_payload_"
+            self._zero_copy_maker_key = "_ray_zc_key_"
+            self._zero_copy_maker_value = "_ray_zc_value_"
+            self._zero_copy_payload = "_ray_zc_payload_"
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -556,14 +558,17 @@ class SerializationContext:
         # Recursively restores PyTorch tensors from marked NumPy arrays.
         # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
         # Non-marked values (e.g., str, int, raw np.ndarray) are returned unchanged.
-        if isinstance(obj, dict) and obj.get(self._zero_copy_tensor_maker) is True:
+        if (
+            isinstance(obj, dict)
+            and obj.get(self._zero_copy_maker_key) == self._zero_copy_maker_value
+        ):
             try:
                 import torch
             except ImportError:
                 # If torch not available, return raw data
-                return obj[self._zero_copy_tensor_playload]
+                return obj[self._zero_copy_payload]
 
-            data = obj[self._zero_copy_tensor_playload]
+            data = obj[self._zero_copy_payload]
             tensor = torch.from_numpy(data)
             return tensor
 
@@ -646,11 +651,8 @@ class SerializationContext:
             # Move to CPU for .numpy() compatibility.
             # Ensure contiguous for safe zero-copy conversion.
             return {
-                self._zero_copy_tensor_maker: True,
-                self._zero_copy_tensor_playload: obj.detach()
-                .cpu()
-                .contiguous()
-                .numpy(),
+                self._zero_copy_maker_key: self._zero_copy_maker_value,
+                self._zero_copy_payload: obj.detach().cpu().contiguous().numpy(),
             }
 
         elif isinstance(obj, dict):
