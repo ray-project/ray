@@ -173,12 +173,6 @@ class StreamingExecutor(Executor, threading.Thread):
 
             logger.debug("Execution config: %s", self._options)
 
-            # Note: Initialize progress manager before building the streaming
-            # topology so bars are created in the same order as they should be
-            # displayed. This is done to ensure correct ordering within notebooks.
-            # TODO(zhilong): Implement num_output_rows_total for all
-            # AllToAllOperators
-
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
 
