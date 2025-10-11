@@ -185,13 +185,13 @@ def test_read_mcap_channel_filtering(ray_start_regular_shared, tmp_path):
 
     create_test_mcap_file(path, messages)
 
-    # Test channel filtering (channels are identified by topic names in MCAP)
-    channels = {"/camera/image", "/lidar/points"}
-    ds = ray.data.read_mcap(path, channels=channels)
+    # Test topic filtering
+    topics = {"/camera/image", "/lidar/points"}
+    ds = ray.data.read_mcap(path, topics=topics)
 
     rows = ds.take_all()
-    actual_channels = {row["topic"] for row in rows}
-    assert actual_channels.issubset(channels)
+    actual_topics = {row["topic"] for row in rows}
+    assert actual_topics.issubset(topics)
     assert len(rows) == 6  # 2/3 of messages
 
 
@@ -308,22 +308,6 @@ def test_read_mcap_invalid_time_range(ray_start_regular_shared, tmp_path):
     # Negative times
     with pytest.raises(ValueError, match="time values must be non-negative"):
         ray.data.read_mcap(path, time_range=(-1000, 2000))
-
-
-def test_read_mcap_mutually_exclusive_filters(ray_start_regular_shared, tmp_path):
-    """Test that channels and topics are mutually exclusive."""
-    path = os.path.join(tmp_path, "exclusive_test.mcap")
-    messages = [
-        {
-            "topic": "/test",
-            "data": {"value": 1},
-            "log_time": 1000000000,
-        }
-    ]
-    create_test_mcap_file(path, messages)
-
-    with pytest.raises(ValueError, match="Cannot specify both 'channels' and 'topics'"):
-        ray.data.read_mcap(path, channels={"camera"}, topics={"/camera/image"})
 
 
 def test_read_mcap_missing_dependency(ray_start_regular_shared, tmp_path):

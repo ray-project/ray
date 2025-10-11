@@ -54,7 +54,7 @@ class MCAPDatasource(FileBasedDatasource):
     """MCAP (Message Capture) datasource for Ray Data.
 
     This datasource provides reading of MCAP files with predicate pushdown
-    optimization for filtering by channels, topics, time ranges, and message types.
+    optimization for filtering by topics, time ranges, and message types.
 
     MCAP is a standardized format for storing timestamped messages from robotics and
     autonomous systems, commonly used for sensor data, control commands, and other
@@ -66,16 +66,16 @@ class MCAPDatasource(FileBasedDatasource):
         >>> import ray  # doctest: +SKIP
         >>> ds = ray.data.read_mcap("/path/to/data.mcap")  # doctest: +SKIP
 
-        With channel filtering and time range:
+        With topic filtering and time range:
 
         >>> from ray.data.datasource import TimeRange  # doctest: +SKIP
         >>> ds = ray.data.read_mcap(  # doctest: +SKIP
         ...     "/path/to/data.mcap",
-        ...     channels={"camera", "lidar"},
+        ...     topics={"/camera/image_raw", "/lidar/points"},
         ...     time_range=TimeRange(start_time=1000000000, end_time=2000000000)
         ... )  # doctest: +SKIP
 
-        With topic filtering and metadata:
+        With multiple files and metadata:
 
         >>> ds = ray.data.read_mcap(  # doctest: +SKIP
         ...     ["file1.mcap", "file2.mcap"],
@@ -90,7 +90,6 @@ class MCAPDatasource(FileBasedDatasource):
     def __init__(
         self,
         paths: Union[str, List[str]],
-        channels: Optional[Union[List[str], Set[str]]] = None,
         topics: Optional[Union[List[str], Set[str]]] = None,
         time_range: Optional[TimeRange] = None,
         message_types: Optional[Union[List[str], Set[str]]] = None,
@@ -101,13 +100,8 @@ class MCAPDatasource(FileBasedDatasource):
 
         Args:
             paths: Path or list of paths to MCAP files.
-            channels: Optional list/set of channel names to include. In MCAP,
-                channels are identified by their topic names, so this parameter
-                filters by topic. If specified, only messages from these topics
-                will be read. Mutually exclusive with ``topics``.
             topics: Optional list/set of topic names to include. If specified,
-                only messages from these topics will be read. Mutually exclusive
-                with ``channels``.
+                only messages from these topics will be read.
             time_range: Optional TimeRange for filtering messages by timestamp.
                 TimeRange contains start_time and end_time in nanoseconds, where
                 both values must be non-negative and start_time < end_time.
@@ -117,17 +111,12 @@ class MCAPDatasource(FileBasedDatasource):
                 Defaults to True. When True, includes schema, channel, and message
                 metadata.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
-
-        Raises:
-            ValueError: If both channels and topics are specified, or if time_range
-                is invalid.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="mcap", package="mcap")
 
         # Convert to sets for faster lookup
-        self._channels = set(channels) if channels else None
         self._topics = set(topics) if topics else None
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
@@ -150,26 +139,16 @@ class MCAPDatasource(FileBasedDatasource):
         Raises:
             ValueError: If the MCAP file cannot be read or has invalid format.
         """
-        from mcap.reader import make_reader
+        import mcap
 
         try:
-            reader = make_reader(f)
+            reader = mcap.reader.make_reader(f)
             # Note: MCAP summaries are optional and iter_messages works without them
             # We don't need to validate the summary since it's not required
 
-            # Determine which topics to filter on for MCAP's built-in filtering
-            # In MCAP, channels are identified by topic names, so we can push down
-            # both topic and channel filters to the MCAP reader
-            filter_topics = None
-            if self._topics:
-                filter_topics = list(self._topics)
-            elif self._channels:
-                # Channels map to topics in MCAP, so we can use them for filtering
-                filter_topics = list(self._channels)
-
             # Use MCAP's built-in filtering for topics and time range
             messages = reader.iter_messages(
-                topics=filter_topics,
+                topics=list(self._topics) if self._topics else None,
                 start_time=self._time_range.start_time if self._time_range else None,
                 end_time=self._time_range.end_time if self._time_range else None,
                 log_time_order=True,
@@ -202,8 +181,8 @@ class MCAPDatasource(FileBasedDatasource):
         """Check if a message should be included based on filters.
 
         This method applies Python-level filtering that cannot be pushed down
-        to the MCAP library level. Topic and channel filters are already handled
-        by the MCAP reader, so only message_types filtering is needed here.
+        to the MCAP library level. Topic filters are already handled by the
+        MCAP reader, so only message_types filtering is needed here.
 
         Args:
             schema: MCAP schema object containing message type information.
