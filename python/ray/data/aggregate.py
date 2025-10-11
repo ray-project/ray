@@ -1212,7 +1212,7 @@ class ApproximateQuantile(AggregateFnV2):
     ):
         """
         Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
-        https://datasketches.apache.org/docs/KLL/KLLOverview.html
+        https://datasketches.apache.org/docs/KLL/KLLSketch.html
 
         The accuracy of the KLL quantile sketch is a function of the configured K, which also affects
         the overall size of the sketch.
