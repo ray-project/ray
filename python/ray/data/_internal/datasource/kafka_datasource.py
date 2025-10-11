@@ -138,8 +138,6 @@ class KafkaDatasource(UnboundDatasource):
                     incrementally for efficient streaming processing.
                     """
                     from kafka import KafkaConsumer, TopicPartition
-                    from kafka.structs import OffsetAndMetadata
-                    import json
 
                     # Build consumer configuration from provided settings
                     # We disable auto-commit by default to give Ray Data control over offset management
@@ -197,17 +195,13 @@ class KafkaDatasource(UnboundDatasource):
                         if key in kafka_config:
                             consumer_config[key] = kafka_config[key]
 
-                    # Value deserializer - automatically handle different data formats
-                    # Try JSON first (most common), then fall back to plain string
+                    # Value deserializer - decode bytes to string without parsing JSON
+                    # Users can parse JSON themselves using map_batches if needed
                     def deserialize_value(value):
                         if value is None:
                             return None
-                        try:
-                            # Attempt to parse as JSON (handles objects, arrays, etc.)
-                            return json.loads(value.decode("utf-8"))
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            # Not JSON, return as plain string with error replacement
-                            return value.decode("utf-8", errors="replace")
+                        # Decode to UTF-8 string, handling encoding errors gracefully
+                        return value.decode("utf-8", errors="replace")
 
                     consumer_config["value_deserializer"] = deserialize_value
                     # Key deserializer - simple UTF-8 decode or None

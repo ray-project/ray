@@ -189,10 +189,10 @@ class KinesisDatasource(UnboundDatasource):
 
                     Yields PyArrow tables incrementally for efficient streaming processing.
                     """
-                    import boto3
-                    import json
                     import base64
                     from datetime import datetime
+
+                    import boto3
 
                     # Recreate AWS session in the remote task
                     # This ensures credentials are properly available in the Ray worker
@@ -311,24 +311,18 @@ class KinesisDatasource(UnboundDatasource):
                                             return
 
                                         # Decode the record data from bytes
-                                        # Try JSON first, then UTF-8 string, finally base64 as fallback
+                                        # Decode data as UTF-8 string or base64 for binary data
+                                        # Users can parse JSON themselves using map_batches if needed
                                         data = record["Data"]
                                         if isinstance(data, bytes):
                                             try:
-                                                # Most common: JSON encoded data
-                                                data = json.loads(data.decode("utf-8"))
-                                            except (
-                                                json.JSONDecodeError,
-                                                UnicodeDecodeError,
-                                            ):
-                                                try:
-                                                    # Plain text data
-                                                    data = data.decode("utf-8")
-                                                except UnicodeDecodeError:
-                                                    # Binary data - encode as base64 string for safety
-                                                    data = base64.b64encode(
-                                                        data
-                                                    ).decode("ascii")
+                                                # Decode as UTF-8 string (works for JSON, plain text, etc.)
+                                                data = data.decode("utf-8")
+                                            except UnicodeDecodeError:
+                                                # Binary data - encode as base64 string for safety
+                                                data = base64.b64encode(data).decode(
+                                                    "ascii"
+                                                )
 
                                         # Build record with all Kinesis metadata
                                         records.append(
@@ -412,21 +406,18 @@ class KinesisDatasource(UnboundDatasource):
                                             yield pa.Table.from_pylist(records)
                                         return
 
-                                    # Decode data
+                                    # Decode data as UTF-8 string or base64 for binary data
+                                    # Users can parse JSON themselves using map_batches if needed
                                     data = record["Data"]
                                     if isinstance(data, bytes):
                                         try:
-                                            data = json.loads(data.decode("utf-8"))
-                                        except (
-                                            json.JSONDecodeError,
-                                            UnicodeDecodeError,
-                                        ):
-                                            try:
-                                                data = data.decode("utf-8")
-                                            except UnicodeDecodeError:
-                                                data = base64.b64encode(data).decode(
-                                                    "ascii"
-                                                )
+                                            # Decode as UTF-8 string (works for JSON, plain text, etc.)
+                                            data = data.decode("utf-8")
+                                        except UnicodeDecodeError:
+                                            # Binary data - encode as base64 string for safety
+                                            data = base64.b64encode(data).decode(
+                                                "ascii"
+                                            )
 
                                     records.append(
                                         {

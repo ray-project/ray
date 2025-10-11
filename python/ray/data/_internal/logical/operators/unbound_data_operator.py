@@ -229,7 +229,7 @@ class StreamingTrigger:
             cron_expression=cron_expression,
             watermark_column=watermark_column,
             late_data_threshold=late_data_threshold,
-            processing_time=False,
+            use_processing_time=False,
         )
 
     @classmethod
@@ -347,7 +347,7 @@ class StreamingTrigger:
             cron_expression=self.cron_expression,
             max_batches=self.max_batches,
             max_files_per_trigger=self.max_files_per_trigger,
-            processing_time=self.processing_time,
+            use_processing_time=self.use_processing_time,
             watermark_column=self.watermark_column,
             allow_late_data=self.allow_late_data,
             late_data_threshold=self.late_data_threshold,
