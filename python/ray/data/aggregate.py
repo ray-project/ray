@@ -1189,3 +1189,43 @@ class ZeroPercentage(AggregateFnV2):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+
+class KeepFirst(AggregateFnV2):
+    """Internal aggregation function that keeps the first value encountered.
+
+    This is used internally by the Dataset.distinct() method to implement
+    deduplication by keeping the first value from each group for non-key columns.
+
+    This class is not part of the public API and should not be used directly.
+    Use Dataset.distinct() instead.
+
+    Args:
+        on: The name of the column to keep the first value from.
+    """
+
+    def __init__(self, on: str):
+        # Use the column name as the aggregation name to preserve original schema
+        super().__init__(
+            name=on,
+            on=on,
+            ignore_nulls=False,
+            zero_factory=lambda: None,
+        )
+
+    def aggregate_block(self, block: Block) -> Any:
+        """Keep only the first value from the specified column in the block."""
+        block_accessor = BlockAccessor.for_block(block)
+        if block_accessor.num_rows() == 0:
+            return None
+        
+        # Get the first value from the target column
+        col_accessor = BlockColumnAccessor.for_block(block, self._target_col_name)
+        return col_accessor[0]
+
+    def combine(self, current_accumulator: Any, new: Any) -> Any:
+        """When combining partial results, keep the first non-None value."""
+        if current_accumulator is None:
+            return new
+        # If we already have a value, keep it (first one wins)
+        return current_accumulator

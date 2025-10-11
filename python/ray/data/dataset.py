@@ -61,6 +61,7 @@ from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
+    Distinct,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
@@ -976,19 +977,19 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @AllToAllAPI
     @PublicAPI(api_group=BT_API_GROUP)
     def distinct(
         self,
         keys: Optional[List[str]] = None,
     ) -> "Dataset":
-        """
-        Remove duplicate rows from the dataset.
+        """Remove duplicate rows from the dataset.
 
         This method is useful for preprocessing data by eliminating redundant entries. It can operate
         on all columns (default) or only on a set of columns specified by ``keys``. The method keeps
         one arbitrary row from each set of duplicates.
 
-        The method uses a distributed groupby operation to identify and remove duplicates.
+        This is an all-to-all operation that requires shuffling data across the cluster.
         Due to the distributed nature of Ray Data, the specific row kept from each duplicate
         group is non-deterministic by design and may vary between runs.
 
@@ -1084,18 +1085,16 @@ class Dataset:
                 raise ValueError(
                     f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
                 )
-            subset_cols = keys
-        else:
-            subset_cols = all_cols
 
-        # Simple distinct implementation using groupby - keeps one row per group
-        def reducer_keep_one(batch: pa.Table) -> pa.Table:
-            return batch.slice(0, 1)
-
-        return self.groupby(subset_cols).map_groups(
-            reducer_keep_one,
-            batch_format="pyarrow",
+        # Use the dedicated Distinct operator for efficient deduplication
+        plan = self._plan.copy()
+        op = Distinct(
+            self._logical_plan.dag,
+            key=keys,
+            num_partitions=None,
         )
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(

@@ -7,12 +7,14 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     Aggregate,
+    Distinct,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
+from ray.data._internal.planner.distinct import generate_distinct_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
@@ -147,6 +149,16 @@ def plan_all_to_all_op(
             op._key,
             op._aggs,
             op._batch_format,
+            data_context,
+            debug_limit_shuffle_execution_to_num_blocks,
+        )
+
+    elif isinstance(op, Distinct):
+        debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+            "debug_limit_shuffle_execution_to_num_blocks", None
+        )
+        fn = generate_distinct_fn(
+            op._key,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )

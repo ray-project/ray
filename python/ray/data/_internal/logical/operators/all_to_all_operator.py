@@ -202,3 +202,37 @@ class Aggregate(AbstractAllToAll):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
+
+
+class Distinct(AbstractAllToAll):
+    """Logical operator for distinct (deduplication)."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        key: Optional[List[str]] = None,
+        num_partitions: Optional[int] = None,
+    ):
+        """Initialize the Distinct operator.
+
+        Args:
+            input_op: The input logical operator.
+            key: Optional list of column names to use for determining duplicates.
+                If None, all columns are used.
+            num_partitions: Optional number of output partitions for the shuffle.
+        """
+        super().__init__(
+            "Distinct",
+            input_op,
+            sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
+        )
+        self._key = key
+        self._num_partitions = num_partitions
+
+    def infer_schema(self) -> Optional["Schema"]:
+        """The output schema is the same as the input schema."""
+        return self._input_dependencies[0].infer_schema()
