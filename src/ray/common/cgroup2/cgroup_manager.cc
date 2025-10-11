@@ -147,20 +147,8 @@ void CgroupManager::RegisterDeleteCgroup(const std::string &cgroup_path) {
   cleanup_operations_.emplace_back([this, cgroup = cgroup_path]() {
     Status s = this->cgroup_driver_->DeleteCgroup(cgroup);
     if (!s.ok()) {
-      std::ostringstream pids;
-      std::filesystem::path proc_file_path =
-          cgroup / std::filesystem::path("cgroup.procs");
-      std::ifstream proc_file(proc_file_path);
-      pid_t pid;
-      while (proc_file >> pid) {
-        pids << " " << pid;
-      }
       RAY_LOG(WARNING) << absl::StrFormat(
-          "Failed to delete cgroup %s with error %s. The proc file has %s.",
-          cgroup,
-          s.ToString(),
-          pids.str());
-      // should log out the procs file
+          "Failed to delete cgroup %s with error %s.", cgroup, s.ToString());
     }
   });
 }
@@ -221,8 +209,6 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   std::string supported_controllers =
       absl::StrCat("[", absl::StrJoin(supported_controllers_, ", "), "]");
 
-  // The cpu.weight is distributed between the system, workers, and user cgroups.
-  // The workers and user cgroup gets whatever is leftover from the system cgroup.
   int64_t user_cpu_weight = cpu_weight_constraint_.Max() - system_reserved_cpu_weight;
 
   RAY_LOG(INFO) << absl::StrFormat(
@@ -232,7 +218,7 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       "[%s=%lld, %s=%lld] constraints. "
       "The user cgroup '%s' will have no controllers enabled with [%s=%lld] "
       "constraints. "
-      "The user cgroup will contain the cgroups [%s, %s].",
+      "The user cgroup will contain the [%s, %s] cgroups.",
       base_cgroup_,
       node_cgroup_,
       supported_controllers,
@@ -277,16 +263,16 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(non_ray_cgroup_));
   RegisterDeleteCgroup(non_ray_cgroup_);
 
-  // Move all processes from the base_cgroup into the non-ray to make sure
+  // Move all processes from the base_cgroup into the non-ray cgroup to make sure
   // that the no internal process constraint is not violated. This is relevant
-  // when the base_cgroup is not a root cgroup for the system. This is likely
-  // the case if Ray is running inside a container.
+  // when the base_cgroup is not the OS's root cgroup. This is the case when
+  // Ray is running inside a container.
   RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, non_ray_cgroup_));
   RegisterMoveAllProcesses(non_ray_cgroup_, base_cgroup_);
-  // Note: The raylet does not own the lifecycle of all system processes so
+
+  // NOTE: Since the raylet does not own the lifecycle of all system processes,
   // there's no guarantee that there are no pids in the system leaf cgroup.
-  // Therefore,
-  // pids may need to be migrated out of the cgroup to delete it
+  // Therefore, pids need to be migrated out of the system cgroup to delete it.
   RegisterMoveAllProcesses(system_leaf_cgroup_, base_cgroup_);
 
   std::array<const std::string *, 2> cpu_controlled_cgroups{&base_cgroup_, &node_cgroup_};

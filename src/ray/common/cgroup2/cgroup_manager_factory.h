@@ -47,7 +47,7 @@ class CgroupManagerFactory {
 
     @note any of the following is undefined behavior and will cause a RAY_CHECK to fail
       1. enable_resource_isolation is true and either
-        a. cgroup_path is empty
+        a. cgroup_path is empty.
         b. system_reserved_cpu_weight or system_reserved_memory_bytes are -1.
       2. The CgroupManager's precondition checks fail
         a. cgroupv2 is not mounted correctly in unified mode (see @ref

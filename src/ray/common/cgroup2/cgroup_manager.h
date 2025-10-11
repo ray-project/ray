@@ -29,22 +29,22 @@ class CgroupManager : public CgroupManagerInterface {
  public:
   /**
     Creates a CgroupManager after checking for the following invariants:
+      1. cgroupv2 is mounted correctly in unified mode. For more details (@see
+      CgroupDriverInterface::CheckCgroupv2Enabled).
+      2. the current process has permissions to read and write to the base_cgroup.
+      3. supported cgroup controllers are available (@see
+      CgroupManagerInterface::supported_controllers_).
 
-    1. cgroupv2 is mounted correctly in unified mode. For more details (@see
-    CgroupDriverInterface::CheckCgroupv2Enabled).
-    2. the current process has permissions to read and write to the base_cgroup.
-    3. supported cgroup controllers are available (@see supported_controllers_).
-
-    The CgroupManager will be used to
-    1. construct the cgroup hierarchy.
-    2. move processes into the appropriate cgroups.
-    3. enable controllers and resource constraints.
+    The CgroupManager will be used to:
+      1. construct the cgroup hierarchy.
+      2. move processes from the base_cgroup into the user/non-ray cgroup.
+      3. enable controllers and resource constraints.
 
     @param base_cgroup the cgroup that the process will take ownership of.
     @param node_id used to create a ray node cgroup.
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
-    for system processes. The cgroup for application processes gets 10000 -
-    system_reserved_cpu_weight.
+    for system processes. The cgroup for all other processes (including workers) gets
+    10000 - system_reserved_cpu_weight.
     @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
     @param cgroup_driver used to perform cgroup operations.
 
@@ -71,7 +71,7 @@ class CgroupManager : public CgroupManagerInterface {
 
   /**
     Moves the process into the workers cgroup (@see
-    CgroupManagerInterface::kLeafCgroupName).
+    CgroupManagerInterface::kWorkersCgroupName).
 
     To move the pid, the process must have read, write, and execute permissions for the
       1) the cgroup the pid is currently in i.e. the source cgroup.
@@ -90,7 +90,7 @@ class CgroupManager : public CgroupManagerInterface {
 
   /**
     Moves the process into the system leaf cgroup (@see
-    CgroupManagerInterface::kLeafCgroupName).
+    CgroupManagerInterface::kSystemCgroupName).
 
     To move the pid, the process must have read, write, and execute permissions for the
       1) the cgroup the pid is currently in i.e. the source cgroup.
@@ -114,7 +114,7 @@ class CgroupManager : public CgroupManagerInterface {
       3. move all processes from the system and non-ray cgroup into the base cgroup.
       4. delete the node, system, user, workers, and non-ray cgroups respectively.
 
-    Cleanup is best-effort. If any step fails, it will log a warning.
+    @note: Cleanup is best-effort. If any step fails, it will log a warning.
   */
   ~CgroupManager() override;
 
