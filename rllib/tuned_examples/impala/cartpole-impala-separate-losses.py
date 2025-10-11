@@ -6,7 +6,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
-
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150,
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,

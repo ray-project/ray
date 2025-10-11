@@ -1,7 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.random_env import RandomLargeObsSpaceEnv
 
-
 config = (
     PPOConfig()
     # Switch off np.random, which is known to have memory leaks.
