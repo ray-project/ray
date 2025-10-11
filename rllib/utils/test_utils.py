@@ -174,6 +174,12 @@ def add_rllib_example_script_args(
         choices=["INFO", "DEBUG", "WARN", "ERROR"],
         help="The log-level to be used by the RLlib logger.",
     )
+    parser.add_argument(
+        "--log-frequency",
+        type=int,
+        default=5,  # tune default to 5
+        help="The frequency (in seconds) at which to log the training performance.",
+    )
 
     # tune.Tuner options.
     parser.add_argument(
