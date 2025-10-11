@@ -18,23 +18,64 @@
 #include <boost/asio.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 #include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #endif
 #include <boost/asio/ip/tcp.hpp>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
 using boost::asio::io_context;
 using boost::asio::ip::tcp;
 
 namespace ray {
+
+bool IsIPv6(const std::string &host) {
+  // boost::system::error_code ec;
+  // auto addr = boost::asio::ip::make_address(host, ec);
+  // if (!ec) {
+  //   return addr.is_v6();
+  // }
+
+  // // host is domain name.
+  // boost::asio::io_service io_service;
+  // boost::asio::ip::tcp::resolver resolver(io_service);
+
+  // // try IPv4 first, then IPv6 resolution
+  // boost::system::error_code ec_v4;
+  // auto results_v4 = resolver.resolve(boost::asio::ip::tcp::v4(), host, "0", ec_v4);
+  // if (!ec_v4 && !results_v4.empty()) {
+  //   return false;
+  // }
+
+  // boost::system::error_code ec_v6;
+  // auto results_v6 = resolver.resolve(boost::asio::ip::tcp::v6(), host, "0", ec_v6);
+  // if (!ec_v6 && !results_v6.empty()) {
+  //   return true;
+  // }
+
+  // RAY_LOG(WARNING) << "Failed to resolve hostname '" << host
+  //                  << "': IPv4 error: " << ec_v4.message()
+  //                  << ", IPv6 error: " << ec_v6.message();
+  return false;
+}
 
 std::string BuildAddress(const std::string &host, const std::string &port) {
   if (host.find(':') != std::string::npos) {
@@ -72,13 +113,23 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
   return std::array<std::string, 2>{host, port};
 }
 
-bool CheckPortFree(int port) {
+bool CheckPortFree(int family, int port) {
   io_context io_service;
-  tcp::socket socket(io_service);
-  socket.open(tcp::v4());
+
+  std::unique_ptr<boost::asio::ip::tcp::socket> socket;
   boost::system::error_code ec;
-  socket.bind(tcp::endpoint(tcp::v4(), port), ec);
-  socket.close();
+
+  if (family == AF_INET6) {
+    socket = std::make_unique<boost::asio::ip::tcp::socket>(io_service,
+                                                            boost::asio::ip::tcp::v6());
+    socket->bind(tcp::endpoint(tcp::v6(), port), ec);
+  } else {
+    socket = std::make_unique<boost::asio::ip::tcp::socket>(io_service,
+                                                            boost::asio::ip::tcp::v4());
+    socket->bind(tcp::endpoint(tcp::v4(), port), ec);
+  }
+
+  socket->close();
   return !ec.failed();
 }
 
@@ -201,6 +252,30 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   auto key_value_pair = parse_key_value_with_equal_delimter(token);
   result->emplace(std::string(key_value_pair.first), std::string(key_value_pair.second));
   return result;
+}
+
+std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
+  const std::string default_addr = "8.8.8.8:53";
+  const std::string &test_addr = address ? *address : default_addr;
+
+  auto parts = ParseAddress(test_addr);
+  RAY_CHECK(parts.has_value());
+  try {
+    boost::asio::io_service netService;
+    boost::asio::ip::udp::resolver resolver(netService);
+    boost::asio::ip::udp::resolver::query query(
+        boost::asio::ip::udp::v4(), (*parts)[0], (*parts)[1]);
+    boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
+    boost::asio::ip::udp::endpoint ep = *endpoints;
+    boost::asio::ip::udp::socket socket(netService);
+    socket.connect(ep);
+    boost::asio::ip::address addr = socket.local_endpoint().address();
+    return addr.to_string();
+  } catch (std::exception &e) {
+    RAY_LOG(FATAL) << "Could not get the node IP address with socket. Exception: "
+                   << e.what();
+    return "";
+  }
 }
 
 }  // namespace ray
