@@ -502,6 +502,77 @@ class TableBlockAccessor(BlockAccessor):
         ret = builder.build()
         return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
+    @classmethod
+    def _merge_sorted_blocks_and_keep_first(
+        cls,
+        blocks: List[Block],
+        sort_key: "SortKey",
+    ) -> Block:
+        """Merge sorted blocks and keep only the first row for each unique key.
+
+        This performs a merge sort on the input blocks (which are assumed to be already
+        sorted by the key columns) and deduplicates by keeping only the first occurrence
+        of each unique key combination.
+
+        Args:
+            blocks: A list of pre-sorted blocks.
+            sort_key: The columns to use for the merge sort and deduplication.
+
+        Returns:
+            A single deduplicated block containing the merged data.
+        """
+        # Handle blocks of different types
+        blocks = TableBlockAccessor.normalize_block_types(blocks)
+
+        keys = sort_key.get_columns()
+
+        def _key_fn(r):
+            if keys:
+                return tuple(r[k] for k in keys)
+            else:
+                # If no keys specified, use all column values
+                # r is a TableRow (Mapping), which always has .values()
+                return tuple(r.values())
+
+        # Replace `None`s and `np.nan` with NULL_SENTINEL for ordering
+        def safe_key_fn(r):
+            values = _key_fn(r)
+            return tuple(
+                [NULL_SENTINEL if v is None or is_nan(v) else v for v in values]
+            )
+
+        # Merge sort all blocks
+        iter = heapq.merge(
+            *[
+                BlockAccessor.for_block(block).iter_rows(public_row_format=False)
+                for block in blocks
+            ],
+            key=safe_key_fn,
+        )
+
+        next_row = None
+        builder = BlockAccessor.for_block(blocks[0]).builder()
+        last_key = None
+
+        # Iterate through sorted rows and keep only first of each unique key
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+
+                current_key = _key_fn(next_row)
+
+                # Only add row if it's the first with this key
+                if last_key is None or not keys_equal(current_key, last_key):
+                    builder.add(next_row)
+                    last_key = current_key
+
+                next_row = next(iter)
+            except StopIteration:
+                break
+
+        return builder.build()
+
     def _find_partitions_sorted(
         self,
         boundaries: List[Tuple[Any]],
