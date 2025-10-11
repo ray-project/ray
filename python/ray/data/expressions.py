@@ -704,9 +704,9 @@ class WhenExpr(Expr):
     Example:
         >>> from ray.data.expressions import col, lit, when
         >>> # Build a case statement using method chaining
-        >>> expr = when(col("age") > 50, lit("Elder")) \
-        ...        .when(col("age") > 30, lit("Adult")) \
-        ...        .otherwise(lit("Young"))
+        >>> expr = when(col("age") > 50, lit("Elder"))
+        >>> expr = expr.when(col("age") > 30, lit("Adult"))
+        >>> expr = expr.otherwise(lit("Young"))
     """
 
     condition: Expr
@@ -726,8 +726,8 @@ class WhenExpr(Expr):
             A new WhenExpr with the additional WHEN clause
 
         Example:
-            >>> expr = when(col("age") > 30, lit("Adult")) \
-            ...        .when(col("age") > 18, lit("Young"))
+            >>> expr = when(col("age") > 30, lit("Adult"))
+            >>> expr = expr.when(col("age") > 18, lit("Young"))
         """
         return WhenExpr(condition, value, next_when=self)
 
@@ -741,8 +741,8 @@ class WhenExpr(Expr):
             A complete CaseExpr representing the full case statement
 
         Example:
-            >>> expr = when(col("age") > 30, lit("Senior")) \
-            ...        .otherwise(lit("Junior"))
+            >>> expr = when(col("age") > 30, lit("Senior"))
+            >>> expr = expr.otherwise(lit("Junior"))
         """
         # Build the when_clauses list by traversing the chain
         when_clauses = []

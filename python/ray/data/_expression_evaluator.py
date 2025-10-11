@@ -39,17 +39,47 @@ _PANDAS_EXPR_OPS_MAP = {
     Operation.NOT: operator.not_,
 }
 
+
+def _pa_add_or_concat(left, right):
+    """Add numeric values or concatenate strings with proper type validation."""
+    # Convert scalars to arrays if needed for type checking
+    left_is_scalar = isinstance(left, (int, float, str, bool, type(None)))
+    right_is_scalar = isinstance(right, (int, float, str, bool, type(None)))
+
+    if left_is_scalar:
+        left = pa.scalar(left)
+    if right_is_scalar:
+        right = pa.scalar(right)
+
+    # Get the type, handling both scalars and arrays
+    left_type = left.type if hasattr(left, "type") else pa.from_numpy_dtype(type(left))
+    right_type = (
+        right.type if hasattr(right, "type") else pa.from_numpy_dtype(type(right))
+    )
+
+    # Unwrap dictionary-encoded types
+    if pa.types.is_dictionary(left_type):
+        left_type = left_type.value_type
+    if pa.types.is_dictionary(right_type):
+        right_type = right_type.value_type
+
+    # Check if either operand is a string type
+    is_string_op = (
+        pa.types.is_string(left_type)
+        or pa.types.is_large_string(left_type)
+        or pa.types.is_string(right_type)
+        or pa.types.is_large_string(right_type)
+    )
+
+    if is_string_op:
+        # Use binary_join_element_wise with correct argument order: (*arrays, separator)
+        return pc.binary_join_element_wise(left, right, "")
+    else:
+        return pc.add(left, right)
+
+
 _ARROW_EXPR_OPS_MAP = {
-    Operation.ADD: lambda left, right: (
-        pc.binary_join_element_wise(left, "", right)
-        if (
-            pa.types.is_string(left.type)
-            or pa.types.is_large_string(left.type)
-            or pa.types.is_string(right.type)
-            or pa.types.is_large_string(right.type)
-        )
-        else pc.add(left, right)
-    ),
+    Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
