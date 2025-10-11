@@ -4,6 +4,28 @@ on:
   schedule:
     - cron: '0 1 * * *'
 
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Source branch to merge from'
+        required: true
+        default: 'master'
+        type: choice
+        options:
+          - master
+      target_branch:
+        description: 'Target branch to merge into'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+          - main
+      assignees:
+        description: 'Assignees for the PR'
+        required: false
+        default: 'mingcheng'
+        type: string
+
 jobs:
   create-merge-pr:
     runs-on: ubuntu-latest
@@ -15,8 +37,8 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GH_TOKEN }}
-          branch: master
-          base: main
+          branch: ${{ github.event.inputs.source_branch || 'master' }}
+          base: ${{ github.event.inputs.target_branch || 'main' }}
           title: '🔄 Daily merge: upstream master branch to main ($(date +%Y-%m-%d))'
           body: |
             ## This is auto-generated Merge Pull Request
@@ -24,8 +46,8 @@ jobs:
             This PR is created automatically by a GitHub Action to merge the latest changes from the upstream `master` branch into the `main` branch.
 
             📅 **Created**: $(date +%Y-%m-%d)
-            🔀 **Merge direction**: upstream master → main
-            🤖 **Created by**: GitHub Actions
+            🔀 **Merge direction**: upstream ${{ github.event.inputs.source_branch || 'master' }} → ${{ github.event.inputs.target_branch || 'main' }}
+            🤖 **Trigger by**: ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'Scheduled' }}
 
             Please review before merging.
           labels: |
@@ -33,4 +55,4 @@ jobs:
             merge
           draft: false
           delete-branch: false
-          assignees: mingcheng
+          assignees: ${{ github.event.inputs.assignees || 'mingcheng' }}
