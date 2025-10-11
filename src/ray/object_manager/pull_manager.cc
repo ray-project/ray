@@ -298,6 +298,14 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
                                  /*quota_margin=*/0L,
                                  &object_ids_to_cancel);
 
+  // Remove objects from the cancellation set if they were later selected for pulling.
+  // This can happen when an object is first marked for cancellation (when deactivating
+  // lower priority task args/wait requests) but then selected for pulling by a higher
+  // priority get request that we unconditionally activate.
+  for (const auto &obj_id : objects_to_pull) {
+    object_ids_to_cancel.erase(obj_id);
+  }
+
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
     RAY_LOG(DEBUG) << "Not enough memory to create requested object " << obj_id
@@ -308,9 +316,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   {
     absl::MutexLock lock(&active_objects_mu_);
     for (const auto &obj_id : objects_to_pull) {
-      if (object_ids_to_cancel.count(obj_id) == 0) {
-        TryToMakeObjectLocal(obj_id);
-      }
+      TryToMakeObjectLocal(obj_id);
     }
   }
 }
