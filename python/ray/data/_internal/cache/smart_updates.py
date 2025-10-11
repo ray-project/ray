@@ -342,8 +342,8 @@ class SmartCacheUpdater:
         # Extract limit value from parameters
         limit_value = self._extract_param(params, index=0, param_name="limit")
 
-        # Validate limit value
-        if not isinstance(limit_value, int) or limit_value <= 0:
+        # Validate limit value (allow 0 - it's valid and produces count=0)
+        if not isinstance(limit_value, int) or limit_value < 0:
             return  # Invalid limit, skip smart update
 
         # ---------------------------------------------------------------------
@@ -399,8 +399,8 @@ class SmartCacheUpdater:
         # Extract fraction from parameters
         fraction = self._extract_param(params, index=0, param_name="fraction")
 
-        # Validate fraction
-        if not isinstance(fraction, (int, float)) or fraction <= 0:
+        # Validate fraction (allow 0.0 - it's valid and produces count=0)
+        if not isinstance(fraction, (int, float)) or fraction < 0:
             return  # Invalid fraction, skip smart update
 
         # ---------------------------------------------------------------------
