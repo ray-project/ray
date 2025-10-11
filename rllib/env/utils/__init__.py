@@ -71,6 +71,7 @@ def try_import_open_spiel(error: bool = False):
 def _gym_env_creator(
     env_context: EnvContext,
     env_descriptor: Union[str, Type[gym.Env]],
+    num_envs: Optional[int] = None,
 ) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
 
@@ -87,6 +88,10 @@ def _gym_env_creator(
         env_descriptor: The env descriptor as a gym-registered string, e.g.
             "CartPole-v1", "ale_py:ALE/Breakout-v5".
             Alternatively, the gym.Env subclass to use.
+        num_envs: An optional number of sub-environments to create inside
+            a custom gym.envs.registration.VectorizeMode.VECTOR_ENTRY_POINT.
+            If not None, a "num_envs" key is added to the EnvContext passed
+            into the constructor (or `gym.make` call).
 
     Returns:
         The actual gym environment object.
@@ -94,6 +99,11 @@ def _gym_env_creator(
     Raises:
         gym.error.Error: If the env cannot be constructed.
     """
+    # Add the `num_envs` value, if provided, to the options dict passed into
+    # the env's constructor.
+    if num_envs is not None:
+        env_context["num_envs"] = num_envs
+
     # If env descriptor is a str, starting with "ale_py:ALE/", for now, register all ALE
     # envs from ale_py.
     if isinstance(env_descriptor, str) and env_descriptor.startswith("ale_py:ALE/"):
