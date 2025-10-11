@@ -1592,6 +1592,46 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
+def custom_autoscaling_policy_with_queued_requests(ctx: AutoscalingContext):
+    total_queued_requests = ctx.total_queued_requests
+    if total_queued_requests > 20:
+        return 3, {}
+    else:
+        return 1, {}
+
+
+def test_policy_using_custom_metrics_with_queued_requests(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "upscale_delay_s": 2,
+            "downscale_delay_s": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+            "target_ongoing_requests": 10,
+            "policy": AutoscalingPolicy(
+                policy_function=custom_autoscaling_policy_with_queued_requests
+            ),
+        },
+        max_ongoing_requests=10,
+    )
+    class CustomMetricsDeployment:
+        async def __call__(self) -> str:
+            await signal.wait.remote()
+            return "Hello, world"
+
+    handle = serve.run(CustomMetricsDeployment.bind())
+    [handle.remote() for _ in range(40)]
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 10)
+    wait_for_condition(check_num_replicas_eq, name="CustomMetricsDeployment", target=3)
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    wait_for_condition(check_num_replicas_eq, name="CustomMetricsDeployment", target=1)
+
+
 if __name__ == "__main__":
     import sys
 

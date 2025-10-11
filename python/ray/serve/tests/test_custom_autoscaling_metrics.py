@@ -6,8 +6,10 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.test_utils import check_num_replicas_eq
+from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
 
 def get_autoscaling_metrics_from_controller(
@@ -17,6 +19,19 @@ def get_autoscaling_metrics_from_controller(
     ref = client._controller._dump_all_autoscaling_metrics_for_testing.remote()
     metrics = ray.get(ref)
     return metrics.get(deployment_id, {})
+
+
+def custom_autoscaling_policy(ctx: AutoscalingContext):
+    aggregated_counter = sum(
+        x for x in ctx.aggregated_metrics.get("counter", {}).values()
+    )
+    max_counter = sum(
+        [x[-1].value for x in ctx.raw_metrics.get("counter", {}).values()]
+    )
+    if max_counter == aggregated_counter == 10:
+        return 3, {}
+    else:
+        return 1, {}
 
 
 class TestCustomServeMetrics:
@@ -124,6 +139,42 @@ class TestCustomServeMetrics:
         # There should be no counter metric because it failed validation, must be int or float
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
         assert metrics.get("counter", None) is None
+
+    def test_policy_using_custom_metrics(self, serve_instance):
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 1,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 10,
+                "policy": AutoscalingPolicy(policy_function=custom_autoscaling_policy),
+            },
+            max_ongoing_requests=100,
+        )
+        class CustomMetricsDeployment:
+            def __init__(self):
+                self.counter = 0
+
+            async def __call__(self) -> str:
+                self.counter += 1
+                await signal.wait.remote()
+                return "Hello, world"
+
+            def record_autoscaling_stats(self) -> Dict[str, int]:
+                return {"counter": self.counter}
+
+        handle = serve.run(CustomMetricsDeployment.bind())
+        [handle.remote() for _ in range(10)]
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 10)
+        wait_for_condition(
+            check_num_replicas_eq, name="CustomMetricsDeployment", target=3
+        )
+        signal.send.remote()
 
 
 if __name__ == "__main__":
