@@ -578,16 +578,25 @@ class PDFDatasource(FileBasedDatasource):
         import time
 
         # Sample up to 5 files for estimation
-        sample_size = min(5, len(self._paths))
+        paths = self._paths()
+        sample_size = min(5, len(paths))
         if sample_size == 0:
             return PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         ratios = []
         timeout_seconds = 10
+        start_time = time.time()
 
-        for path in self._paths[:sample_size]:
+        for path in paths[:sample_size]:
             try:
-                start_time = time.time()
+                # Check global timeout
+                elapsed_time = time.time() - start_time
+                if elapsed_time > timeout_seconds:
+                    logger.warning(
+                        f"PDF encoding ratio estimation timed out after sampling "
+                        f"{len(ratios)} files. Using partial estimate."
+                    )
+                    break
 
                 # Get file size
                 file_info = self._filesystem.get_file_info(path)
@@ -623,14 +632,6 @@ class PDFDatasource(FileBasedDatasource):
                         else PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
                     )
                     ratios.append(ratio)
-
-                # Check timeout
-                if time.time() - start_time > timeout_seconds:
-                    logger.warning(
-                        f"PDF encoding ratio estimation timed out after sampling "
-                        f"{len(ratios)} files. Using partial estimate."
-                    )
-                    break
 
             except Exception as e:
                 logger.warning(

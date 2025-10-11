@@ -1302,12 +1302,12 @@ def read_pdfs(
 
         Handle very large PDFs efficiently by batching pages:
 
-        >>> # For a 500-page PDF, create 50 blocks of 10 pages each  # doctest: +SKIP
+        >>> # For a 500-page PDF, create 50 blocks of 10 pages each
         >>> ds = ray.data.read_pdfs(  # doctest: +SKIP
         ...     "s3://bucket/large-pdfs/",
         ...     max_pages_per_block=10
         ... )
-        >>> # This reduces memory overhead and improves performance  # doctest: +SKIP
+        >>> # This reduces memory overhead and improves performance
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
