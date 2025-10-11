@@ -16,6 +16,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
+    prepare_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -39,7 +40,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
-    DeploymentMode,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -62,32 +62,6 @@ from ray.serve._private import api as _private_api  # isort:skip
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _prepare_http_options(
-    proxy_location: Union[None, str, ProxyLocation],
-    http_options: Union[None, dict, HTTPOptions],
-) -> HTTPOptions:
-    if proxy_location is None:
-        # default value of ProxyLocation (EveryNode) will be used
-        # to set http_options.location if it wasn't set explicitly
-        if http_options is None:
-            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-            return http_options
-        elif isinstance(http_options, dict):
-            result_http_options = HTTPOptions(**http_options)
-            if "location" not in http_options:
-                result_http_options.location = DeploymentMode.EveryNode
-            return result_http_options
-        else:
-            return http_options
-    else:
-        if http_options is None:
-            http_options = HTTPOptions()
-        elif isinstance(http_options, dict):
-            http_options = HTTPOptions(**http_options)
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-        return http_options
 
 
 @PublicAPI(stability="stable")
@@ -122,7 +96,7 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
-    http_options = _prepare_http_options(proxy_location, http_options)
+    http_options = prepare_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,

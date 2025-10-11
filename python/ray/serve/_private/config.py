@@ -28,7 +28,14 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AggregationFunction, AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import (
+    AggregationFunction,
+    AutoscalingConfig,
+    DeploymentMode,
+    HTTPOptions,
+    ProxyLocation,
+    RequestRouterConfig,
+)
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -789,3 +796,52 @@ class ReplicaConfig:
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
+
+
+def prepare_http_options(
+    proxy_location: Union[None, str, ProxyLocation],
+    http_options: Union[None, dict, HTTPOptions],
+) -> HTTPOptions:
+    """Prepare `HTTPOptions` with desired location based on the proxy location given.
+
+    If `proxy_location` is provided `http_options.location` is determined by it.
+    Alternatively, if `http_options.location` is specified explicitly by user,
+    e.g. {"location": "NoServer"} or via HTTPOptions with or without location field
+    e.g. HTTPOptions(location=DeploymentMode.EveryNode) or HTTPOptions(), then
+    location provided by the user is used.
+
+    Args:
+        proxy_location: provided ProxyLocation
+        http_options: provided HTTPOptions
+
+    Returns:
+        HTTPOptions: A new `HTTPOptions` instance with resolved location.
+
+    Note:
+        Default ProxyLocation is `EveryNode`; default HTTPOptions() location is `HeadOnly`.
+
+    Raises:
+        ValueError: If `http_options` is of an unexpected type.
+    """
+    if http_options is None:
+        location_set_explicitly = False
+        http_options = HTTPOptions()
+    elif isinstance(http_options, dict):
+        location_set_explicitly = "location" in http_options
+        http_options = HTTPOptions(**http_options)
+    elif isinstance(http_options, HTTPOptions):
+        # empty `HTTPOptions()` is considered as user specified the default location value `HeadOnly` explicitly
+        location_set_explicitly = True
+        http_options = HTTPOptions(**http_options.dict(exclude_unset=True))
+    else:
+        raise ValueError(
+            f"Unexpected type for http_options: `{type(http_options).__name__}`"
+        )
+
+    if proxy_location is None:
+        if not location_set_explicitly:
+            http_options.location = DeploymentMode.EveryNode
+    else:
+        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
+
+    return http_options

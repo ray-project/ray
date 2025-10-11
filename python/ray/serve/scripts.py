@@ -20,6 +20,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.config import prepare_http_options
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -27,8 +28,12 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.api import _prepare_http_options
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import (
+    DeploymentMode,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
     LoggingConfig,
@@ -539,7 +544,7 @@ def run(
         http_options = HTTPOptions(**config.http_options.dict())
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
-    http_options = _prepare_http_options(proxy_location, http_options)
+    http_options = prepare_http_options(proxy_location, http_options)
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
