@@ -821,9 +821,10 @@ def estimate_total_num_of_blocks(
         )
         estimated_output_num_rows = round(
             estimated_num_tasks
-            * metrics.rows_task_outputs_generated
+            * metrics.rows_outputs_of_finished_tasks
             / metrics.num_tasks_finished
         )
+
         return (
             estimated_num_tasks,
             estimated_num_output_bundles,
