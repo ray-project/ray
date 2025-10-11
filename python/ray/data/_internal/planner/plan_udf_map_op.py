@@ -186,7 +186,8 @@ def plan_streaming_repartition_op(
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block
+            target_num_rows_per_block=op.target_num_rows_per_block,
+            override_max_safe_rows_per_block_factor=op.override_max_safe_rows_per_block_factor,
         ),
     )
 
@@ -199,6 +200,7 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
