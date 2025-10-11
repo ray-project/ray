@@ -268,7 +268,13 @@ class Monitor:
             self.autoscaler.provider._set_nodes(new_nodes)
 
         mirror_node_types = {}
-        cluster_full = False
+        legacy_cluster_full_detected = any(
+            getattr(entry, "cluster_full_of_actors_detected", False)
+            for entry in resources_batch_data.batch
+        )
+        cluster_full = legacy_cluster_full_detected or getattr(
+            response, "cluster_full_of_actors_detected_by_gcs", False
+        )
         if (
             hasattr(response, "cluster_full_of_actors_detected_by_gcs")
             and response.cluster_full_of_actors_detected_by_gcs
@@ -289,12 +295,6 @@ class Monitor:
                     "node_config": {},
                     "max_workers": 1,
                 }
-            if (
-                hasattr(resource_message, "cluster_full_of_actors_detected")
-                and resource_message.cluster_full_of_actors_detected
-            ):
-                # A worker node has detected the cluster full of actors.
-                cluster_full = True
             total_resources = dict(resource_message.total_resources)
             available_resources = dict(resource_message.available_resources)
 
