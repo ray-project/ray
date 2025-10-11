@@ -1257,8 +1257,8 @@ def read_pdfs(
     Examples:
         Read PDF files with default settings (page-level):
 
-        >>> import ray
-        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/")
+        >>> import ray  # doctest: +SKIP
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/")  # doctest: +SKIP
         >>> ds.schema()  # doctest: +SKIP
         Column       Type
         ------       ----
@@ -1268,7 +1268,7 @@ def read_pdfs(
 
         Read PDFs with file paths included:
 
-        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_paths=True)
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_paths=True)  # doctest: +SKIP
         >>> ds.schema()  # doctest: +SKIP
         Column       Type
         ------       ----
@@ -1279,7 +1279,7 @@ def read_pdfs(
 
         Read entire PDF documents as single rows:
 
-        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", pages=False)
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", pages=False)  # doctest: +SKIP
         >>> ds.schema()  # doctest: +SKIP
         Column       Type
         ------       ----
@@ -1288,26 +1288,26 @@ def read_pdfs(
 
         Extract images from PDF pages:
 
-        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_images=True)
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_images=True)  # doctest: +SKIP
         >>> row = ds.take(1)[0]  # doctest: +SKIP
         >>> print(f"Page has {row['num_images']} images")  # doctest: +SKIP
 
         Enable OCR for image-based PDFs:
 
-        >>> ds = ray.data.read_pdfs(
+        >>> ds = ray.data.read_pdfs(  # doctest: +SKIP
         ...     "s3://bucket/scanned-pdfs/",
         ...     ocr=True,
         ...     ocr_config={"lang": "eng"}
-        ... )  # doctest: +SKIP
+        ... )
 
         Handle very large PDFs efficiently by batching pages:
 
-        >>> # For a 500-page PDF, create 50 blocks of 10 pages each
-        >>> ds = ray.data.read_pdfs(
+        >>> # For a 500-page PDF, create 50 blocks of 10 pages each  # doctest: +SKIP
+        >>> ds = ray.data.read_pdfs(  # doctest: +SKIP
         ...     "s3://bucket/large-pdfs/",
         ...     max_pages_per_block=10
-        ... )  # doctest: +SKIP
-        >>> # This reduces memory overhead and improves performance
+        ... )
+        >>> # This reduces memory overhead and improves performance  # doctest: +SKIP
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1334,9 +1334,8 @@ def read_pdfs(
             this function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
-            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/
-                python/generated/pyarrow.fs.FileSystem.html
-                    #pyarrow.fs.FileSystem.open_input_file>`_
+            `pyarrow.fs.FileSystem.open_input_file
+            <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_file>`_
             when opening input files to read.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
