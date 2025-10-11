@@ -163,9 +163,10 @@ class SerializationContext:
         # Enable zero-copy deserialization of PyTorch tensors if the environment variable is set.
         # `_zero_copy_maker_key` and `_zero_copy_maker_value` together identify a serialized tensor;
         # `_zero_copy_payload` stores the underlying NumPy array data.
-        self._enable_zero_copy_tensors = False
-        if os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1":
-            self._enable_zero_copy_tensors = True
+        self._enable_zero_copy_tensors = (
+            os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1"
+        )
+        if self._enable_zero_copy_tensors:
             self._zero_copy_maker_key = "_ray_zc_key_"
             self._zero_copy_maker_value = "_ray_zc_value_"
             self._zero_copy_payload = "_ray_zc_payload_"
