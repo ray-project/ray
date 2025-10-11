@@ -141,39 +141,33 @@ class MCAPDatasource(FileBasedDatasource):
         """
         import mcap
 
-        try:
-            reader = mcap.reader.make_reader(f)
-            # Note: MCAP summaries are optional and iter_messages works without them
-            # We don't need to validate the summary since it's not required
+        reader = mcap.reader.make_reader(f)
+        # Note: MCAP summaries are optional and iter_messages works without them
+        # We don't need to validate the summary since it's not required
 
-            # Use MCAP's built-in filtering for topics and time range
-            messages = reader.iter_messages(
-                topics=list(self._topics) if self._topics else None,
-                start_time=self._time_range.start_time if self._time_range else None,
-                end_time=self._time_range.end_time if self._time_range else None,
-                log_time_order=True,
-                reverse=False,
-            )
+        # Use MCAP's built-in filtering for topics and time range
+        messages = reader.iter_messages(
+            topics=list(self._topics) if self._topics else None,
+            start_time=self._time_range.start_time if self._time_range else None,
+            end_time=self._time_range.end_time if self._time_range else None,
+            log_time_order=True,
+            reverse=False,
+        )
 
-            builder = DelegatingBlockBuilder()
+        builder = DelegatingBlockBuilder()
 
-            for schema, channel, message in messages:
-                # Apply filters that couldn't be pushed down to MCAP level
-                if not self._should_include_message(schema, channel, message):
-                    continue
+        for schema, channel, message in messages:
+            # Apply filters that couldn't be pushed down to MCAP level
+            if not self._should_include_message(schema, channel, message):
+                continue
 
-                # Convert message to dictionary format
-                message_data = self._message_to_dict(schema, channel, message, path)
-                builder.add(message_data)
+            # Convert message to dictionary format
+            message_data = self._message_to_dict(schema, channel, message, path)
+            builder.add(message_data)
 
-            # Yield the block if we have any messages
-            if builder.num_rows() > 0:
-                yield builder.build()
-
-        except Exception as e:
-            logger.error(f"Error reading MCAP file {path}: {e}")
-            logger.debug(f"MCAP file read error details: {type(e).__name__}: {e}")
-            raise ValueError(f"Failed to read MCAP file {path}: {e}") from e
+        # Yield the block if we have any messages
+        if builder.num_rows() > 0:
+            yield builder.build()
 
     def _should_include_message(
         self, schema: "Schema", channel: "Channel", message: "Message"
