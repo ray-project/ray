@@ -72,7 +72,7 @@ STRUCTURAL_EQUALITY_TEST_CASES = [
     STRUCTURAL_EQUALITY_TEST_CASES,
     ids=[f"{i}" for i in range(len(STRUCTURAL_EQUALITY_TEST_CASES))],
 )
-def test_structural_equality(expr1, expr2, expected):
+def test_structural_equality(expr1: Expr, expr2: Expr, expected: bool):
     """Test `structurally_equals` for various expression trees.
 
     This test verifies that the structural equality comparison works correctly
@@ -660,7 +660,7 @@ def test_case_to_pyarrow_conversion():
 
 def test_when_to_pyarrow_fails():
     """Test that incomplete WhenExpr cannot be converted to PyArrow."""
-    from ray.data.expressions import col, lit, when, WhenExpr
+    from ray.data.expressions import WhenExpr, col, lit, when
 
     # Create incomplete when expression
     when_expr = when(col("age") > 30, lit("Senior"))
