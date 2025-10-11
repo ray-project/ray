@@ -249,7 +249,8 @@ NodeManager::NodeManager(
 }
 
 void NodeManager::RegisterGcs() {
-  auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
+  auto on_node_change = [this](const NodeID &node_id,
+                               const rpc::GcsNodeAddressAndLiveness &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
     } else {
@@ -293,8 +294,9 @@ void NodeManager::RegisterGcs() {
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   };
+
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  gcs_client_.Nodes().AsyncSubscribeToNodeChange(
+  gcs_client_.Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
       std::move(on_node_change), std::move(on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
@@ -790,7 +792,7 @@ void NodeManager::WarnResourceDeadlock() {
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
-void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
+void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeAdded] Received callback from node id ";

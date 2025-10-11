@@ -722,7 +722,8 @@ void CoreWorker::SubscribeToNodeChanges() {
                            rate_limiter = lease_request_rate_limiter_,
                            raylet_client_pool = raylet_client_pool_,
                            core_worker_client_pool = core_worker_client_pool_](
-                              const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+                              const NodeID &node_id,
+                              const rpc::GcsNodeAddressAndLiveness &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
@@ -738,7 +739,7 @@ void CoreWorker::SubscribeToNodeChanges() {
       }
     };
 
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         std::move(on_node_change), [this](const Status &) {
           {
             std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);
