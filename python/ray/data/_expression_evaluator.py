@@ -52,10 +52,19 @@ def _pa_add_or_concat(left, right):
         right = pa.scalar(right)
 
     # Get the type, handling both scalars and arrays
-    left_type = left.type if hasattr(left, "type") else pa.from_numpy_dtype(type(left))
-    right_type = (
-        right.type if hasattr(right, "type") else pa.from_numpy_dtype(type(right))
-    )
+    if hasattr(left, "type"):
+        left_type = left.type
+    elif isinstance(left, np.ndarray):
+        left_type = pa.from_numpy_dtype(left.dtype)
+    else:
+        left_type = pa.from_numpy_dtype(type(left))
+
+    if hasattr(right, "type"):
+        right_type = right.type
+    elif isinstance(right, np.ndarray):
+        right_type = pa.from_numpy_dtype(right.dtype)
+    else:
+        right_type = pa.from_numpy_dtype(type(right))
 
     # Unwrap dictionary-encoded types
     if pa.types.is_dictionary(left_type):
