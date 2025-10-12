@@ -59,6 +59,12 @@ class ResourceIsolationConfig:
         self._constructed = False
 
         if not enable_resource_isolation:
+            if self.cgroup_path:
+                raise ValueError(
+                    "cgroup_path cannot be set when resource isolation is not enabled. "
+                    "Set enable_resource_isolation to True if you're using ray.init or use the "
+                    "--enable-resource-isolation flag if you're using the ray cli."
+                )
             if system_reserved_cpu:
                 raise ValueError(
                     "system_reserved_cpu cannot be set when resource isolation is not enabled. "
@@ -69,12 +75,6 @@ class ResourceIsolationConfig:
             if self.system_reserved_memory:
                 raise ValueError(
                     "system_reserved_memory cannot be set when resource isolation is not enabled. "
-                    "Set enable_resource_isolation to True if you're using ray.init or use the "
-                    "--enable-resource-isolation flag if you're using the ray cli."
-                )
-            if self.cgroup_path:
-                raise ValueError(
-                    "cgroup_path cannot be set when resource isolation is not enabled. "
                     "Set enable_resource_isolation to True if you're using ray.init or use the "
                     "--enable-resource-isolation flag if you're using the ray cli."
                 )
@@ -101,16 +101,16 @@ class ResourceIsolationConfig:
             "enable_resource_isolation is False."
         )
         assert not self._constructed, (
-            "Cannot add object_store_memory to system_reserved_memory when"
-            "multiple times."
+            "Cannot call add_object_store_memory more than once with an instance "
+            "ResourceIsolationConfig. This is a bug in the ray code. "
         )
         self.system_reserved_memory += object_store_memory
         available_system_memory = ray._common.utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
                 f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
-                " object_store_bytes + system_reserved_memory, is greater than the total memory "
-                f" available={available_system_memory}. Pick a smaller number of bytes for object_store_bytes "
+                "object_store_bytes + system_reserved_memory, is greater than the total memory "
+                f"available={available_system_memory}. Pick a smaller number of bytes for object_store_bytes "
                 "or system_reserved_memory."
             )
         self._constructed = True
@@ -121,8 +121,7 @@ class ResourceIsolationConfig:
 
     @staticmethod
     def _validate_and_get_cgroup_path(cgroup_path: Optional[str]) -> str:
-        """Returns the ray_constants.DEFAULT_CGROUP_PATH if cgroup_path is not
-        specified. Checks the type of cgroup_path.
+        """Returns the ray_constants.DEFAULT_CGROUP_PATH if cgroup_path is not specified.
 
         Args:
             cgroup_path: The path for the cgroup the raylet should use to enforce
@@ -182,14 +181,14 @@ class ResourceIsolationConfig:
             )
 
         if not system_reserved_cpu:
-            system_reserved_cpu = int(
+            system_reserved_cpu = float(
                 min(
                     max(
                         ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES,
                         ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION
                         * available_system_cpus,
                     ),
-                    ray_constants.DEFAULT_MAX_SYSTEM_RESERVED_CPU_PROPORTION,
+                    ray_constants.DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES,
                 )
             )
 
