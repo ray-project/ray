@@ -10,7 +10,7 @@ You can access the rank and world size from within a deployment through the repl
 
 The following example shows how to access replica rank information:
 
-```{literalinclude} ../serve/doc_code/replica_rank.py
+```{literalinclude} ../doc_code/replica_rank.py
 :start-after: __replica_rank_start__
 :end-before: __replica_rank_end__
 :language: python
@@ -27,7 +27,7 @@ When a replica's rank changes (such as during downscaling), Ray Serve can automa
 
 The following example shows how to implement `reconfigure` to handle rank changes:
 
-```{literalinclude} ../serve/doc_code/replica_rank.py
+```{literalinclude} ../doc_code/replica_rank.py
 :start-after: __reconfigure_rank_start__
 :end-before: __reconfigure_rank_end__
 :language: python
