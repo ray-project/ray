@@ -460,7 +460,7 @@ def run_release_test_kuberay(
             kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
         else:
             kuberay_autoscaler_config = None
-        working_dir_upload_path = upload_working_dir_to_gcs(get_working_dir(test))
+        working_dir_upload_path = _upload_working_dir_to_gcs(get_working_dir(test))
 
         command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
         test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]

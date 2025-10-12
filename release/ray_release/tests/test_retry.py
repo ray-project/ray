@@ -3,6 +3,7 @@ import pytest
 
 from ray_release import retry
 
+
 def test_retry_with_no_error():
     invocation_count = 0
 

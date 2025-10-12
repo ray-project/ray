@@ -408,6 +408,7 @@ py_library(
     deps = [
         ":logger",
         ":util",
+        ":exception",
         bk_require("anyscale"),
     ],
 )
