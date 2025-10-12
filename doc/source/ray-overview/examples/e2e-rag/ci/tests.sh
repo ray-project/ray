@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euxo pipefail
+
 # Notebooks 4, 5 and 6 require bespoke Anyscale Service (so skip testing)
 
 ordered_notebook_names=(

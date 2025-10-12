@@ -5,10 +5,10 @@ import time
 import pytest
 
 from ray.util.client.common import (
-    _id_is_newer,
-    ResponseCache,
-    OrderedResponseCache,
     INT32_MAX,
+    OrderedResponseCache,
+    ResponseCache,
+    _id_is_newer,
 )
 
 

@@ -10,11 +10,13 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
-from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.autoscaler import AutoscalingActorPool
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
+from ray.data._internal.actor_autoscaler import (
+    AutoscalingActorPool,
+)
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
 from ray.data._internal.execution.interfaces import (
@@ -63,7 +65,6 @@ class ActorPoolMapOperator(MapOperator):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -71,6 +72,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        target_max_block_size_override: Optional[int] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -79,8 +81,6 @@ class ActorPoolMapOperator(MapOperator):
                 to each ref bundle input.
             input_op: Operator generating input data for this op.
             data_context: The DataContext instance containing configuration settings.
-            target_max_block_size: The target maximum number of bytes to
-                include in an output block.
             compute_strategy: `ComputeStrategy` used for this operator.
             name: The name of this operator.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -98,13 +98,15 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            target_max_block_size_override: The target maximum number of bytes to
+                include in an output block.
         """
         super().__init__(
             map_transformer,
             input_op,
             data_context,
             name,
-            target_max_block_size,
+            target_max_block_size_override,
             min_rows_per_bundle,
             supports_fusion,
             map_task_kwargs,
@@ -148,6 +150,7 @@ class ActorPoolMapOperator(MapOperator):
             per_actor_resource_usage,
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
+            initial_size=compute_strategy.initial_size,
             max_actor_concurrency=max_actor_concurrency,
             max_tasks_in_flight_per_actor=(
                 # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
@@ -201,7 +204,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
-                delta=self._actor_pool.min_size(), reason="scaling to min size"
+                delta=self._actor_pool.initial_size(), reason="scaling to initial size"
             )
         )
 
@@ -298,7 +301,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
-                target_max_block_size=self.actual_target_max_block_size,
+                target_max_block_size_override=self.target_max_block_size_override,
             )
             gen = actor.submit.options(
                 num_returns="streaming",
@@ -476,6 +479,22 @@ class ActorPoolMapOperator(MapOperator):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
 
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
+        return per_actor_resource_usage.scale(1 / max_concurrency)
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        return max_concurrency * self._actor_pool.max_size()
+
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self._actor_pool.per_actor_resource_usage()
+
     def update_resource_usage(self) -> None:
         """Updates resources usage."""
         for actor in self._actor_pool.get_running_actor_refs():
@@ -510,9 +529,11 @@ class _MapWorker:
         logical_actor_id: str,
         actor_location_tracker: ActorLocationTracker,
     ):
-        DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
+        # Initialize the data context for this actor after setting the src_fn_name in order to not
+        # break __repr__. It's possible that logging setup fails.
+        DataContext._set_current(ctx)
         # Initialize state for this actor.
         self._map_transformer.init()
         self._logical_actor_id = logical_actor_id
@@ -700,7 +721,7 @@ class _ActorPool(AutoscalingActorPool):
     actors when the operator is done submitting work to the pool.
     """
 
-    _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 30
+    _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
     _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
     _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
@@ -711,6 +732,7 @@ class _ActorPool(AutoscalingActorPool):
         *,
         min_size: int,
         max_size: int,
+        initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
@@ -726,8 +748,9 @@ class _ActorPool(AutoscalingActorPool):
                 in the pool. Note, that this constraint could be violated when
                 no new work is available for scheduling in the actor pool (ie
                 when operator completes execution).
-            max_size: The minimum number of running actors to be maintained
+            max_size: The maximum number of running actors to be maintained
                 in the pool.
+            initial_size: The initial number of actors to start with.
             max_actor_concurrency: The maximum number of concurrent tasks a
                 single actor can execute (derived from `ray_remote_args`
                 passed to the operator).
@@ -739,6 +762,7 @@ class _ActorPool(AutoscalingActorPool):
 
         self._min_size: int = min_size
         self._max_size: int = max_size
+        self._initial_size: int = initial_size
         self._max_actor_concurrency: int = max_actor_concurrency
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
@@ -746,11 +770,13 @@ class _ActorPool(AutoscalingActorPool):
 
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
+        assert self._initial_size <= self._max_size
+        assert self._initial_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None
 
         # Timestamp of the last scale up action
-        self._last_upscaling_ts: Optional[float] = None
+        self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
         # Actors that have started running, including alive and restarting actors.
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
@@ -802,6 +828,9 @@ class _ActorPool(AutoscalingActorPool):
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
 
+    def initial_size(self) -> int:
+        return self._initial_size
+
     def _can_apply(self, config: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""
 
@@ -815,21 +844,21 @@ class _ActorPool(AutoscalingActorPool):
             # scaling up, ie if actor pool just scaled down, it'd still be able
             # to scale back up immediately.
             if (
-                self._last_upscaling_ts is not None
-                and time.time()
-                <= self._last_upscaling_ts
-                + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+                not config.force
+                and self._last_upscaled_at is not None
+                and (
+                    time.time()
+                    <= self._last_upscaled_at
+                    + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
+                )
             ):
                 # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
                 #       per upscaling event
-                if (
-                    self._last_upscaling_ts
-                    != self._last_downscaling_debounce_warning_ts
-                ):
+                if self._last_upscaled_at != self._last_downscaling_debounce_warning_ts:
                     logger.debug(
-                        f"Ignoring scaling down request (request={config}; reason=debounced from scaling up at {self._last_upscaling_ts})"
+                        f"Ignoring scaling down request (request={config}; reason=debounced from scaling up at {self._last_upscaled_at})"
                     )
-                    self._last_downscaling_debounce_warning_ts = self._last_upscaling_ts
+                    self._last_downscaling_debounce_warning_ts = self._last_upscaled_at
 
                 return False
 
@@ -853,7 +882,7 @@ class _ActorPool(AutoscalingActorPool):
                 self.add_pending_actor(actor, ready_ref)
 
             # Capture last scale up timestamp
-            self._last_upscaling_ts = time.time()
+            self._last_upscaled_at = time.time()
 
             return target_num_actors
 

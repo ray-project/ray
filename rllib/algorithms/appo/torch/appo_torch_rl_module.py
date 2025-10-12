@@ -2,7 +2,7 @@
 from ray.rllib.algorithms.appo.torch.default_appo_torch_rl_module import (  # noqa
     DefaultAPPOTorchRLModule as APPOTorchRLModule,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 
 
 deprecation_warning(

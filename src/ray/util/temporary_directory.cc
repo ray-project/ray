@@ -17,7 +17,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "ray/util/util.h"
+#include "ray/common/id.h"
 
 namespace ray {
 
@@ -25,7 +25,7 @@ ScopedTemporaryDirectory::ScopedTemporaryDirectory(const std::string &dir) {
   temporary_directory_ =
       dir.empty() ? std::filesystem::temp_directory_path() : std::filesystem::path{dir};
   // Manually generate a directory name by appending UUID.
-  temporary_directory_ = temporary_directory_ / GenerateUUIDV4();
+  temporary_directory_ = temporary_directory_ / UniqueID::FromRandom().Hex();
   RAY_CHECK(std::filesystem::create_directory(temporary_directory_));
 }
 ScopedTemporaryDirectory::~ScopedTemporaryDirectory() {

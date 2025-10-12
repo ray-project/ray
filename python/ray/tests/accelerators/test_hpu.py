@@ -1,10 +1,11 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray._private.accelerators import hpu, HPUAcceleratorManager
+from ray._private.accelerators import HPUAcceleratorManager, hpu
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 

@@ -10,10 +10,16 @@ from packaging.version import Version
 
 import ray
 from ray._common.network_utils import build_address
+from ray._private import ray_constants
 from ray.air._internal.device_manager import register_custom_torch_dist_backend
+from ray.exceptions import GetTimeoutError
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.constants import (
+    DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+    TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+)
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -154,11 +160,14 @@ def _set_torch_distributed_env_vars():
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
+    def on_start(self, worker_group: BaseWorkerGroup, backend_config: TorchConfig):
         if dist.is_available():
             # Set the appropriate training backend.
             if backend_config.backend is None:
-                if worker_group.num_gpus_per_worker > 0:
+                resources = worker_group.get_resources_per_worker()
+                num_gpus_per_worker = resources.get("GPU", 0)
+
+                if num_gpus_per_worker > 0:
                     backend = "nccl"
                 else:
                     backend = "gloo"
@@ -202,13 +211,23 @@ class _TorchBackend(Backend):
         else:
             raise RuntimeError("Distributed torch is not available.")
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-        worker_group.execute(
+    def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config):
+        futures = worker_group.execute_async(
             _shutdown_torch,
             destroy_process_group=len(worker_group) > 1,
         )
+        timeout_s = ray_constants.env_integer(
+            TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+            DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+        )
+        try:
+            ray.get(futures, timeout=timeout_s)
+        except GetTimeoutError:
+            logger.warning(
+                f"Torch process group shutdown timed out after {timeout_s} seconds"
+            )
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: BackendConfig
+        self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
         worker_group.execute(_set_torch_distributed_env_vars)

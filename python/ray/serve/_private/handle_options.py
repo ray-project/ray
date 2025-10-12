@@ -62,6 +62,8 @@ class DynamicHandleOptionsBase(ABC):
 
 @dataclass(frozen=True)
 class DynamicHandleOptions(DynamicHandleOptionsBase):
+    _by_reference: bool = True
+
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptions":
         new_kwargs = {}
 

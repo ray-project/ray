@@ -43,4 +43,3 @@ Deprecated API
   :toctree: doc/
 
   Dataset.iter_tf_batches
-  Dataset.to_torch

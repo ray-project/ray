@@ -127,7 +127,7 @@ General recommendations with AWS instance types:
   should help with this). If your CPU utilization is low add GPUs, or vice
   versa.
 * The exact ratio will be very dependent on your workload.
-* Once you find a good ratio, you should be able to scale up and and keep the
+* Once you find a good ratio, you should be able to scale up and keep the
   same ratio.
 * You can’t infinitely scale forever. Eventually, as you add more machines your
   performance improvements will become sub-linear/not worth it. There may not

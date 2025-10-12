@@ -16,6 +16,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
+        python_version: Optional[str] = None,
         install_mask: Optional[str] = None,
         tmp_filesystem: Optional[str] = None,
         privileged: bool = False,
@@ -28,6 +29,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
                 f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/ray-mount",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
+            python_version=python_version,
             tmp_filesystem=tmp_filesystem,
             privileged=privileged,
         )

@@ -23,20 +23,17 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
-#include "ray/common/bundle_spec.h"
-#include "ray/common/cgroup/cgroup_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
-#include "ray/common/cgroup/constants.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/runtime_env_common.h"
-#include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client.h"
+#include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
-#include "ray/util/container_util.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -45,7 +42,6 @@
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace core {
@@ -61,7 +57,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
                                     const JobID &job_id,
                                     const WorkerID &worker_id,
                                     const std::string &suffix) {
-  std::string parsed_job_id = "";
+  std::string parsed_job_id;
   if (job_id.IsNil()) {
     char *job_id_env = ::getenv("RAY_JOB_ID");
     if (job_id_env != nullptr) {
@@ -136,19 +132,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  auto client_call_manager =
-      std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+  auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+      io_service_, /*record_stats=*/false, options.node_ip_address);
   auto periodical_runner = PeriodicalRunner::Create(io_service_);
   auto worker_context = std::make_unique<WorkerContext>(
       options.worker_type, worker_id, GetProcessJobID(options));
   auto pid = getpid();
-
-  // Move worker process into cgroup on startup.
-  AppProcCgroupMetadata app_cgroup_metadata;
-  app_cgroup_metadata.pid = pid;
-  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
-  GetCgroupSetup(options.enable_resource_isolation)
-      .ApplyCgroupContext(app_cgroup_metadata);
 
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 
@@ -156,15 +145,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   if (RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
 #ifdef __linux__
     // Not setting sigchld = ignore: user may want to do waitpid on their own.
-    // If user's bad code causes a zombie process, it will hang their in zombie status
+    // If user's bad code causes a zombie process, it will hang there in zombie status
     // until this worker exits and raylet reaps it.
     if (SetThisProcessAsSubreaper()) {
-      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << pid;
+      RAY_LOG(INFO) << "Set this core_worker process as subreaper: " << pid
+                    << " (deprecated; prefer per-worker process groups).";
       SetSigchldIgnore();
     } else {
       RAY_LOG(WARNING)
           << "Failed to set this core_worker process as subreaper. If Raylet is set as "
-             "subreaper, user-spawn daemon processes may be killed by raylet.";
+             "subreaper, user-spawn daemon processes may be killed by raylet. "
+             "Subreaper is deprecated; prefer per-worker process groups.";
     }
 #else
     RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Raylet will not "
@@ -173,9 +164,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   }
 
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_unique<gcs::GcsClient>(options.gcs_options),
+      std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager));
+                                                       *client_call_manager),
+      options.session_name);
 
   // Start the IO thread first to make sure the checker is working.
   boost::thread::attributes io_thread_attrs;
@@ -214,7 +206,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_ipc_client = std::make_shared<ray::ipc::RayletIpcClient>(
       io_service_, options.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
-  NodeID local_raylet_id;
+  NodeID local_node_id;
   int assigned_port = 0;
   Status status = raylet_ipc_client->RegisterClient(worker_context->GetWorkerID(),
                                                     options.worker_type,
@@ -224,7 +216,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.node_ip_address,
                                                     options.serialized_job_config,
                                                     options.startup_token,
-                                                    &local_raylet_id,
+                                                    &local_node_id,
                                                     &assigned_port);
   if (!status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -242,11 +234,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
-      local_raylet_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_address),
-      *client_call_manager,
-      /*raylet_unavailable_timeout_callback=*/[] {});
+      local_node_id, options.node_ip_address, options.node_manager_port);
+  auto local_raylet_rpc_client =
+      std::make_shared<rpc::RayletClient>(std::move(raylet_address),
+                                          *client_call_manager,
+                                          /*raylet_unavailable_timeout_callback=*/[] {});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -254,23 +246,24 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler_),
+      std::make_unique<rpc::CoreWorkerGrpcService>(
+          io_service_, *service_handler_, /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
   core_worker_server->Run();
 
   // Set our own address.
-  RAY_CHECK(!local_raylet_id.IsNil());
+  RAY_CHECK(!local_node_id.IsNil());
   rpc::Address rpc_address;
   rpc_address.set_ip_address(options.node_ip_address);
   rpc_address.set_port(core_worker_server->GetPort());
-  rpc_address.set_raylet_id(local_raylet_id.Binary());
+  rpc_address.set_node_id(local_node_id.Binary());
   rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
-  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_raylet_id)
+  RAY_LOG(INFO).WithField(worker_context->GetWorkerID()).WithField(local_node_id)
       << "Initializing worker at address: "
       << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
-  auto gcs_client = std::make_shared<gcs::GcsClient>(options.gcs_options,
-                                                     worker_context->GetWorkerID());
+  auto gcs_client = std::make_shared<gcs::GcsClient>(
+      options.gcs_options, options.node_ip_address, worker_context->GetWorkerID());
   RAY_CHECK_OK(gcs_client->Connect(io_service_));
 
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
@@ -282,7 +275,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
-        return std::make_shared<ray::raylet::RayletClient>(
+        return std::make_shared<ray::rpc::RayletClient>(
             addr,
             *core_worker->client_call_manager_,
             rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
@@ -351,6 +344,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
+  // We can turn on exit_on_connection_failure on for the core worker plasma
+  // client to early exit core worker after the raylet's death because on the
+  // raylet side, we never proactively close the plasma store connection even
+  // during shutdown. So any error from the raylet side should be a sign of raylet
+  // death.
+  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
+      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -359,6 +359,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
+      /*store_client=*/plasma_client,
+      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
@@ -381,9 +383,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // from the middle of user operations.
         core_worker->io_service_.post(
             [this, obj]() {
-              auto core_worker = GetCoreWorker();
-              if (core_worker->options_.unhandled_exception_handler != nullptr) {
-                core_worker->options_.unhandled_exception_handler(obj);
+              auto this_core_worker = GetCoreWorker();
+              if (this_core_worker->options_.unhandled_exception_handler != nullptr) {
+                this_core_worker->options_.unhandled_exception_handler(obj);
               }
             },
             "CoreWorker.HandleException");
@@ -399,7 +401,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
-    return core_worker->raylet_client_pool_->GetOrConnectByAddress(std::move(addr));
+    return core_worker->raylet_client_pool_->GetOrConnectByAddress(addr);
   };
 
   experimental_mutable_object_provider =
@@ -423,13 +425,29 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        RAY_CHECK_OK(
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+        constexpr int max_retries = 3;
+        int attempt = 0;
+        int64_t backoff_ms = 10;
+        Status put_status;
+        while (attempt++ < max_retries) {
+          put_status =
+              core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+          if (put_status.ok()) {
+            return Status::OK();
+          }
+          // Backoff before retrying.
+          std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+          backoff_ms *= 2;
+        }
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Exhausted plasma put retries (attempts=" << attempt
+            << ") with status: " << put_status;
+        return put_status;
       },
-      /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      /* async_retry_task_callback=*/
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         auto core_worker = GetCoreWorker();
-        core_worker->TaskManagerRetryTask(spec, object_recovery, delay_ms);
+        core_worker->AsyncRetryTask(spec, delay_ms);
       },
       /*queue_generator_resubmit=*/
       [this](const TaskSpecification &spec) {
@@ -442,31 +460,41 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
-      [this](const ActorID &actor_id) {
+      [this](const ActorID &actor_id)
+          -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
         auto core_worker = GetCoreWorker();
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
-        RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
-        return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
+        if (!addr.has_value()) {
+          return std::nullopt;
+        }
+        return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
-      gcs_client);
+      gcs_client,
+      task_by_state_gauge_,
+      /*free_actor_object_callback=*/
+      [this](const ObjectID &object_id) {
+        auto core_worker = GetCoreWorker();
+        core_worker->free_actor_object_callback_(object_id);
+      });
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id,
+                                   const std::string &actor_name,
+                                   int64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
     auto core_worker = GetCoreWorker();
-    std::ostringstream stream;
-    stream << "Warning: More than " << num_queued
-           << " tasks are pending submission to actor " << actor_id
-           << ". To reduce memory usage, wait for these tasks to finish before sending "
-              "more.";
-    RAY_CHECK_OK(core_worker->PushError(core_worker->options_.job_id,
-                                        "excess_queueing_warning",
-                                        stream.str(),
-                                        timestamp));
+    auto message = absl::StrFormat(
+        "Warning: More than %d tasks are pending submission to actor %s with actor_id "
+        "%s. To reduce memory usage, wait for these tasks to finish before sending more.",
+        num_queued,
+        actor_name,
+        actor_id.Hex());
+    RAY_CHECK_OK(core_worker->PushError(
+        core_worker->options_.job_id, "excess_queueing_warning", message, timestamp));
   };
 
-  auto actor_creator = std::make_shared<DefaultActorCreator>(gcs_client);
+  auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
@@ -487,19 +515,20 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     std::optional<rpc::Address> address_opt;
     if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
       auto &address = address_opt.emplace();
-      address.set_raylet_id(node_info->node_id());
+      address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
       address.set_port(node_info->node_manager_port());
     }
     return address_opt;
   };
 
-  auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalityAwareLeasePolicy>(
-                                    *reference_counter, node_addr_factory, rpc_address))
-                          : std::unique_ptr<LeasePolicyInterface>(
-                                std::make_unique<LocalLeasePolicy>(rpc_address));
+  auto lease_policy =
+      RayConfig::instance().locality_aware_leasing_enabled()
+          ? std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalityAwareLeasePolicy>(
+                    *reference_counter, node_addr_factory, raylet_address))
+          : std::unique_ptr<LeasePolicyInterface>(
+                std::make_unique<LocalLeasePolicy>(raylet_address));
 
   auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
       rpc_address,
@@ -509,7 +538,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::move(lease_policy),
       memory_store,
       *task_manager,
-      local_raylet_id,
+      local_node_id,
       options.worker_type,
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator,
@@ -570,7 +599,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           continue;
         }
         rpc::Address addr;
-        addr.set_raylet_id(node_info->node_id());
+        addr.set_node_id(node_info->node_id());
         addr.set_ip_address(node_info->node_manager_address());
         addr.set_port(node_info->node_manager_port());
         locations.push_back(std::move(addr));
@@ -586,7 +615,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           for (const auto &node_info : node_infos) {
             if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
               rpc::Address addr;
-              addr.set_raylet_id(node_info.node_id());
+              addr.set_node_id(node_info.node_id());
               addr.set_ip_address(node_info.node_manager_address());
               addr.set_port(node_info.node_manager_port());
               locations.push_back(std::move(addr));
@@ -651,7 +680,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   pid);
+                                   pid,
+                                   task_by_state_gauge_,
+                                   actor_by_state_gauge_);
   return core_worker;
 }
 
@@ -779,6 +810,15 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
+    // Initialize metrics agent client.
+    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+        "127.0.0.1",
+        options_.metrics_agent_port,
+        io_service_,
+        *write_locked.Get()->client_call_manager_);
+    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
+    });
   }
 }
 
@@ -813,18 +853,18 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
-    instrumented_io_context io_service{/*enable_lag_probe=*/false,
+    instrumented_io_context io_service{/*emit_metrics=*/false,
                                        /*running_on_single_thread=*/true};
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
-    rpc::ClientCallManager client_call_manager(io_service, /*record_stats=*/false);
+    rpc::ClientCallManager client_call_manager(
+        io_service, /*record_stats=*/false, options_.node_ip_address);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    raylet::RayletClient local_raylet_rpc_client(
-        raylet_address, client_call_manager, [] {});
+    rpc::RayletClient local_raylet_rpc_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

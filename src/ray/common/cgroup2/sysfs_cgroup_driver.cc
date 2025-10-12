@@ -28,9 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
-#include <iterator>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -38,6 +36,13 @@
 #include "absl/strings/str_join.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
+
+// Used to identify if a filesystem is mounted using cgroupv2.
+// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
@@ -56,8 +61,8 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
 
   struct mntent *mnt;
   while ((mnt = getmntent(fp)) != nullptr) {
-    found_cgroupv1 = found_cgroupv1 || strcmp(mnt->mnt_fsname, "cgroup") == 0;
-    found_cgroupv2 = found_cgroupv2 || strcmp(mnt->mnt_fsname, "cgroup2") == 0;
+    found_cgroupv1 = found_cgroupv1 || strcmp(mnt->mnt_type, "cgroup") == 0;
+    found_cgroupv2 = found_cgroupv2 || strcmp(mnt->mnt_type, "cgroup2") == 0;
   }
 
   // After parsing the mount file, the file should be at the EOF position.
@@ -136,14 +141,14 @@ Status SysFsCgroupDriver::CreateCgroup(const std::string &cgroup_path) {
                           strerror(errno)));
     }
     if (errno == EACCES) {
-      return Status::PermissionDenied(absl::StrFormat(
-          "Failed to create cgroup at path %s with permissions %#o. "
-          "The current user does not have read, write, execute permissions "
-          "for the parent cgroup.\n"
-          "Error: %s.",
-          cgroup_path,
-          S_IRWXU,
-          strerror(errno)));
+      return Status::PermissionDenied(
+          absl::StrFormat("Failed to create cgroup at path %s with permissions %#o. "
+                          "The process does not have read, write, execute permissions "
+                          "for the parent cgroup.\n"
+                          "Error: %s.",
+                          cgroup_path,
+                          S_IRWXU,
+                          strerror(errno)));
     }
     if (errno == EEXIST) {
       return Status::AlreadyExists(
@@ -159,6 +164,35 @@ Status SysFsCgroupDriver::CreateCgroup(const std::string &cgroup_path) {
                         "Error: %s.",
                         cgroup_path,
                         S_IRWXU,
+                        strerror(errno)));
+  }
+  return Status::OK();
+}
+
+Status SysFsCgroupDriver::DeleteCgroup(const std::string &cgroup_path) {
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
+  if (rmdir(cgroup_path.c_str()) == -1) {
+    if (errno == ENOENT) {
+      return Status::NotFound(absl::StrFormat(
+          "Failed to delete cgroup at path %s. The parent cgroup does not exist.\n"
+          "Error: %s.",
+          cgroup_path,
+          strerror(errno)));
+    }
+    if (errno == EACCES) {
+      return Status::PermissionDenied(
+          absl::StrFormat("Failed to delete cgroup at path %s. "
+                          "The process does not have read, write, execute permissions "
+                          "for the parent cgroup.\n"
+                          "Error: %s.",
+                          cgroup_path,
+                          strerror(errno)));
+    }
+    return Status::InvalidArgument(
+        absl::StrFormat("Failed to delete cgroup at path %s. To delete a cgroup, it must "
+                        "have no children and it must not have any processes.\n"
+                        "Error: %s.",
+                        cgroup_path,
                         strerror(errno)));
   }
   return Status::OK();
@@ -253,7 +287,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
   out_file.flush();
   if (out_file.fail()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", enabled_ctrls_file));
+        "Could not write to cgroup controllers file %s", enabled_ctrls_file));
   }
   return Status::OK();
 }
@@ -292,66 +326,33 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   out_file.flush();
   if (!out_file.good()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", controller_file_path));
+        "Could not write to cgroup controllers file %s", controller_file_path));
   }
   return Status::OK();
 }
 
-Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
+Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
+                                        const std::string &controller,
                                         const std::string &constraint,
                                         const std::string &constraint_value) {
-  RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
-  auto constraint_it = supported_constraints_.find(constraint);
-  if (constraint_it == supported_constraints_.end()) {
-    std::string supported_constraint_names("[");
-    for (auto it = supported_constraints_.begin(); it != supported_constraints_.end();
-         ++it) {
-      supported_constraint_names.append(it->first);
-      if (std::next(it) != supported_constraints_.end()) {
-        supported_constraint_names.append(", ");
-      }
-    }
-    supported_constraint_names.append("]");
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply constraint %s to cgroup %s. Ray only supports %s",
-        constraint,
-        cgroup,
-        supported_constraint_names));
-  }
-
-  // Check if the constraint value is out of range and therefore invalid.
-  auto [low, high] = constraint_it->second.range;
-  size_t value = static_cast<size_t>(std::stoi(constraint_value));
-  if (value < low || value > high) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply constraint %s=%s to cgroup %s. %s can only have values "
-        "in the range[%i, %i].",
-        constraint,
-        constraint_value,
-        cgroup,
-        constraint,
-        low,
-        high));
-  }
-
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
   // Check if the required controller for the constraint is enabled.
-  const std::string &controller = constraint_it->second.controller;
   StatusOr<std::unordered_set<std::string>> available_controllers_s =
-      GetEnabledControllers(cgroup);
+      GetEnabledControllers(cgroup_path);
   RAY_RETURN_NOT_OK(available_controllers_s.status());
   const auto &controllers = available_controllers_s.value();
   if (controllers.find(controller) == controllers.end()) {
     return Status::InvalidArgument(absl::StrFormat(
         "Failed to apply %s to cgroup %s. To use %s, enable the %s controller.",
         constraint,
-        cgroup,
+        cgroup_path,
         constraint,
         controller));
   }
 
   // Try to apply the constraint and propagate the appropriate failure error.
   std::string file_path =
-      cgroup + std::filesystem::path::preferred_separator + constraint;
+      cgroup_path + std::filesystem::path::preferred_separator + constraint;
 
   int fd = open(file_path.c_str(), O_RDWR);
 
@@ -361,7 +362,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
                         "Error: %s",
                         constraint,
                         constraint_value,
-                        cgroup,
+                        cgroup_path,
                         strerror(errno)));
   }
 
@@ -374,7 +375,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
                         "Error: %s",
                         constraint,
                         constraint_value,
-                        cgroup,
+                        cgroup_path,
                         strerror(errno)));
   }
   close(fd);
@@ -420,6 +421,37 @@ StatusOr<std::unordered_set<std::string>> SysFsCgroupDriver::ReadControllerFile(
   }
 
   return StatusOr<std::unordered_set<std::string>>(controllers);
+}
+
+Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
+                                             const std::string &process) {
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
+  std::filesystem::path cgroup_procs_file_path =
+      cgroup / std::filesystem::path(kCgroupProcsFilename);
+
+  int fd = open(cgroup_procs_file_path.c_str(), O_RDWR);
+
+  if (fd == -1) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  ssize_t bytes_written = write(fd, process.c_str(), process.size());
+
+  if (bytes_written != static_cast<ssize_t>(process.size())) {
+    close(fd);
+    return Status::InvalidArgument(absl::StrFormat(
+        "Failed to write pid %s to cgroup.procs for cgroup %s with error %s",
+        process,
+        cgroup,
+        strerror(errno)));
+  }
+
+  close(fd);
+  return Status::OK();
 }
 
 }  // namespace ray

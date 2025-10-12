@@ -22,7 +22,7 @@ AsyncIO for Actors
 
 Since Python 3.5, it is possible to write concurrent code using the
 ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
-Ray natively integrates with asyncio. You can use ray alongside with popular
+Ray natively integrates with asyncio. You can use Ray alongside popular
 async frameworks like aiohttp, aioredis, etc.
 
 .. testcode::
@@ -63,14 +63,14 @@ async frameworks like aiohttp, aioredis, etc.
 .. testoutput::
     :options: +MOCK
 
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) All coroutines are executing concurrently, unblocking.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
 
 .. testcode::
     :hide:
@@ -217,7 +217,7 @@ Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
 actor method is not allowed, because ``ray.get`` will block the execution
 of the event loop.
 
-In async actors, only one task can be running at any point in time (though tasks can be multi-plexed). There will be only one thread in AsyncActor! See :ref:`threaded-actors` if you want a threadpool.
+In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There will be only one thread in AsyncActor! See :ref:`threaded-actors` if you want a threadpool.
 
 Setting concurrency in Async Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -284,7 +284,7 @@ Sometimes, asyncio is not an ideal solution for your actor. For example, you may
 have one method that performs some computation heavy task while blocking the event loop, not giving up control via ``await``. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on ``await`` to context switch.
 
 
-Instead, you can use the ``max_concurrency`` Actor options without any async methods, allowng you to achieve threaded concurrency (like a thread pool).
+Instead, you can use the ``max_concurrency`` Actor options without any async methods, allowing you to achieve threaded concurrency (like a thread pool).
 
 
 .. warning::
