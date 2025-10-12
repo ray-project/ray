@@ -1732,9 +1732,9 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
         on=("id",),
         broadcast=True,
     )
-    assert left_outer_result.count() == 0, (
-        "Left outer join with empty left should return empty"
-    )
+    assert (
+        left_outer_result.count() == 0
+    ), "Left outer join with empty left should return empty"
 
     # Right outer join: should return all right rows with null left columns
     right_outer_result = empty_left.join(
@@ -1743,9 +1743,9 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
         on=("id",),
         broadcast=True,
     )
-    assert right_outer_result.count() == 3, (
-        "Right outer join with empty left should return all right rows"
-    )
+    assert (
+        right_outer_result.count() == 3
+    ), "Right outer join with empty left should return all right rows"
 
     # Full outer join: should return all right rows with null left columns
     full_outer_result = empty_left.join(
@@ -1754,9 +1754,9 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
         on=("id",),
         broadcast=True,
     )
-    assert full_outer_result.count() == 3, (
-        "Full outer join with empty left should return all right rows"
-    )
+    assert (
+        full_outer_result.count() == 3
+    ), "Full outer join with empty left should return all right rows"
 
     # Test case 2: Right dataset smaller and empty - no swapping needed
     large_left = ray.data.from_items(
@@ -1775,9 +1775,9 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
         on=("id",),
         broadcast=True,
     )
-    assert left_outer_result2.count() == 3, (
-        "Left outer join with empty right should return all left rows"
-    )
+    assert (
+        left_outer_result2.count() == 3
+    ), "Left outer join with empty right should return all left rows"
 
     # Right outer join: should return empty (right side is empty)
     right_outer_result2 = large_left.join(
@@ -1786,9 +1786,9 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
         on=("id",),
         broadcast=True,
     )
-    assert right_outer_result2.count() == 0, (
-        "Right outer join with empty right should return empty"
-    )
+    assert (
+        right_outer_result2.count() == 0
+    ), "Right outer join with empty right should return empty"
 
     # Verify that the results have correct column structure
     result_df = pd.DataFrame(left_outer_result2.take_all())
