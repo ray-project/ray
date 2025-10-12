@@ -362,7 +362,7 @@ class DeploymentConfig(BaseModel):
                 metrics_list = prom_wrapper.get("metrics", []) or []
                 data["autoscaling_config"]["prometheus_metrics"] = [
                     m.get("metric_name", "") for m in metrics_list
-                ]         
+                ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":

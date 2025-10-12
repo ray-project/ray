@@ -333,8 +333,6 @@ class AutoscalingConfig(BaseModel):
     # List of metric_names
     prometheus_metrics: Optional[List[str]] = None
 
-    # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = PrivateAttr(default=b"")
     aggregation_function: Union[str, AggregationFunction] = Field(
         default=AggregationFunction.MEAN,
         description="Function used to aggregate metrics across a time window.",
