@@ -78,7 +78,7 @@ DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
 # The default minimum number of cpu cores to reserve for ray system processes.
 # This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION < this value.
 DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES = env_float(
-    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES", 1.0
 )
 # The default maximum number of cpu cores to reserve for ray system processes.
 # This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION > this value.
