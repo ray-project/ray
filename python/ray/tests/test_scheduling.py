@@ -129,6 +129,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
         cluster.add_node(num_cpus=8)
     cluster.wait_for_nodes()
 
+    time.sleep(1)  # wait for the resource view to propagate
+
     assert ray.cluster_resources()["CPU"] == 16
 
     @ray.remote
@@ -140,6 +142,7 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     locations = ray.get([task.remote() for _ in range(8)])
     counter = collections.Counter(locations)
     spread = max(counter.values()) - min(counter.values())
+
     # Ideally we'd want 4 tasks to go to each node, but we'll settle for
     # anything better than a 1-7 split since randomness is noisy.
     assert spread < 7
