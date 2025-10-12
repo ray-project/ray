@@ -724,8 +724,10 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> 
 void GcsNodeManager::PublishNodeInfoToPubsub(const NodeID &node_id,
                                              const rpc::GcsNodeInfo &node_info) const {
   gcs_publisher_->PublishNodeInfo(node_id, node_info);
-  gcs_publisher_->PublishNodeAddressAndLiveness(
-      node_id, ConvertToGcsNodeAddressAndLiveness(node_info));
+
+  // Convert once and move to avoid copying
+  auto address_and_liveness = ConvertToGcsNodeAddressAndLiveness(node_info);
+  gcs_publisher_->PublishNodeAddressAndLiveness(node_id, std::move(address_and_liveness));
 }
 
 std::string GcsNodeManager::DebugString() const {
