@@ -92,6 +92,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import (
     Semaphore,
@@ -490,6 +491,7 @@ class ReplicaBase(ABC):
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
+            deployment_config=deployment_config,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -524,6 +526,8 @@ class ReplicaBase(ABC):
         self._docs_path: Optional[str] = None
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
+
+        self._rank = rank
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -875,8 +879,10 @@ class ReplicaBase(ABC):
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
+                    rank = ray.serve.context._get_internal_replica_context().rank
                     await self._user_callable_wrapper.call_reconfigure(
-                        deployment_config.user_config
+                        deployment_config.user_config,
+                        rank=rank,
                     )
 
             # A new replica should not be considered healthy until it passes
@@ -896,6 +902,8 @@ class ReplicaBase(ABC):
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
             )
+            rank_changed = rank != self._rank
+            self._rank = rank
             logging_config_changed = (
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
@@ -914,9 +922,10 @@ class ReplicaBase(ABC):
             await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                 deployment_config.max_ongoing_requests
             )
-            if user_config_changed:
+            if user_config_changed or rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
-                    deployment_config.user_config
+                    deployment_config.user_config,
+                    rank=rank,
                 )
 
             # We need to update internal replica context to reflect the new
@@ -1338,6 +1347,7 @@ class UserCallableWrapper:
         run_sync_methods_in_threadpool: bool,
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
+        deployment_config: DeploymentConfig,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1360,6 +1370,7 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._deployment_config = deployment_config
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1611,6 +1622,11 @@ class UserCallableWrapper:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
 
+            if isinstance(self._callable, TaskConsumerWrapper):
+                self._callable.initialize_callable(
+                    self._deployment_config.max_ongoing_requests
+                )
+
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
@@ -1680,26 +1696,42 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Any):
+    async def call_reconfigure(self, user_config: Optional[Any], rank: int):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
         # other methods. See https://github.com/ray-project/ray/pull/42159.
-        if user_config is not None:
+
+        # NOTE(abrar): The only way to subscribe to rank changes is to provide some user config.
+        # We can relax this in the future as more use cases arise for rank. I am reluctant to
+        # introduce behavior change for a feature we might not need.
+        user_subscribed_to_rank = False
+        if not self._is_function and hasattr(self._callable, RECONFIGURE_METHOD):
+            reconfigure_method = getattr(self._callable, RECONFIGURE_METHOD)
+            params = inspect.signature(reconfigure_method).parameters
+            user_subscribed_to_rank = "rank" in params
+        if user_config is not None or user_subscribed_to_rank:
             if self._is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
+                raise ValueError(
+                    "deployment_def must be a class to use user_config or rank"
+                )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    "user_config specified but deployment "
+                    "user_config or rank specified but deployment "
                     + self._deployment_id
                     + " missing "
                     + RECONFIGURE_METHOD
                     + " method"
                 )
+            kwargs = {}
+            if user_subscribed_to_rank:
+                # For backwards compatibility, only pass rank if it is an argument to the reconfigure method.
+                kwargs["rank"] = rank
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
                 args=(user_config,),
+                kwargs=kwargs,
             )
 
     async def _handle_user_method_result(
