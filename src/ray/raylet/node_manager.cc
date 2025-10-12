@@ -659,7 +659,7 @@ void NodeManager::QueryAllWorkerStates(
     bool include_task_info,
     int64_t limit,
     const std::function<void()> &on_all_replied) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                           /*filter_io_workers*/ true);
   for (auto &driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
@@ -957,7 +957,7 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
   // registered to raylet first (blocking call) and then connect to GCS, so there is no
   // race condition here.
   gcs_client_.AsyncResubscribe();
-  auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true);
   for (auto worker : workers) {
     worker->AsyncNotifyGCSRestart();
   }
@@ -2540,7 +2540,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   // and return the information from HandleNodesStatsRequest. The caller of
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true);
   absl::flat_hash_set<WorkerID> driver_ids;
   for (const auto &driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
@@ -2790,10 +2790,10 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
                                       rpc::GetWorkerPIDsReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                           /* filter_io_workers */ true);
   auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_drivers */ true,
-                                                      /* filter_system_driver */ true);
+                                                      /* filter_system_drivers */ true);
   all_workers.insert(all_workers.end(),
                      std::make_move_iterator(drivers.begin()),
                      std::make_move_iterator(drivers.end()));
@@ -2809,7 +2809,7 @@ void NodeManager::Stop() {
 #if !defined(_WIN32)
   // Best-effort process-group cleanup for any remaining workers before shutdown.
   if (RayConfig::instance().process_group_cleanup_enabled()) {
-    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                         /* filter_io_workers */ false);
     for (const auto &w : workers) {
       auto saved = w->GetSavedProcessGroupId();
