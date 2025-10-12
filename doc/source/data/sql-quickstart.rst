@@ -7,12 +7,12 @@ SQL Quickstart
 .. warning::
     Ray Data SQL is currently experimental and APIs are subject to change.
 
-This quickstart guide shows you how to get started with Ray Data SQL. You will learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
+This quickstart guide shows you how to get started with Ray Data SQL. Learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
 
 Installation
 ============
 
-Ray Data SQL is included with Ray Data. Install Ray Data with:
+Ray Data includes Ray Data SQL. Install Ray Data with:
 
 .. code-block:: console
 

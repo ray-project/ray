@@ -88,12 +88,12 @@ API Stability Guidelines
 
 Ray Data SQL follows Ray's API stability annotations:
 
-**@PublicAPI(stability="beta")** - Current Status
-  All main SQL functions (``sql``, ``register_table``, etc.) are marked as beta.
+**@PublicAPI with stability="beta"**
+  All main SQL functions like ``sql`` and ``register_table`` use beta stability annotations.
   This means the API is stable for early users but may still evolve.
 
-**@DeveloperAPI** - Advanced Features
-  Engine internals and advanced configuration options are marked as DeveloperAPI.
+**@DeveloperAPI**
+  Engine internals and advanced configuration options use DeveloperAPI annotations.
   These are for advanced users building on top of Ray Data SQL.
 
 Example API Annotations
@@ -323,8 +323,8 @@ Code Style Specifics
 SQL-Specific Conventions
 ------------------------
 
-* **SQL Keywords**: Use uppercase for SQL keywords in examples (``SELECT``, ``FROM``, ``WHERE``)
-* **Table Names**: Use lowercase with underscores (``user_data``, ``order_items``)
+* **SQL Keywords**: Use uppercase for SQL keywords in examples like ``SELECT``, ``FROM``, and ``WHERE``
+* **Table Names**: Use lowercase with underscores like ``user_data`` and ``order_items``
 * **Error Messages**: Provide helpful context about SQL syntax errors
 * **Configuration**: Make configuration options discoverable and well-documented
 
@@ -365,13 +365,13 @@ Getting Help
 Becoming a Reviewer
 -------------------
 
-Active contributors to Ray Data SQL may be invited to become reviewers. 
+The Ray team invites active contributors to Ray Data SQL to become reviewers. 
 Reviewers help ensure code quality and provide guidance to new contributors.
 
 Recognition
 -----------
 
-Significant contributions to Ray Data SQL are recognized in:
+Significant contributions to Ray Data SQL receive recognition in:
 
 * Ray release notes and changelogs
 * Community blog posts and talks

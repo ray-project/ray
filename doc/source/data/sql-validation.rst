@@ -8,7 +8,7 @@ Overview
 
 The validation system provides:
 
-- **Whitelist validation**: Ensures only supported SQL features are used
+- **Whitelist validation**: Ensures you use only supported SQL features
 - **Blacklist detection**: Identifies unsupported features with helpful error messages
 - **Alternative suggestions**: Provides guidance on how to achieve similar results with supported features
 - **Comprehensive error reporting**: Lists all validation issues in a single error message
@@ -18,7 +18,7 @@ The validation happens during SQL parsing, catching issues before query executio
 Getting Supported Features
 --------------------------
 
-You can programmatically check what SQL features are supported:
+You can programmatically check what SQL features Ray Data SQL supports:
 
 .. testcode::
 
@@ -43,9 +43,9 @@ Validating SQL Queries
 
 Validate SQL queries before execution to catch unsupported features:
 
-**Strict Mode (Default)**
+**Strict mode**
 
-Raises errors for unsupported features:
+Raises errors for unsupported features. This is the default behavior:
 
 .. testcode::
 
@@ -200,7 +200,7 @@ Unsupported Features with Alternatives
 - **EXISTS** → Use JOIN operations instead
 
 .. vale on
-- **ALL/ANY** → Use aggregation with MIN/MAX functions
+- **ALL/ANY** → Use aggregation with ``MIN``/``MAX`` functions
 
 Integration with Development Workflow
 -------------------------------------

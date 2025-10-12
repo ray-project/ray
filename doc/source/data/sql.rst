@@ -16,8 +16,8 @@ Ray Data SQL: SQL for Data
 
 Ray Data SQL provides a comprehensive SQL interface for Ray Datasets, enabling familiar SQL operations on distributed data. Execute complex queries, joins, aggregations, and transformations using standard SQL syntax while leveraging Ray's scalable processing capabilities.
 
-What is Ray Data SQL?
----------------------
+What's Ray Data SQL?
+--------------------
 
 Ray Data SQL is a distributed SQL engine that runs on Ray clusters. It allows you to query Ray Datasets using standard SQL syntax, making distributed data processing accessible to users familiar with SQL.
 
@@ -49,7 +49,7 @@ Common use cases:
 Install Ray Data SQL
 ---------------------
 
-Ray Data SQL is included with Ray Data. To install:
+Ray Data includes Ray Data SQL. To install:
 
 .. code-block:: console
 
@@ -101,15 +101,15 @@ Supported SQL features
 Ray Data SQL supports a wide range of SQL operations:
 
 Basic queries
-  - SELECT with column projections and aliases
-  - WHERE clauses with complex conditions
-  - ORDER BY with multiple columns
-  - LIMIT and OFFSET for pagination
+  - ``SELECT`` with column projections and aliases
+  - ``WHERE`` clauses with complex conditions
+  - ``ORDER BY`` with multiple columns
+  - ``LIMIT`` and ``OFFSET`` for pagination
 
 Aggregations
-  - GROUP BY with multiple columns  
-  - Aggregate functions: COUNT, SUM, AVG, MIN, MAX
-  - HAVING clauses for post-aggregation filtering
+  - ``GROUP BY`` with multiple columns  
+  - Aggregate functions: ``COUNT``, ``SUM``, ``AVG``, ``MIN``, ``MAX``
+  - ``HAVING`` clauses for post-aggregation filtering
 
 .. vale off
 
