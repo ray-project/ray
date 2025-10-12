@@ -22,8 +22,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import pyarrow as pa
 
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 

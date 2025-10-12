@@ -140,6 +140,7 @@ def test_kafka_datasource_estimate_inmemory_data_size(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

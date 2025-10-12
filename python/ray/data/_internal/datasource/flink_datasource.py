@@ -165,9 +165,10 @@ class FlinkDatasource(UnboundDatasource):
             ):
                 def flink_read_fn() -> Iterator[pa.Table]:
                     """Read function for Flink job output via REST API."""
-                    import requests
                     import json
                     from datetime import datetime
+
+                    import requests
 
                     if source_type_val == "rest_api":
                         # Read from Flink REST API

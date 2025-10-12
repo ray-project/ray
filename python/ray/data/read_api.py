@@ -69,7 +69,6 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.unbound_data_operator import (
     StreamingTrigger,
-    UnboundedData,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -4446,9 +4445,6 @@ def read_kafka(
         ImportError: If kafka-python is not installed.
     """
     from ray.data._internal.logical.interfaces import LogicalPlan
-    from ray.data._internal.logical.operators.unbound_data_operator import (
-        UnboundedData,
-    )
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext

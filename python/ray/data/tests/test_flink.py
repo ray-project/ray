@@ -158,6 +158,7 @@ def test_flink_invalid_source_type(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

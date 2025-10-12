@@ -144,6 +144,7 @@ def test_kinesis_enhanced_fan_out_config(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
