@@ -1,11 +1,14 @@
 import logging
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray.train
+
+if TYPE_CHECKING:
+    import xgboost
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.scaling_config import ScalingConfig
 from ray.train.run_config import RunConfig
+from ray.train.scaling_config import ScalingConfig
 from ray.train.trainer import GenDataset
 from ray.train.xgboost import RayTrainReportCallback
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
@@ -29,7 +32,6 @@ LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE = (
 
 
 def _xgboost_train_fn_per_worker(
-    config: dict,
     label_column: str,
     num_boost_round: int,
     dataset_keys: set,
@@ -46,25 +48,32 @@ def _xgboost_train_fn_per_worker(
     the configuration. It manages checkpointing, dataset iteration, and
     training progress tracking.
 
+    Note:
+        This is an internal function used by the V1 XGBoostTrainer. All parameters
+        are bound via functools.partial before being passed to the base trainer,
+        unlike the V2 pattern where a user-defined function receives train_loop_config.
+
     Args:
-        config: XGBoost training configuration parameters. Should include
-            tree_method, objective, and evaluation metrics.
         label_column: Name of the label column in the dataset. Must exist
             in all datasets.
         num_boost_round: Target number of boosting rounds for training.
             When resuming from checkpoint, trains for remaining rounds.
         dataset_keys: Set of dataset names available for training. Should
             include at least TRAIN_DATASET_KEY.
-        xgboost_train_kwargs: Additional XGBoost training arguments such as
-            callbacks, verbose settings, etc.
+        xgboost_train_kwargs: XGBoost training parameters dictionary containing
+            tree_method, objective, eval_metric, and other XGBoost parameters.
+            This is passed directly to xgb.train().
         use_external_memory: Whether to use external memory for DMatrix creation.
-            Required for large datasets that don't fit in RAM.
+            Required for large datasets that don't fit in RAM. Defaults to False
+            for backward compatibility.
         external_memory_cache_dir: Directory for caching external memory files.
-            Should be on fast storage with sufficient space.
+            Should be on fast storage with sufficient space. Optional, defaults
+            to system temp directory.
         external_memory_device: Device to use for external memory training
-            ("cpu" or "cuda").
+            ("cpu" or "cuda"). Defaults to "cpu" for backward compatibility.
         external_memory_batch_size: Batch size for external memory iteration.
-            Larger values improve I/O efficiency but use more memory.
+            Larger values improve I/O efficiency but use more memory. Optional,
+            will auto-configure if not provided.
 
     Raises:
         ValueError: If required datasets or columns are missing.
@@ -111,12 +120,12 @@ def _xgboost_train_fn_per_worker(
         # External memory requires hist tree method for optimal performance
         # Required by ExtMemQuantileDMatrix for external memory:
         # https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
-        if "tree_method" not in config:
-            config["tree_method"] = "hist"
-        elif config["tree_method"] != "hist":
+        if "tree_method" not in xgboost_train_kwargs:
+            xgboost_train_kwargs["tree_method"] = "hist"
+        elif xgboost_train_kwargs["tree_method"] != "hist":
             logger.warning(
                 f"External memory training requires tree_method='hist' for optimal performance. "
-                f"Current setting: {config['tree_method']}. "
+                f"Current setting: {xgboost_train_kwargs['tree_method']}. "
                 "Consider changing to 'hist' for better external memory performance. "
                 "See: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html"
             )
@@ -124,9 +133,9 @@ def _xgboost_train_fn_per_worker(
         # Recommend depthwise grow policy for external memory
         # Depthwise policy performs better with external memory:
         # https://xgboost.readthedocs.io/en/stable/parameter.html#additional-parameters-for-hist-tree-method
-        if "grow_policy" not in config:
-            config["grow_policy"] = "depthwise"
-        elif config["grow_policy"] == "lossguide":
+        if "grow_policy" not in xgboost_train_kwargs:
+            xgboost_train_kwargs["grow_policy"] = "depthwise"
+        elif xgboost_train_kwargs["grow_policy"] == "lossguide":
             logger.warning(
                 "Using grow_policy='lossguide' with external memory can significantly "
                 "slow down training. Consider using 'depthwise' for better performance. "
@@ -167,9 +176,7 @@ def _xgboost_train_fn_per_worker(
                     )
                     evals.append((deval, eval_name))
                 except Exception as e:
-                    logger.error(
-                        f"Failed to create DMatrix for '{eval_name}': {e}"
-                    )
+                    logger.error(f"Failed to create DMatrix for '{eval_name}': {e}")
                     raise RuntimeError(
                         f"Evaluation DMatrix creation failed for '{eval_name}': {e}"
                     ) from e
@@ -464,3 +471,42 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                     print("Using standard in-memory training")
         """
         return self.use_external_memory
+
+    @classmethod
+    def get_model(
+        cls,
+        checkpoint: "ray.train.Checkpoint",
+        filename: str = "model.json",
+    ) -> "xgboost.Booster":
+        """Retrieve the XGBoost model stored in this checkpoint.
+
+        This method maintains backward compatibility for V1 XGBoostTrainer users.
+        It delegates to RayTrainReportCallback.get_model() which is the recommended
+        approach for both V1 and V2 trainers.
+
+        Args:
+            checkpoint: The checkpoint object returned by a training run.
+            filename: The filename to load the model from. Defaults to "model.json".
+
+        Returns:
+            The XGBoost Booster model stored in the checkpoint.
+
+        Examples:
+            .. testcode::
+
+                from ray.train.xgboost import XGBoostTrainer
+
+                # After training
+                result = trainer.fit()
+                booster = XGBoostTrainer.get_model(result.checkpoint)
+
+                # Or use the recommended approach
+                from ray.train.xgboost import RayTrainReportCallback
+                booster = RayTrainReportCallback.get_model(result.checkpoint)
+
+        Note:
+            While this method is maintained for V1 backward compatibility,
+            the recommended approach is to use RayTrainReportCallback.get_model()
+            directly, which works for both V1 and V2 trainers.
+        """
+        return RayTrainReportCallback.get_model(checkpoint, filename=filename)
