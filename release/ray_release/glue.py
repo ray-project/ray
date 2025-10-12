@@ -6,8 +6,15 @@ import random
 import string
 from typing import Optional, List, Tuple
 
+from google.cloud import storage as gcs_storage
+
 from ray_release.alerts.handle import handle_result, require_result
-from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
+from ray_release.anyscale_util import (
+    create_cluster_env_from_image,
+    get_cluster_name,
+    get_custom_cluster_env_name,
+    LAST_LOGS_LENGTH,
+)
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
@@ -45,11 +52,7 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
-from ray_release.util import (
-    create_cluster_env_from_image,
-    get_custom_cluster_env_name,
-    upload_working_dir_to_gcs,
-)
+from ray_release.cloud_util import archive_directory
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 
 type_str_to_command_runner = {
@@ -291,6 +294,28 @@ def _prepare_remote_environment(
             raise PrepareCommandError(e)
         except CommandTimeout as e:
             raise PrepareCommandTimeout(e)
+
+
+def _upload_working_dir_to_gcs(working_dir: str) -> str:
+    """Upload working directory to GCS bucket.
+
+    Args:
+        working_dir: Path to directory to upload.
+    Returns:
+        GCS path where directory was uploaded.
+    """
+    # Create archive of working dir
+    logger.info(f"Archiving working directory: {working_dir}")
+    archived_file_path = archive_directory(working_dir)
+    archived_filename = os.path.basename(archived_file_path)
+
+    # Upload to GCS
+    gcs_client = gcs_storage.Client()
+    bucket = gcs_client.bucket("ray-release-working-dir")
+    blob = bucket.blob(archived_filename)
+    blob.upload_from_filename(archived_filename)
+
+    return f"gs://ray-release-working-dir/{blob.name}"
 
 
 def _running_test_script(

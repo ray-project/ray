@@ -1,7 +1,7 @@
 import os
+from typing import List
 
 import yaml
-from typing import List
 from typing_extensions import TypedDict
 
 

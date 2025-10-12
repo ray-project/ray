@@ -9,6 +9,7 @@ from math import ceil
 from typing import List
 
 import boto3
+
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test, TestState
