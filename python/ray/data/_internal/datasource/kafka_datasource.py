@@ -184,23 +184,69 @@ class KafkaDatasource(UnboundDatasource):
                         consumer_config["sasl_mechanism"] = kafka_config[
                             "sasl_mechanism"
                         ]
-                    if "sasl_plain_username" in kafka_config:
+                    # Support both naming conventions for SASL credentials
+                    # read_kafka uses sasl_username/sasl_password
+                    # Direct usage may use sasl_plain_username/sasl_plain_password
+                    if "sasl_username" in kafka_config:
+                        consumer_config["sasl_plain_username"] = kafka_config[
+                            "sasl_username"
+                        ]
+                    elif "sasl_plain_username" in kafka_config:
                         consumer_config["sasl_plain_username"] = kafka_config[
                             "sasl_plain_username"
                         ]
-                    if "sasl_plain_password" in kafka_config:
+                    if "sasl_password" in kafka_config:
+                        consumer_config["sasl_plain_password"] = kafka_config[
+                            "sasl_password"
+                        ]
+                    elif "sasl_plain_password" in kafka_config:
                         consumer_config["sasl_plain_password"] = kafka_config[
                             "sasl_plain_password"
+                        ]
+                    # Add Kerberos SASL parameters if present
+                    if "sasl_kerberos_service_name" in kafka_config:
+                        consumer_config["sasl_kerberos_service_name"] = kafka_config[
+                            "sasl_kerberos_service_name"
+                        ]
+                    if "sasl_kerberos_domain_name" in kafka_config:
+                        consumer_config["sasl_kerberos_domain_name"] = kafka_config[
+                            "sasl_kerberos_domain_name"
+                        ]
+                    # Add OAuth SASL parameters if present
+                    if "sasl_oauth_token_provider" in kafka_config:
+                        consumer_config["sasl_oauth_token_provider"] = kafka_config[
+                            "sasl_oauth_token_provider"
                         ]
 
                     # Add SSL/TLS configuration if present
                     # These allow secure connections to Kafka brokers
+                    # Support both naming conventions for SSL parameters
+                    # read_kafka uses ssl_*_location, kafka-python uses ssl_*file
+                    if "ssl_ca_location" in kafka_config:
+                        consumer_config["ssl_cafile"] = kafka_config["ssl_ca_location"]
+                    elif "ssl_cafile" in kafka_config:
+                        consumer_config["ssl_cafile"] = kafka_config["ssl_cafile"]
+
+                    if "ssl_certificate_location" in kafka_config:
+                        consumer_config["ssl_certfile"] = kafka_config[
+                            "ssl_certificate_location"
+                        ]
+                    elif "ssl_certfile" in kafka_config:
+                        consumer_config["ssl_certfile"] = kafka_config["ssl_certfile"]
+
+                    if "ssl_key_location" in kafka_config:
+                        consumer_config["ssl_keyfile"] = kafka_config[
+                            "ssl_key_location"
+                        ]
+                    elif "ssl_keyfile" in kafka_config:
+                        consumer_config["ssl_keyfile"] = kafka_config["ssl_keyfile"]
+
+                    # Add other SSL parameters directly
                     ssl_keys = [
-                        "ssl_cafile",
-                        "ssl_certfile",
-                        "ssl_keyfile",
                         "ssl_check_hostname",
                         "ssl_ciphers",
+                        "ssl_password",
+                        "ssl_crlfile",
                     ]
                     for key in ssl_keys:
                         if key in kafka_config:
