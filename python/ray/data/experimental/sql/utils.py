@@ -330,17 +330,22 @@ def get_config_from_context():
         ctx = DataContext.get_current()
         if hasattr(ctx, "sql_config") and ctx.sql_config:
             config_dict = ctx.sql_config
+            enable_opt = config_dict.get("enable_optimization", True)
             return SQLConfig(
                 log_level=LogLevel[config_dict.get("log_level", "ERROR").upper()],
                 case_sensitive=config_dict.get("case_sensitive", False),
                 strict_mode=config_dict.get("strict_mode", True),
                 max_join_partitions=config_dict.get("max_join_partitions", 10),
-                enable_pushdown_optimization=config_dict.get(
-                    "enable_optimization", True
+                enable_optimization=enable_opt,
+                enable_predicate_pushdown=config_dict.get(
+                    "enable_predicate_pushdown", enable_opt
                 ),
-                enable_sqlglot_optimizer=config_dict.get("enable_optimization", True),
-                enable_custom_optimizer=config_dict.get("enable_optimization", True),
-                enable_logical_planning=config_dict.get("enable_optimization", True),
+                enable_projection_pushdown=config_dict.get(
+                    "enable_projection_pushdown", enable_opt
+                ),
+                enable_sqlglot_optimizer=config_dict.get(
+                    "enable_sqlglot_optimizer", False
+                ),
             )
     except Exception:
         pass

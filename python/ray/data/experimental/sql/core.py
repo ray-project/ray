@@ -271,17 +271,17 @@ class RaySQL:
             if not ast or not isinstance(ast, exp.Select):
                 return None
 
-                # Step 3: Execute with Ray Data applying DataFusion hints
-                # REUSES existing QueryExecutor (no code duplication!)
-                # DataFusion hints guide execution order and placement
-                # This preserves Ray Data's:
-                # - Distributed execution across cluster
-                # - Resource management (CPU/GPU/memory budgets)
-                # - Backpressure control (3 policies)
-                # - Streaming execution model
-                result = execute_with_datafusion_hints(
-                    ast, optimizations, self.registry, self.config
-                )
+            # Step 3: Execute with Ray Data applying DataFusion hints
+            # REUSES existing QueryExecutor (no code duplication!)
+            # DataFusion hints guide execution order and placement
+            # This preserves Ray Data's:
+            # - Distributed execution across cluster
+            # - Resource management (CPU/GPU/memory budgets)
+            # - Backpressure control (3 policies)
+            # - Streaming execution model
+            result = execute_with_datafusion_hints(
+                ast, optimizations, self.registry, self.config
+            )
 
             if result is not None:
                 return result
