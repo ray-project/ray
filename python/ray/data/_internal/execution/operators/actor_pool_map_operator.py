@@ -73,6 +73,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
+        flush_actors_on_done: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -100,6 +101,7 @@ class ActorPoolMapOperator(MapOperator):
                 See :func:`ray.remote` for details.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            flush_actors_on_done: Whether to flush actors when the operator is done so actors could complete any remaining tasks.
         """
         super().__init__(
             map_transformer,
@@ -173,6 +175,8 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+
+        self._flush_actors_on_done = flush_actors_on_done
 
         # Locality metrics
         self._locality_hits = 0
@@ -370,7 +374,8 @@ class ActorPoolMapOperator(MapOperator):
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
-        self._flush_actors()
+        if self._flush_actors_on_done:
+            self._flush_actors()
         super().all_inputs_done()
 
         # Mark inputs as done so future task dispatch will kill all inactive workers

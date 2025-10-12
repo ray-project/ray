@@ -180,6 +180,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
+        flush_actors_on_done: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -210,6 +211,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             per_block_limit: Maximum number of rows to process per block, for early termination.
+            flush_actors_on_done: Whether to flush actors when the operator is done so actors could complete any remaining tasks. Only used for ActorPoolMapOperator.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
@@ -255,6 +257,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                flush_actors_on_done=flush_actors_on_done,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")

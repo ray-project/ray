@@ -181,11 +181,13 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
+    flush_actors_on_done = False
     if op._enforce_target_num_rows_per_block:
         transform_fn: BlockMapTransformFn = StreamingRepartitionTransform(
             op.target_num_rows_per_block
         )
         compute = ActorPoolStrategy(size=1, max_tasks_in_flight_per_actor=1)
+        flush_actors_on_done = True
     else:
         transform_fn = BlockMapTransformFn(
             lambda blocks, ctx: blocks,
@@ -206,6 +208,7 @@ def plan_streaming_repartition_op(
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
+        flush_actors_on_done=flush_actors_on_done,
     )
 
 
