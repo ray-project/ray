@@ -9,15 +9,21 @@ Follow these steps to launch a basic Ray cluster on AWS.
 aws configure
 ```
 
-**2) Bring up a cluster** using the example configuration:
+**2) Download the example cluster configuration file**:
+
+```console
+curl -O https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml
+```
+
+**3) Bring up a cluster** using the example configuration:
 
 ```bash
-ray up cluster.yaml
+ray up example_full.yaml
 ```
 
 See the Cluster Configuration section for details.
 
-**3) Access the Ray Dashboard** at `http://<head-node-ip>:8265`.
+**4) Access the Ray Dashboard** at `http://<head-node-ip>:8265`.
 Ensure inbound TCP **8265** is allowed in your AWS Security Group.
 
 **4) Check cluster status:**
