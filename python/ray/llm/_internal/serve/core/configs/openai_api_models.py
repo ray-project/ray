@@ -147,13 +147,14 @@ LLMChatResponse = Union[
 
 LLMCompletionsResponse = Union[
     AsyncGenerator[
-        Union[CompletionStreamResponse, CompletionResponse, ErrorResponse], None
+        Union[str, CompletionStreamResponse, CompletionResponse, ErrorResponse], None
     ],
 ]
 
 LLMTranscriptionResponse = Union[
     AsyncGenerator[
-        Union[TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse], None
+        Union[str, TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse],
+        None,
     ],
 ]
 

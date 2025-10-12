@@ -378,7 +378,9 @@ class LLMServer(LLMServerProtocol):
 
     async def transcriptions(
         self, request: "TranscriptionRequest"
-    ) -> AsyncGenerator[Union[List["ErrorResponse"], "TranscriptionResponse"], None]:
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "TranscriptionResponse"], None
+    ]:
         """Runs an transcriptions request to the engine and returns the response.
 
         Returns an AsyncGenerator over the TranscriptionResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
