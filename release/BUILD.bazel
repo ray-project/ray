@@ -406,9 +406,9 @@ py_library(
     imports = ["."],
     visibility = ["//visibility:private"],
     deps = [
+        ":exception",
         ":logger",
         ":util",
-        ":exception",
         bk_require("anyscale"),
     ],
 )
