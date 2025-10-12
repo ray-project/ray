@@ -1400,7 +1400,11 @@ def read_pdfs(
         ValueError: If invalid configuration options are provided (e.g.,
             ``include_images=True`` with ``pages=False``).
         ImportError: If required dependencies (PyPDF2, pytesseract) are not installed.
-        ValueError: If a PDF file is corrupted or password-protected.
+
+    .. note::
+        Corrupted or password-protected PDF files are skipped with a warning rather
+        than raising an error. This allows processing to continue when encountering
+        invalid files in a dataset.
 
     .. note::
 

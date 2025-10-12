@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import Block
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 
@@ -41,6 +41,34 @@ class PDFFileMetadataProvider(DefaultFileMetadataProvider):
         self._encoding_ratio = max(
             encoding_ratio, PDF_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
         )
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        """Get block metadata with adjusted size estimate based on encoding ratio.
+
+        This method overrides the base implementation to apply the PDF encoding
+        ratio to the size estimate, accounting for text extraction overhead.
+
+        Args:
+            paths: List of file paths in the block.
+            rows_per_file: Optional number of rows per file.
+            file_sizes: List of file sizes in bytes.
+
+        Returns:
+            Block metadata with adjusted size estimate.
+        """
+        metadata = super()._get_block_metadata(
+            paths, rows_per_file=rows_per_file, file_sizes=file_sizes
+        )
+        # Adjust size estimate using encoding ratio
+        if metadata.size_bytes is not None:
+            metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)
+        return metadata
 
 
 class PDFDatasource(FileBasedDatasource):
