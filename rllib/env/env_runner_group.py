@@ -562,7 +562,7 @@ class EnvRunnerGroup:
                 tag="set_state",
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
-                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
+                timeout_seconds=0.0,
             )
 
     def foreach_env_runner_async_fetch_ready(
