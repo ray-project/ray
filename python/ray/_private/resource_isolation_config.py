@@ -13,12 +13,10 @@ _CGROUP_CPU_MAX_WEIGHT: int = 10000
 
 
 class ResourceIsolationConfig:
-    """Configuration for enabling resource isolation by reserving memory
-    and cpu for ray system processes through cgroupv2.
-    This class validates configuration for resource isolation by
-    enforcing types, correct combinations of values, applying default values,
-    and sanity checking cpu and memory reservations.
-    Also, converts system_reserved_cpu into cpu.weights for cgroupv2.
+    """Configuration for enabling resource isolation by reserving memory and cpu for ray system processes through cgroupv2.
+
+    Validates configuration for resource isolation by enforcing types, correct combinations of values, applying default values,
+    and sanity checking cpu and memory reservations. Also, converts system_reserved_cpu into cpu.weights for cgroupv2.
 
     Raises:
         ValueError: On invalid inputs.
@@ -34,6 +32,8 @@ class ResourceIsolationConfig:
         system_reserved_memory: The amount of memory in bytes reserved
             for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
             and system_reserved_cpu + object_store_bytes < the total memory available.
+
+    TODO(54703): Link documentation when it's available.
     """
 
     def __init__(
@@ -47,15 +47,13 @@ class ResourceIsolationConfig:
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
         self.system_pids = ""
-        # cgroupv2 cpu.weight calculated from system_reserved_cpu
-        # assumes ray uses all available cores.
+
+        # cgroupv2 cpu.weight calculated from system_reserved_cpu assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
-        # TODO(irabbani): this is used to ensure
-        # that object_store_memory is not added twice
-        # to self._system_reserved_memory. This should
-        # be refactored in the future so that ResourceIsolationConfig
-        # can take object_store_memory as a constructor parameter
-        # and be constructed fully by the constructor.
+
+        # TODO(irabbani): this is used to ensure that object_store_memory is not added twice
+        # to self._system_reserved_memory. This should be refactored in the future so that ResourceIsolationConfig
+        # can take object_store_memory as a constructor parameter and be constructed fully by the constructor.
         self._constructed = False
 
         if not enable_resource_isolation:
@@ -80,21 +78,31 @@ class ResourceIsolationConfig:
                 )
             return
 
-        # resource isolation is enabled
         self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
             system_reserved_cpu
         )
+
         self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
             system_reserved_memory
         )
+
         self.cgroup_path = self._validate_and_get_cgroup_path(cgroup_path)
 
     def is_enabled(self) -> bool:
         return self._resource_isolation_enabled
 
-    def add_object_store_memory(self, object_store_memory: int):
-        """This is only supposed to be called once. It also cannot be
-        called if resouce isolation is not enabled.
+    def add_object_store_memory(self, object_store_memory_bytes: int):
+        """Adds object_store_memory to the memory reserved for system processes.
+
+        Args:
+            object_store_memory_bytes: The amount processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES
+                and < the total number of cores available.
+
+        Raises:
+            AssertionError: If called with resource isolation not enabled or called more than once for the same instance.
+            ValueError: If the input is not an integer or if the system_reserved_memory + object_store_memory is greater
+                than the total memory available on the system.
+
         """
         assert self.is_enabled(), (
             "Cannot add object_store_memory to system_reserved_memory when "
@@ -104,7 +112,7 @@ class ResourceIsolationConfig:
             "Cannot call add_object_store_memory more than once with an instance "
             "ResourceIsolationConfig. This is a bug in the ray code. "
         )
-        self.system_reserved_memory += object_store_memory
+        self.system_reserved_memory += object_store_memory_bytes
         available_system_memory = ray._common.utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
