@@ -484,7 +484,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         if controller_handle is None:
             assert num_running_replicas == expected_num_replicas, f"{deployment}"
         else:
-            deployment_id = DeploymentID(name=deployment, app_name=app_name)
+            deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
             autoscaling_metrics = ray.get(
                 controller_handle._get_metrics_by_deployment_id_for_testing.remote(
                     deployment_id
