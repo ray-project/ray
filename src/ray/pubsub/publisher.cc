@@ -255,11 +255,18 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
-  case rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL:
   case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
     // Critical if messages are dropped.
     return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
                                          /*max_buffered_bytes=*/-1);
+
+  case rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL:
+    // Lighter messages with bounded buffer to avoid OOM.
+    // Since this is a smaller message type designed for high throughput,
+    // use bounded buffering to prevent memory exhaustion.
+    return std::make_unique<EntityState>(
+        RayConfig::instance().max_grpc_message_size(),
+        RayConfig::instance().publisher_entity_buffer_max_bytes());
 
   default:
     RAY_LOG(FATAL) << "Unexpected channel type: " << rpc::ChannelType_Name(channel_type);
