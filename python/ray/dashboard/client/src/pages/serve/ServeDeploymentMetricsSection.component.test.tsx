@@ -11,6 +11,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         metricsContextLoaded: true,
         grafanaHost: "localhost:3000",
         grafanaOrgId: "1",
+        grafanaClusterFilter: undefined,
         dashboardUids: {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
@@ -39,6 +40,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         metricsContextLoaded: true,
         grafanaHost: undefined,
         grafanaOrgId: "1",
+        grafanaClusterFilter: undefined,
         dashboardUids: {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
