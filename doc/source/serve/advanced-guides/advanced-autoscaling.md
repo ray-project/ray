@@ -50,7 +50,7 @@ adds more replicas. At 3 replicas, your system would be able to process 30 QPS
 with 1 ongoing request per replica on average.
 :::
 
-#### **[`max_ongoing_requests`](../api/doc/ray.serve.config.DeploymentConfig.max_ongoing_requests.rst) [default=5]**
+#### **`max_ongoing_requests` [default=5]**
 :::{note}
 The default for `max_ongoing_requests` changed from 100 to 5 in Ray 2.32.0.
 You can continue to set it manually to override the default.
