@@ -2745,11 +2745,12 @@ Status CoreWorker::ExecuteTask(
   bool is_retry = task_spec.IsRetry();
 
   ++num_get_pin_args_in_flight_;
-  task_counter_.SetMetricStatus(func_name, rpc::TaskStatus::PENDING_ARGS_FETCH, is_retry);
+  task_counter_.SetMetricStatus(
+      func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
   Status pin_args_request_status =
       GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
   task_counter_.UnsetMetricStatus(
-      func_name, rpc::TaskStatus::PENDING_ARGS_FETCH, is_retry);
+      func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
   --num_get_pin_args_in_flight_;
   if (!pin_args_request_status.ok()) {
     ++num_failed_get_pin_args_;
