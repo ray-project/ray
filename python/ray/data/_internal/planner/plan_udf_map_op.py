@@ -25,7 +25,7 @@ import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
 from ray.data._expression_evaluator import eval_expr
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
     Row,
     RowMapTransformFn,
+    StreamingRepartitionTransform,
 )
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
@@ -180,16 +181,18 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-
-    # Create a no-op transform that is just coalescing/slicing the incoming
-    # blocks
-    transform_fn = BlockMapTransformFn(
-        lambda blocks, ctx: blocks,
-        output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block,
-            override_max_safe_rows_per_block_factor=op.override_max_safe_rows_per_block_factor,
-        ),
-    )
+    if op._enforce_target_num_rows_per_block:
+        transform_fn: BlockMapTransformFn = StreamingRepartitionTransform(
+            op.target_num_rows_per_block
+        )
+        compute = ActorPoolStrategy(size=1, max_tasks_in_flight_per_actor=1)
+    else:
+        transform_fn = BlockMapTransformFn(
+            lambda blocks, ctx: blocks,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_num_rows_per_block=op.target_num_rows_per_block
+            ),
+        )
 
     map_transformer = MapTransformer([transform_fn])
 
@@ -200,7 +203,6 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,

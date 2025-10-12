@@ -352,9 +352,25 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
         return new_and_overriden_remote_args
 
+    def _flush_actors(self):
+        if not self._bundle_queue:
+            for actor in self._actor_pool.running_actors().keys():
+                self._actor_pool.on_task_submitted(actor)
+                ctx = TaskContext(
+                    task_idx=self._next_data_task_idx,
+                    op_name=self.name,
+                    target_max_block_size_override=self.target_max_block_size_override,
+                )
+                gen = actor.submit.options(
+                    num_returns="streaming", **self._ray_actor_task_remote_args
+                ).remote(self.data_context, ctx)
+                empty_bundle = RefBundle([], schema=None, owns_blocks=False)
+                self._submit_data_task(gen, empty_bundle)
+
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
+        self._flush_actors()
         super().all_inputs_done()
 
         # Mark inputs as done so future task dispatch will kill all inactive workers

@@ -368,9 +368,12 @@ class StreamingRepartition(AbstractMap):
         self._target_num_rows_per_block = target_num_rows_per_block
         self._min_rows_per_bundled_input = None
         self._override_max_safe_rows_per_block_factor = None
+        self._enforce_target_num_rows_per_block = enforce_target_num_rows_per_block
         if enforce_target_num_rows_per_block:
             self._override_max_safe_rows_per_block_factor = 1
-            self._min_rows_per_bundled_input = float("inf")
+            # Accumulate at least target rows per bundle to keep streaming while
+            # giving the single actor enough rows to emit fixed-size blocks.
+            self._min_rows_per_bundled_input = target_num_rows_per_block
 
     @property
     def target_num_rows_per_block(self) -> int:

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
+from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
@@ -426,3 +427,32 @@ class BlockMapTransformFn(MapTransformFn):
         return (
             f"BlockMapTransformFn({self._block_fn=}, {self._output_block_size_option=})"
         )
+
+
+class StreamingRepartitionTransform(BlockMapTransformFn):
+    """Stateful block transform for streaming repartition enforcement."""
+
+    def __init__(self, target_rows: int):
+        self._batcher = Batcher(batch_size=target_rows)
+        self._run = 0
+
+        def _transform(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+            self._run += 1
+            # Stream rows into the persistent batcher and emit fixed-size blocks.
+            saw_any = False
+            for block in blocks:
+                saw_any = True
+                self._batcher.add(block)
+                while self._batcher.has_batch():
+                    yield self._batcher.next_batch()
+
+            # If this call received no blocks (i.e., a sentinel flush task),
+            # drain any remainder from the batcher to ensure no rows are lost.
+            if not saw_any:
+                self._batcher.done_adding()
+                while self._batcher.has_batch():
+                    yield self._batcher.next_batch()
+                if self._batcher.has_any():
+                    yield self._batcher.next_batch()
+
+        super().__init__(_transform, disable_block_shaping=True)
