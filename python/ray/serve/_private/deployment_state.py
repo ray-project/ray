@@ -2197,7 +2197,7 @@ class DeploymentState:
 
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_total_num_requests_by_deployment_id(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )

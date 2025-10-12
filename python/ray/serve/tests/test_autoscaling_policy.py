@@ -111,7 +111,11 @@ def test_assert_no_replicas_deprovisioned():
 
 
 def get_num_requests(client, dep_id: DeploymentID):
-    ref = client._controller.get_total_num_requests_by_deployment_id_for_testing.remote(dep_id)
+    ref = (
+        client._controller._get_total_num_requests_by_deployment_id_for_testing.remote(
+            dep_id
+        )
+    )
     return ray.get(ref)
 
 

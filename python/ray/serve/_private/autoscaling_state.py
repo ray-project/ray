@@ -642,12 +642,16 @@ class ApplicationAutoscalingState:
         if dep_id in self._deployment_autoscaling_states:
             self._deployment_autoscaling_states[dep_id].on_replica_stopped(replica_id)
 
-    def get_total_num_requests_by_deployment_id(self, deployment_id: DeploymentID) -> float:
+    def get_total_num_requests_by_deployment_id(
+        self, deployment_id: DeploymentID
+    ) -> float:
         return self._deployment_autoscaling_states[
             deployment_id
         ].get_total_num_requests()
 
-    def get_replica_metrics_by_deployment_id(self, deployment_id: DeploymentID, agg_func="mean"):
+    def get_replica_metrics_by_deployment_id(
+        self, deployment_id: DeploymentID, agg_func="mean"
+    ):
         return self._deployment_autoscaling_states[deployment_id].get_replica_metrics(
             agg_func
         )
@@ -784,8 +788,8 @@ class AutoscalingStateManager:
     ) -> Dict[ReplicaID, List[Any]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
-                    deployment_id.app_name
-                ].get_replica_metrics_by_deployment_id(deployment_id, agg_func)
+                deployment_id.app_name
+            ].get_replica_metrics_by_deployment_id(deployment_id, agg_func)
         else:
             logger.warning(
                 f"Cannot get metrics for deployment "
@@ -793,11 +797,13 @@ class AutoscalingStateManager:
             )
             return {}
 
-    def get_total_num_requests_by_deployment_id(self, deployment_id: DeploymentID) -> float:
+    def get_total_num_requests_by_deployment_id(
+        self, deployment_id: DeploymentID
+    ) -> float:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name
-            ].get_total_num_requests(deployment_id)
+            ].get_total_num_requests_by_deployment_id(deployment_id)
         else:
             logger.warning(
                 f"Cannot get total number of requests for deployment "
