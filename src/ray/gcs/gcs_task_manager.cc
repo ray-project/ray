@@ -116,9 +116,29 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
   // Defensive copy to avoid iterator invalidation if indices mutate during processing.
   auto locators_copy = task_attempts_itr->second;
+  RAY_LOG(INFO) << "[MarkOnWorkerDead] worker=" << worker_id.Hex()
+                << " num_locators=" << locators_copy.size()
+                << " end_time_ms=" << worker_failure_data.end_time_ms();
+  size_t idx = 0;
   for (const auto &task_locator : locators_copy) {
-    MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
+    auto &te = task_locator->GetTaskEventsMutable();
+    const auto tid = TaskID::FromBinary(te.task_id());
+    const auto jid = JobID::FromBinary(te.job_id());
+    const auto wid = GetWorkerID(te);
+    RAY_LOG(DEBUG) << "[MarkOnWorkerDead] idx=" << idx++ << " task=" << tid
+                   << " job=" << jid
+                   << " list_index=" << task_locator->GetCurrentListIndex()
+                   << " locator_ptr=" << task_locator.get();
+    // Guard the mutation to capture where it fails.
+    try {
+      MarkTaskAttemptFailedIfNeeded(
+          task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
+    } catch (const std::exception &e) {
+      RAY_LOG(ERROR) << "[MarkOnWorkerDead] exception while marking failed: " << e.what()
+                     << " task=" << tid << " worker_in_event=" << wid << " te=\n"
+                     << te.DebugString();
+      throw;  // rethrow to preserve behavior
+    }
   }
 }
 
@@ -135,8 +155,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
+  RAY_LOG(DEBUG) << "[MarkFailedIfNeeded] before update list_index="
+                 << locator->GetCurrentListIndex() << " locator_ptr=" << locator.get();
+  // Timestamp update
   (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
+  // Error info update
   state_updates->mutable_error_info()->CopyFrom(error_info);
+  RAY_LOG(DEBUG) << "[MarkFailedIfNeeded] after update FAILED ts=" << failed_ts_ns;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
@@ -156,9 +181,25 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
 
   // Defensive copy to avoid iterator invalidation if indices mutate during processing.
   auto locators_copy = task_attempts_itr->second;
+  RAY_LOG(INFO) << "[MarkOnJobEnds] job=" << job_id.Hex()
+                << " num_locators=" << locators_copy.size()
+                << " ts_ns=" << job_finish_time_ns;
   // Iterate all task attempts from the job.
+  size_t idx = 0;
   for (const auto &task_locator : locators_copy) {
-    MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
+    auto &te = task_locator->GetTaskEventsMutable();
+    const auto tid = TaskID::FromBinary(te.task_id());
+    RAY_LOG(DEBUG) << "[MarkOnJobEnds] idx=" << idx++ << " task=" << tid
+                   << " list_index=" << task_locator->GetCurrentListIndex()
+                   << " locator_ptr=" << task_locator.get();
+    try {
+      MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
+    } catch (const std::exception &e) {
+      RAY_LOG(ERROR) << "[MarkOnJobEnds] exception while marking failed: " << e.what()
+                     << " task=" << tid << " te=\n"
+                     << te.DebugString();
+      throw;
+    }
   }
 }
 
@@ -192,11 +233,13 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
-    // Need to add to the new list first.
-    task_events_list_[target_list_index].push_front(std::move(existing_task));
-
-    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
-    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
+    // Use splice to move the list node without moving/copying the protobuf object.
+    auto &src_list = task_events_list_[cur_list_index];
+    auto &dst_list = task_events_list_[target_list_index];
+    auto it = loc->GetCurrentListIterator();
+    dst_list.splice(dst_list.begin(), src_list, it);
+    // After splice, the iterator remains valid and now refers to the element in dst_list.
+    loc->SetCurrentList(target_list_index, dst_list.begin());
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
