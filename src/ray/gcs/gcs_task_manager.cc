@@ -114,7 +114,9 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
                 << " with error_message: " << worker_failure_data.exit_detail();
   error_info.set_error_message(error_message.str());
 
-  for (const auto &task_locator : task_attempts_itr->second) {
+  // Defensive copy to avoid iterator invalidation if indices mutate during processing.
+  auto locators_copy = task_attempts_itr->second;
+  for (const auto &task_locator : locators_copy) {
     MarkTaskAttemptFailedIfNeeded(
         task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
@@ -152,8 +154,10 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
                 << ") as driver exits. Marking all non-terminal tasks as failed.";
   error_info.set_error_message(error_message.str());
 
+  // Defensive copy to avoid iterator invalidation if indices mutate during processing.
+  auto locators_copy = task_attempts_itr->second;
   // Iterate all task attempts from the job.
-  for (const auto &task_locator : task_attempts_itr->second) {
+  for (const auto &task_locator : locators_copy) {
     MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
   }
 }
@@ -188,14 +192,11 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
-    // Move the list node itself between lists to avoid moving the underlying
-    // protobuf message. This preserves internal map/repeated-field storage and
-    // avoids invalidation that can lead to crashes during concurrent updates.
-    auto &from_list = task_events_list_[cur_list_index];
-    auto &to_list = task_events_list_[target_list_index];
-    auto it = loc->GetCurrentListIterator();
-    to_list.splice(to_list.begin(), from_list, it);
-    loc->SetCurrentList(target_list_index, it);
+    // Need to add to the new list first.
+    task_events_list_[target_list_index].push_front(std::move(existing_task));
+
+    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
+    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
@@ -665,7 +666,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(request);
 
   for (auto &task_event_data : task_event_data_requests) {
     RecordTaskEventData(task_event_data);
