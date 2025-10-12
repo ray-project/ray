@@ -88,7 +88,7 @@ DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES = env_float(
 # The values for SYSTEM_RESERVED_MEMORY do not include the memory reserveed
 # for the object store.
 # The default proportion available memory to reserve for ray system processes.
-DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
+DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
     "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
 )
 # The default minimum number of bytes to reserve for ray system processes.
