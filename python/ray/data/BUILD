@@ -1546,3 +1546,31 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_sql_datafusion",
+    size = "small",
+    srcs = ["tests/test_sql_datafusion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_sql_optimizers",
+    size = "small",
+    srcs = ["tests/test_sql_optimizers.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
