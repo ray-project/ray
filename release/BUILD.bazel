@@ -483,7 +483,9 @@ py_library(
             "ray_release/test.py",
             "ray_release/test_automation.py",
         ],
-    ),
+    ) + [
+        "ray_release/scripts/ray_bisect.py",
+    ],
     data = glob([
         "ray_release/environments/*.env",
         "ray_release/configs/*.yaml",
@@ -651,6 +653,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":custom_byod_build_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -690,6 +693,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":custom_image_build_and_test_init_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -958,10 +962,30 @@ py_binary(
     ],
 )
 
+py_library(
+    name = "custom_byod_build_lib",
+    srcs = ["ray_release/scripts/custom_byod_build.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
 py_binary(
     name = "custom_byod_build",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
     exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_library(
+    name = "custom_image_build_and_test_init_lib",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
     deps = [
         ":ray_release",
     ],
