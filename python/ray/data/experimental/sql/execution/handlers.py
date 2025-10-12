@@ -9,7 +9,6 @@ from typing import List, Optional, Tuple, Union
 
 from sqlglot import exp
 
-import ray
 from ray.data import Dataset
 from ray.data.experimental.sql.compiler import ExpressionCompiler
 from ray.data.experimental.sql.config import SQLConfig

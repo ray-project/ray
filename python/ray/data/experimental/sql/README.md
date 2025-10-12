@@ -183,7 +183,7 @@ sql/
 The architecture is designed to be pluggable. To add a new engine:
 
 1. Create `engines/your_engine/` directory
-2. Implement `YourEngineBackend(OptimizerBackend)` 
+2. Implement `YourEngineBackend(OptimizerBackend)`
 3. Return `QueryOptimizations` from `optimize_query()`
 4. Done! The core engine automatically works with it
 
@@ -227,7 +227,7 @@ result = ray.data.sql("SELECT ARRAY_AGG(name) FROM users GROUP BY age")
 ```python
 # Multi-table join with aggregation
 result = ray.data.sql("""
-    SELECT 
+    SELECT
         u.name,
         COUNT(*) as order_count,
         SUM(o.amount) as total_amount
@@ -323,4 +323,3 @@ pytest python/ray/data/tests/test_sql_datafusion.py -v
 
 The current implementation provides a solid foundation with DataFusion CBO validation.
 Full optimization application requires additional Ray Data API enhancements.
-

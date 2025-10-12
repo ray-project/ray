@@ -11,7 +11,6 @@ Key Design: REUSE existing QueryExecutor, don't reimplement!
 - We configure the existing executor to apply hints
 """
 
-import logging
 from typing import Optional
 
 from sqlglot import exp
@@ -127,9 +126,7 @@ class DataFusionExecutor:
 
         return ast
 
-    def _reorder_joins_in_ast(
-        self, ast: exp.Select, join_order: list
-    ) -> exp.Select:
+    def _reorder_joins_in_ast(self, ast: exp.Select, join_order: list) -> exp.Select:
         """
         Reorder joins in SQLGlot AST based on DataFusion's CBO decisions.
 
@@ -162,19 +159,21 @@ class DataFusionExecutor:
             join_map = {}
             for join_node in join_nodes:
                 # Get the right table name from this JOIN
-                right_table = str(join_node.this.name if hasattr(join_node.this, 'name') else join_node.this)
+                right_table = str(
+                    join_node.this.name
+                    if hasattr(join_node.this, "name")
+                    else join_node.this
+                )
                 join_map[right_table] = join_node
 
             self._logger.debug(
                 f"Join map has {len(join_map)} tables: {list(join_map.keys())}"
             )
-            self._logger.debug(
-                f"DataFusion recommends join order: {join_order}"
-            )
+            self._logger.debug(f"DataFusion recommends join order: {join_order}")
 
             # For multi-table joins, the optimal order matters significantly
             # DataFusion's CBO has determined the best sequence based on cardinality
-            
+
             # Note: Full join reordering in SQLGlot AST requires:
             # - Detaching and reattaching JOIN nodes (complex tree manipulation)
             # - Preserving join conditions and types
@@ -182,7 +181,7 @@ class DataFusionExecutor:
             #
             # Current approach: Log the optimization for visibility
             # The existing join order in the AST will be used
-            # 
+            #
             # Future enhancement: Reconstruct the entire FROM clause with
             # joins in DataFusion's optimal order
 

@@ -3,11 +3,11 @@
 import pytest
 
 import ray
-from ray.data.experimental.sql_api import clear_tables, register, sql
 from ray.data.experimental.sql.datafusion_optimizer import (
     DataFusionOptimizer,
     is_datafusion_available,
 )
+from ray.data.experimental.sql_api import clear_tables, sql
 from ray.tests.conftest import *  # noqa
 
 
@@ -43,15 +43,15 @@ def test_datafusion_config(ray_start_regular_shared, reset_sql_config):
     ctx = ray.data.DataContext.get_current()
 
     # Default should be True
-    assert ctx.sql_use_datafusion == True
+    assert ctx.sql_use_datafusion
 
     # Should be able to disable
     ctx.sql_use_datafusion = False
-    assert ctx.sql_use_datafusion == False
+    assert ctx.sql_use_datafusion
 
     # Re-enable
     ctx.sql_use_datafusion = True
-    assert ctx.sql_use_datafusion == True
+    assert ctx.sql_use_datafusion
 
 
 def test_datafusion_with_simple_query(ray_start_regular_shared, reset_sql_config):
@@ -59,7 +59,9 @@ def test_datafusion_with_simple_query(ray_start_regular_shared, reset_sql_config
     ctx = ray.data.DataContext.get_current()
     ctx.sql_use_datafusion = True
 
-    data = ray.data.from_items([{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+    data = ray.data.from_items(  # noqa: F841
+        [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+    )
 
     # Execute query - will use DataFusion if available, fallback to SQLGlot
     result = sql("SELECT * FROM data WHERE id > 0")
@@ -76,7 +78,9 @@ def test_datafusion_fallback_to_sqlglot(ray_start_regular_shared, reset_sql_conf
     # Disable DataFusion
     ctx.sql_use_datafusion = False
 
-    data = ray.data.from_items([{"id": 1, "value": 100}, {"id": 2, "value": 200}])
+    data = ray.data.from_items(  # noqa: F841
+        [{"id": 1, "value": 100}, {"id": 2, "value": 200}]
+    )
 
     # Should work with SQLGlot
     result = sql("SELECT * FROM data WHERE value > 100")
@@ -91,9 +95,11 @@ def test_datafusion_with_join(ray_start_regular_shared, reset_sql_config):
     ctx = ray.data.DataContext.get_current()
     ctx.sql_use_datafusion = True
 
-    users = ray.data.from_items([{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+    users = ray.data.from_items(  # noqa: F841
+        [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+    )
 
-    orders = ray.data.from_items(
+    orders = ray.data.from_items(  # noqa: F841
         [{"user_id": 1, "amount": 100}, {"user_id": 2, "amount": 200}]
     )
 
@@ -112,7 +118,7 @@ def test_datafusion_with_aggregation(ray_start_regular_shared, reset_sql_config)
     ctx = ray.data.DataContext.get_current()
     ctx.sql_use_datafusion = True
 
-    data = ray.data.from_items(
+    data = ray.data.from_items(  # noqa: F841
         [
             {"category": "A", "value": 10},
             {"category": "A", "value": 20},
@@ -165,7 +171,7 @@ def test_datafusion_multi_dialect_support(ray_start_regular_shared, reset_sql_co
     ctx.sql_dialect = "mysql"
     ctx.sql_use_datafusion = True
 
-    data = ray.data.from_items([{"id": 1, "name": "Alice"}])
+    data = ray.data.from_items([{"id": 1, "name": "Alice"}])  # noqa: F841
 
     # MySQL syntax - should work via SQLGlot translation
     result = sql("SELECT * FROM data WHERE id = 1")
@@ -183,10 +189,10 @@ def test_datafusion_config_via_api(ray_start_regular_shared, reset_sql_config):
 
     # Test various ways to configure
     ctx.sql_use_datafusion = True
-    assert ctx.sql_use_datafusion == True
+    assert ctx.sql_use_datafusion
 
     ctx.sql_use_datafusion = False
-    assert ctx.sql_use_datafusion == False
+    assert ctx.sql_use_datafusion
 
     # Via configure function
     from ray.data.experimental.sql.core import configure
@@ -212,7 +218,7 @@ def test_datafusion_performance_logging(ray_start_regular_shared, reset_sql_conf
     ctx.sql_use_datafusion = True
     ctx.sql_log_level = "DEBUG"
 
-    data = ray.data.from_items([{"x": 1}, {"x": 2}, {"x": 3}])
+    data = ray.data.from_items([{"x": 1}, {"x": 2}, {"x": 3}])  # noqa: F841
 
     # Execute query - check logs indicate DataFusion usage
     result = sql("SELECT * FROM data WHERE x > 1")
@@ -227,7 +233,7 @@ def test_datafusion_with_complex_query(ray_start_regular_shared, reset_sql_confi
     ctx.sql_use_datafusion = True
 
     # Create multiple tables
-    users = ray.data.from_items(
+    users = ray.data.from_items(  # noqa: F841
         [
             {"id": 1, "name": "Alice", "age": 30},
             {"id": 2, "name": "Bob", "age": 25},
@@ -235,7 +241,7 @@ def test_datafusion_with_complex_query(ray_start_regular_shared, reset_sql_confi
         ]
     )
 
-    orders = ray.data.from_items(
+    orders = ray.data.from_items(  # noqa: F841
         [
             {"user_id": 1, "amount": 100, "status": "completed"},
             {"user_id": 2, "amount": 200, "status": "completed"},

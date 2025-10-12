@@ -75,20 +75,19 @@ from ray.data.read_api import (  # noqa: F401
 
 # Import experimental SQL API
 try:
-    from ray.data.experimental.sql_api import (
-        clear_tables,
-        config as sql_config,
-        list_tables,
-        register,
-        sql,
-    )
-
     # Import essential exceptions
     from ray.data.experimental.sql import (
         SQLError,
         SQLExecutionError,
         SQLParseError,
         TableNotFoundError,
+    )
+    from ray.data.experimental.sql_api import (
+        clear_tables,
+        config as sql_config,
+        list_tables,
+        register,
+        sql,
     )
 except ImportError:
     # SQL module not available, skip import

@@ -12,7 +12,6 @@ Architecture:
       → Ray Data: Distributed execution + resource + backpressure management
 """
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -163,9 +162,7 @@ class DataFusionOptimizer:
             df_result = self.df_ctx.sql(translated_query)
 
             # Get optimized plans
-            logical_plan = df_result.logical_plan()
             optimized_logical = df_result.optimized_logical_plan()
-
 
             # Extract optimization decisions from the plans
             optimizations = self._extract_optimizations(
@@ -295,13 +292,6 @@ class DataFusionOptimizer:
                     DEFAULT_MIN_SAMPLE_SIZE, min(DEFAULT_MAX_SAMPLE_SIZE, sample_size)
                 )
 
-                # Get schema without materialization
-                schema = None
-                try:
-                    schema = ray_ds.schema()
-                except Exception:
-                    pass
-
                 # Get sample for DataFusion (maintains relative size)
                 sample_arrow = ray_ds.limit(sample_size).to_arrow()
 
@@ -366,7 +356,7 @@ class DataFusionOptimizer:
             )
             return DEFAULT_SAMPLE_SIZE
 
-        except Exception as e:
+        except Exception:
             return DEFAULT_SAMPLE_SIZE
 
     def _calculate_smart_sample_size(self, dataset: Dataset, table_name: str) -> int:

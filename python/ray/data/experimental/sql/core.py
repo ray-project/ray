@@ -6,13 +6,16 @@ This module provides SQL query execution for Ray Datasets using standard SQL syn
 import hashlib
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set
 
 import sqlglot
 from sqlglot import exp
 
 from ray.data import Dataset
 from ray.data.experimental.sql.config import LogLevel, SQLConfig
+from ray.data.experimental.sql.engines.datafusion.datafusion_executor import (
+    execute_with_datafusion_hints,
+)
 from ray.data.experimental.sql.exceptions import (
     SQLExecutionError,
     SQLParseError,
@@ -89,12 +92,16 @@ class RaySQL:
         """
         self.registry.register(name, dataset)
         # Avoid expensive count() operation during registration
+
+    def unregister_table(self, name: str) -> None:
         """Unregister a table by name.
 
         Args:
             name: Table name to unregister.
         """
         self.registry.unregister(name)
+
+    def sql(self, query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
         """Execute a SQL query with optional DataFusion optimization.
 
         Args:
@@ -157,6 +164,7 @@ class RaySQL:
                 # Cache the parsed and validated query
                 self._cache_query(query, ast)
             else:
+                self._logger.debug("Using cached query AST")
 
             # Handle WITH clauses (CTEs) before main query execution
             if hasattr(ast, "with_") and ast.with_ is not None:
@@ -175,6 +183,10 @@ class RaySQL:
                 )
 
             execution_time = time.time() - start_time
+            self._logger.info(f"Query executed in {execution_time:.3f}s")
+            return result
+
+        except (SQLParseError, SQLExecutionError, UnsupportedOperationError):
             # Re-raise known SQL errors without wrapping
             raise
         except ValueError as e:
@@ -249,6 +261,7 @@ class RaySQL:
             optimizations = optimizer.optimize_query(query, registered_datasets)
 
             if optimizations is None:
+                self._logger.info(
                     "DataFusion optimization returned None, using fallback"
                 )
                 return None
@@ -258,14 +271,14 @@ class RaySQL:
             if not ast or not isinstance(ast, exp.Select):
                 return None
 
-            # Step 3: Execute with Ray Data applying DataFusion hints
-            # REUSES existing QueryExecutor (no code duplication!)
-            # DataFusion hints guide execution order and placement
-            # This preserves Ray Data's:
-            # - Distributed execution across cluster
-            # - Resource management (CPU/GPU/memory budgets)
-            # - Backpressure control (3 policies)
-            # - Streaming execution model
+                # Step 3: Execute with Ray Data applying DataFusion hints
+                # REUSES existing QueryExecutor (no code duplication!)
+                # DataFusion hints guide execution order and placement
+                # This preserves Ray Data's:
+                # - Distributed execution across cluster
+                # - Resource management (CPU/GPU/memory budgets)
+                # - Backpressure control (3 policies)
+                # - Streaming execution model
                 result = execute_with_datafusion_hints(
                     ast, optimizations, self.registry, self.config
                 )
@@ -275,7 +288,7 @@ class RaySQL:
             else:
                 return None
 
-        except Exception as e:
+        except Exception:
             return None
 
     def list_tables(self) -> List[str]:
@@ -389,6 +402,8 @@ class RaySQL:
 
                 # Register the CTE result as a temporary table
                 self.register_table(cte_name, cte_result)
+
+    def _get_cache_key(self, query: str) -> str:
         """Generate a cache key for the query."""
         # Normalize whitespace and create hash
         normalized = " ".join(query.strip().split())
@@ -901,6 +916,7 @@ def sql(query: str, **datasets) -> Dataset:
             >>> result = ray.data.sql("SELECT * FROM ds WHERE x > 1")
     """
     import inspect
+
     from ray.data.experimental.sql.utils import extract_table_names_from_query
 
     # Get the caller's frame to access their local variables

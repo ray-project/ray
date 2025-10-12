@@ -16,7 +16,7 @@ from ray.data.experimental.sql import (
 
 # Test optimizer integration if available
 try:
-    from ray.data.experimental.sql import (
+    from ray.data.experimental.sql import (  # noqa: F401
         execute_optimized_sql,
         get_ray_executor,
         get_unified_optimizer,
@@ -25,6 +25,9 @@ try:
     OPTIMIZERS_AVAILABLE = True
 except ImportError:
     OPTIMIZERS_AVAILABLE = False
+    execute_optimized_sql = None
+    get_ray_executor = None
+    get_unified_optimizer = None
 
 
 @pytest.fixture(scope="function")
@@ -100,10 +103,10 @@ def test_calcite_optimization_preserves_ray_operations(optimizer_test_data):
     """Test that Calcite optimization preserves Ray Dataset operations."""
     try:
         # Test JOIN with Calcite optimization
-        result = sql_with_optimizer(
+        result = execute_optimized_sql(
             """
-            SELECT u.name, o.amount 
-            FROM users u 
+            SELECT u.name, o.amount
+            FROM users u
             JOIN orders o ON u.id = o.user_id
         """,
             optimizer="calcite",

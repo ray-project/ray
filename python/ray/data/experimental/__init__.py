@@ -12,18 +12,18 @@ import warnings
 
 # Import SQL API components with experimental warning
 try:
+    from ray.data.experimental.sql import (
+        SQLError,
+        SQLExecutionError,
+        SQLParseError,
+        TableNotFoundError,
+    )
     from ray.data.experimental.sql_api import (
         clear_tables,
         config as sql_config,
         list_tables,
         register,
         sql,
-    )
-    from ray.data.experimental.sql import (
-        SQLError,
-        SQLExecutionError,
-        SQLParseError,
-        TableNotFoundError,
     )
 
     SQL_AVAILABLE = True

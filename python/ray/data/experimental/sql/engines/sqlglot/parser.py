@@ -5,7 +5,7 @@ This module provides SQL parsing, AST optimization, and logical planning
 functionality using SQLGlot for the Ray Data SQL engine.
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 import sqlglot
 from sqlglot import exp
@@ -17,7 +17,7 @@ except ImportError:
     sqlglot_optimize = None
 
 from ray.data.experimental.sql.config import SQLConfig
-from ray.data.experimental.sql.utils import setup_logger, SUPPORTED_AGGREGATES
+from ray.data.experimental.sql.utils import SUPPORTED_AGGREGATES, setup_logger
 
 # Supported general functions (non-aggregate)
 SUPPORTED_FUNCTIONS = {
@@ -381,12 +381,12 @@ class SQLParser:
         """
         try:
             from sqlglot.optimizer import (
+                eliminate_subqueries,
+                merge_subqueries,
+                normalize,
                 pushdown_predicates,
                 pushdown_projections,
                 simplify,
-                normalize,
-                eliminate_subqueries,
-                merge_subqueries,
             )
 
             # Use only safe rules that don't change query semantics incompatibly

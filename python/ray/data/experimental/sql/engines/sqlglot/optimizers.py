@@ -9,11 +9,8 @@ Key Design Principle: Optimizers enhance query planning and optimization,
 Ray Dataset API handles ALL actual execution (join, filter, groupby, etc.).
 """
 
-import abc
 import logging
 from typing import Any, Dict, List, Optional, Protocol
-
-from sqlglot import exp
 
 from ray.data import Dataset
 from ray.data.experimental.sql.core import get_engine

@@ -58,7 +58,7 @@ from ray.data.experimental.sql.exceptions import (
 
 # Optional advanced optimizer integration (preserves Ray Dataset operations)
 try:
-    from ray.data.experimental.sql.optimizers import (
+    from ray.data.experimental.sql.optimizers import (  # noqa: F401
         execute_optimized_sql,
         get_ray_executor,
         get_unified_optimizer,
