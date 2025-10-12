@@ -1,2 +1,9 @@
 python/ray/train/xgboost/xgboost_trainer.py:34: DOC201: Function `_xgboost_train_fn_per_worker` does not have a return section in docstring
-python/ray/train/xgboost/xgboost_trainer.py:274: DOC304: Class `XGBoostTrainer`: Class docstring has an argument/parameter section; please put it in the __init__() docstring
+python/ray/train/xgboost/xgboost_trainer.py:276: DOC304: Class `XGBoostTrainer`: Class docstring has an argument/parameter section; please put it in the __init__() docstring
+python/ray/train/xgboost/_external_memory_utils.py:50: DOC107: Function `create_external_memory_dmatrix`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+python/ray/train/xgboost/_external_memory_utils.py:247: DOC101: Method `RayDatasetIterator.__init__`: Docstring contains fewer arguments than in function signature.
+python/ray/train/xgboost/_external_memory_utils.py:247: DOC106: Method `RayDatasetIterator.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+python/ray/train/xgboost/_external_memory_utils.py:247: DOC107: Method `RayDatasetIterator.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+python/ray/train/xgboost/_external_memory_utils.py:247: DOC103: Method `RayDatasetIterator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [batch_size: , dataset_shard: , feature_columns: , label_column: , missing_value: ].
+python/ray/train/xgboost/_external_memory_utils.py:266: DOC106: Method `RayDatasetIterator.next`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+python/ray/train/xgboost/_external_memory_utils.py:266: DOC107: Method `RayDatasetIterator.next`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints

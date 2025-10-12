@@ -64,7 +64,7 @@ def create_external_memory_dmatrix(
     This function creates an ExtMemQuantileDMatrix that streams data from external
     memory for training on large datasets that don't fit in RAM. It follows XGBoost's
     official external memory API.
-    
+
     Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
     Performance Tips:
@@ -168,14 +168,12 @@ def create_external_memory_dmatrix(
 
     # Set and validate batch size
     if batch_size is None:
-        batch_size = DEFAULT_GPU_BATCH_SIZE if device == "cuda" else (
-            DEFAULT_CPU_BATCH_SIZE
+        batch_size = (
+            DEFAULT_GPU_BATCH_SIZE if device == "cuda" else (DEFAULT_CPU_BATCH_SIZE)
         )
     else:
         if not isinstance(batch_size, int) or batch_size <= 0:
-            raise ValueError(
-                f"batch_size must be a positive integer, got {batch_size}"
-            )
+            raise ValueError(f"batch_size must be a positive integer, got {batch_size}")
         if batch_size < MIN_BATCH_SIZE:
             logger.warning(
                 f"batch_size={batch_size} is very small (< {MIN_BATCH_SIZE}). "
@@ -192,17 +190,13 @@ def create_external_memory_dmatrix(
     # Set and validate cache directory
     if cache_dir is None:
         cache_dir = tempfile.mkdtemp(prefix="xgboost_external_memory_")
-        logger.info(
-            f"No cache_dir specified. Using temporary directory: {cache_dir}"
-        )
+        logger.info(f"No cache_dir specified. Using temporary directory: {cache_dir}")
         logger.info(
             "For production use, specify a persistent cache_dir on fast storage."
         )
     else:
         if not isinstance(cache_dir, str):
-            raise TypeError(
-                f"cache_dir must be a string path, got {type(cache_dir)}"
-            )
+            raise TypeError(f"cache_dir must be a string path, got {type(cache_dir)}")
         try:
             os.makedirs(cache_dir, exist_ok=True)
             # Check if directory is writable
@@ -219,9 +213,7 @@ def create_external_memory_dmatrix(
     # Validate max_bin parameter
     if max_bin is not None:
         if not isinstance(max_bin, int) or max_bin <= 0:
-            raise ValueError(
-                f"max_bin must be a positive integer, got {max_bin}"
-            )
+            raise ValueError(f"max_bin must be a positive integer, got {max_bin}")
         if max_bin < 16:
             logger.warning(
                 f"max_bin={max_bin} is very low. This may reduce model quality. "
@@ -266,11 +258,14 @@ def create_external_memory_dmatrix(
             self.batch_size = batch_size
             self.missing_value = missing_value
             self._iterator = None
-            super().__init__(cache_prefix=cache_dir)
+            # XGBoost expects cache_prefix to be a file prefix, not just a directory
+            # Construct proper path: directory + filename prefix
+            cache_prefix = os.path.join(cache_dir, "xgboost_cache")
+            super().__init__(cache_prefix=cache_prefix)
 
         def next(self, input_data):
             """Advance the iterator by one batch and pass data to XGBoost.
-            
+
             Follows XGBoost's external memory iterator pattern.
             Reference: https://xgboost.readthedocs.io/en/stable/tutorials/external_memory.html
 
@@ -286,17 +281,17 @@ def create_external_memory_dmatrix(
                     batch_size=self.batch_size,
                     batch_format="pandas",
                 )
-            
+
             try:
                 # Get next batch from Ray Data stream
                 batch_df = next(self._iterator)
-                
+
                 # Validate batch is not empty
                 if batch_df.empty:
                     raise RuntimeError(
                         "Empty batch encountered. Check dataset content and filtering."
                     )
-                
+
                 # Separate features and labels
                 if isinstance(self.label_column, str):
                     if self.label_column not in batch_df.columns:
@@ -309,8 +304,7 @@ def create_external_memory_dmatrix(
                 else:
                     # Multiple label columns
                     missing_labels = [
-                        col for col in self.label_column 
-                        if col not in batch_df.columns
+                        col for col in self.label_column if col not in batch_df.columns
                     ]
                     if missing_labels:
                         raise KeyError(
@@ -319,11 +313,12 @@ def create_external_memory_dmatrix(
                         )
                     labels = batch_df[self.label_column].values
                     features = batch_df.drop(columns=self.label_column)
-                
+
                 # Select feature columns if specified
                 if self.feature_columns is not None:
                     missing_features = [
-                        col for col in self.feature_columns 
+                        col
+                        for col in self.feature_columns
                         if col not in features.columns
                     ]
                     if missing_features:
@@ -332,11 +327,11 @@ def create_external_memory_dmatrix(
                             f"Available: {list(features.columns)}"
                         )
                     features = features[self.feature_columns]
-                
+
                 # Pass data to XGBoost
                 input_data(data=features.values, label=labels)
                 return 1
-                
+
             except StopIteration:
                 # End of iteration - normal termination
                 return 0
@@ -408,7 +403,7 @@ def setup_gpu_external_memory() -> bool:
     - Better GPU memory allocation performance
     - Memory pooling for reduced allocation overhead
     - Integration with CuPy for NumPy-like GPU arrays
-    
+
     References:
     - XGBoost GPU training: https://xgboost.readthedocs.io/en/stable/gpu/index.html
     - RMM documentation: https://docs.rapids.ai/api/rmm/stable/
@@ -454,10 +449,9 @@ def setup_gpu_external_memory() -> bool:
 
         # Try to configure RMM for GPU memory management
         try:
+            import cupy  # noqa: F401
             import rmm  # noqa: F401
             from rmm.allocators.cupy import rmm_cupy_allocator
-
-            import cupy  # noqa: F401
 
             cupy.cuda.set_allocator(rmm_cupy_allocator)
             return True
@@ -521,7 +515,6 @@ def get_external_memory_recommendations() -> Dict[str, Any]:
             "gpu": {"small": 2500, "medium": 5000, "large": 10000},
         },
         "documentation": (
-            "https://xgboost.readthedocs.io/en/"
-            "stable/tutorials/external_memory.html"
+            "https://xgboost.readthedocs.io/en/" "stable/tutorials/external_memory.html"
         ),
     }

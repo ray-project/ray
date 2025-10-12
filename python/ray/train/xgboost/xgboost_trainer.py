@@ -103,6 +103,8 @@ def _xgboost_train_fn_per_worker(
                     f"which meets or exceeds target ({num_boost_round}). "
                     "No additional training will be performed."
                 )
+                # Report the existing model to Ray Train to properly register completion
+                ray.train.report({"model": starting_model})
                 return
         except Exception as e:
             logger.error(f"Failed to load model from checkpoint: {e}")
