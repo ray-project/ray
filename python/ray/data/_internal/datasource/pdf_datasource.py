@@ -149,18 +149,17 @@ class PDFDatasource(FileBasedDatasource):
         """Read and parse a single PDF file.
 
         This method extracts text and metadata from each page in the PDF file.
-        It yields one or more blocks containing the parsed data.
+        It yields one or more blocks containing the parsed data. If a file is
+        corrupted or cannot be read, it logs a warning and skips the file.
 
         Args:
             f: The file handle from PyArrow filesystem.
             path: The path to the PDF file being read.
 
         Yields:
-            Blocks containing parsed PDF data. Each block contains one or more rows
-            depending on the configuration (page-level or document-level).
-
-        Raises:
-            ValueError: If the PDF file is corrupted or cannot be parsed.
+            Block: Blocks containing parsed PDF data. Each block contains one or more rows
+                depending on the configuration (page-level or document-level).
+                Returns empty if the file cannot be read.
         """
         from PyPDF2 import PdfReader
         from PyPDF2.errors import PdfReadError
@@ -181,15 +180,20 @@ class PDFDatasource(FileBasedDatasource):
                 yield from self._read_document(reader, path, data)
 
         except PdfReadError as e:
-            raise ValueError(
+            # Log warning and skip corrupted or password-protected files
+            logger.warning(
                 f"Failed to read PDF file at path '{path}'. "
                 f"The file may be corrupted or password-protected. "
-                f"Original error: {e}"
-            ) from e
+                f"Original error: {e}. Skipping file."
+            )
+            return
         except Exception as e:
-            raise ValueError(
-                f"Unexpected error while reading PDF file at path '{path}': {e}"
-            ) from e
+            # Log warning and skip files that cause unexpected errors
+            logger.warning(
+                f"Unexpected error while reading PDF file at path '{path}': {e}. "
+                f"Skipping file."
+            )
+            return
 
     def _process_page_data(
         self,
@@ -259,8 +263,8 @@ class PDFDatasource(FileBasedDatasource):
             pdf_bytes: Raw PDF file bytes.
 
         Yields:
-            Blocks containing individual page data (or batched pages if
-            max_pages_per_block is set).
+            Block: Blocks containing individual page data (or batched pages if
+                max_pages_per_block is set).
         """
         num_pages = len(reader.pages)
 
@@ -328,7 +332,7 @@ class PDFDatasource(FileBasedDatasource):
             pdf_bytes: Raw PDF file bytes.
 
         Yields:
-            Block containing document-level data.
+            Block: Block containing document-level data.
         """
         num_pages = len(reader.pages)
         all_text = []
@@ -566,85 +570,120 @@ class PDFDatasource(FileBasedDatasource):
 
         return int(total_size) if total_size > 0 else None
 
+    def _estimate_single_file_ratio(self, path: str, file_size: int) -> Optional[float]:
+        """Estimate encoding ratio for a single PDF file.
+
+        This helper method reads a single file and estimates its encoding ratio
+        by comparing file size to extracted text size.
+
+        Args:
+            path: Path to the PDF file.
+            file_size: Size of the PDF file on disk in bytes.
+
+        Returns:
+            Encoding ratio (in-memory size / file size), or None if estimation fails.
+        """
+        try:
+            # Read and parse the file
+            with self._filesystem.open_input_file(path) as f:
+                data = f.readall()
+                pdf_stream = io.BytesIO(data)
+
+                from PyPDF2 import PdfReader
+
+                reader = PdfReader(pdf_stream)
+
+                # Estimate memory size based on extracted text
+                # Sample up to 5 pages to keep estimation fast
+                text_size = 0
+                pages_to_sample = min(5, len(reader.pages))
+
+                for page_num in range(pages_to_sample):
+                    page = reader.pages[page_num]
+                    text = page.extract_text()
+                    text_size += len(text.encode("utf-8"))
+
+                # Extrapolate to full document if we sampled fewer pages
+                if len(reader.pages) > pages_to_sample:
+                    text_size = text_size * (len(reader.pages) / pages_to_sample)
+
+                # Calculate ratio
+                if file_size > 0:
+                    return text_size / file_size
+                else:
+                    return None
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to estimate encoding ratio for '{path}': {e}. "
+                "Continuing with remaining samples."
+            )
+            return None
+
+    def _calculate_median_ratio(self, ratios: List[float]) -> float:
+        """Calculate median ratio from a list of ratios.
+
+        Args:
+            ratios: List of encoding ratios.
+
+        Returns:
+            Median ratio, bounded by the lower limit.
+        """
+        if not ratios:
+            return PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+        # Use median to avoid outliers
+        ratios.sort()
+        median_ratio = ratios[len(ratios) // 2]
+
+        # Ensure ratio is within reasonable bounds
+        return max(median_ratio, PDF_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
     def _estimate_files_encoding_ratio(self) -> float:
         """Estimate encoding ratio by sampling PDF files.
 
-        This method samples a few PDF files to estimate the ratio between
-        file size on disk and in-memory size after parsing.
+        This method samples up to 5 PDF files to estimate the ratio between
+        file size on disk and in-memory size after parsing. The estimation
+        uses the median ratio to avoid outliers.
 
         Returns:
             Estimated encoding ratio (in-memory size / file size).
         """
         import time
 
-        # Sample up to 5 files for estimation
+        # Get paths and determine sample size
         paths = self._paths()
         sample_size = min(5, len(paths))
         if sample_size == 0:
             return PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
 
+        # Sample files with a timeout to avoid hanging
         ratios = []
         timeout_seconds = 10
         start_time = time.time()
 
         for path in paths[:sample_size]:
-            try:
-                # Check global timeout
-                elapsed_time = time.time() - start_time
-                if elapsed_time > timeout_seconds:
-                    logger.warning(
-                        f"PDF encoding ratio estimation timed out after sampling "
-                        f"{len(ratios)} files. Using partial estimate."
-                    )
-                    break
-
-                # Get file size
-                file_info = self._filesystem.get_file_info(path)
-                file_size = file_info.size
-
-                if file_size == 0:
-                    continue
-
-                # Read and parse a sample
-                with self._filesystem.open_input_file(path) as f:
-                    data = f.readall()
-                    pdf_stream = io.BytesIO(data)
-
-                    from PyPDF2 import PdfReader
-
-                    reader = PdfReader(pdf_stream)
-
-                    # Estimate memory size based on extracted text
-                    text_size = 0
-                    for page_num in range(min(5, len(reader.pages))):
-                        page = reader.pages[page_num]
-                        text = page.extract_text()
-                        text_size += len(text.encode("utf-8"))
-
-                    # Extrapolate to full document
-                    if len(reader.pages) > 5:
-                        text_size = text_size * (len(reader.pages) / 5)
-
-                    # Calculate ratio
-                    ratio = (
-                        text_size / file_size
-                        if file_size > 0
-                        else PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
-                    )
-                    ratios.append(ratio)
-
-            except Exception as e:
+            # Check if we've exceeded the timeout
+            elapsed_time = time.time() - start_time
+            if elapsed_time > timeout_seconds:
                 logger.warning(
-                    f"Failed to estimate encoding ratio for '{path}': {e}. "
-                    "Continuing with remaining samples."
+                    f"PDF encoding ratio estimation timed out after sampling "
+                    f"{len(ratios)} files. Using partial estimate."
                 )
+                break
+
+            # Get file size
+            file_info = self._filesystem.get_file_info(path)
+            file_size = file_info.size
+
+            # Skip empty files
+            if file_size == 0:
                 continue
 
-        if ratios:
-            # Use median to avoid outliers
-            ratios.sort()
-            median_ratio = ratios[len(ratios) // 2]
-            # Ensure ratio is within reasonable bounds
-            return max(median_ratio, PDF_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+            # Estimate ratio for this file
+            ratio = self._estimate_single_file_ratio(path, file_size)
+            if ratio is not None:
+                ratios.append(ratio)
 
-        return PDF_ENCODING_RATIO_ESTIMATE_DEFAULT
+        # Calculate and return median ratio
+        return self._calculate_median_ratio(ratios)
