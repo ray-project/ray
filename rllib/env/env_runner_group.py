@@ -558,7 +558,7 @@ class EnvRunnerGroup:
 
             # Broadcast updated states back to all workers.
             self.foreach_env_runner_async_fetch_ready(
-                "set_state",
+                func="set_state",
                 tag="set_state",
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
