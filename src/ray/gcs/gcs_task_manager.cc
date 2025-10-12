@@ -122,11 +122,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   size_t idx = 0;
   for (const auto &task_locator : locators_copy) {
     auto &te = task_locator->GetTaskEventsMutable();
-    const auto tid = TaskID::FromBinary(te.task_id());
-    const auto jid = JobID::FromBinary(te.job_id());
-    const auto wid = GetWorkerID(te);
-    RAY_LOG(DEBUG) << "[MarkOnWorkerDead] idx=" << idx++ << " task=" << tid
-                   << " job=" << jid
+    const size_t task_id_len = te.task_id().size();
+    const size_t job_id_len = te.job_id().size();
+    const size_t has_updates = te.has_state_updates() ? 1 : 0;
+    RAY_LOG(DEBUG) << "[MarkOnWorkerDead] idx=" << idx++ << " task_id_len=" << task_id_len
+                   << " job_id_len=" << job_id_len << " has_state_updates=" << has_updates
                    << " list_index=" << task_locator->GetCurrentListIndex()
                    << " locator_ptr=" << task_locator.get();
     // Guard the mutation to capture where it fails.
@@ -135,7 +135,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
           task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
     } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "[MarkOnWorkerDead] exception while marking failed: " << e.what()
-                     << " task=" << tid << " worker_in_event=" << wid << " te=\n"
+                     << " task_id_len=" << task_id_len << " job_id_len=" << job_id_len
+                     << " te=\n"
                      << te.DebugString();
       throw;  // rethrow to preserve behavior
     }
@@ -188,15 +189,15 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
   size_t idx = 0;
   for (const auto &task_locator : locators_copy) {
     auto &te = task_locator->GetTaskEventsMutable();
-    const auto tid = TaskID::FromBinary(te.task_id());
-    RAY_LOG(DEBUG) << "[MarkOnJobEnds] idx=" << idx++ << " task=" << tid
+    const size_t task_id_len = te.task_id().size();
+    RAY_LOG(DEBUG) << "[MarkOnJobEnds] idx=" << idx++ << " task_id_len=" << task_id_len
                    << " list_index=" << task_locator->GetCurrentListIndex()
                    << " locator_ptr=" << task_locator.get();
     try {
       MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
     } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "[MarkOnJobEnds] exception while marking failed: " << e.what()
-                     << " task=" << tid << " te=\n"
+                     << " task_id_len=" << task_id_len << " te=\n"
                      << te.DebugString();
       throw;
     }
