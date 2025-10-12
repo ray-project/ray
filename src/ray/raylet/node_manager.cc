@@ -32,6 +32,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -145,6 +146,7 @@ NodeManager::NodeManager(
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager,
     std::atomic<bool> &shutting_down)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
@@ -198,6 +200,7 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
@@ -833,6 +836,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   failed_nodes_cache_.insert(node_id);
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
+
+  raylet_client_pool_.Disconnect(node_id);
+  worker_rpc_pool_.Disconnect(node_id);
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
@@ -2574,7 +2580,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
 }
 
 namespace {
-
 rpc::ObjectStoreStats AccumulateStoreStats(
     const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;
@@ -2729,7 +2734,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
     raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {

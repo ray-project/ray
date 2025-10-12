@@ -14,7 +14,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -36,7 +35,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
@@ -129,7 +128,8 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    def test_basic(self, serve_instance):
+    @pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+    def test_basic(self, serve_instance, aggregation_function):
         """Test that request metrics are sent correctly to the controller."""
 
         client = serve_instance
@@ -144,9 +144,12 @@ class TestAutoscalingMetrics:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 5,
                 "look_back_period_s": 1,
+                "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
             version="v1",
+            # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
+            graceful_shutdown_timeout_s=0.1,
         )
         class A:
             async def __call__(self):
@@ -229,9 +232,7 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(
-            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
-        )
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -277,7 +278,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -303,8 +308,8 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        # Wait for deployment A to scale up
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
@@ -352,7 +357,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -377,7 +386,7 @@ class TestAutoscalingMetrics:
 
         # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor
@@ -391,7 +400,10 @@ class TestAutoscalingMetrics:
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
-def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_scale_up_down_basic(
+    min_replicas, serve_instance_with_signal, aggregation_function
+):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     client, signal = serve_instance_with_signal
@@ -404,6 +416,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -439,9 +452,6 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
-@mock.patch(
-    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
-)
 def test_e2e_scale_up_down_with_0_replica(
     serve_instance_with_signal,
     scaling_factor,
@@ -571,7 +581,8 @@ def test_cold_start_time(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_bursty(serve_instance_with_signal):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
     """
     Sends 100 requests in bursts. Uses delays for smooth provisioning.
     """
@@ -587,6 +598,7 @@ def test_e2e_bursty(serve_instance_with_signal):
             "look_back_period_s": 0.5,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0.5,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -636,9 +648,6 @@ def test_e2e_bursty(serve_instance_with_signal):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@mock.patch(
-    "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 1
-)
 def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
@@ -1530,11 +1539,13 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
 @pytest.mark.parametrize(
     "policy",
     [
-        {"name": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"},
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        },
         AutoscalingPolicy(
-            name="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
         ),
-        AutoscalingPolicy(name=custom_autoscaling_policy),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy),
     ],
 )
 def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
