@@ -311,8 +311,11 @@ class ServeController:
             handle_metric_report
         )
 
-    def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_metrics()
+    def _get_total_num_requests_by_deployment_id_for_testing(self, deployment_id: DeploymentID):
+        return self.autoscaling_state_manager.get_total_num_requests_by_deployment_id(deployment_id)
+
+    def _get_metrics_by_deployment_id_for_testing(self, deployment_id: DeploymentID):
+        return self.autoscaling_state_manager.get_metrics_by_deployment_id(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas

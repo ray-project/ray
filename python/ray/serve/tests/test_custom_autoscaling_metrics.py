@@ -14,8 +14,8 @@ def get_autoscaling_metrics_from_controller(
     client, deployment_id: DeploymentID
 ) -> Dict[str, float]:
     """Get autoscaling metrics from the controller for testing."""
-    metrics = client._controller.autoscaling_state_manager.get_metrics_by_deployment_id(deployment_id).remote()
-    return metrics
+    ref = client._controller._get_metrics_by_deployment_id_for_testing.remote(deployment_id)
+    return ray.get(ref)
 
 
 class TestCustomServeMetrics:
