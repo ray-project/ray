@@ -141,11 +141,22 @@ class KafkaDatasource(UnboundDatasource):
 
                     # Build consumer configuration from provided settings
                     # We disable auto-commit by default to give Ray Data control over offset management
+                    # Determine auto_offset_reset: must be 'earliest' or 'latest', not a numeric offset
+                    # Numeric offsets are handled separately via seek() calls below
+                    auto_offset_reset = kafka_config.get("auto_offset_reset")
+                    if auto_offset_reset is None:
+                        # If start_offset is numeric, default to 'latest' for auto_offset_reset
+                        # If start_offset is 'earliest' or 'latest', use that value
+                        if start_offset and start_offset.isdigit():
+                            auto_offset_reset = "latest"
+                        else:
+                            auto_offset_reset = (
+                                start_offset if start_offset else "latest"
+                            )
+
                     consumer_config = {
                         "bootstrap_servers": kafka_config["bootstrap_servers"],
-                        "auto_offset_reset": kafka_config.get(
-                            "auto_offset_reset", start_offset
-                        ),
+                        "auto_offset_reset": auto_offset_reset,
                         "enable_auto_commit": kafka_config.get(
                             "enable_auto_commit", False
                         ),
