@@ -414,7 +414,6 @@ class UnboundedData(LogicalOperator, SourceOperator):
         """
         super().__init__("UnboundedData", [], None)  # Unbounded output
         self.datasource = datasource
-        self.trigger = trigger
         self.datasource_config = datasource_config or {}
         self.parallelism = parallelism
 
@@ -424,14 +423,24 @@ class UnboundedData(LogicalOperator, SourceOperator):
         self._data_context = DataContext.get_current()
 
         # Use context defaults for trigger if not specified
+        # Create a copy to avoid mutating the caller's trigger object
         if trigger.trigger_type == "fixed_interval" and trigger.interval is None:
             from datetime import timedelta
 
             default_interval = self._data_context.streaming_trigger_interval
             if isinstance(default_interval, str):
-                trigger.interval = StreamingTrigger._parse_interval(default_interval)
+                interval = StreamingTrigger._parse_interval(default_interval)
             else:
-                trigger.interval = timedelta(seconds=30)  # Fallback default
+                interval = timedelta(seconds=30)  # Fallback default
+
+            # Create a new trigger with the computed interval
+            self.trigger = StreamingTrigger(
+                trigger_type="fixed_interval",
+                interval=interval,
+            )
+        else:
+            # Use the trigger as-is
+            self.trigger = trigger
 
     def output_data(self) -> Optional[List[RefBundle]]:
         """Streaming operators don't have pre-computed output data."""

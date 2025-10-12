@@ -4151,18 +4151,23 @@ def _is_spark_interval_format(trigger: str) -> bool:
 
 
 def _is_cron_expression(trigger: str) -> bool:
-    """Check if trigger string is a cron expression."""
+    """Check if trigger string is a cron expression.
+
+    Accepts standard cron expressions with 5 or 6 space-separated fields.
+    Fields can contain: digits, *, ?, /, -, commas, and alphabetic characters
+    (for day/month names like MON, TUE, JAN, FEB, etc).
+    """
     # Basic cron validation: 5 or 6 space-separated fields
     parts = trigger.strip().split()
-    return len(parts) in [5, 6] and all(
-        part.replace("*", "")
-        .replace("/", "")
-        .replace("-", "")
-        .replace(",", "")
-        .isdigit()
-        or part in ["*", "?"]
-        for part in parts
-    )
+    if len(parts) not in [5, 6]:
+        return False
+
+    # Check if each part looks like a cron field
+    # Valid cron fields contain: digits, *, ?, /, -, commas, or letters (day/month names)
+    import re
+
+    cron_field_pattern = re.compile(r"^[0-9A-Za-z*?/,\-]+$")
+    return all(cron_field_pattern.match(part) for part in parts)
 
 
 def _parse_spark_interval(interval_str: str) -> str:
