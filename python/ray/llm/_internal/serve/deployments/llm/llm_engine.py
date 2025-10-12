@@ -123,7 +123,7 @@ class LLMEngine(abc.ABC):
     @abc.abstractmethod
     async def transcriptions(
         self, request: "TranscriptionRequest"
-    ) -> AsyncGenerator[Union["TranscriptionResponse", "ErrorResponse"], None]:
+    ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
         """Run a Transcription with the engine.
 
         Similar to chat and completion, this method is an async generator,
