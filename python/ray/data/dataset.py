@@ -341,7 +341,18 @@ class Dataset:
         Args:
             fn: The function to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
+            compute: The compute strategy to use for the map operation.
+
+                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -357,27 +368,7 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
-
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
-
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
-
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
-
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -590,7 +581,18 @@ class Dataset:
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default ``batch_size`` is ``None``.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
+            compute: The compute strategy to use for the map operation.
+
+                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
@@ -620,27 +622,7 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
-
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
-
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
-
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
-
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -1304,7 +1286,18 @@ class Dataset:
         Args:
             fn: The function or generator to apply to each record, or a class type
                 that can be instantiated to create such a callable.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
+            compute: The compute strategy to use for the map operation.
+
+                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -1320,27 +1313,7 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
-
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
-
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
-
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
-
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1451,33 +1424,24 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
+            compute: The compute strategy to use for the map operation.
+
+                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
-
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
-
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
-
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
-
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
