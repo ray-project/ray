@@ -18,7 +18,7 @@ curl -O https://raw.githubusercontent.com/ray-project/ray/master/python/ray/auto
 **3) Bring up a cluster** using the example configuration:
 
 ```bash
-ray up example_full.yaml
+ray up example-full.yaml
 ```
 
 See the Cluster Configuration section for details.
