@@ -47,7 +47,7 @@ def test_datafusion_config(ray_start_regular_shared, reset_sql_config):
 
     # Should be able to disable
     ctx.sql_use_datafusion = False
-    assert ctx.sql_use_datafusion
+    assert not ctx.sql_use_datafusion
 
     # Re-enable
     ctx.sql_use_datafusion = True
@@ -192,7 +192,7 @@ def test_datafusion_config_via_api(ray_start_regular_shared, reset_sql_config):
     assert ctx.sql_use_datafusion
 
     ctx.sql_use_datafusion = False
-    assert ctx.sql_use_datafusion
+    assert not ctx.sql_use_datafusion
 
     # Via configure function
     from ray.data.experimental.sql.core import configure
