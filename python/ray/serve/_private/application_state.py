@@ -1314,12 +1314,12 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
 
-    Returns: the updated deployment infos.
+    Returns:
+        Dict[str, DeploymentInfo]: the updated deployment infos.
 
     Raises:
         ValueError: If config options have invalid values.
