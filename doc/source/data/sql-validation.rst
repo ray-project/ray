@@ -198,9 +198,9 @@ Unsupported Features with Alternatives
 
 - **IN** → Use multiple OR conditions or JOIN operations
 - **EXISTS** → Use JOIN operations instead
+- **ALL/ANY** → Use aggregation with ``MIN``/``MAX`` functions
 
 .. vale on
-- **ALL/ANY** → Use aggregation with ``MIN``/``MAX`` functions
 
 Integration with Development Workflow
 -------------------------------------

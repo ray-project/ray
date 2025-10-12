@@ -4,6 +4,7 @@ autoscaler
 clear_tables
 CTE(s)?
 Dask
+DataFusion
 [Dd]ata('s)?
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
@@ -37,6 +38,8 @@ runai
 [Ss]calers
 Spotify('s)?
 [Ss]ql
+SQLGlot
+SQLite
 [Ss]ubquer(y|ies)
 TFRecord(s)?
 UDF(s)?
