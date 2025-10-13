@@ -321,15 +321,12 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
                 continue
             with open(path, "r", errors="ignore") as f:
                 for line in f:
-                    try:
-                        rec = json.loads(line)
-                        if (
-                            rec.get("type") == "deployment"
-                            and rec.get("snapshot", {}).get("deployment") == DEPLOY_NAME
-                        ):
-                            snaps.append(rec["snapshot"])
-                    except (json.JSONDecodeError, KeyError):
-                        continue
+                    rec = json.loads(line)
+                    if (
+                        rec.get("type") == "deployment"
+                        and rec.get("snapshot", {}).get("deployment") == DEPLOY_NAME
+                    ):
+                        snaps.append(rec["snapshot"])
         return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
 
     def wait_for_replicas(current, timeout=10):
@@ -413,10 +410,7 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
             continue
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
+                rec = json.loads(line)
                 if rec.get("type") != "deployment":
                     continue
                 snap = rec.get("snapshot", {})
