@@ -5,11 +5,32 @@ This module provides the SchemaManager class for managing table schemas
 and inferring schema information from Ray Datasets.
 """
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from ray.data import Dataset
-from ray.data.experimental.sql.config import TableSchema
 from ray.data.experimental.sql.utils import setup_logger
+
+
+@dataclass
+class TableSchema:
+    """Schema information for a SQL table.
+    
+    Attributes:
+        name: Table name.
+        columns: Mapping from column names to SQL types.
+    """
+    name: str
+    columns: Dict[str, str] = field(default_factory=dict)
+    
+    def add_column(self, name: str, sql_type: str) -> None:
+        """Add a column to the schema.
+        
+        Args:
+            name: Column name.
+            sql_type: SQL type string (e.g., "INTEGER", "VARCHAR").
+        """
+        self.columns[name] = sql_type
 
 
 class SchemaManager:

@@ -3,7 +3,7 @@
 Tests cover:
 - Basic SQL operations (SELECT, WHERE, JOIN, GROUP BY, etc.)
 - Multi-dialect support via SQLGlot
-- DataFusion optimization integration  
+- DataFusion optimization integration
 - Configuration via DataContext
 - Error handling and fallback behavior
 - Auto-discovery of datasets from variables
@@ -17,15 +17,15 @@ import warnings
 import pytest
 
 import ray
-from ray.data.experimental.sql import (
+
+# Use public API - not experimental paths
+from ray.data.sql import (
     ColumnNotFoundError,
     SQLError,
     SQLExecutionError,
     SQLParseError,
     TableNotFoundError,
     UnsupportedOperationError,
-)
-from ray.data.experimental.sql_api import (
     clear_tables,
     config,
     list_tables,
@@ -647,3 +647,201 @@ def test_sql_multi_dialect_support(ray_start_regular_shared, sql_engine):
 
     # Reset
     ctx.sql_dialect = original_dialect
+
+
+# Additional auto-discovery edge case tests
+
+
+def test_sql_explicit_registration_precedence(ray_start_regular_shared, sql_engine):
+    """Test that explicit registration takes precedence over auto-discovery."""
+    clear_tables()
+
+    # Create a local variable dataset
+    customers = ray.data.from_items([{"id": 1, "name": "Local Customer"}])  # noqa: F841
+
+    # Explicitly register a different dataset with the same table name
+    explicit_customers = ray.data.from_items([{"id": 2, "name": "Registered Customer"}])
+    register("customers", explicit_customers)
+
+    # Query should use explicitly registered dataset, not the local variable
+    result = sql("SELECT * FROM customers")
+    rows = result.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["name"] == "Registered Customer"
+    assert rows[0]["id"] == 2
+
+    clear_tables()
+
+
+def test_sql_auto_discovery_with_cte(ray_start_regular_shared, sql_engine):
+    """Test auto-discovery with Common Table Expressions."""
+    base_data = ray.data.from_items(
+        [{"id": 1, "value": 10}, {"id": 2, "value": 20}, {"id": 3, "value": 30}]
+    )  # noqa: F841
+
+    # CTE should work with auto-discovered base table
+    result = sql(
+        """
+        WITH filtered AS (
+            SELECT * FROM base_data WHERE value > 15
+        )
+        SELECT * FROM filtered ORDER BY value
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    assert rows[0]["value"] == 20
+    assert rows[1]["value"] == 30
+
+
+def test_sql_auto_discovery_table_not_found(ray_start_regular_shared, sql_engine):
+    """Test error when referenced table variable doesn't exist."""
+    clear_tables()
+
+    # Try to query non-existent table
+    with pytest.raises(TableNotFoundError) as exc_info:
+        sql("SELECT * FROM nonexistent_table")
+
+    # Error should mention the table name
+    assert "nonexistent_table" in str(exc_info.value)
+
+
+def test_sql_auto_discovery_with_aliases_and_joins(
+    ray_start_regular_shared, sql_engine
+):
+    """Test auto-discovery with complex aliases and multiple joins."""
+    departments = ray.data.from_items(
+        [
+            {"dept_id": 1, "dept_name": "Engineering"},
+            {"dept_id": 2, "dept_name": "Sales"},
+        ]
+    )  # noqa: F841
+
+    employees = ray.data.from_items(
+        [
+            {"emp_id": 1, "name": "Alice", "dept_id": 1},
+            {"emp_id": 2, "name": "Bob", "dept_id": 2},
+            {"emp_id": 3, "name": "Charlie", "dept_id": 1},
+        ]
+    )  # noqa: F841
+
+    projects = ray.data.from_items(
+        [
+            {"proj_id": 1, "emp_id": 1, "project": "Project A"},
+            {"proj_id": 2, "emp_id": 3, "project": "Project B"},
+        ]
+    )  # noqa: F841
+
+    # Complex query with multiple auto-discovered tables and aliases
+    result = sql(
+        """
+        SELECT
+            e.name as employee_name,
+            d.dept_name,
+            p.project
+        FROM employees e
+        JOIN departments d ON e.dept_id = d.dept_id
+        LEFT JOIN projects p ON e.emp_id = p.emp_id
+        WHERE d.dept_name = 'Engineering'
+        ORDER BY e.name
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    assert rows[0]["employee_name"] == "Alice"
+    assert rows[0]["project"] == "Project A"
+    assert rows[1]["employee_name"] == "Charlie"
+
+
+def test_sql_auto_discovery_with_range(ray_start_regular_shared, sql_engine):
+    """Test auto-discovery with ray.data.range() dataset."""
+    numbers = ray.data.range(100)  # noqa: F841
+
+    result = sql("SELECT * FROM numbers WHERE id >= 90 ORDER BY id")
+    rows = result.take_all()
+
+    assert len(rows) == 10
+    assert rows[0]["id"] == 90
+    assert rows[-1]["id"] == 99
+
+
+def test_sql_auto_discovery_cleanup_with_error(ray_start_regular_shared, sql_engine):
+    """Test that cleanup happens even when query fails."""
+    clear_tables()
+
+    valid_data = ray.data.from_items([{"x": 1, "y": 2}])  # noqa: F841
+
+    # Query with intentional error (invalid column)
+    with pytest.raises((ColumnNotFoundError, SQLExecutionError)):
+        sql("SELECT nonexistent_column FROM valid_data")
+
+    # Auto-registered table should still be cleaned up
+    tables = list_tables()
+    assert "valid_data" not in tables
+
+
+def test_sql_auto_discovery_with_explicit_kwargs(ray_start_regular_shared, sql_engine):
+    """Test auto-discovery with explicit keyword argument passing."""
+    # Local variable (will be ignored for 'custom_name')
+    local_data = ray.data.from_items([{"id": 1, "source": "local"}])  # noqa: F841
+
+    # Explicit dataset passed as kwarg
+    explicit_data = ray.data.from_items([{"id": 2, "source": "explicit"}])
+
+    # Query references custom_name which is passed explicitly
+    result = sql("SELECT * FROM custom_name", custom_name=explicit_data)
+    rows = result.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["source"] == "explicit"
+
+
+def test_sql_auto_discovery_mixed_local_and_global(
+    ray_start_regular_shared, sql_engine
+):
+    """Test auto-discovery with both local and global variables."""
+    global global_test_dataset
+
+    # Set up global dataset
+    global_test_dataset = ray.data.from_items([{"id": 1, "type": "global"}])
+
+    # Local dataset
+    local_dataset = ray.data.from_items([{"id": 2, "type": "local"}])  # noqa: F841
+
+    # Query both - should discover both from their respective scopes
+    result1 = sql("SELECT * FROM global_test_dataset")
+    rows1 = result1.take_all()
+    assert rows1[0]["type"] == "global"
+
+    result2 = sql("SELECT * FROM local_dataset")
+    rows2 = result2.take_all()
+    assert rows2[0]["type"] == "local"
+
+    # Cleanup
+    global_test_dataset = None
+
+
+def test_sql_auto_discovery_repeated_queries(ray_start_regular_shared, sql_engine):
+    """Test that auto-discovery works correctly across multiple queries."""
+    data = ray.data.from_items(
+        [{"id": 1, "value": 100}, {"id": 2, "value": 200}, {"id": 3, "value": 300}]
+    )  # noqa: F841
+
+    # First query
+    result1 = sql("SELECT * FROM data WHERE value > 150")
+    rows1 = result1.take_all()
+    assert len(rows1) == 2
+
+    # Second query on same dataset - should still work
+    result2 = sql("SELECT * FROM data WHERE id = 1")
+    rows2 = result2.take_all()
+    assert len(rows2) == 1
+    assert rows2[0]["value"] == 100
+
+    # Third query with different filter
+    result3 = sql("SELECT * FROM data ORDER BY value DESC LIMIT 1")
+    rows3 = result3.take_all()
+    assert rows3[0]["value"] == 300

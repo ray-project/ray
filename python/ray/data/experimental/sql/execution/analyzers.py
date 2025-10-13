@@ -2,11 +2,13 @@
 Analyzers for SQL projection and aggregation operations.
 
 This module provides analyzers for SELECT projections and aggregate functions,
-converting SQL expressions into Ray Data operations.
+converting SQL expressions into Ray Data operations. It analyzes SQLGlot ASTs
+(https://github.com/tobymao/sqlglot) to extract projection and aggregation metadata.
 """
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 from ray.data import Dataset

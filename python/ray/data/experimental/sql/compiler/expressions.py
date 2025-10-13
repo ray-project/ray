@@ -1,13 +1,17 @@
 """Expression compilation for Ray Data SQL API.
 
 This module compiles SQLGlot expressions into executable Python functions
-that can be used with Ray Dataset operations.
+that can be used with Ray Dataset operations. It uses SQLGlot AST nodes
+(https://github.com/tobymao/sqlglot) to represent SQL expressions and compiles
+them into Python callables that can be executed on row dictionaries.
 """
 
 import math
 import operator
-from typing import Any, Callable, Dict, Mapping
+import threading
+from typing import Any, Callable, Dict, Mapping, Optional
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 from ray.data.experimental.sql.exceptions import SchemaError, UnsupportedOperationError
@@ -22,8 +26,9 @@ class ExpressionCompiler:
 
     # Class-level compilation cache for performance
     _compilation_cache: Dict[str, Callable] = {}
+    _cache_lock: threading.Lock = threading.Lock()
 
-    def __init__(self, config=None):
+    def __init__(self, config: Optional[Any] = None) -> None:
         """Initialize ExpressionCompiler with optional configuration.
 
         Args:
@@ -95,21 +100,28 @@ class ExpressionCompiler:
         # Create cache key from expression
         expr_key = cls._get_expression_cache_key(expr)
 
-        # Check cache first
-        if expr_key in cls._compilation_cache:
-            return cls._compilation_cache[expr_key]
+        # Check cache first with read lock
+        with cls._cache_lock:
+            if expr_key in cls._compilation_cache:
+                return cls._compilation_cache[expr_key]
 
-        # Compile and cache
+        # Compile outside the lock to avoid holding lock during compilation
         compiled_func = cls._compile_expression(expr)
 
-        # Cache with size limit
-        if len(cls._compilation_cache) >= 1000:  # Prevent memory bloat
-            # Remove oldest entry (simple FIFO)
-            oldest_key = next(iter(cls._compilation_cache))
-            del cls._compilation_cache[oldest_key]
+        # Insert into cache with write lock
+        with cls._cache_lock:
+            # Double-check cache in case another thread compiled while we were compiling
+            if expr_key in cls._compilation_cache:
+                return cls._compilation_cache[expr_key]
 
-        cls._compilation_cache[expr_key] = compiled_func
-        return compiled_func
+            # Cache with size limit
+            if len(cls._compilation_cache) >= 1000:  # Prevent memory bloat
+                # Remove oldest entry (simple FIFO)
+                oldest_key = next(iter(cls._compilation_cache))
+                del cls._compilation_cache[oldest_key]
+
+            cls._compilation_cache[expr_key] = compiled_func
+            return compiled_func
 
     @classmethod
     def _get_expression_cache_key(cls, expr: exp.Expression) -> str:
@@ -755,9 +767,11 @@ class ExpressionCompiler:
     @classmethod
     def clear_compilation_cache(cls) -> None:
         """Clear the expression compilation cache."""
-        cls._compilation_cache.clear()
+        with cls._cache_lock:
+            cls._compilation_cache.clear()
 
     @classmethod
     def get_cache_stats(cls) -> Dict[str, int]:
         """Get compilation cache statistics."""
-        return {"cache_size": len(cls._compilation_cache), "cache_limit": 1000}
+        with cls._cache_lock:
+            return {"cache_size": len(cls._compilation_cache), "cache_limit": 1000}

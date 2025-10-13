@@ -2,11 +2,13 @@
 Query operation handlers for Ray Data SQL API.
 
 This module provides handlers for various SQL operations including JOINs,
-WHERE clauses, ORDER BY, and LIMIT operations.
+WHERE clauses, ORDER BY, and LIMIT operations. It converts SQLGlot AST nodes
+(https://github.com/tobymao/sqlglot) into Ray Dataset operation calls.
 """
 
 from typing import List, Optional, Tuple, Union
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 from ray.data import Dataset

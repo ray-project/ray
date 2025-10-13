@@ -1,6 +1,8 @@
 """Core SQL engine implementation for Ray Data.
 
 This module provides SQL query execution for Ray Datasets using standard SQL syntax.
+It uses SQLGlot (https://github.com/tobymao/sqlglot) for SQL parsing and AST manipulation,
+and optionally Apache DataFusion (https://datafusion.apache.org/) for cost-based query optimization.
 """
 
 import hashlib
@@ -8,6 +10,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Set
 
+# SQLGlot: SQL parser and transpiler - https://github.com/tobymao/sqlglot
 import sqlglot
 from sqlglot import exp
 

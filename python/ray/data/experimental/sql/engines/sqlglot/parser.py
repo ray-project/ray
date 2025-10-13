@@ -2,15 +2,17 @@
 SQL parsing and optimization for Ray Data SQL API.
 
 This module provides SQL parsing, AST optimization, and logical planning
-functionality using SQLGlot for the Ray Data SQL engine.
+functionality using SQLGlot (https://github.com/tobymao/sqlglot) for the 
+Ray Data SQL engine.
 """
 
 from typing import Dict, Optional
 
+# SQLGlot: SQL parser, transpiler, and optimizer - https://github.com/tobymao/sqlglot
 import sqlglot
 from sqlglot import exp
 
-# Try to import optimize, fallback gracefully if not available
+# Try to import SQLGlot's built-in optimizer, fallback gracefully if not available
 try:
     from sqlglot.optimizer import optimize as sqlglot_optimize
 except ImportError:

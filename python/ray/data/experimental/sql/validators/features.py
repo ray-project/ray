@@ -1,10 +1,13 @@
 """Feature validator for SQL queries.
 
 This module validates SQL queries against supported and unsupported features.
+It checks SQLGlot AST nodes (https://github.com/tobymao/sqlglot) to ensure
+only supported SQL constructs are used.
 """
 
 from typing import Set
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 from ray.data.experimental.sql.validators.base import SQLValidator

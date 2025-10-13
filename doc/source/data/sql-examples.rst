@@ -19,7 +19,7 @@ Start with simple SELECT operations to explore your data:
 .. testcode::
 
     import ray
-    import ray.data.sql sql, register_table
+    from ray.data.sql import sql, register_table
 
     # Create sample data
     users = ray.data.from_items([

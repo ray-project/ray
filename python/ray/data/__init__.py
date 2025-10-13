@@ -74,22 +74,22 @@ from ray.data.read_api import (  # noqa: F401
     read_webdataset,
 )
 
-# Import experimental SQL API
+# Import SQL API through the public ray.data.sql module
+# This provides a clean public interface without exposing experimental paths
 try:
-    # Import essential exceptions
-    from ray.data.experimental.sql import (
-        SQLError,
-        SQLExecutionError,
-        SQLParseError,
-        TableNotFoundError,
-    )
-    from ray.data.experimental.sql_api import (
+    # Import the sql module - users can do: from ray.data.sql import ...
+    from ray.data import sql  # noqa: F401
+
+    # Also make key functions available at ray.data level for convenience
+    from ray.data.sql import (
         clear_tables,
-        config as sql_config,
         list_tables,
         register,
-        sql,
+        sql as _sql_func,
     )
+
+    # Make sql() callable as both ray.data.sql() and ray.data.sql.sql()
+    sql = _sql_func  # noqa: F811
 except ImportError:
     # SQL module not available, skip import
     pass

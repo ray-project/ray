@@ -5,9 +5,7 @@ the SQL API, allowing users to register Ray Datasets as SQL tables.
 """
 
 from ray.data.experimental.sql.registry.base import TableRegistry
-from ray.data.experimental.sql.registry.manager import TableManager
 
 __all__ = [
     "TableRegistry",
-    "TableManager",
 ]

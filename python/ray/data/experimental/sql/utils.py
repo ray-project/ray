@@ -3,13 +3,15 @@ Utility functions for Ray Data SQL API.
 
 This module contains utility functions used throughout the SQL engine,
 including identifier normalization, logging setup, column mappings,
-and other helper functions.
+and other helper functions. It uses SQLGlot (https://github.com/tobymao/sqlglot)
+for SQL parsing and AST manipulation.
 """
 
 import logging
 import re
 from typing import Any, Dict, List, Optional
 
+# SQLGlot: SQL parser and transpiler - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 

@@ -1,11 +1,13 @@
 """Syntax validation for Ray Data SQL API.
 
 This module validates SQL query syntax and provides helpful error messages
-for malformed queries.
+for malformed queries. It uses SQLGlot ASTs (https://github.com/tobymao/sqlglot)
+to validate query structure.
 """
 
 from typing import List, Set
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 from ray.data.experimental.sql.exceptions import SQLParseError

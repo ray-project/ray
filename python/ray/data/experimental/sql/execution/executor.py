@@ -3,10 +3,13 @@ Main query executor for Ray Data SQL API.
 
 This module provides the QueryExecutor class which coordinates the execution
 of parsed SQL ASTs by applying the appropriate operations to Ray Datasets.
+It processes SQLGlot ASTs (https://github.com/tobymao/sqlglot) and converts
+them into Ray Dataset operations.
 """
 
 from typing import Any, Callable, Dict, List, Tuple
 
+# SQLGlot: SQL parser and AST library - https://github.com/tobymao/sqlglot
 from sqlglot import exp
 
 import ray
