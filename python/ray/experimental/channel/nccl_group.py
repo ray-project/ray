@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel.accelerator_context import AcceleratorContext
 
 if TYPE_CHECKING:
     import torch

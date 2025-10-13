@@ -1,9 +1,9 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
 
+from ray._common.deprecation import Deprecated
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
-    LLMServingArgs as _LLMServingArgs,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
@@ -12,13 +12,12 @@ from ray.llm._internal.serve.configs.server_models import (
 from ray.llm._internal.serve.deployments.llm.llm_server import (
     LLMServer as _LLMServer,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter as _LLMRouter,
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    LLMServingArgs as _LLMServingArgs,
 )
-
-# Using Deprecated from rllib since they are retuning better messages.
-# TODO: Ray core should inherit that.
-from ray.rllib.utils.deprecation import Deprecated
+from ray.llm._internal.serve.deployments.routers.router import (
+    OpenAiIngress as _OpenAiIngress,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -82,7 +81,7 @@ class LLMServer(_LLMServer):
     new="ray.serve.llm.ingress.OpenAIIngress",
     error=False,
 )
-class LLMRouter(_LLMRouter):
+class LLMRouter(_OpenAiIngress):
     pass
 
 
@@ -93,7 +92,12 @@ class LLMRouter(_LLMRouter):
 
 @PublicAPI(stability="alpha")
 def build_llm_deployment(
-    llm_config: "LLMConfig", *, name_prefix: Optional[str] = None
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
+    override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[Type[LLMServer]] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
@@ -150,17 +154,30 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
+        bind_kwargs: Optional kwargs to pass to the deployment.
+        override_serve_options: Optional serve options to override the original serve options based on the llm_config.
+        deployment_cls: Optional deployment class to use.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.builders import build_llm_deployment
+    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+        build_llm_deployment,
+    )
 
-    return build_llm_deployment(llm_config=llm_config, name_prefix=name_prefix)
+    return build_llm_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        bind_kwargs=bind_kwargs,
+        override_serve_options=override_serve_options,
+        deployment_cls=deployment_cls,
+    )
 
 
 @PublicAPI(stability="alpha")
-def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
+def build_openai_app(
+    llm_serving_args: Union["LLMServingArgs", Dict[str, Any]]
+) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
@@ -252,13 +269,15 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
 
     Args:
-        llm_serving_args: The list of llm configs or the paths to the llm config to
-            build the app.
+        llm_serving_args: Either a dict with "llm_configs" key containing a list of
+            LLMConfig objects, or an LLMServingArgs object.
 
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.builders import build_openai_app
+    from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+        build_openai_app,
+    )
 
     return build_openai_app(llm_serving_args=llm_serving_args)
 

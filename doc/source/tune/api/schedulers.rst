@@ -44,7 +44,7 @@ setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by
 .. code-block:: python
 
     from ray import tune
-    from tune.schedulers import ASHAScheduler
+    from ray.tune.schedulers import ASHAScheduler
 
     asha_scheduler = ASHAScheduler(
         time_attr='training_iteration',

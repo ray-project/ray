@@ -1,15 +1,17 @@
 from collections import Counter, OrderedDict
 from functools import partial
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -113,7 +115,7 @@ class OrdinalEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset, self.columns, encode_lists=self.encode_lists
         )
@@ -257,7 +259,7 @@ class OneHotEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset,
             self.columns,
@@ -268,7 +270,6 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        from typing import Any
 
         def safe_get(v: Any, stats: Dict[str, int]):
             from collections.abc import Hashable
@@ -285,10 +286,18 @@ class OneHotEncoder(Preprocessor):
 
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
-            one_hot = np.zeros((len(df), num_categories), dtype=int)
+            one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
+            # Integer indices for each category in the column
             codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
-            valid_rows = codes != -1
-            one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
+            # Filter to only the rows that have a valid category
+            valid_category_mask = codes != -1
+            # Dimension should be (num_rows, ) - 1D boolean array
+            non_zero_indices = np.nonzero(valid_category_mask)[0]
+            # Mark the corresponding categories as 1
+            one_hot[
+                non_zero_indices,
+                codes[valid_category_mask],
+            ] = 1
             df[output_column] = one_hot.tolist()
 
         return df
@@ -397,7 +406,7 @@ class MultiHotEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
             dataset,
             self.columns,
@@ -501,7 +510,7 @@ class LabelEncoder(Preprocessor):
         self.label_column = label_column
         self.output_column = output_column or label_column
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
         return self
 
@@ -637,7 +646,7 @@ class Categorizer(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [
             column for column in self.columns if column not in set(self.dtypes)
         ]
@@ -667,7 +676,7 @@ class Categorizer(Preprocessor):
 
 
 def _get_unique_value_indices(
-    dataset: Dataset,
+    dataset: "Dataset",
     columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",

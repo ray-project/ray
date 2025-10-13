@@ -942,6 +942,9 @@ def test_xgboost_trainer_run_config(ray_start_4_cpus, small_dataset):
     assert result.metrics is not None
 
 
+# TODO: Unit test RayTrainReportCallback
+
+
 if __name__ == "__main__":
     import sys
 

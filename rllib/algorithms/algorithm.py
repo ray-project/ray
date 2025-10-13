@@ -91,7 +91,7 @@ from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, force_list
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager, RemoteCallResults
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -109,7 +109,7 @@ from ray.rllib.utils.checkpoints import (
     try_import_msgpack,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
@@ -769,14 +769,35 @@ class Algorithm(Checkpointable, Trainable):
             elif self.eval_env_runner_group:
                 spaces.update(self.eval_env_runner_group.get_spaces())
             else:
-                spaces.update(
-                    {
-                        DEFAULT_MODULE_ID: (
-                            self.config.observation_space,
-                            self.config.action_space,
-                        ),
-                    }
-                )
+                # If the algorithm is online we use the spaces from as they are
+                # provided.
+                if self.config.is_online:
+                    spaces.update(
+                        {
+                            DEFAULT_MODULE_ID: (
+                                self.config.observation_space,
+                                self.config.action_space,
+                            ),
+                        }
+                    )
+                # Otherwise, when we are offline we need to check, if the learner connector
+                # is transforming the spaces.
+                elif self.config.is_offline:
+                    # Build the learner connector with the input spaces from the environment.
+                    learner_connector = self.config.build_learner_connector(
+                        input_observation_space=spaces[INPUT_ENV_SPACES][0],
+                        input_action_space=spaces[INPUT_ENV_SPACES][1],
+                    )
+                    # Update the `spaces` dictionary by using the output spaces of the learner
+                    # connector pipeline.
+                    spaces.update(
+                        {
+                            DEFAULT_MODULE_ID: (
+                                learner_connector.observation_space,
+                                learner_connector.action_space,
+                            ),
+                        }
+                    )
 
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                 spaces=spaces,
@@ -1523,15 +1544,15 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 )
 
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.0
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=_env_runner_remote,
+                        kwargs={"num": _num, "round": _round, "iter": algo_iteration},
+                        tag="_env_runner_remote",
+                    )
                 )
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
-                    ),
-                )
-                for wid, (env_s, ag_s, metrics, iter) in results:
+
+                for env_s, ag_s, metrics, iter in results:
                     # Ignore eval results kicked off in an earlier iteration.
                     # (those results would be outdated and thus misleading).
                     if iter != self.iteration:
@@ -1543,13 +1564,14 @@ class Algorithm(Checkpointable, Trainable):
 
             # Old API stack -> RolloutWorkers return batches.
             else:
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                        tag="env_runner_sample_and_get_metrics",
+                    )
                 )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
-                )
-                for wid, (batch, metrics, iter) in results:
+
+                for batch, metrics, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()
@@ -1754,18 +1776,20 @@ class Algorithm(Checkpointable, Trainable):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=functools.partial(
-                        _env_runner_remote,
-                        num=_num,
-                        round=_round,
-                        iter=algo_iteration,
-                        _force_reset=force_reset,
-                    ),
+
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=_env_runner_remote,
+                        kwargs={
+                            "num": _num,
+                            "round": _round,
+                            "iter": algo_iteration,
+                            "_force_reset": force_reset,
+                        },
+                        tag="_env_runner_remote",
+                    )
                 )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
-                )
+
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
                 time_now = time.time()
@@ -1773,7 +1797,7 @@ class Algorithm(Checkpointable, Trainable):
                     break
                 elif results:
                     t_last_result = time_now
-                for wid, (env_s, ag_s, met, iter) in results:
+                for env_s, ag_s, met, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += env_s
@@ -1802,12 +1826,13 @@ class Algorithm(Checkpointable, Trainable):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                self.eval_env_runner_group.foreach_env_runner_async(
-                    func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
-                    remote_worker_ids=selected_eval_worker_ids,
-                )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
+
+                results = (
+                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
+                        remote_worker_ids=selected_eval_worker_ids,
+                        tag="env_runner_sample_and_get_metrics",
+                    )
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
@@ -1816,7 +1841,7 @@ class Algorithm(Checkpointable, Trainable):
                     break
                 elif results:
                     t_last_result = time_now
-                for wid, (batch, metrics, iter) in results:
+                for batch, metrics, iter in results:
                     if iter != self.iteration:
                         continue
                     env_steps += batch.env_steps()
@@ -2190,11 +2215,11 @@ class Algorithm(Checkpointable, Trainable):
                 EnvRunnerGroup (with its o EnvRunners plus the local one).
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been added).
+            The new MultiRLModuleSpec (after the RLModule has been added).
         """
         validate_module_id(module_id, error=True)
 
-        # The to-be-returned new MultiAgentRLModuleSpec.
+        # The to-be-returned new MultiRLModuleSpec.
         multi_rl_module_spec = None
 
         if not self.config.is_multi_agent:
@@ -2316,9 +2341,9 @@ class Algorithm(Checkpointable, Trainable):
                 EnvRunnerGroup (with its o EnvRunners plus the local one).
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been removed).
+            The new MultiRLModuleSpec (after the RLModule has been removed).
         """
-        # The to-be-returned new MultiAgentRLModuleSpec.
+        # The to-be-returned new MultiRLModuleSpec.
         multi_rl_module_spec = None
 
         # Remove RLModule from the LearnerGroup.
@@ -3421,24 +3446,17 @@ class Algorithm(Checkpointable, Trainable):
                     )
 
         if self.config.num_aggregator_actors_per_learner:
-            remote_aggregator_metrics: RemoteCallResults = (
-                self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0,
-                    return_obj_refs=False,
-                    tags="metrics",
-                )
-            )
-            self._aggregator_actor_manager.foreach_actor_async(
+            remote_aggregator_metrics = self._aggregator_actor_manager.foreach_actor_async_fetch_ready(
                 func=lambda actor: actor.get_metrics(),
                 tag="metrics",
-            )
-
-            FaultTolerantActorManager.handle_remote_call_result_errors(
-                remote_aggregator_metrics,
+                timeout_seconds=0.0,
+                return_obj_refs=False,
+                # (Artur) TODO: In the future, we want to make aggregator actors fault tolerant and should make this configurable
                 ignore_ray_errors=False,
             )
+
             self.metrics.aggregate(
-                [res.get() for res in remote_aggregator_metrics.result_or_errors],
+                remote_aggregator_metrics,
                 key=AGGREGATOR_ACTOR_RESULTS,
             )
 

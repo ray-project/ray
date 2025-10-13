@@ -29,7 +29,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -157,9 +157,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         Args:
             num_timesteps: The number of timesteps to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
                 `forward_inference()` method. If None (default), will use the `explore`
@@ -328,7 +328,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already unsquashed/clipped) to be sent to the environment) and might not
+            # already unsquashed/clipped) to be sent to the environment and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
@@ -362,7 +362,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # Call `add_env_step()` method on episode.
                 else:
-                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # Only increase ts when we actually stepped (not reset as a reset
                     # does not count as a timestep).
                     ts += 1
                     episodes[env_index].add_env_step(
@@ -375,7 +375,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         extra_model_outputs=extra_model_output,
                     )
 
-            # Env-to-module connector pass (cache results as we will do the RLModule
+            # Env-to-module connector pass cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
                 self._cached_to_module = self._env_to_module(
@@ -442,7 +442,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             ]
 
             for eps in self._episodes:
-                # Just started Episodes do not have to be returned. There is no data
+                # Just started episodes do not have to be returned. There is no data
                 # in them anyway.
                 if eps.t == 0:
                     continue
@@ -554,8 +554,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-            # Only update the weigths, if this is the first synchronization or
-            # if the weights of this `EnvRunner` lacks behind the actual ones.
+            # Only update the weights, if this is the first synchronization or
+            # if the weights of this `EnvRunner` lag behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
                 if isinstance(rl_module_state, ray.ObjectRef):
@@ -609,13 +609,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiRLModule` and an
+        Ensures that the instance has a `MultiRLModule` and an
         environment defined.
 
         Raises:
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
-        # Make sure, we have built our gym.vector.Env and RLModule properly.
+        # Make sure we have built our gym.vector.Env and RLModule properly.
         assert self.env and hasattr(self, "module")
 
     @override(EnvRunner)
@@ -626,8 +626,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         `self.config.env_config`) and then call this method to create new environments
         with the updated configuration.
         """
-        # If an env already exists, try closing it first (to allow it to properly
-        # cleanup).
+        # If an env already exists, try closing it first
+        # to allow it to properly clean up.
         if self.env is not None:
             try:
                 self.env.close()
@@ -854,7 +854,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Log general episode metrics.
         # Use the configured window, but factor in the parallelism of the EnvRunners.
         # As a result, we only log the last `window / num_env_runners` steps here,
-        # b/c everything gets parallel-merged in the Algorithm process.
+        # because everything gets parallel-merged in the Algorithm process.
         win = max(
             1,
             int(

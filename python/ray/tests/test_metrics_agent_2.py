@@ -1,46 +1,45 @@
 import random
 import sys
 import time
-
-import pytest
-
-from ray._common.test_utils import wait_for_condition
-import ray._private.prometheus_exporter as prometheus_exporter
-
 from typing import List
 
+import pytest
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
-from opencensus.stats.view_manager import ViewManager
-from opencensus.stats.stats_recorder import StatsRecorder
+from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import execution_context
-from prometheus_client.core import REGISTRY
-
-
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from opencensus.stats.aggregation_data import (
-    LastValueAggregationData,
-    SumAggregationData,
     CountAggregationData,
     DistributionAggregationData,
+    LastValueAggregationData,
+    SumAggregationData,
 )
-from opencensus.metrics.export.value import ValueDouble
-from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
+from opencensus.stats.stats_recorder import StatsRecorder
+from opencensus.stats.view_manager import ViewManager
+from prometheus_client.core import REGISTRY
+
+import ray._private.prometheus_exporter as prometheus_exporter
+from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import (
+    RAY_WORKER_TIMEOUT_S,
+    Gauge,
+    MetricsAgent,
     OpenCensusProxyCollector,
     OpencensusProxyMetric,
+    Record,
 )
-from ray.core.generated.metrics_pb2 import (
-    Metric,
-    MetricDescriptor,
-    Point,
-    LabelKey,
-    TimeSeries,
-    LabelValue,
-)
-from ray._raylet import WorkerID
+from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
+)
+from ray._raylet import WorkerID
+from ray.core.generated.metrics_pb2 import (
+    LabelKey,
+    LabelValue,
+    Metric,
+    MetricDescriptor,
+    Point,
+    TimeSeries,
 )
 
 

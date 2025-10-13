@@ -20,6 +20,8 @@ ray.serve.context._set_internal_replica_context(
     replica_id=ReplicaID(unique_id="test", deployment_id=DeploymentID(name="test")),
     servable_object=None,
     _deployment_config=default_deployment_config,
+    rank=0,
+    world_size=1,
 )
 
 
