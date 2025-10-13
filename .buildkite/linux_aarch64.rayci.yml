@@ -18,6 +18,7 @@ steps:
     wanda: ci/docker/ray-java.wanda.yaml
     tags:
       - release_wheels
+      - java
       - oss
     env:
       ARCH_SUFFIX: "-aarch64"
@@ -109,6 +110,22 @@ steps:
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
     depends_on: raycudabase-aarch64
+
+  - name: ray-core-build-aarch64
+    label: "wanda: core binary parts py{{matrix}} (aarch64)"
+    wanda: ci/docker/ray-core.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+    tags: release_wheels
+    instance_type: builder-arm64
+    depends_on: manylinux-aarch64
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:

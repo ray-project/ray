@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import Counter
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -29,12 +28,13 @@ from typing import (
 
 import numpy as np
 import pandas as pd
+
+# NOTE: pyarrow.fs module needs to be explicitly imported!
 import pyarrow
-from packaging.version import parse as parse_version
+import pyarrow.fs
 
 import ray
 from ray._common.retry import call_with_retry
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -65,12 +65,6 @@ GiB = 1024 * MiB
 SENTINEL = object()
 
 
-# NOTE: Make sure that these lower and upper bounds stay in sync with version
-# constraints given in python/setup.py.
-# Inclusive minimum pyarrow version.
-MIN_PYARROW_VERSION = "6.0.1"
-RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
-_VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
@@ -128,34 +122,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    """Check that pyarrow's version is within the supported bounds."""
-    global _VERSION_VALIDATED
-
-    if not _VERSION_VALIDATED:
-        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
-            _VERSION_VALIDATED = True
-            return
-
-        version = get_pyarrow_version()
-        if version is not None:
-            if version < parse_version(MIN_PYARROW_VERSION):
-                raise ImportError(
-                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
-                    f"{version} is installed. Reinstall with "
-                    f'`pip install -U "pyarrow"`. '
-                    "If you want to disable this pyarrow version check, set the "
-                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-                )
-        else:
-            logger.warning(
-                "You are using the 'pyarrow' module, but the exact version is unknown "
-                "(possibly carried as an internal component by another module). Please "
-                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Dataset. "
-                "If you want to disable this pyarrow version check, set the "
-                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-            )
-        _VERSION_VALIDATED = True
+    ray._private.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(
@@ -606,13 +573,6 @@ def get_compute_strategy(
             )
 
     if compute is not None:
-        # Legacy code path to support `compute` argument.
-        logger.warning(
-            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
-            "argument ``concurrency`` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "stateful-transforms."
-        )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
@@ -631,6 +591,13 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
+        # Legacy code path to support `concurrency` argument.
+        logger.warning(
+            "The argument ``concurrency`` is deprecated in Ray 2.51. Please specify "
+            "argument ``compute`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
         if isinstance(concurrency, tuple):
             # Validate tuple length and that all elements are integers
             if len(concurrency) not in (2, 3) or not all(
@@ -1707,13 +1674,18 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    actual_rows = actual.to_dict(orient="records")
-    expected_rows = expected.to_dict(orient="records")
+    if len(actual) == len(expected) == 0:
+        return True
 
-    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
-    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
-
-    return actual_items_counts == expected_items_counts
+    try:
+        pd.testing.assert_frame_equal(
+            actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
+            expected.sort_values(sorted(expected.columns)).reset_index(drop=True),
+            check_dtype=False,
+        )
+        return True
+    except AssertionError:
+        return False
 
 
 def merge_resources_to_ray_remote_args(
