@@ -879,7 +879,7 @@ void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
                                       int64_t timeout_ms) {
   client_impl_->GetGcsRpcClient().AddEvents(
       std::move(request),
-      [callback](const Status &status) {
+      [callback](const Status &status, rpc::events::AddEventsReply &&reply) {
         if (callback) {
           callback(status);
         }
