@@ -1627,7 +1627,7 @@ class UserCallableWrapper:
                 self._callable.initialize_callable(
                     self._deployment_config.max_ongoing_requests
                 )
-                ServeUsageTag.NUM_REPLICAS_USING_ASYNCHRONOUS_INFERNCE.record("1")
+                ServeUsageTag.NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE.record("1")
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
