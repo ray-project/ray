@@ -22,6 +22,12 @@ autodoc_pydantic==2.2.0
 appnope
 sphinx-docsearch==0.0.7
 
+nbformat>=5.9
+nbclient>=0.9
+myst-nb>=0.17
+nbsphinx>=0.9
+jupyter-core>=5
+
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
 # MyST
