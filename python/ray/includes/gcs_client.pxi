@@ -687,11 +687,11 @@ cdef class InnerGcsClient:
                 )
             )
 
-     #############################################################
-    # GcsRpcClient methods
     #############################################################
-    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None) -> int:
-        """Async AddEvents using native C++ AddEvents with Status callback."""
+    # TaskInfo methods
+    #############################################################
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None):
+        """Send async AddEvents request to GCS."""
         cdef:
             CAddEventsRequest c_req
             int64_t timeout_ms
@@ -715,7 +715,7 @@ cdef class InnerGcsClient:
             return await asyncio.wrap_future(fut)
 
         with nogil:
-            self.inner.get().GetGcsRpcClient().AddEvents(
+            self.inner.get().Tasks().AsyncAddEvents(
                 move(c_req),
                 StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms)
