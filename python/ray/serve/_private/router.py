@@ -255,6 +255,7 @@ class RouterMetricsManager:
 
         # Start the metrics pusher if autoscaling is enabled.
         autoscaling_config = self.autoscaling_config
+        shared = SharedHandleMetricsPusher.get_or_create(self._controller_handle)
         if autoscaling_config:
             self.metrics_pusher.start()
             # Optimization for autoscaling cold start time. If there are
@@ -275,12 +276,11 @@ class RouterMetricsManager:
                 ),
             )
             # Push metrics to the controller periodically.
-            shared = SharedHandleMetricsPusher.get_or_create(self._controller_handle)
             shared.register(self)
-
         else:
             if self.metrics_pusher:
                 self.metrics_pusher.stop_tasks()
+            shared.unregister(self)
 
     def _report_cached_metrics(self):
         for route, count in self._cached_num_router_requests.items():
@@ -464,6 +464,9 @@ class SharedHandleMetricsPusher:
 
     def register(self, router_metrics_manager: RouterMetricsManager) -> None:
         self._router_metrics_managers.add(router_metrics_manager)
+
+    def unregister(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.discard(router_metrics_manager)
 
     def start(self) -> None:
         self._metrics_pusher.start()
