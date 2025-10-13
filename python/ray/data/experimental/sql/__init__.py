@@ -1,29 +1,17 @@
 """Ray Data SQL API - SQL interface for Ray Datasets.
 
-Execute SQL queries on Ray Datasets using standard SQL syntax.
-Results are returned as Ray Datasets for seamless integration.
+This module is internal to Ray Data's experimental SQL implementation.
+Users should access the SQL API through ray.data.experimental.sql_api instead.
 
-Examples:
-    Basic Usage:
-        >>> import ray.data.sql
-        >>>
-        >>> # Create and register datasets
-        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-        >>> ray.data.sql.register_table("users", users)
-        >>>
-        >>> # Execute SQL queries
-        >>> result = ray.data.sql("SELECT * FROM users")
-        >>> print(result.take_all())
+For public API, use:
+    from ray.data.experimental.sql_api import sql, register, list_tables, clear_tables, config
 """
 
-import sys
-import types
-
+# Internal imports for SQL module implementation
 from ray.data.experimental.sql.config import LogLevel, SQLConfig, SQLDialect
 from ray.data.experimental.sql.core import (
     RaySQL,
     clear_tables,
-    # Configuration functions
     configure,
     enable_optimization,
     enable_predicate_pushdown,
@@ -56,21 +44,14 @@ from ray.data.experimental.sql.exceptions import (
     UnsupportedOperationError,
 )
 
-# Optional advanced optimizer integration (preserves Ray Dataset operations)
-try:
-    from ray.data.experimental.sql.optimizers import (  # noqa: F401
-        execute_optimized_sql,
-        get_ray_executor,
-        get_unified_optimizer,
-    )
-
-    ADVANCED_OPTIMIZERS_AVAILABLE = True
-except ImportError:
-    ADVANCED_OPTIMIZERS_AVAILABLE = False
-
-# Public API exports
+# Internal exports (for use within ray.data.experimental.sql package)
 __all__ = [
-    # Core public API
+    # Core internal components
+    "RaySQL",
+    "SQLConfig",
+    "SQLDialect",
+    "LogLevel",
+    # Internal functions
     "sql",
     "register_table",
     "list_tables",
@@ -78,12 +59,6 @@ __all__ = [
     "clear_tables",
     "get_engine",
     "get_registry",
-    # Core classes for type hinting and advanced usage
-    "RaySQL",
-    "SQLConfig",
-    "SQLDialect",
-    "LogLevel",
-    # Configuration functions
     "configure",
     "get_global_config",
     "set_global_config",
@@ -108,88 +83,3 @@ __all__ = [
     "SchemaError",
     "UnsupportedOperationError",
 ]
-
-# Add advanced optimizer integration to exports if available
-if ADVANCED_OPTIMIZERS_AVAILABLE:
-    __all__.extend(
-        [
-            "execute_optimized_sql",
-            "get_unified_optimizer",
-            "get_ray_executor",
-        ]
-    )
-
-# Module-level documentation
-__version__ = "1.0.0"
-__author__ = "Ray Data Team"
-
-
-# Module-level properties for easy access
-def _get_dialect():
-    """Get the current SQL dialect."""
-    from .core import get_dialect
-
-    return get_dialect()
-
-
-def _set_dialect(value):
-    """Set the SQL dialect."""
-    from .core import set_dialect
-
-    set_dialect(value)
-
-
-def _get_log_level():
-    """Get the current logging level."""
-    from .core import get_log_level
-
-    return get_log_level()
-
-
-def _set_log_level(value):
-    """Set the logging level."""
-    from .core import set_log_level
-
-    set_log_level(value)
-
-
-# Create a custom callable module class
-class CallableSQLModule(types.ModuleType):
-    """A callable module that forwards calls to the sql function."""
-
-    def __call__(self, query, *args, **kwargs):
-        """Make the module callable by forwarding to the sql function."""
-        return sql(query, *args, **kwargs)
-
-    @property
-    def dialect(self):
-        """Get the current SQL dialect."""
-        return get_dialect()
-
-    @dialect.setter
-    def dialect(self, value):
-        """Set the SQL dialect."""
-        set_dialect(value)
-
-    @property
-    def log_level(self):
-        """Get the current logging level."""
-        return get_log_level()
-
-    @log_level.setter
-    def log_level(self, value):
-        """Set the logging level."""
-        set_log_level(value)
-
-
-# Replace the current module with our callable version
-current_module = sys.modules[__name__]
-callable_module = CallableSQLModule(__name__, current_module.__doc__)
-
-# Copy all attributes from the current module, but skip properties that we define ourselves
-for attr_name in dir(current_module):
-    if not attr_name.startswith("_") and attr_name not in ["dialect", "log_level"]:
-        setattr(callable_module, attr_name, getattr(current_module, attr_name))
-
-# Replace the module in sys.modules
-sys.modules[__name__] = callable_module
