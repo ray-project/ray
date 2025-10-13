@@ -639,10 +639,7 @@ def get_compute_strategy(
             )
     else:
         if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
+            return ActorPoolStrategy(min_size=1, max_size=None)
         else:
             return TaskPoolStrategy()
 
