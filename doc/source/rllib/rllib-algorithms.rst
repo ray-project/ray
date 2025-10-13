@@ -39,6 +39,10 @@ as well as multi-GPU training on multi-node (GPU) clusters when using the `Anysc
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`BC (Behavior Cloning) <bc>`                                           | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`CQL (Conservative Q-Learning) <cql>`                                  | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`IQL (Implicit Q-Learning) <iql>`                                      | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`MARWIL (Monotonic Advantage Re-Weighted Imitation Learning) <marwil>` | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **Algorithm Extensions and -Plugins**                                                                                                                                            |
@@ -183,7 +187,7 @@ Asynchronous Proximal Policy Optimization (APPO)
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
     samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     APPO then passes these episode references to the Learners for asynchronous updates of the model.
-    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    RLlib doesn't always sync back the weights to the EnvRunners right after a new model version is available.
     To account for the EnvRunners being off-policy, APPO uses a procedure called v-trace,
     `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
     APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
@@ -214,7 +218,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episodes
     are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     IMPALA then passes these episode references to the Learners for asynchronous updates of the model.
-    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    RLlib doesn't always sync back the weights to the EnvRunners right after a new model version is available.
     To account for the EnvRunners being off-policy, IMPALA uses a procedure called v-trace,
     `described in the paper <https://arxiv.org/abs/1802.01561>`__.
     IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
@@ -357,11 +361,35 @@ Conservative Q-Learning (CQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+**CQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
 
+
+.. _iql:
+
+Implicit Q-Learning (IQL)
+-------------------------
+`[paper] <https://arxiv.org/abs/2110.06169>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py>`__
+
+    **IQL architecture:** IQL (Implicit Q-Learning) is an offline RL algorithm that never needs to evaluate actions outside of
+    the dataset, but still enables the learned policy to improve substantially over the best behavior in the data through
+    generalization. Instead of standard TD-error minimization, it introduces a value function trained through expectile regression,
+    which yields a conservative estimate of returns. This allows policy improvement through advantage-weighted behavior cloning,
+    ensuring safer generalization without explicit exploration.
+
+    The `IQLLearner` replaces the usual TD-based value loss with an expectile regression loss, and trains the policy to imitate
+    high-advantage actions—enabling substantial performance gains over the behavior policy using only in-dataset actions.
+
+**Tuned examples:**
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/iql/pendulum_iql.py>`__
+
+**IQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+
+.. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
+   :members: training
 
 .. _marwil:
 
@@ -376,7 +404,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
-    imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
+    imitation learning (see `BC`_). MARWIL uses Ray. Data to tap into its parallel data
     processing capabilities. In one training iteration, MARWIL reads episodes in parallel from offline files,
     for example `parquet <https://parquet.apache.org/>`__, by the n DataWorkers. Connector pipelines preprocess these
     episodes into train batches and send these as data iterators directly to the n Learners for updating the model.

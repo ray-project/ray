@@ -8,28 +8,29 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, MultiDiscrete
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Any, Dict, Optional, Union
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
+
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import (
     GRUGate,
     RelativeMultiHeadAttention,
     SkipConnection,
 )
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
-from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.typing import List, ModelConfigDict, TensorType
 from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()

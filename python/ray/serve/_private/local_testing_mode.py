@@ -72,11 +72,12 @@ def make_local_deployment_handle(
         run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
         run_user_code_in_separate_thread=True,
         local_testing_mode=True,
+        deployment_config=deployment._deployment_config,
     )
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")
         user_callable_wrapper.initialize_callable().result()
-        user_callable_wrapper.call_reconfigure(deployment.user_config)
+        user_callable_wrapper.call_reconfigure(deployment.user_config, rank=0)
     except Exception:
         logger.exception(f"Failed to initialize deployment {deployment_id}.")
         raise
@@ -103,6 +104,9 @@ class LocalReplicaResult(ReplicaResult):
     OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
         "Converting DeploymentResponses to ObjectRefs is not supported "
         "in local testing mode."
+    )
+    REJECTION_NOT_SUPPORTED_ERROR = RuntimeError(
+        "Request rejection is not supported in local testing mode."
     )
 
     def __init__(
@@ -152,6 +156,10 @@ class LocalReplicaResult(ReplicaResult):
             return async_wrapper
         else:
             return wrapper
+
+    @_process_response
+    async def get_rejection_response(self):
+        raise self.REJECTION_NOT_SUPPORTED_ERROR
 
     @_process_response
     def get(self, timeout_s: Optional[float]):

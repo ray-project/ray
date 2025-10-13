@@ -18,8 +18,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray {
 namespace core {
@@ -72,73 +72,36 @@ class ActorCreatorInterface {
   virtual bool IsActorInRegistering(const ActorID &actor_id) const = 0;
 };
 
-class DefaultActorCreator : public ActorCreatorInterface {
+class ActorCreator : public ActorCreatorInterface {
  public:
-  explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
-      : gcs_client_(std::move(gcs_client)) {}
+  explicit ActorCreator(gcs::ActorInfoAccessor &actor_client)
+      : actor_client_(actor_client) {}
 
-  Status RegisterActor(const TaskSpecification &task_spec) const override {
-    const auto status = gcs_client_->Actors().SyncRegisterActor(task_spec);
-    if (status.IsTimedOut()) {
-      std::ostringstream stream;
-      stream << "There was timeout in registering an actor. It is probably "
-                "because GCS server is dead or there's a high load there.";
-      return Status::TimedOut(stream.str());
-    }
-    return status;
-  }
+  Status RegisterActor(const TaskSpecification &task_spec) const override;
 
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override {
-    auto actor_id = task_spec.ActorCreationId();
-    (*registering_actors_)[actor_id] = {};
-    if (callback != nullptr) {
-      (*registering_actors_)[actor_id].emplace_back(std::move(callback));
-    }
-    gcs_client_->Actors().AsyncRegisterActor(task_spec, [actor_id, this](Status status) {
-      std::vector<ray::gcs::StatusCallback> cbs;
-      cbs = std::move((*registering_actors_)[actor_id]);
-      registering_actors_->erase(actor_id);
-      for (auto &cb : cbs) {
-        cb(status);
-      }
-    });
-  }
+                          gcs::StatusCallback callback) override;
 
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {
-    gcs_client_->Actors().AsyncRestartActorForLineageReconstruction(
-        actor_id, num_restarts_due_to_lineage_reconstructions, callback);
-  }
+      gcs::StatusCallback callback) override;
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override {
-    gcs_client_->Actors().AsyncReportActorOutOfScope(
-        actor_id, num_restarts_due_to_lineage_reconstruction, callback);
-  }
+                                  gcs::StatusCallback callback) override;
 
-  bool IsActorInRegistering(const ActorID &actor_id) const override {
-    return registering_actors_->find(actor_id) != registering_actors_->end();
-  }
+  bool IsActorInRegistering(const ActorID &actor_id) const override;
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                       gcs::StatusCallback callback) override {
-    auto iter = registering_actors_->find(actor_id);
-    RAY_CHECK(iter != registering_actors_->end());
-    iter->second.emplace_back(std::move(callback));
-  }
+                                       gcs::StatusCallback callback) override;
 
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
-    gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-  }
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override;
 
  private:
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  gcs::ActorInfoAccessor &actor_client_;
   using RegisteringActorType =
       absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>>;
   ThreadPrivate<RegisteringActorType> registering_actors_;

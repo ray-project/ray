@@ -127,6 +127,7 @@ Provider
 
             :ref:`type <cluster-configuration-type>`: str
             :ref:`location <cluster-configuration-location>`: str
+            :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
             :ref:`msi_name <cluster-configuration-msi-name>`: str
@@ -953,7 +954,29 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: Azure
 
-        Not available.
+        A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+        This can be specified at the provider level to set defaults for all node types, or at the node level
+        to override the provider setting for specific node types.
+
+        For Azure, availability zone availability depends on each specific VM size / location combination.
+        Node-level configuration in ``available_node_types.<node_type_name>.node_config.azure_arm_parameters.availability_zone``
+        takes precedence over provider-level configuration.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** "auto" (let Azure automatically pick zones)
+        * **Example values:**
+          
+          * ``"1,2,3"`` - Use zones 1, 2, and 3
+          * ``"1"`` - Use only zone 1
+          * ``"none"`` - Explicitly disable zones
+          * ``"auto"`` or omit - Let Azure automatically pick zones
+
+        See the following example Azure cluster config for more details:
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-availability-zones.yaml
+            :language: yaml
 
     .. tab-item:: GCP
 

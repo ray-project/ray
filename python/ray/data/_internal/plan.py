@@ -11,10 +11,10 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_ref_bundles_schema
-from ray.data.block import BlockMetadataWithSchema
+from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
@@ -111,6 +111,54 @@ class ExecutionPlan:
             f")"
         )
 
+    def explain(self) -> str:
+        """Return a string representation of the logical and physical plan."""
+        from ray.data._internal.logical.optimizers import get_execution_plan
+
+        logical_plan = self._logical_plan
+        logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
+        logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
+
+        physical_plan = get_execution_plan(self._logical_plan)
+        physical_plan_str, _ = self.generate_plan_string(
+            physical_plan.dag, show_op_repr=True
+        )
+        physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
+
+        return logical_plan_str + physical_plan_str
+
+    @staticmethod
+    def generate_plan_string(
+        op: Operator,
+        curr_str: str = "",
+        depth: int = 0,
+        including_source: bool = True,
+        show_op_repr: bool = False,
+    ):
+        """Traverse (DFS) the Plan DAG and
+        return a string representation of the operators."""
+        if not including_source and isinstance(op, SourceOperator):
+            return curr_str, depth
+
+        curr_max_depth = depth
+
+        # For logical plan, only show the operator name like "Aggregate".
+        # But for physical plan, show the operator class name as well like "AllToAllOperator[Aggregate]".
+        op_str = repr(op) if show_op_repr else op.name
+
+        if depth == 0:
+            curr_str += f"{op_str}\n"
+        else:
+            trailing_space = " " * ((depth - 1) * 3)
+            curr_str += f"{trailing_space}+- {op_str}\n"
+
+        for input in op.input_dependencies:
+            curr_str, input_max_depth = ExecutionPlan.generate_plan_string(
+                input, curr_str, depth + 1, including_source, show_op_repr
+            )
+            curr_max_depth = max(curr_max_depth, input_max_depth)
+        return curr_str, curr_max_depth
+
     def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
         """Create a cosmetic string representation of this execution plan.
 
@@ -128,35 +176,9 @@ class ExecutionPlan:
         plan_str = ""
         plan_max_depth = 0
         if not self.has_computed_output():
-
-            def generate_logical_plan_string(
-                op: LogicalOperator,
-                curr_str: str = "",
-                depth: int = 0,
-            ):
-                """Traverse (DFS) the LogicalPlan DAG and
-                return a string representation of the operators."""
-                if isinstance(op, SourceOperator):
-                    return curr_str, depth
-
-                curr_max_depth = depth
-                op_name = op.name
-                if depth == 0:
-                    curr_str += f"{op_name}\n"
-                else:
-                    trailing_space = " " * ((depth - 1) * 3)
-                    curr_str += f"{trailing_space}+- {op_name}\n"
-
-                for input in op.input_dependencies:
-                    curr_str, input_max_depth = generate_logical_plan_string(
-                        input, curr_str, depth + 1
-                    )
-                    curr_max_depth = max(curr_max_depth, input_max_depth)
-                return curr_str, curr_max_depth
-
-            # generate_logical_plan_string(self._logical_plan.dag)
-            plan_str, plan_max_depth = generate_logical_plan_string(
-                self._logical_plan.dag
+            # using dataset as source here, so don't generate source operator in generate_plan_string
+            plan_str, plan_max_depth = self.generate_plan_string(
+                self._logical_plan.dag, including_source=False
             )
 
             if self._snapshot_bundle is not None:
@@ -378,10 +400,9 @@ class ExecutionPlan:
                 iter_ref_bundles, _, executor = self.execute_to_iterator()
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
-                    for bundle in iter_ref_bundles:
-                        if bundle.schema is not None:
-                            schema = bundle.schema
-                            break
+                    schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
         self.cache_schema(schema)
         return self._schema
 
@@ -493,9 +514,10 @@ class ExecutionPlan:
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
                 # allow us to remove the unwrapping logic below.
                 output_bundles = self._logical_plan.dag.output_data()
-                schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
-                schema = unify_ref_bundles_schema(output_bundles)
+                schema = _take_first_non_empty_schema(
+                    bundle.schema for bundle in output_bundles
+                )
                 bundle = RefBundle(
                     [
                         (block, metadata)

@@ -39,6 +39,7 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
@@ -87,7 +88,7 @@ def _actor_table_data_to_dict(message):
             "parentId",
             "jobId",
             "workerId",
-            "rayletId",
+            "nodeId",
             "callerId",
             "taskId",
             "parentTaskId",
@@ -538,7 +539,7 @@ class NodeHead(SubprocessModule):
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await self._loop.run_in_executor(
-                    self._node_executor, json.loads, data
+                    self._node_executor, _parse_node_stats, data
                 )
 
                 node_id = key.split(":")[-1]
@@ -576,7 +577,7 @@ class NodeHead(SubprocessModule):
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
                 for actor_id_bytes, updated_actor_table in actor_dicts.items():
-                    node_id = updated_actor_table["address"]["rayletId"]
+                    node_id = updated_actor_table["address"]["nodeId"]
                     # Update only when node_id is not Nil.
                     if node_id != actor_consts.NIL_NODE_ID:
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
@@ -653,7 +654,7 @@ class NodeHead(SubprocessModule):
             actor_table_data = actor
 
         actor_id = actor_table_data["actorId"]
-        node_id = actor_table_data["address"]["rayletId"]
+        node_id = actor_table_data["address"]["nodeId"]
 
         if actor_table_data["state"] == "DEAD":
             self._destroyed_actors_queue.append(actor_id)
@@ -688,7 +689,7 @@ class NodeHead(SubprocessModule):
                     actor_id = self._destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
-                        node_id = actor["address"].get("rayletId")
+                        node_id = actor["address"].get("nodeId")
                         if node_id and node_id != actor_consts.NIL_NODE_ID:
                             del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
@@ -763,3 +764,13 @@ class NodeHead(SubprocessModule):
             task = self._loop.create_task(coro)
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
+
+
+def _parse_node_stats(node_stats_str: str) -> dict:
+    stats_dict = json.loads(node_stats_str)
+    if StatsPayload is not None:
+        # Validate the response by parsing the stats_dict.
+        StatsPayload.parse_obj(stats_dict)
+        return stats_dict
+    else:
+        return stats_dict

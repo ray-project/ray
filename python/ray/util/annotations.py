@@ -1,9 +1,9 @@
-from enum import Enum
-from typing import Optional
 import inspect
 import sys
 import warnings
+from enum import Enum
 from functools import wraps
+from typing import Optional
 
 
 class AnnotationType(Enum):

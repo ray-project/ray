@@ -43,11 +43,12 @@ enum MessageType:int {
   AsyncGetObjectsRequest,
   // Cancel outstanding get requests from the worker.
   CancelGetRequest,
-  // Notify the current worker is blocked. This is only used by direct task calls;
-  // otherwise the block command is piggybacked on other messages.
-  NotifyDirectCallTaskBlocked,
-  // Notify the current worker is unblocked. This is only used by direct task calls.
-  NotifyDirectCallTaskUnblocked,
+  // Notify the current worker is blocked for objects to become available. The raylet
+  // will release the worker's resources.
+  NotifyWorkerBlocked,
+  // Notify the current worker is unblocked. The raylet will cancel any inflight
+  // pull requests for objects.
+  NotifyWorkerUnblocked,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -103,7 +104,7 @@ table RegisterClientRequest {
 table RegisterClientReply {
   success: bool;
   failure_reason: string;
-  raylet_id: string;
+  node_id: string;
   port: int;
 }
 
@@ -122,7 +123,7 @@ table AnnounceWorkerPortReply {
 
 // Mimics the Address protobuf.
 table Address {
-  raylet_id: string;
+  node_id: string;
   ip_address: string;
   port: int;
   // Optional unique id for the worker.
@@ -138,10 +139,10 @@ table AsyncGetObjectsRequest {
 table CancelGetRequest {
 }
 
-table NotifyDirectCallTaskBlocked {
+table NotifyWorkerBlocked {
 }
 
-table NotifyDirectCallTaskUnblocked {
+table NotifyWorkerUnblocked {
 }
 
 table WaitRequest {

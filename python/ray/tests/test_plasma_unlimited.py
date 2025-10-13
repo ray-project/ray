@@ -1,21 +1,22 @@
-import numpy as np
 import json
-import random
 import os
+import platform
+import random
 import shutil
 import sys
-import platform
-import psutil
 
+import numpy as np
 import pytest
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     check_spilled_mb,
     fetch_prometheus,
 )
-from ray._common.network_utils import build_address
+
+import psutil
 
 MB = 1024 * 1024
 

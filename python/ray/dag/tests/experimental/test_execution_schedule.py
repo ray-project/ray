@@ -1,24 +1,24 @@
 # coding: utf-8
 import os
 import sys
+from typing import Dict, List, Tuple
 
 import pytest
 
-from ray.tests.conftest import *  # noqa
-from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
+from ray.actor import ActorHandle
+from ray.dag import ClassMethodNode, InputNode, MultiOutputNode
+from ray.dag.compiled_dag_node import CompiledTask
 from ray.dag.dag_node_operation import (
+    _add_edge,
+    _build_dag_node_operation_graph,
+    _DAGNodeOperation,
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
-    _DAGNodeOperation,
     _extract_execution_schedule,
-    _select_next_nodes,
-    _build_dag_node_operation_graph,
-    _add_edge,
     _generate_actor_to_execution_schedule,
+    _select_next_nodes,
 )
-from ray.dag.compiled_dag_node import CompiledTask
-from typing import List, Dict, Tuple
-from ray.actor import ActorHandle
+from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)

@@ -4,11 +4,15 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
-from ray.data._internal.execution.autoscaler import create_autoscaler
+from ray.data._internal.actor_autoscaler import (
+    create_actor_autoscaler,
+)
+from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -37,7 +41,7 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
@@ -174,17 +178,21 @@ class StreamingExecutor(Executor, threading.Thread):
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
-            lambda: self._autoscaler.get_total_resources(),
+            lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
         )
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
         )
-        self._autoscaler = create_autoscaler(
+        self._cluster_autoscaler = create_cluster_autoscaler(
+            self._topology,
+            self._resource_manager,
+            execution_id=self._dataset_id,
+        )
+        self._actor_autoscaler = create_actor_autoscaler(
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
-            execution_id=self._dataset_id,
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
@@ -293,7 +301,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 for callback in get_execution_callbacks(self._data_context):
                     callback.after_execution_fails(self, exception)
 
-            self._autoscaler.on_executor_shutdown()
+            self._cluster_autoscaler.on_executor_shutdown()
 
             dur = time.perf_counter() - start
 
@@ -461,7 +469,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._refresh_progress_bars(topology)
 
         # Trigger autoscaling
-        self._autoscaler.try_trigger_scaling()
+        self._cluster_autoscaler.try_trigger_scaling()
+        self._actor_autoscaler.try_trigger_scaling()
 
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
@@ -548,7 +557,9 @@ class StreamingExecutor(Executor, threading.Thread):
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
             "total_rows": last_op.num_output_rows_total(),
-            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
+            "end_time": time.time()
+            if state in (DatasetState.FINISHED.name, DatasetState.FAILED.name)
+            else None,
             "operators": {
                 f"{self._get_operator_id(op, i)}": {
                     "name": op.name,

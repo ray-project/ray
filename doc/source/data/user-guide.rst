@@ -7,7 +7,7 @@ User Guides
 If you’re new to Ray Data, start with the
 :ref:`Ray Data Quickstart <data_quickstart>`.
 This user guide helps you navigate the Ray Data project and
-show you how achieve several tasks.
+shows you how to achieve several tasks.
 
 .. toctree::
     :maxdepth: 2

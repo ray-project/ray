@@ -10,6 +10,7 @@ DataFusion
 [Dd]iscretizer(s)?
 [Dd]ocstring(s)?
 dtype
+FLAC
 get_engine
 get_registry
 get_schema
@@ -22,6 +23,7 @@ get_schema
 list_tables
 [Ll]ookup(s)?
 LLM(s)?
+MCAP
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
@@ -34,6 +36,7 @@ Predibase('s)?
 [Pp]reprocessor(s)?
 [Pp]ushdown
 register_table
+RGB
 runai
 [Ss]calers
 Spotify('s)?
@@ -46,5 +49,6 @@ UDF(s)?
 [Vv]alidator(s)?
 VLM(s)?
 XGBoost
+YOLO
 [Ss]harding
 [Ss]harded
