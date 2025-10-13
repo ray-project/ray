@@ -252,7 +252,9 @@ def test_xgboost_trainer_multiclass(ray_start_4_cpus, multiclass_dataset):
     assert "validation-mlogloss" in result.metrics
 
 
-def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset, tmp_path):
+def test_xgboost_trainer_external_memory_basic(
+    ray_start_4_cpus, small_dataset, tmp_path
+):
     """Test V2 XGBoost Trainer with external memory enabled."""
     train_df, test_df = small_dataset
 
@@ -353,7 +355,9 @@ def test_xgboost_trainer_external_memory_basic(ray_start_4_cpus, small_dataset, 
     assert config["batch_size"] == 1000
 
 
-def test_xgboost_trainer_external_memory_auto_selection(ray_start_4_cpus, small_dataset):
+def test_xgboost_trainer_external_memory_auto_selection(
+    ray_start_4_cpus, small_dataset
+):
     """Test V2 XGBoost Trainer with automatic external memory configuration."""
     train_df, test_df = small_dataset
 
@@ -555,7 +559,9 @@ def test_xgboost_trainer_external_memory_utilities(ray_start_4_cpus):
     assert recommendations["parameters"]["grow_policy"] == "depthwise"
 
 
-def test_xgboost_trainer_external_memory_fallback_behavior(ray_start_4_cpus, small_dataset, tmp_path):
+def test_xgboost_trainer_external_memory_fallback_behavior(
+    ray_start_4_cpus, small_dataset, tmp_path
+):
     """Test V2 XGBoost Trainer fallback behavior when external memory fails."""
     train_df, test_df = small_dataset
 

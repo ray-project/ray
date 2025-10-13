@@ -110,17 +110,17 @@ def test_external_memory_basic(ray_start_4_cpus, tmpdir):
     """Test V1 XGBoost Trainer with external memory enabled."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
-    
+
     # Use hist tree method (required for external memory)
     external_memory_params = {
         "tree_method": "hist",  # Required for external memory
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     }
-    
+
     # Create temporary cache directory
     cache_dir = tmpdir.mkdir("xgboost_cache")
-    
+
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
@@ -132,14 +132,14 @@ def test_external_memory_basic(ray_start_4_cpus, tmpdir):
         external_memory_device="cpu",
         external_memory_batch_size=1000,
     )
-    
+
     result = trainer.fit()
-    
+
     # Verify results
     assert result.checkpoint is not None
     xgb_model = XGBoostTrainer.get_model(result.checkpoint)
     assert xgb_model.num_boosted_rounds() == 10
-    
+
     # Verify external memory configuration
     assert trainer.is_external_memory_enabled()
     config = trainer.get_external_memory_config()
@@ -153,14 +153,14 @@ def test_external_memory_auto_configuration(ray_start_4_cpus):
     """Test V1 XGBoost Trainer with automatic external memory configuration."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
-    
+
     # Use hist tree method (required for external memory)
     external_memory_params = {
         "tree_method": "hist",  # Required for external memory
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     }
-    
+
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
@@ -170,14 +170,14 @@ def test_external_memory_auto_configuration(ray_start_4_cpus):
         use_external_memory=True,
         # Let the trainer auto-select cache directory and batch size
     )
-    
+
     result = trainer.fit()
-    
+
     # Verify results
     assert result.checkpoint is not None
     xgb_model = XGBoostTrainer.get_model(result.checkpoint)
     assert xgb_model.num_boosted_rounds() == 10
-    
+
     # Verify external memory is enabled
     assert trainer.is_external_memory_enabled()
 
@@ -186,14 +186,14 @@ def test_external_memory_gpu(ray_start_8_cpus):
     """Test V1 XGBoost Trainer with GPU external memory."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
-    
+
     # Use hist tree method (required for external memory)
     external_memory_params = {
         "tree_method": "hist",  # Required for external memory
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     }
-    
+
     trainer = XGBoostTrainer(
         scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
         label_column="target",
@@ -204,14 +204,14 @@ def test_external_memory_gpu(ray_start_8_cpus):
         external_memory_device="cuda",
         external_memory_batch_size=5000,  # Smaller batch size for GPU
     )
-    
+
     result = trainer.fit()
-    
+
     # Verify results
     assert result.checkpoint is not None
     xgb_model = XGBoostTrainer.get_model(result.checkpoint)
     assert xgb_model.num_boosted_rounds() == 10
-    
+
     # Verify GPU external memory configuration
     config = trainer.get_external_memory_config()
     assert config["device"] == "cuda"
@@ -230,10 +230,10 @@ def test_external_memory_with_large_dataset(ray_start_8_cpus, tmpdir):
     # Create a larger dataset
     large_train_df = pd.concat([train_df] * 10, ignore_index=True)
     large_test_df = pd.concat([test_df] * 5, ignore_index=True)
-    
+
     large_train_dataset = ray.data.from_pandas(large_train_df)
     large_valid_dataset = ray.data.from_pandas(large_test_df)
-    
+
     # Use hist tree method (required for external memory)
     external_memory_params = {
         "tree_method": "hist",  # Required for external memory
@@ -242,10 +242,10 @@ def test_external_memory_with_large_dataset(ray_start_8_cpus, tmpdir):
         "max_depth": 3,  # Limit depth for faster training
         "eta": 0.1,
     }
-    
+
     # Create temporary cache directory
     cache_dir = tmpdir.mkdir("xgboost_large_cache")
-    
+
     trainer = XGBoostTrainer(
         scaling_config=ScalingConfig(num_workers=4),
         label_column="target",
@@ -256,14 +256,14 @@ def test_external_memory_with_large_dataset(ray_start_8_cpus, tmpdir):
         external_memory_cache_dir=str(cache_dir),
         external_memory_batch_size=2000,
     )
-    
+
     result = trainer.fit()
-    
+
     # Verify results
     assert result.checkpoint is not None
     xgb_model = XGBoostTrainer.get_model(result.checkpoint)
     assert xgb_model.num_boosted_rounds() == 5
-    
+
     # Verify external memory configuration
     assert trainer.is_external_memory_enabled()
     config = trainer.get_external_memory_config()
@@ -275,14 +275,14 @@ def test_external_memory_backward_compatibility(ray_start_4_cpus):
     """Test that V1 XGBoost Trainer maintains backward compatibility when external memory is disabled."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
-    
+
     # Use standard parameters (no external memory)
     standard_params = {
         "tree_method": "approx",  # Can use approx for standard DMatrix
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
     }
-    
+
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
@@ -291,14 +291,14 @@ def test_external_memory_backward_compatibility(ray_start_4_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         # External memory disabled by default
     )
-    
+
     result = trainer.fit()
-    
+
     # Verify results
     assert result.checkpoint is not None
     xgb_model = XGBoostTrainer.get_model(result.checkpoint)
     assert xgb_model.num_boosted_rounds() == 10
-    
+
     # Verify external memory is disabled
     assert not trainer.is_external_memory_enabled()
     config = trainer.get_external_memory_config()

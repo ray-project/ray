@@ -128,7 +128,7 @@ class XGBoostTrainer(DataParallelTrainer):
             # Create larger datasets that require external memory
             large_train_ds = ray.data.read_parquet("s3://bucket/large_train.parquet")
             large_eval_ds = ray.data.read_parquet("s3://bucket/large_eval.parquet")
-            
+
             large_trainer = XGBoostTrainer(
                 train_loop_per_worker=train_fn_per_worker,
                 datasets={"train": large_train_ds, "validation": large_eval_ds},
@@ -217,12 +217,14 @@ class XGBoostTrainer(DataParallelTrainer):
             train_loop_config = {}
 
         # Add external memory settings to config so training function can access them
-        train_loop_config.update({
-            "use_external_memory": use_external_memory,
-            "external_memory_cache_dir": external_memory_cache_dir,
-            "external_memory_device": external_memory_device,
-            "external_memory_batch_size": external_memory_batch_size,
-        })
+        train_loop_config.update(
+            {
+                "use_external_memory": use_external_memory,
+                "external_memory_cache_dir": external_memory_cache_dir,
+                "external_memory_device": external_memory_device,
+                "external_memory_batch_size": external_memory_batch_size,
+            }
+        )
 
         # Handle XGBoostConfig import conditionally
         if xgboost_config is None:
@@ -430,7 +432,9 @@ class XGBoostTrainer(DataParallelTrainer):
             device = self.external_memory_device
 
         # Import shared utilities
-        from ray.train.xgboost._external_memory_utils import create_external_memory_dmatrix
+        from ray.train.xgboost._external_memory_utils import (
+            create_external_memory_dmatrix,
+        )
 
         return create_external_memory_dmatrix(
             dataset_shard=dataset_shard,
@@ -482,7 +486,9 @@ class XGBoostTrainer(DataParallelTrainer):
                 recommendations = XGBoostTrainer.get_external_memory_recommendations()
                 print(f"Recommended parameters: {recommendations['parameters']}")
         """
-        from ray.train.xgboost._external_memory_utils import get_external_memory_recommendations
+        from ray.train.xgboost._external_memory_utils import (
+            get_external_memory_recommendations,
+        )
 
         return get_external_memory_recommendations()
 
