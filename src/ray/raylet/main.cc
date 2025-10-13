@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
   std::atomic<bool> shutting_down = false;
 
   // Shut down raylet gracefully, in a synchronous fashion.
-  // This can be run using the signal handler should only be run on the main_service.
+  // This can be run by the signal handler or on the main io service.
   auto shutdown_raylet_gracefully_internal =
       [&raylet,
        &main_service,
