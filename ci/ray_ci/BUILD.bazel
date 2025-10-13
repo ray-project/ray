@@ -14,10 +14,11 @@ py_library(
     data = glob(["*.yaml"]),
     visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
+        "//release:bazel",
+        "//release:ray_release",
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
-        "//release:ray_release",
     ],
 )
 
