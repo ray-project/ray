@@ -920,7 +920,13 @@ def sql(query: str, **datasets) -> Dataset:
     from ray.data.experimental.sql.utils import extract_table_names_from_query
 
     # Get the caller's frame to access their local variables
-    caller_frame = inspect.currentframe().f_back
+    current_frame = inspect.currentframe()
+    if current_frame is None or current_frame.f_back is None:
+        # No frame available, skip auto-discovery
+        engine = get_engine()
+        return engine.sql(query, **datasets)
+
+    caller_frame = current_frame.f_back
     caller_locals = caller_frame.f_locals
     caller_globals = caller_frame.f_globals
 

@@ -75,7 +75,12 @@ def sql(query: str, **datasets) -> Dataset:
     _emit_experimental_warning()
 
     # Get caller's variables (optimized)
-    frame = inspect.currentframe().f_back
+    current_frame = inspect.currentframe()
+    if current_frame is None or current_frame.f_back is None:
+        # No frame available, skip auto-discovery
+        return get_engine().sql(query, **datasets)
+
+    frame = current_frame.f_back
     caller_locals = frame.f_locals
     caller_globals = frame.f_globals
 

@@ -333,7 +333,7 @@ class TableRegistry:
         if name.lower() in self.SQL_RESERVED_WORDS:
             return False
 
-        if not name.replace("_", "").replace("-", "").isalnum():
+        if not name.replace("_", "").isalnum():
             return False
 
         if len(name) > 64:
