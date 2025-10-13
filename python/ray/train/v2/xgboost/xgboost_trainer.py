@@ -58,16 +58,19 @@ class XGBoostTrainer(DataParallelTrainer):
                 if use_external_memory:
                     # Option 2: External memory DMatrix for large datasets
                     import xgboost as xgb
+                    from ray.train.xgboost._external_memory_utils import (
+                        create_external_memory_dmatrix,
+                    )
 
-                    # Create external memory DMatrix using the trainer's method
-                    dtrain = trainer.create_external_memory_dmatrix(
+                    # Create external memory DMatrix
+                    dtrain = create_external_memory_dmatrix(
                         dataset_shard=train_ds_iter,
                         label_column="y",
                         batch_size=external_memory_batch_size,
                         cache_dir=external_memory_cache_dir,
                         device=external_memory_device,
                     )
-                    deval = trainer.create_external_memory_dmatrix(
+                    deval = create_external_memory_dmatrix(
                         dataset_shard=eval_ds_iter,
                         label_column="y",
                         batch_size=external_memory_batch_size,
