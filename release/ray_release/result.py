@@ -3,6 +3,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
+from ray_release.exception import ExitCode, ReleaseTestError
+
 
 class ResultStatus(enum.Enum):
     """
@@ -64,7 +66,6 @@ def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
 def handle_exception(
     e: Exception, run_duration: int
 ) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
-    from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
         return ExitCode.UNKNOWN, ResultStatus.UNKNOWN, 0
@@ -87,7 +88,7 @@ def handle_exception(
 
     # if this result is to be retried, mark its status as transient
     # this logic should be in-sync with run_release_test.sh
-    if _is_transient_error(result_status, run_duration):
+    if _is_transient_error(run_duration):
         result_status = ResultStatus.TRANSIENT_INFRA_ERROR
 
     return exit_code, result_status, runtime
