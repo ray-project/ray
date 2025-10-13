@@ -48,7 +48,7 @@ MIN_XGBOOST_VERSION = "2.0.0"
 
 
 def create_external_memory_dmatrix(
-    dataset_shard,
+    dataset_shard: Any,
     label_column: Union[str, List[str]],
     feature_columns: Optional[List[str]] = None,
     batch_size: Optional[int] = None,
@@ -236,22 +236,25 @@ def create_external_memory_dmatrix(
         This iterator implements the XGBoost DataIter interface to stream
         data from Ray datasets in batches, enabling training on datasets
         that don't fit in memory.
-
-        Attributes:
-            dataset_shard: Ray dataset shard to iterate over.
-            label_column: Name(s) of the label column(s).
-            feature_columns: Names of feature columns to use.
-            batch_size: Number of samples per batch.
         """
 
         def __init__(
             self,
-            dataset_shard,
-            label_column,
-            feature_columns,
-            batch_size,
-            missing_value,
+            dataset_shard: Any,
+            label_column: Union[str, List[str]],
+            feature_columns: Optional[List[str]],
+            batch_size: int,
+            missing_value: Optional[float],
         ):
+            """Initialize the Ray dataset iterator.
+
+            Args:
+                dataset_shard: Ray dataset shard to iterate over.
+                label_column: Name(s) of the label column(s).
+                feature_columns: Names of feature columns to use.
+                batch_size: Number of samples per batch.
+                missing_value: Value to use for missing data.
+            """
             self.dataset_shard = dataset_shard
             self.label_column = label_column
             self.feature_columns = feature_columns
@@ -263,7 +266,7 @@ def create_external_memory_dmatrix(
             cache_prefix = os.path.join(cache_dir, "xgboost_cache")
             super().__init__(cache_prefix=cache_prefix)
 
-        def next(self, input_data):
+        def next(self, input_data: Any) -> int:
             """Advance the iterator by one batch and pass data to XGBoost.
 
             Follows XGBoost's external memory iterator pattern.
@@ -337,7 +340,7 @@ def create_external_memory_dmatrix(
                 return 0
             # Let all other exceptions propagate - fail fast
 
-        def reset(self):
+        def reset(self) -> None:
             """Reset the iterator to the beginning."""
             self._iterator = None
 
