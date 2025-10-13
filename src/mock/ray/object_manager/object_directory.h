@@ -23,7 +23,7 @@ class MockObjectDirectory : public IObjectDirectory {
  public:
   MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
 
-  MOCK_METHOD(ray::Status,
+  MOCK_METHOD(void,
               SubscribeObjectLocations,
               (const UniqueID &callback_id,
                const ObjectID &object_id,
@@ -31,7 +31,7 @@ class MockObjectDirectory : public IObjectDirectory {
                const OnLocationsFound &callback),
               (override));
 
-  MOCK_METHOD(ray::Status,
+  MOCK_METHOD(void,
               UnsubscribeObjectLocations,
               (const UniqueID &callback_id, const ObjectID &object_id),
               (override));

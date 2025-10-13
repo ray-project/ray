@@ -1185,6 +1185,40 @@ def test_overloaded_app_builder_signatures():
         )
 
 
+def test_max_constructor_retry_count(serve_instance):
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        async def increase(self):
+            self.count += 1
+
+        async def decrease(self):
+            self.count -= 1
+
+        async def get_count(self) -> int:
+            return self.count
+
+    counter = Counter.remote()
+
+    @serve.deployment(num_replicas=3, max_constructor_retry_count=7)
+    class A:
+        def __init__(self, counter):
+            counter.increase.remote()
+            raise Exception("Test exception")
+
+    try:
+        app = A.bind(counter)
+        serve.run(app)
+    except Exception:
+        pass
+
+    # we are triggering 3 replicas at once, and for understanding, let's assume then only one replica fail 7 times,
+    # hence total count should be 7(one replica with 7 failures and 2 replicas with 0 failures) = 9
+    wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 9)
+
+
 if __name__ == "__main__":
     import sys
 

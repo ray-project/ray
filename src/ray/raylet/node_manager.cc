@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <csignal>
 #include <cstddef>
 #include <fstream>
@@ -42,7 +43,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric_defs.h"
@@ -89,6 +90,34 @@ std::vector<ObjectID> FlatbufferToObjectIds(
   }
   return ids;
 }
+
+#if !defined(_WIN32)
+// Send a signal to the worker's saved process group with safety guards and logging.
+static void CleanupProcessGroupSend(pid_t saved_pgid,
+                                    const WorkerID &wid,
+                                    const std::string &ctx,
+                                    int sig) {
+  // Guard against targeting the raylet's own process group if isolation failed.
+  pid_t raylet_pgid = getpgid(0);
+  if (raylet_pgid == saved_pgid) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx
+        << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
+        << saved_pgid;
+    return;
+  }
+  RAY_LOG(INFO).WithField(wid) << ctx << ": sending "
+                               << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+                               << " to pgid=" << saved_pgid;
+  auto err = KillProcessGroup(saved_pgid, sig);
+  if (err && *err) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx << ": failed to send " << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+        << " to process group " << saved_pgid << ": " << err->message()
+        << ", errno=" << err->value();
+  }
+}
+#endif
 
 }  // namespace
 
@@ -160,8 +189,7 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      worker_killing_policy_(
-          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
+      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -832,6 +860,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
+  raylet_client_pool_.Disconnect(node_id);
+  worker_rpc_pool_.Disconnect(node_id);
+
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
@@ -1037,11 +1068,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AsyncGetObjectsRequest: {
     HandleAsyncGetObjectsRequest(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    HandleDirectCallTaskBlocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerBlocked: {
+    HandleNotifyWorkerBlocked(registered_worker);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    HandleDirectCallTaskUnblocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerUnblocked: {
+    HandleNotifyWorkerUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
     CancelGetRequest(client);
@@ -1397,6 +1428,41 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
       }
     }
+
+    // Attempt per-worker process-group cleanup before removing the worker.
+#if !defined(_WIN32)
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG_EVERY_MS(WARNING, 60000)
+          << "Both per-worker process groups and subreaper are enabled; "
+          << "using PGs for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+    if (pg_enabled) {
+      auto saved = worker->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
+        auto timer = std::make_shared<boost::asio::deadline_timer>(
+            io_service_, boost::posix_time::milliseconds(200));
+        auto wid = worker->WorkerId();
+        auto pgid = *saved;
+        timer->async_wait(
+            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+              if (!ec) {
+                // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                auto probe = KillProcessGroup(pgid, 0);
+                const bool group_absent = (probe && probe->value() == ESRCH);
+                if (!group_absent) {
+                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                }
+              }
+            });
+      }
+    }
+#endif
 
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
@@ -1978,7 +2044,7 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
     if (worker->IsBlocked()) {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
-      HandleDirectCallTaskUnblocked(worker);
+      HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
     // If the worker is exiting, don't add it to our pool. The worker will cleanup
@@ -2144,7 +2210,7 @@ void NodeManager::MarkObjectsAsFailed(
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(
+void NodeManager::HandleNotifyWorkerBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -2154,7 +2220,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(
+void NodeManager::HandleNotifyWorkerUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -2687,7 +2753,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
     raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
@@ -2750,6 +2816,25 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::Stop() {
   // This never fails.
   RAY_CHECK_OK(store_client_.Disconnect());
+#if !defined(_WIN32)
+  // Best-effort process-group cleanup for any remaining workers before shutdown.
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                        /* filter_io_workers */ false);
+    for (const auto &w : workers) {
+      auto saved = w->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // During shutdown, escalate immediately to avoid relying on timers.
+        CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGTERM);
+        auto probe = KillProcessGroup(*saved, 0);
+        const bool group_absent = (probe && probe->value() == ESRCH);
+        if (!group_absent) {
+          CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGKILL);
+        }
+      }
+    }
+  }
+#endif
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

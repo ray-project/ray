@@ -270,6 +270,10 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
+  if (node_resource_info_.contains(node_id)) {
+    // early termination as we already know about this node
+    return;
+  }
   auto node_info =
       node_resource_info_
           .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
@@ -343,7 +347,7 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
+  auto populate_node_state = [this, state](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
@@ -372,8 +376,18 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     auto const node_id = NodeID::FromBinary(node_state_proto->node_id());
     // The node is alive. We need to check if the node is idle.
-    auto const node_resource_iter = node_resource_info_.find(node_id);
+    auto node_resource_iter = node_resource_info_.find(node_id);
 
+    if (node_resource_iter == node_resource_info_.end()) {
+      // TODO:(zac)  There exists a possibility that the GcsNodeManager node list is more
+      // up to date then the resource information within this class.  In the future all
+      // state will get updated transactionally together, but for now, we'll utilize this
+      // 'escape hatch' option and in place update the state. See
+      // https://github.com/ray-project/ray/issues/57009 and once resolved we can delete
+      // this logic
+      OnNodeAdd(gcs_node_info);
+      node_resource_iter = node_resource_info_.find(node_id);
+    }
     RAY_CHECK(node_resource_iter != node_resource_info_.end());
 
     auto const &node_resource_item = node_resource_iter->second;
@@ -481,8 +495,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   auto node = std::move(maybe_node.value());
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       node_id, node->node_manager_address(), node->node_manager_port());
-  const auto raylet_client =
-      raylet_client_pool_.GetOrConnectByAddress(std::move(raylet_address));
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
@@ -608,32 +621,32 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
   for (const auto &node_infeasible_request_pair : per_node_infeasible_requests) {
     const auto &node_id = node_infeasible_request_pair.first;
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
-    const auto raylet_client = raylet_client_pool_.GetByID(node_id);
-
-    if (raylet_client) {
-      std::string resource_shapes_str =
-          ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
-
-      RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
-                       << " with infeasible_shapes=" << resource_shapes_str;
-
-      raylet_client->CancelLeasesWithResourceShapes(
-          infeasible_shapes,
-          [node_id](const Status &status,
-                    const rpc::CancelLeasesWithResourceShapesReply &) {
-            if (status.ok()) {
-              RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
-            } else {
-              // Autoscaler will eventually retry the infeasible task cancellation
-              RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node "
-                               << node_id
-                               << ". RPC failed with status: " << status.ToString();
-            }
-          });
-    } else {
-      RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
-                       << ". Raylet client to the node is not available.";
+    auto node = gcs_node_manager_.GetAliveNode(node_id);
+    if (!node.has_value()) {
+      continue;
     }
+    auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, node.value()->node_manager_address(), node.value()->node_manager_port());
+    const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
+
+    std::string resource_shapes_str =
+        ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
+
+    RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
+                     << " with infeasible_shapes=" << resource_shapes_str;
+
+    raylet_client->CancelLeasesWithResourceShapes(
+        infeasible_shapes,
+        [node_id](const Status &status,
+                  const rpc::CancelLeasesWithResourceShapesReply &) {
+          if (status.ok()) {
+            RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+          } else {
+            // Autoscaler will eventually retry the infeasible task cancellation
+            RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
+                             << ". RPC failed with status: " << status.ToString();
+          }
+        });
   }
 }
 
