@@ -47,7 +47,7 @@ class Result:
     extra_tags: Optional[Dict] = None
 
 
-def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
+def _is_transient_error(runtime: int) -> bool:
     """
     Classify whether an infra-failure issue is a transient issue. This is based on
     the status of its previous retries, and its runtime.
