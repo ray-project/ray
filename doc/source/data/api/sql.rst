@@ -38,16 +38,14 @@ Use the SQL API when you need to:
 API reference
 =============
 
-.. currentmodule:: ray.data.sql
-
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   sql
-   register
-   list_tables
-   clear_tables
+   ray.data.sql.sql
+   ray.data.sql.register
+   ray.data.sql.list_tables
+   ray.data.sql.clear_tables
 
 Query execution
 ---------------
@@ -57,7 +55,7 @@ sql
 
 Execute SQL queries on Ray Datasets with automatic table discovery.
 
-.. autofunction:: sql
+.. autofunction:: ray.data.sql.sql
 
 Table management
 ----------------
@@ -67,18 +65,18 @@ register
 
 Register a dataset as a SQL table for query execution.
 
-.. autofunction:: register
+.. autofunction:: ray.data.sql.register
 
 list_tables
 ~~~~~~~~~~~
 
 List all currently registered SQL tables.
 
-.. autofunction:: list_tables
+.. autofunction:: ray.data.sql.list_tables
 
 clear_tables
 ~~~~~~~~~~~~
 
 Clear all registered SQL tables from memory.
 
-.. autofunction:: clear_tables 
+.. autofunction:: ray.data.sql.clear_tables 
