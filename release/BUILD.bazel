@@ -482,7 +482,7 @@ py_library(
             "ray_release/aws.py",
             "ray_release/test.py",
         ],
-    ],
+    ),
     data = glob([
         "ray_release/environments/*.env",
         "ray_release/configs/*.yaml",
