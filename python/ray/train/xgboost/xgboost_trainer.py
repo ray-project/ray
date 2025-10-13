@@ -10,8 +10,7 @@ from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.run_config import RunConfig
 from ray.train.scaling_config import ScalingConfig
 from ray.train.trainer import GenDataset
-from ray.train.utils import _log_deprecation_warning
-from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
+from ray.train.xgboost import RayTrainReportCallback
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
 
@@ -321,35 +320,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 external_memory_batch_size=50000,
             )
             result = large_trainer.fit()
-
-    Args:
-        label_column: Name of the label column. A column with this name
-            must be present in the training dataset.
-        params: XGBoost training parameters.
-            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
-            for a list of possible parameters.
-        num_boost_round: Target number of boosting iterations (trees in the model).
-            Note that unlike in ``xgboost.train``, this is the target number
-            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
-            that has already been trained for 5 iterations, it will be trained for 5
-            iterations more, instead of 10 more.
-        scaling_config: The configuration for how to scale data parallel training.
-            ``num_workers`` determines how many Python processes are used for training,
-            and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.train.ScalingConfig` for more info.
-        run_config: The configuration for the execution of the training run.
-            See :class:`~ray.train.RunConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        use_external_memory: Whether to use external memory for DMatrix creation.
-            If True, uses ExtMemQuantileDMatrix for large datasets that don't fit in RAM.
-            If False (default), uses standard DMatrix for in-memory training.
-        external_memory_cache_dir: Directory for caching external memory files.
-            If None, automatically selects the best available directory.
-        external_memory_device: Device to use for external memory training.
-            Options: "cpu" (default) or "cuda" for GPU training.
-        external_memory_batch_size: Batch size for external memory iteration.
-            If None, uses optimal default based on device type.
-        **kwargs: Additional arguments passed to the base trainer.
     """
 
     def __init__(

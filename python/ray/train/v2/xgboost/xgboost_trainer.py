@@ -264,7 +264,7 @@ class XGBoostTrainer(DataParallelTrainer):
 
     def create_dmatrix(
         self,
-        dataset_shard,
+        dataset_shard: Any,
         label_column: Union[str, List[str]],
         feature_columns: Optional[List[str]] = None,
         **kwargs,
@@ -318,7 +318,7 @@ class XGBoostTrainer(DataParallelTrainer):
 
     def create_standard_dmatrix(
         self,
-        dataset_shard,
+        dataset_shard: Any,
         label_column: Union[str, List[str]],
         feature_columns: Optional[List[str]] = None,
         **kwargs,
@@ -374,7 +374,7 @@ class XGBoostTrainer(DataParallelTrainer):
 
     def create_external_memory_dmatrix(
         self,
-        dataset_shard,
+        dataset_shard: Any,
         label_column: Union[str, List[str]],
         feature_columns: Optional[List[str]] = None,
         batch_size: Optional[int] = None,
