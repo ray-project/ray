@@ -130,6 +130,23 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     )
 
 
+def test_gc_gpu_object_metadata(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    tensor = torch.randn((100, 100))
+    ref = actors[0].echo.remote(tensor)
+    gpu_obj_id = ref.hex()
+    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    assert gpu_obj_id in gpu_object_manager.managed_gpu_object_metadata
+    ray.get(actors[1].double.remote(ref))
+    del ref
+
+    wait_for_condition(
+        lambda: gpu_obj_id not in gpu_object_manager.managed_gpu_object_metadata,
+    )
+
+
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     """

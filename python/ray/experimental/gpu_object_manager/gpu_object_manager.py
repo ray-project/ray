@@ -289,7 +289,7 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def fetch_object(
+    def _fetch_object(
         self,
         obj_id: str,
         tensor_transport: TensorTransportEnum = TensorTransportEnum.OBJECT_STORE,
@@ -301,6 +301,8 @@ class GPUObjectManager:
         This is useful when the current process does not support the designated out-of-band tensor transport.
         For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
         fulfill a `ray.get` call.
+
+        NOTE: This function is only expected to be called by the owner process of the GPU object.
 
         Args:
             obj_id: The object ID of the GPU object.
@@ -512,7 +514,7 @@ class GPUObjectManager:
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self.fetch_object(object_id, tensor_transport)
+            self._fetch_object(object_id, tensor_transport)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
@@ -547,6 +549,7 @@ class GPUObjectManager:
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
+            self.managed_gpu_object_metadata.pop(object_id)
         except Exception as e:
             logger.error(
                 "Something went wrong while freeing the RDT object!", exc_info=e
