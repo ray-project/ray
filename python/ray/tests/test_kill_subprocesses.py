@@ -249,7 +249,7 @@ def test_detached_setsido_escape_with_pg_cleanup(enable_pg_cleanup, shutdown_onl
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
-    reason="Orphan process killing only works on Linux and macOS.",
+    reason="Process‑group cleanup is POSIX‑only (Linux/macOS).",
 )
 def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_only):
     """
@@ -267,8 +267,7 @@ def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_o
                     sys.executable,
                     "-c",
                     "import subprocess; "
-                    "p = subprocess.Popen(['sleep', '150']); "
-                    "print(p.pid); "
+                    "subprocess.Popen(['sleep', '150']); "
                     "import time; time.sleep(100)",
                 ],
                 stdout=subprocess.PIPE,
