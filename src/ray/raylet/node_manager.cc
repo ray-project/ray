@@ -2087,13 +2087,13 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     std::_Exit(EXIT_SUCCESS);
   }
 
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-
   if (shutting_down_) {
     RAY_LOG(INFO)
         << "Node is already shutting down. Ignoring the ShutdownRaylet request.";
     return;
   }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Draining the server call executor so that we try to reply to the RPC before the
   // raylet shuts down.
