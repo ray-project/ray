@@ -6,6 +6,11 @@ import shlex
 from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.cloud_util import (
+    convert_abfss_uri_to_https,
+    generate_tmp_cloud_storage_path,
+    upload_working_dir_to_azure,
+)
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
     TestCommandTimeout,
@@ -24,13 +29,10 @@ from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import (
     join_cloud_storage_paths,
-    generate_tmp_cloud_storage_path,
     get_anyscale_sdk,
     S3_CLOUD_STORAGE,
     AZURE_CLOUD_STORAGE,
     AZURE_STORAGE_CONTAINER,
-    upload_working_dir_to_azure,
-    convert_abfss_uri_to_https,
 )
 
 if TYPE_CHECKING:
