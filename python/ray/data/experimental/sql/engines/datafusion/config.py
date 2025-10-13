@@ -77,4 +77,3 @@ def get_sampling_config() -> DataFusionSamplingConfig:
     """
     # Future: This could check DataContext for user overrides
     return DEFAULT_SAMPLING_CONFIG
-
