@@ -504,7 +504,7 @@ class JobSubmissionClient(SubmissionClient):
                     )
                     if ws.close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
                         raise RuntimeError(
-                            f"WebSocket connection closed unexpectedly while job with close code {ws.close_code}"
+                            f"WebSocket connection closed unexpectedly with close code {ws.close_code}"
                         )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
