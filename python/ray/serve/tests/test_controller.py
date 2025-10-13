@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
@@ -308,12 +309,12 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     handle = serve.run(snap_app.bind())
 
-    base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+    serve_logs_dir = get_serve_logs_dir()
 
     def get_snapshots():
         """Read all snapshots for deployment."""
         log_paths = glob.glob(
-            os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log")
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
         )
         snaps = []
         for path in log_paths:
@@ -396,13 +397,13 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
 
     serve.run(app.bind())
 
-    base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+    serve_logs_dir = get_serve_logs_dir()
     candidate_paths = sorted(
-        glob.glob(os.path.join(base_logs_dir, "serve", "autoscaling_snapshot_*.log"))
+        glob.glob(os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log"))
     )
     assert (
         candidate_paths
-    ), f"No autoscaling snapshot logs found; checked {os.path.join(base_logs_dir, 'serve')}"
+    ), f"No autoscaling snapshot logs found; checked {serve_logs_dir}"
 
     found = []
     for path in candidate_paths:
