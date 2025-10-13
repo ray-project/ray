@@ -737,33 +737,30 @@ async def test_tail_job_logs_websocket_abnormal_closure():
         client = JobSubmissionClient(format_web_url(address))
 
         # Submit a long-running job
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            driver_script = """
+        driver_script = """
 import time
 for i in range(100):
     print("Hello", i)
     time.sleep(0.5)
 """
-            entrypoint = f"python -c '{driver_script}'"
-            job_id = client.submit_job(
-                entrypoint=entrypoint, runtime_env={"TEMPPATH": tmp_dir}
-            )
+        entrypoint = f"python -c '{driver_script}'"
+        job_id = client.submit_job(entrypoint=entrypoint)
 
-            # Start tailing logs and stop Ray while tailing
-            # Expect RuntimeError when WebSocket closes abnormally
-            with pytest.raises(
-                RuntimeError,
-                match="WebSocket connection closed unexpectedly with close code",
-            ):
-                i = 0
-                async for lines in client.tail_job_logs(job_id):
-                    print(lines, end="")
-                    i += 1
+        # Start tailing logs and stop Ray while tailing
+        # Expect RuntimeError when WebSocket closes abnormally
+        with pytest.raises(
+            RuntimeError,
+            match="WebSocket connection closed unexpectedly with close code",
+        ):
+            i = 0
+            async for lines in client.tail_job_logs(job_id):
+                print(lines, end="")
+                i += 1
 
-                    # Run ray stop to terminate Ray after receiving a few log lines
-                    if i == 3:
-                        print("\nStopping Ray cluster forcefully...")
-                        subprocess.check_output(["ray", "stop", "--force"])
+                # Run ray stop to terminate Ray after receiving a few log lines
+                if i == 3:
+                    print("\nStopping Ray cluster forcefully...")
+                    subprocess.check_output(["ray", "stop", "--force"])
 
     finally:
         # Ensure Ray is stopped even if test fails
