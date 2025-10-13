@@ -531,9 +531,8 @@ class GPUObjectManager:
 
     def free_object_primary_copy(self, object_id: str):
         """
-        Free the primary copy of the GPU object. Expected to be idempotent when called from
-        free_actor_object_callback because the primary copy holder should always only have one ref
-        in the deque.
+        Free the RDT object on the primary copy holder and free metadata
+        on the owner.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_free__,
@@ -548,7 +547,7 @@ class GPUObjectManager:
                 __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
             # NOTE: This may have to change if we support lineage reconstruction for RDT
-            self.managed_gpu_object_metadata.pop(object_id)
+            self.managed_gpu_object_metadata.pop(object_id, None)
         except Exception as e:
             logger.error(
                 "Something went wrong while freeing the RDT object!", exc_info=e
