@@ -16,14 +16,12 @@ py_library(
     visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
         "//release:bazel",
-        "//release:ray_release",
-        ci_require("boto3"),
-        ci_require("pyyaml"),
-        ci_require("click"),
-        "//release:bazel",
         "//release:global_config",
         "//release:test",
         "//release:test_automation",
+        ci_require("boto3"),
+        ci_require("pyyaml"),
+        ci_require("click"),
     ],
 )
 
