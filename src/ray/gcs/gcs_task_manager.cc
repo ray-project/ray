@@ -114,32 +114,9 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
                 << " with error_message: " << worker_failure_data.exit_detail();
   error_info.set_error_message(error_message.str());
 
-  // Defensive copy to avoid iterator invalidation if indices mutate during processing.
-  auto locators_copy = task_attempts_itr->second;
-  RAY_LOG(INFO) << "[MarkOnWorkerDead] worker=" << worker_id.Hex()
-                << " num_locators=" << locators_copy.size()
-                << " end_time_ms=" << worker_failure_data.end_time_ms();
-  size_t idx = 0;
-  for (const auto &task_locator : locators_copy) {
-    auto &te = task_locator->GetTaskEventsMutable();
-    const size_t task_id_len = te.task_id().size();
-    const size_t job_id_len = te.job_id().size();
-    const size_t has_updates = te.has_state_updates() ? 1 : 0;
-    RAY_LOG(DEBUG) << "[MarkOnWorkerDead] idx=" << idx++ << " task_id_len=" << task_id_len
-                   << " job_id_len=" << job_id_len << " has_state_updates=" << has_updates
-                   << " list_index=" << task_locator->GetCurrentListIndex()
-                   << " locator_ptr=" << task_locator.get();
-    // Guard the mutation to capture where it fails.
-    try {
-      MarkTaskAttemptFailedIfNeeded(
-          task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
-    } catch (const std::exception &e) {
-      RAY_LOG(ERROR) << "[MarkOnWorkerDead] exception while marking failed: " << e.what()
-                     << " task_id_len=" << task_id_len << " job_id_len=" << job_id_len
-                     << " te=\n"
-                     << te.DebugString();
-      throw;  // rethrow to preserve behavior
-    }
+  for (const auto &task_locator : task_attempts_itr->second) {
+    MarkTaskAttemptFailedIfNeeded(
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
@@ -156,13 +133,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  RAY_LOG(DEBUG) << "[MarkFailedIfNeeded] before update list_index="
-                 << locator->GetCurrentListIndex() << " locator_ptr=" << locator.get();
-  // Timestamp update
   (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
-  // Error info update
   state_updates->mutable_error_info()->CopyFrom(error_info);
-  RAY_LOG(DEBUG) << "[MarkFailedIfNeeded] after update FAILED ts=" << failed_ts_ns;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
@@ -180,27 +152,9 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
                 << ") as driver exits. Marking all non-terminal tasks as failed.";
   error_info.set_error_message(error_message.str());
 
-  // Defensive copy to avoid iterator invalidation if indices mutate during processing.
-  auto locators_copy = task_attempts_itr->second;
-  RAY_LOG(INFO) << "[MarkOnJobEnds] job=" << job_id.Hex()
-                << " num_locators=" << locators_copy.size()
-                << " ts_ns=" << job_finish_time_ns;
   // Iterate all task attempts from the job.
-  size_t idx = 0;
-  for (const auto &task_locator : locators_copy) {
-    auto &te = task_locator->GetTaskEventsMutable();
-    const size_t task_id_len = te.task_id().size();
-    RAY_LOG(DEBUG) << "[MarkOnJobEnds] idx=" << idx++ << " task_id_len=" << task_id_len
-                   << " list_index=" << task_locator->GetCurrentListIndex()
-                   << " locator_ptr=" << task_locator.get();
-    try {
-      MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
-    } catch (const std::exception &e) {
-      RAY_LOG(ERROR) << "[MarkOnJobEnds] exception while marking failed: " << e.what()
-                     << " task_id_len=" << task_id_len << " te=\n"
-                     << te.DebugString();
-      throw;
-    }
+  for (const auto &task_locator : task_attempts_itr->second) {
+    MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
   }
 }
 
@@ -234,13 +188,11 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
-    // Use splice to move the list node without moving/copying the protobuf object.
-    auto &src_list = task_events_list_[cur_list_index];
-    auto &dst_list = task_events_list_[target_list_index];
-    auto it = loc->GetCurrentListIterator();
-    dst_list.splice(dst_list.begin(), src_list, it);
-    // After splice, the iterator remains valid and now refers to the element in dst_list.
-    loc->SetCurrentList(target_list_index, dst_list.begin());
+    // Need to add to the new list first.
+    task_events_list_[target_list_index].push_front(std::move(existing_task));
+
+    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
+    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
@@ -634,7 +586,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 
       if (limit < 0 || count++ < limit) {
         auto events = reply->add_events_by_task();
-        events->Swap(&task_event);
+        events->CopyFrom(task_event);
       } else {
         num_profile_event_limit += task_event.has_profile_events()
                                        ? task_event.profile_events().events_size()
@@ -710,7 +662,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto task_event_data_requests = ConvertToTaskEventDataRequests(request);
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   for (auto &task_event_data : task_event_data_requests) {
     RecordTaskEventData(task_event_data);
