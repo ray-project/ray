@@ -832,7 +832,16 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
-        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
+        // Make a copy to avoid concurrent access to the protobuf from different threads.
+        // GcsTaskManager runs on a separate io_context, so we need to copy before
+        // posting.
+        auto worker_data_copy =
+            std::make_shared<rpc::WorkerTableData>(*worker_failure_data);
+        io_context_provider_.GetIOContext<GcsTaskManager>().post(
+            [this, worker_id, worker_data_copy]() {
+              gcs_task_manager_->OnWorkerDead(worker_id, worker_data_copy);
+            },
+            "GcsServer.OnWorkerDead");
       });
 
   // Install job event listeners.

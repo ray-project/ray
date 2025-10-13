@@ -725,21 +725,20 @@ void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
 void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
-  auto worker_data_copy = std::make_shared<rpc::WorkerTableData>(*worker_data);
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       io_service_,
       boost::posix_time::milliseconds(
           RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
   timer->async_wait(
-      [this, timer, worker_id, worker_data_copy](const boost::system::error_code &error) {
+      [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
         if (error == boost::asio::error::operation_aborted) {
           // timer canceled or aborted.
           return;
         }
         // If there are any non-terminated tasks from the worker, mark them failed since
         // all workers associated with the worker will be failed.
-        task_event_storage_->MarkTasksFailedOnWorkerDead(worker_id, *worker_data_copy);
+        task_event_storage_->MarkTasksFailedOnWorkerDead(worker_id, *worker_data);
       });
 }
 
