@@ -132,3 +132,9 @@ spec:
     - --reconcile-concurrency
     - "10"
 ```
+
+You can also use the following command for kuberay version >= 1.5.0:
+
+```bash
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0 --set reconcileConcurrency=10
+```
