@@ -481,7 +481,6 @@ py_library(
             "ray_release/retry.py",
             "ray_release/aws.py",
             "ray_release/test.py",
-            "ray_release/test_automation.py",
         ],
     ) + [
         "ray_release/scripts/ray_bisect.py",
@@ -584,6 +583,16 @@ py_test(
     ],
 )
 
+py_library(
+    name = "bisect_lib",
+    srcs = ["ray_release/scripts/ray_bisect.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
 py_test(
     name = "test_bisect",
     size = "small",
@@ -598,6 +607,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":bisect_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
