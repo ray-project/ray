@@ -24,8 +24,8 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    wait_until_server_available,
     get_current_unused_port,
+    wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.common import uri_to_http_components
@@ -542,12 +542,14 @@ def test_job_metadata(job_sdk_client):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-    assert str({
-        "job_name": job_id,
-        "job_submission_id": job_id,
-        "key1": "val1",
-        "key2": "val2",
-    }) in client.get_job_logs(job_id)
+    assert str(
+        {
+            "job_name": job_id,
+            "job_submission_id": job_id,
+            "key1": "val1",
+            "key2": "val2",
+        }
+    ) in client.get_job_logs(job_id)
 
 
 def test_pass_job_id(job_sdk_client):
@@ -721,15 +723,17 @@ async def test_tail_job_logs_websocket_abnormal_closure():
     dashboard_port = get_current_unused_port()
 
     # Start a fresh Ray cluster for this test only
-    subprocess.check_output([
-        "ray",
-        "start",
-        "--head",
-        "--port",
-        str(port),
-        "--dashboard-port",
-        str(dashboard_port),
-    ])
+    subprocess.check_output(
+        [
+            "ray",
+            "start",
+            "--head",
+            "--port",
+            str(port),
+            "--dashboard-port",
+            str(dashboard_port),
+        ]
+    )
 
     try:
         address = f"localhost:{dashboard_port}"
