@@ -466,54 +466,59 @@ class LimitHandler:
 
         self._logger.debug(f"Applying LIMIT {limit_value} OFFSET {offset_value}")
 
+        # Handle LIMIT 0 case - return empty dataset
+        if limit_value == 0:
+            self._logger.debug("LIMIT 0 applied - returning empty dataset")
+            return dataset.limit(0)
+
         # Handle different combinations
         if offset_value > 0 and limit_value is not None:
-            # Both OFFSET and LIMIT - use enumerate trick to avoid materialization
-            # WARNING: OFFSET requires scanning all rows up to offset, which is expensive
+            # Both OFFSET and LIMIT
+            # WARNING: OFFSET requires materializing/scanning rows up to offset
             # For large offsets, consider filtering data earlier in the query
+            self._logger.warning(
+                f"OFFSET {offset_value} requires scanning {offset_value} rows. "
+                "Consider filtering earlier in the query for better performance."
+            )
 
-            def offset_limit_map(row_dict, row_idx):
-                """Map function that tracks row index for offset/limit."""
-                # Note: This runs after data has been filtered/sorted
-                # row_idx is provided by enumerate in map context
-                return row_dict
+            # Use take_all() to materialize, then slice in Python
+            # This is expensive but correct for distributed execution
+            try:
+                rows = dataset.take_all()
+                sliced_rows = rows[offset_value : offset_value + limit_value]
+                import pyarrow as pa
 
-            # Apply limit first (Ray Data native operation)
-            total_needed = offset_value + limit_value
-            result = dataset.limit(total_needed)
+                from ray.data import from_arrow
 
-            # Then skip offset rows using map with enumeration
-            # Note: This still requires processing offset rows, but avoids materialization
-            import itertools
-
-            counter = itertools.count()
-
-            def skip_offset(row):
-                idx = next(counter)
-                return idx >= offset_value
-
-            result = result.filter(skip_offset).limit(limit_value)
-            self._logger.debug(f"LIMIT {limit_value} OFFSET {offset_value} applied")
-            return result
+                result = from_arrow(pa.Table.from_pylist(sliced_rows))
+                self._logger.debug(f"LIMIT {limit_value} OFFSET {offset_value} applied")
+                return result
+            except Exception as e:
+                self._logger.warning(f"Failed to apply LIMIT/OFFSET: {e}")
+                return dataset
 
         elif offset_value > 0:
-            # OFFSET only - requires scanning all rows up to offset
-            # WARNING: Expensive operation, avoid large offsets when possible
-            import itertools
-
-            counter = itertools.count()
-
-            def skip_offset(row):
-                idx = next(counter)
-                return idx >= offset_value
-
-            result = dataset.filter(skip_offset)
-            self._logger.debug(
-                f"OFFSET {offset_value} applied (warning: expensive operation)"
+            # OFFSET only - requires materializing all rows
+            # WARNING: Very expensive operation, avoid large offsets when possible
+            self._logger.warning(
+                f"OFFSET {offset_value} without LIMIT requires scanning all rows. "
+                "This is an expensive operation."
             )
-            return result
+            try:
+                rows = dataset.take_all()
+                sliced_rows = rows[offset_value:]
+                import pyarrow as pa
 
-        elif limit_value is not None and limit_value > 0:
+                from ray.data import from_arrow
+
+                result = from_arrow(pa.Table.from_pylist(sliced_rows))
+                self._logger.debug(f"OFFSET {offset_value} applied")
+                return result
+            except Exception as e:
+                self._logger.warning(f"Failed to apply OFFSET: {e}")
+                return dataset
+
+        elif limit_value is not None and limit_value >= 0:
             # Only LIMIT - use Ray's built-in limit method
             try:
                 result = dataset.limit(limit_value)
