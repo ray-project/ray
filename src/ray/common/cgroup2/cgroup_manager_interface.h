@@ -30,33 +30,33 @@ namespace ray {
   Sets up resource isolation for a Ray node using cgroup2 using the following
   cgroup hierachy:
 
-    base_cgroup_path (e.g. /sys/fs/cgroup)
+      base_cgroup_path (e.g. /sys/fs/cgroup)
             |
-    ray_node_<node_id>
-      |           |
-    system     application
-      |           |
-     leaf       leaf
+    ray-node_<node_id>
+    |                 |
+  system             user
+    |               |    |
+  leaf        workers  non-ray
 */
 class CgroupManagerInterface {
  public:
   /*
-    Moves the process into the application leaf cgroup (@see kLeafCgroupName).
+    Moves the process into the workers leaf cgroup (@see kLeafCgroupName).
 
     To move the pid, the process must have read, write, and execute permissions for the
       1) the cgroup the pid is currently in i.e. the source cgroup.
       2) the system leaf cgroup i.e. the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
-    @note If the process does not have adequate cgroup permissions or the application leaf
+    @note If the process does not have adequate cgroup permissions or the workers leaf
     cgroup does not exist, this will fail a RAY_CHECK.
 
-    @param pid of the process to move into the system leaf cgroup.
+    @param pid of the process to move into the workers leaf cgroup.
 
     @return Status::OK if pid moved successfully.
-    @return Status::NotFound if the application cgroup does not exist.
+    @return Status::NotFound if the workers leaf cgroup does not exist.
   */
-  virtual Status AddProcessToApplicationCgroup(const std::string &pid) = 0;
+  virtual Status AddProcessToWorkersCgroup(const std::string &pid) = 0;
 
   /**
     Moves the process into the system leaf cgroup (@see kLeafCgroupName).
@@ -66,10 +66,7 @@ class CgroupManagerInterface {
       2) the system leaf cgroup i.e. the destination cgroup.
       3) the lowest common ancestor of the source and destination cgroups.
 
-    TODO(#54703): There currently is not a good way to signal to the caller that
-    the method can cause a FATAL error. Revisit this once we've settled on a pattern.
-
-    NOTE: If the process does not have adequate cgroup permissions or the system leaf
+    @note: If the process does not have adequate cgroup permissions or the system leaf
     cgroup does not exist, this will fail a RAY_CHECK.
 
     @param pid of the process to move into the system leaf cgroup.
@@ -86,10 +83,16 @@ class CgroupManagerInterface {
   virtual ~CgroupManagerInterface() = default;
 
  protected:
-  inline static const std::string kNodeCgroupName = "ray_node";
+  inline static const std::string kNodeCgroupName = "ray-node";
   inline static const std::string kSystemCgroupName = "system";
-  inline static const std::string kApplicationCgroupName = "application";
+  inline static const std::string kUserCgroupName = "user";
+  inline static const std::string kWorkersCgroupName = "workers";
+  inline static const std::string kNonRayCgroupName = "non-ray";
   inline static const std::string kLeafCgroupName = "leaf";
+
+  // TODO(54703): Tune this value for a sane default. Expose a RayConfig for this
+  // if necessary.
+  static constexpr float kWorkersCgroupCpuWeightProportion = 0.95;
 
   // Controllers that can be enabled in Ray.
   inline static const std::unordered_set<std::string> supported_controllers_ = {"cpu",
