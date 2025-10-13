@@ -4,8 +4,8 @@ from typing import Optional, Tuple
 import time
 import os
 import shutil
-
 from urllib.parse import urlparse
+
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
 
