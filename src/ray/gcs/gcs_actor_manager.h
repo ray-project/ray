@@ -107,7 +107,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
-      const std::string &session_name);
+      const std::string &session_name,
+      ray::observability::MetricInterface &actor_by_state_gauge,
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
   ~GcsActorManager() override = default;
 
@@ -286,10 +288,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client_(std::move(client)) {}
-    /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
+    explicit Owner(rpc::Address address) : address_(std::move(address)) {}
+    /// The address of the owner.
+    rpc::Address address_;
     /// The IDs of actors owned by this worker.
     absl::flat_hash_set<ActorID> children_actor_ids_;
   };
@@ -501,6 +502,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
