@@ -116,7 +116,7 @@ class FakePlasmaClient : public PlasmaClientInterface {
     return Status::OK();
   }
 
-  Status Disconnect() override { return Status::OK(); };
+  void Disconnect() override{};
 
   std::string DebugString() { return ""; }
 
