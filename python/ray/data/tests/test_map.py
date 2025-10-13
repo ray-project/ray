@@ -307,13 +307,6 @@ def test_concurrency(shutdown_only, target_max_block_size_infinite_or_default):
         with pytest.raises(ValueError, match=error_message):
             ds.map(UDFClass, concurrency=concurrency).take_all()
 
-    # Test concurrency not set.
-    result = ds.map(udf).take_all()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-    error_message = "``concurrency`` must be specified when using a callable class."
-    with pytest.raises(ValueError, match=error_message):
-        ds.map(UDFClass).take_all()
-
 
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])
 def test_flat_map(
@@ -1065,7 +1058,7 @@ def test_async_flat_map(
 
     n = 10
     ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
-    ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
+    ds = ds.flat_map(AsyncActor, max_concurrency=2)
     output = ds.take_all()
     assert sorted(extract_values("id", output)) == list(range(n))
 
