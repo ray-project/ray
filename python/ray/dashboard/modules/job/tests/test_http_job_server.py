@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     chdir,
     format_web_url,
     wait_until_server_available,
+    get_current_unused_port,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.common import uri_to_http_components
@@ -268,8 +269,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -542,14 +542,12 @@ def test_job_metadata(job_sdk_client):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-    assert str(
-        {
-            "job_name": job_id,
-            "job_submission_id": job_id,
-            "key1": "val1",
-            "key2": "val2",
-        }
-    ) in client.get_job_logs(job_id)
+    assert str({
+        "job_name": job_id,
+        "job_submission_id": job_id,
+        "key1": "val1",
+        "key2": "val2",
+    }) in client.get_job_logs(job_id)
 
 
 def test_pass_job_id(job_sdk_client):
@@ -709,6 +707,67 @@ for i in range(100):
                 print("Exception:", ex)
 
         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_websocket_abnormal_closure():
+    """
+    Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
+
+    This test starts its own Ray cluster to avoid interfering with other tests,
+    then forcefully stops Ray while tailing logs to simulate an abnormal WebSocket closure.
+    """
+    port = get_current_unused_port()
+    dashboard_port = get_current_unused_port()
+
+    # Start a fresh Ray cluster for this test only
+    subprocess.check_output([
+        "ray",
+        "start",
+        "--head",
+        "--dashboard-port",
+        str(port),
+        "--dashboard-port",
+        str(dashboard_port),
+    ])
+
+    try:
+        address = f"localhost:{dashboard_port}"
+        assert wait_until_server_available(address)
+        client = JobSubmissionClient(format_web_url(address))
+
+        # Submit a long-running job
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.5)
+"""
+            entrypoint = f"python -c '{driver_script}'"
+            job_id = client.submit_job(
+                entrypoint=entrypoint, runtime_env={"TEMPPATH": tmp_dir}
+            )
+
+            # Start tailing logs and stop Ray while tailing
+            # Expect RuntimeError when WebSocket closes abnormally
+            with pytest.raises(
+                RuntimeError,
+                match="WebSocket connection closed unexpectedly with close code",
+            ):
+                i = 0
+                async for lines in client.tail_job_logs(job_id):
+                    print(lines, end="")
+                    i += 1
+
+                    # Run ray stop to terminate Ray after receiving a few log lines
+                    if i == 3:
+                        print("\nStopping Ray cluster forcefully...")
+                        subprocess.check_output(["ray", "stop", "--force"])
+
+    finally:
+        # Ensure Ray is stopped even if test fails
+        subprocess.run(["ray", "stop", "--force"], capture_output=True, check=False)
 
 
 def _hook(env):
