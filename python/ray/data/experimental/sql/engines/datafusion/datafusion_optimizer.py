@@ -27,37 +27,8 @@ except ImportError:
     DATAFUSION_AVAILABLE = False
     df = None
 
-
-# Configuration constants for adaptive sampling strategy
-# These determine how many rows to sample from datasets for DataFusion optimization
-
-# Minimum sample size for any dataset (ensures basic statistics)
-DEFAULT_MIN_SAMPLE_SIZE = 100
-
-# Maximum sample size for any dataset (caps memory usage)
-DEFAULT_MAX_SAMPLE_SIZE = 10000
-
-# Default sample size when metadata is unavailable
-DEFAULT_SAMPLE_SIZE = 1000
-
-# Dataset size tier thresholds (in rows) for adaptive sampling
-TINY_DATASET_THRESHOLD = 1000  # < 1K rows: use all rows
-SMALL_DATASET_THRESHOLD = 10000  # 1K-10K rows: use 50% sample
-MEDIUM_DATASET_THRESHOLD = 100000  # 10K-100K rows: use 10% sample
-LARGE_DATASET_THRESHOLD = 1000000  # 100K-1M rows: use 1% sample
-# > 1M rows: use fixed max sample
-
-# Sampling percentages for each tier
-TINY_DATASET_SAMPLE_FRACTION = 1.0  # 100% - use all
-SMALL_DATASET_SAMPLE_FRACTION = 0.5  # 50%
-MEDIUM_DATASET_SAMPLE_FRACTION = 0.1  # 10%
-LARGE_DATASET_SAMPLE_FRACTION = 0.01  # 1%
-
-# Multiplier for datasets from read operations (often have good metadata)
-READ_OPERATION_SAMPLE_MULTIPLIER = 5
-
-# Multiplier for datasets with block metadata
-BLOCK_METADATA_SAMPLE_MULTIPLIER = 2
+# Import DataFusion configuration
+from .config import DataFusionSamplingConfig, get_sampling_config
 
 
 @dataclass
@@ -98,10 +69,15 @@ class DataFusionOptimizer:
         ...     result = execute_with_ray_data(optimizations)
     """
 
-    def __init__(self):
-        """Initialize DataFusion optimizer."""
+    def __init__(self, config: Optional[DataFusionSamplingConfig] = None):
+        """Initialize DataFusion optimizer.
+
+        Args:
+            config: Sampling configuration. Uses defaults if not provided.
+        """
         self.available = DATAFUSION_AVAILABLE
         self._logger = setup_logger("DataFusionOptimizer")
+        self.sampling_config = config or get_sampling_config()
 
         if self.available:
             try:
@@ -261,18 +237,19 @@ class DataFusionOptimizer:
         # Determine global sampling strategy that maintains proportions
         # If largest table is 1M rows, we sample it at 10K (1%)
         # Then smaller tables get proportionally smaller samples
-        if max_table_size <= TINY_DATASET_THRESHOLD:
+        cfg = self.sampling_config
+        if max_table_size <= cfg.tiny_threshold:
             # All tables tiny - use all rows
-            base_sample_fraction = TINY_DATASET_SAMPLE_FRACTION
-        elif max_table_size <= SMALL_DATASET_THRESHOLD:
-            base_sample_fraction = SMALL_DATASET_SAMPLE_FRACTION
-        elif max_table_size <= MEDIUM_DATASET_THRESHOLD:
-            base_sample_fraction = MEDIUM_DATASET_SAMPLE_FRACTION
-        elif max_table_size <= LARGE_DATASET_THRESHOLD:
-            base_sample_fraction = LARGE_DATASET_SAMPLE_FRACTION
+            base_sample_fraction = cfg.tiny_sample_fraction
+        elif max_table_size <= cfg.small_threshold:
+            base_sample_fraction = cfg.small_sample_fraction
+        elif max_table_size <= cfg.medium_threshold:
+            base_sample_fraction = cfg.medium_sample_fraction
+        elif max_table_size <= cfg.large_threshold:
+            base_sample_fraction = cfg.large_sample_fraction
         else:
             # Very large datasets - use fraction that gives max_sample for largest table
-            base_sample_fraction = DEFAULT_MAX_SAMPLE_SIZE / max_table_size
+            base_sample_fraction = cfg.max_sample_size / max_table_size
 
         self._logger.info(
             f"Sampling {len(datasets)} tables with {base_sample_fraction:.2%} fraction "
@@ -282,14 +259,14 @@ class DataFusionOptimizer:
         # Phase 3: Register each table with proportional sample
         for name, ray_ds in datasets.items():
             try:
-                estimated_rows = table_size_estimates.get(name, DEFAULT_SAMPLE_SIZE)
+                estimated_rows = table_size_estimates.get(name, cfg.default_sample_size)
 
                 # Calculate proportional sample size
                 sample_size = int(estimated_rows * base_sample_fraction)
 
                 # Apply bounds
                 sample_size = max(
-                    DEFAULT_MIN_SAMPLE_SIZE, min(DEFAULT_MAX_SAMPLE_SIZE, sample_size)
+                    cfg.min_sample_size, min(cfg.max_sample_size, sample_size)
                 )
 
                 # Get sample for DataFusion (maintains relative size)
@@ -341,23 +318,24 @@ class DataFusionOptimizer:
 
             # Strategy 2: Heuristic based on dataset type
             # Read operations from large files likely have more data
+            cfg = self.sampling_config
             dataset_str = str(type(dataset))
             if "read_parquet" in dataset_str:
                 # Parquet reads often indicate larger datasets
-                return MEDIUM_DATASET_THRESHOLD  # Assume medium size
+                return cfg.medium_threshold  # Assume medium size
             elif "read_csv" in dataset_str:
-                return SMALL_DATASET_THRESHOLD  # CSV often smaller
+                return cfg.small_threshold  # CSV often smaller
             elif "from_items" in dataset_str:
-                return TINY_DATASET_THRESHOLD  # from_items usually small
+                return cfg.tiny_threshold  # from_items usually small
 
             # Fallback: Assume default size
             self._logger.debug(
-                f"Table '{table_name}': No metadata, assuming {DEFAULT_SAMPLE_SIZE} rows"
+                f"Table '{table_name}': No metadata, assuming {cfg.default_sample_size} rows"
             )
-            return DEFAULT_SAMPLE_SIZE
+            return cfg.default_sample_size
 
         except Exception:
-            return DEFAULT_SAMPLE_SIZE
+            return self.sampling_config.default_sample_size
 
     def _calculate_smart_sample_size(self, dataset: Dataset, table_name: str) -> int:
         """
@@ -377,135 +355,165 @@ class DataFusionOptimizer:
         Returns:
             Optimal sample size (rows to take).
         """
-        # Use module-level constants for configuration
-        min_sample = DEFAULT_MIN_SAMPLE_SIZE
-        max_sample = DEFAULT_MAX_SAMPLE_SIZE
-        default_sample = DEFAULT_SAMPLE_SIZE
-
         try:
-            # Strategy 1: Check for estimated row count from read metadata
-            # Many read operations (read_parquet, read_csv) provide estimates
-            # WITHOUT materializing data
+            # Strategy 1: Use estimated row count from read metadata (most accurate)
+            estimated_rows = self._get_estimated_row_count(dataset)
+            if estimated_rows:
+                return self._calculate_adaptive_sample_size(estimated_rows, table_name)
+
+            # Strategy 2: Use block metadata for size estimation
+            if self._has_block_metadata(dataset):
+                return self._calculate_from_block_metadata(table_name)
+
+            # Strategy 3: Check if dataset is from read operation
+            if self._is_read_operation(dataset):
+                return self._calculate_for_read_operation(table_name)
+
+            # Fallback: Use default sample size
+            return self._get_default_sample_size(table_name)
+
+        except Exception as e:
+            cfg = self.sampling_config
+            self._logger.debug(
+                f"Could not determine smart sample size for '{table_name}': {e}, "
+                f"using default ({cfg.default_sample_size})"
+            )
+            return cfg.default_sample_size
+
+    def _get_estimated_row_count(self, dataset: Dataset) -> Optional[int]:
+        """
+        Extract estimated row count from dataset metadata without materialization.
+
+        Args:
+            dataset: Ray Dataset to check.
+
+        Returns:
+            Estimated row count if available, None otherwise.
+        """
+        try:
             if hasattr(dataset, "_plan") and hasattr(
                 dataset._plan, "_dataset_stats_summary"
             ):
-                try:
-                    stats = dataset._plan._dataset_stats_summary
-                    if hasattr(stats, "num_rows") and stats.num_rows:
-                        estimated_rows = stats.num_rows
+                stats = dataset._plan._dataset_stats_summary
+                if hasattr(stats, "num_rows") and stats.num_rows:
+                    return stats.num_rows
+        except Exception:
+            pass
+        return None
 
-                        # Adaptive sampling tiers using constants
-                        if estimated_rows < TINY_DATASET_THRESHOLD:
-                            # Tiny dataset - use all (no sampling needed)
-                            sample_size = int(
-                                estimated_rows * TINY_DATASET_SAMPLE_FRACTION
-                            )
-                            self._logger.debug(
-                                f"Table '{table_name}': Full dataset "
-                                f"({estimated_rows} rows - tiny)"
-                            )
-                        elif estimated_rows < SMALL_DATASET_THRESHOLD:
-                            # Small dataset - 50% sample for good statistics
-                            sample_size = min(
-                                max_sample,
-                                max(
-                                    min_sample,
-                                    int(estimated_rows * SMALL_DATASET_SAMPLE_FRACTION),
-                                ),
-                            )
-                            self._logger.debug(
-                                f"Table '{table_name}': {int(SMALL_DATASET_SAMPLE_FRACTION*100)}% sample "
-                                f"({sample_size} of ~{estimated_rows} rows)"
-                            )
-                        elif estimated_rows < MEDIUM_DATASET_THRESHOLD:
-                            # Medium dataset - 10% sample
-                            sample_size = min(
-                                max_sample,
-                                max(
-                                    min_sample,
-                                    int(
-                                        estimated_rows * MEDIUM_DATASET_SAMPLE_FRACTION
-                                    ),
-                                ),
-                            )
-                            self._logger.debug(
-                                f"Table '{table_name}': {int(MEDIUM_DATASET_SAMPLE_FRACTION*100)}% sample "
-                                f"({sample_size} of ~{estimated_rows} rows)"
-                            )
-                        elif estimated_rows < LARGE_DATASET_THRESHOLD:
-                            # Large dataset - 1% sample (still 10k max)
-                            sample_size = min(
-                                max_sample,
-                                max(
-                                    min_sample,
-                                    int(estimated_rows * LARGE_DATASET_SAMPLE_FRACTION),
-                                ),
-                            )
-                            self._logger.debug(
-                                f"Table '{table_name}': {int(LARGE_DATASET_SAMPLE_FRACTION*100)}% sample "
-                                f"({sample_size} of ~{estimated_rows} rows)"
-                            )
-                        else:
-                            # Very large dataset - fixed max sample
-                            sample_size = max_sample
-                            self._logger.info(
-                                f"Table '{table_name}': Max sample "
-                                f"({sample_size} rows from ~{estimated_rows} rows)"
-                            )
+    def _calculate_adaptive_sample_size(
+        self, estimated_rows: int, table_name: str
+    ) -> int:
+        """
+        Calculate sample size based on estimated row count using tiered sampling.
 
-                        return max(min_sample, min(sample_size, max_sample))
-                except Exception:
-                    pass
+        Uses progressive sampling: larger datasets get proportionally smaller samples
+        to balance statistical accuracy with performance.
 
-            # Strategy 2: Try to get block count without reading data
-            # Block metadata is available without materialization
+        Args:
+            estimated_rows: Estimated number of rows in dataset.
+            table_name: Table name for logging.
+
+        Returns:
+            Calculated sample size within configured bounds.
+        """
+        # Define size tiers: (threshold, sample_fraction, tier_name)
+        cfg = self.sampling_config
+        size_tiers = [
+            (cfg.tiny_threshold, cfg.tiny_sample_fraction, "tiny"),
+            (cfg.small_threshold, cfg.small_sample_fraction, "small"),
+            (cfg.medium_threshold, cfg.medium_sample_fraction, "medium"),
+            (cfg.large_threshold, cfg.large_sample_fraction, "large"),
+        ]
+
+        # Find appropriate tier and calculate sample size
+        for threshold, fraction, tier_name in size_tiers:
+            if estimated_rows < threshold:
+                sample_size = int(estimated_rows * fraction)
+                bounded_size = self._apply_sample_bounds(sample_size)
+
+                # Log the sampling decision
+                if tier_name == "tiny":
+                    self._logger.debug(
+                        f"Table '{table_name}': Full dataset "
+                        f"({estimated_rows} rows - {tier_name})"
+                    )
+                else:
+                    self._logger.debug(
+                        f"Table '{table_name}': {int(fraction*100)}% sample "
+                        f"({bounded_size} of ~{estimated_rows} rows - {tier_name})"
+                    )
+
+                return bounded_size
+
+        # Very large dataset - use fixed max sample
+        self._logger.info(
+            f"Table '{table_name}': Max sample "
+            f"({self.sampling_config.max_sample_size} rows from ~{estimated_rows} rows)"
+        )
+        return self.sampling_config.max_sample_size
+
+    def _apply_sample_bounds(self, sample_size: int) -> int:
+        """
+        Apply minimum and maximum bounds to sample size.
+
+        Args:
+            sample_size: Raw sample size to bound.
+
+        Returns:
+            Sample size clamped within configured min/max bounds.
+        """
+        cfg = self.sampling_config
+        return max(cfg.min_sample_size, min(sample_size, cfg.max_sample_size))
+
+    def _has_block_metadata(self, dataset: Dataset) -> bool:
+        """Check if dataset has block metadata available."""
+        try:
             if hasattr(dataset, "_plan"):
-                try:
-                    # Check if we can estimate from block metadata
-                    # This is lightweight - doesn't read actual data
-                    logical_plan = dataset._logical_plan
-                    if hasattr(logical_plan, "dag"):
-                        # Estimated blocks can hint at size
-                        # More blocks usually means larger dataset
-                        self._logger.debug(
-                            f"Table '{table_name}': Using metadata-based estimation"
-                        )
-                        # Use larger sample for datasets with more blocks (heuristic)
-                        return min(
-                            max_sample,
-                            default_sample * BLOCK_METADATA_SAMPLE_MULTIPLIER,
-                        )
-                except Exception:
-                    pass
+                logical_plan = dataset._logical_plan
+                return hasattr(logical_plan, "dag")
+        except Exception:
+            pass
+        return False
 
-            # Strategy 3: Check if dataset is from read operation
-            # Read operations often have metadata
-            dataset_str = str(type(dataset))
-            if "read_parquet" in dataset_str or "read_csv" in dataset_str:
-                # Read operations likely have metadata
-                # Use larger sample for better statistics
-                self._logger.debug(
-                    f"Table '{table_name}': Read operation detected, using larger sample"
-                )
-                return min(
-                    max_sample, default_sample * READ_OPERATION_SAMPLE_MULTIPLIER
-                )
+    def _calculate_from_block_metadata(self, table_name: str) -> int:
+        """Calculate sample size using block metadata heuristics."""
+        self._logger.debug(f"Table '{table_name}': Using metadata-based estimation")
+        # Use larger sample for datasets with more blocks (heuristic)
+        # More blocks usually indicates larger dataset
+        cfg = self.sampling_config
+        return min(
+            cfg.max_sample_size,
+            cfg.default_sample_size * cfg.block_metadata_multiplier,
+        )
 
-            # Fallback: Use default sample size
-            self._logger.debug(
-                f"Table '{table_name}': Using default sample ({default_sample} rows)"
-            )
-            return default_sample
+    def _is_read_operation(self, dataset: Dataset) -> bool:
+        """Check if dataset comes from a read operation (likely has metadata)."""
+        dataset_str = str(type(dataset))
+        return "read_parquet" in dataset_str or "read_csv" in dataset_str
 
-        except Exception as e:
-            self._logger.debug(
-                f"Could not determine smart sample size for '{table_name}': {e}, "
-                f"using default ({default_sample})"
-            )
-            return default_sample
+    def _calculate_for_read_operation(self, table_name: str) -> int:
+        """Calculate sample size for datasets from read operations."""
+        self._logger.debug(
+            f"Table '{table_name}': Read operation detected, using larger sample"
+        )
+        # Read operations likely have metadata, use larger sample for better statistics
+        cfg = self.sampling_config
+        return min(
+            cfg.max_sample_size,
+            cfg.default_sample_size * cfg.read_operation_multiplier,
+        )
+
+    def _get_default_sample_size(self, table_name: str) -> int:
+        """Return default sample size with logging."""
+        cfg = self.sampling_config
+        self._logger.debug(
+            f"Table '{table_name}': Using default sample ({cfg.default_sample_size} rows)"
+        )
+        return cfg.default_sample_size
 
     def _extract_optimizations(
-        self, optimized_plan, query: str, datasets: Dict[str, Dataset]
+        self, optimized_plan: Any, query: str, datasets: Dict[str, Dataset]
     ) -> DataFusionOptimizations:
         """
         Extract optimization decisions from DataFusion's optimized logical plan.
@@ -525,102 +533,156 @@ class DataFusionOptimizer:
         Returns:
             DataFusionOptimizations with extracted decisions.
         """
-        optimizations = DataFusionOptimizations(
-            join_order=[],
-            join_algorithms={},
-            filter_placement=[],
-            projection_columns=[],
-            predicate_pushdown=True,
-            projection_pushdown=True,
-        )
-
         try:
-            # Get string representation of optimized plan
-            plan_str = str(optimized_plan)
+            # Convert plan to string representation for parsing
+            plan_lines = str(optimized_plan).split("\n")
 
-            # Extract optimization information from plan structure
-            # DataFusion's optimized plan shows the result of:
-            # - Predicate pushdown (filters moved closer to scans)
-            # - Projection pushdown (column selection moved earlier)
-            # - Join reordering (based on cost estimates)
-            # - Expression simplification
-
-            # Parse plan string to extract key optimizations
-            plan_lines = plan_str.split("\n")
-
-            # Extract filters (look for Filter operations in plan)
-            filters = []
-            for i, line in enumerate(plan_lines):
-                if "Filter:" in line or "filter" in line.lower():
-                    # Extract filter expression
-                    filter_expr = self._extract_filter_from_line(line)
-                    if filter_expr:
-                        filters.append(
-                            {
-                                "expression": filter_expr,
-                                "position": i,
-                                "type": "filter",
-                            }
-                        )
-
-            optimizations.filter_placement = filters
-            self._logger.debug(
-                f"Extracted {len(filters)} filter placements from DataFusion plan"
-            )
-
-            # Extract projections (look for Projection operations)
-            projections = []
-            for line in plan_lines:
-                if "Projection:" in line or "projection" in line.lower():
-                    cols = self._extract_columns_from_line(line)
-                    if cols:
-                        projections.extend(cols)
-
-            optimizations.projection_columns = projections
-            self._logger.debug(
-                f"Extracted {len(projections)} projection columns from DataFusion plan"
-            )
-
-            # Extract join information
-            joins = []
-            for line in plan_lines:
-                if "Join:" in line or "join" in line.lower():
-                    join_info = self._extract_join_from_line(line)
-                    if join_info:
-                        joins.append(join_info)
-
-            if joins:
-                optimizations.join_order = [
-                    (j.get("left", ""), j.get("right", "")) for j in joins
-                ]
-                optimizations.join_algorithms = {
-                    f"{j.get('left', '')}_{j.get('right', '')}": j.get("type", "inner")
-                    for j in joins
-                }
-
-            # Extract aggregation information
-            for line in plan_lines:
-                if "Aggregate:" in line or "aggregate" in line.lower():
-                    agg_strategy = self._extract_aggregation_strategy(line)
-                    if agg_strategy:
-                        optimizations.aggregation_strategy = agg_strategy
-                        self._logger.debug(
-                            f"Extracted aggregation strategy: {agg_strategy}"
-                        )
-                        break
+            # Extract each type of optimization using dedicated methods
+            filters = self._extract_filters_from_plan(plan_lines)
+            projections = self._extract_projections_from_plan(plan_lines)
+            join_order, join_algorithms = self._extract_joins_from_plan(plan_lines)
+            agg_strategy = self._extract_aggregation_from_plan(plan_lines)
 
             # Log summary of extracted optimizations
             self._logger.info(
-                f"Extracted optimizations: {len(optimizations.filter_placement)} filters, "
-                f"{len(optimizations.projection_columns)} projections, "
-                f"{len(optimizations.join_order)} joins"
+                f"Extracted optimizations: {len(filters)} filters, "
+                f"{len(projections)} projections, {len(join_order)} joins"
+            )
+
+            return DataFusionOptimizations(
+                join_order=join_order,
+                join_algorithms=join_algorithms,
+                filter_placement=filters,
+                projection_columns=projections,
+                aggregation_strategy=agg_strategy,
+                predicate_pushdown=True,
+                projection_pushdown=True,
             )
 
         except Exception as e:
             self._logger.debug(f"Could not extract detailed optimizations: {e}")
             # Return basic optimizations on error
+            return DataFusionOptimizations(
+                join_order=[],
+                join_algorithms={},
+                filter_placement=[],
+                projection_columns=[],
+                predicate_pushdown=True,
+                projection_pushdown=True,
+            )
 
-        return optimizations
+    def _extract_filters_from_plan(self, plan_lines: List[str]) -> List[Dict[str, Any]]:
+        """
+        Extract filter placements from DataFusion plan lines.
+
+        DataFusion's optimizer pushes filters closer to data sources for efficiency.
+        This extracts where filters ended up after optimization.
+
+        Args:
+            plan_lines: Lines from DataFusion's plan string representation.
+
+        Returns:
+            List of filter placement dictionaries with expression, position, and type.
+        """
+        filters = []
+        for i, line in enumerate(plan_lines):
+            if "Filter:" in line or "filter" in line.lower():
+                filter_expr = self._extract_filter_from_line(line)
+                if filter_expr:
+                    filters.append(
+                        {
+                            "expression": filter_expr,
+                            "position": i,
+                            "type": "filter",
+                        }
+                    )
+
+        self._logger.debug(
+            f"Extracted {len(filters)} filter placements from DataFusion plan"
+        )
+        return filters
+
+    def _extract_projections_from_plan(self, plan_lines: List[str]) -> List[str]:
+        """
+        Extract projection columns from DataFusion plan lines.
+
+        DataFusion's optimizer performs column pruning to read only necessary columns.
+        This extracts which columns survived the optimization.
+
+        Args:
+            plan_lines: Lines from DataFusion's plan string representation.
+
+        Returns:
+            List of column names in projections.
+        """
+        projections = []
+        for line in plan_lines:
+            if "Projection:" in line or "projection" in line.lower():
+                cols = self._extract_columns_from_line(line)
+                if cols:
+                    projections.extend(cols)
+
+        self._logger.debug(
+            f"Extracted {len(projections)} projection columns from DataFusion plan"
+        )
+        return projections
+
+    def _extract_joins_from_plan(
+        self, plan_lines: List[str]
+    ) -> Tuple[List[Tuple[str, str]], Dict[str, str]]:
+        """
+        Extract join order and algorithms from DataFusion plan lines.
+
+        DataFusion's cost-based optimizer reorders joins based on table statistics
+        and cardinality estimates. This extracts the optimized join sequence.
+
+        Args:
+            plan_lines: Lines from DataFusion's plan string representation.
+
+        Returns:
+            Tuple of (join_order, join_algorithms) where:
+            - join_order: List of (left_table, right_table) tuples in execution order
+            - join_algorithms: Dict mapping join pairs to join types (inner, left, etc.)
+        """
+        joins = []
+        for line in plan_lines:
+            if "Join:" in line or "join" in line.lower():
+                join_info = self._extract_join_from_line(line)
+                if join_info:
+                    joins.append(join_info)
+
+        if joins:
+            join_order = [(j.get("left", ""), j.get("right", "")) for j in joins]
+            join_algorithms = {
+                f"{j.get('left', '')}_{j.get('right', '')}": j.get("type", "inner")
+                for j in joins
+            }
+            return join_order, join_algorithms
+
+        return [], {}
+
+    def _extract_aggregation_from_plan(self, plan_lines: List[str]) -> Optional[str]:
+        """
+        Extract aggregation strategy from DataFusion plan lines.
+
+        DataFusion chooses between hash-based and sort-based aggregation based on
+        data characteristics and available memory.
+
+        Args:
+            plan_lines: Lines from DataFusion's plan string representation.
+
+        Returns:
+            Aggregation strategy string if found, None otherwise.
+        """
+        for line in plan_lines:
+            if "Aggregate:" in line or "aggregate" in line.lower():
+                agg_strategy = self._extract_aggregation_strategy(line)
+                if agg_strategy:
+                    self._logger.debug(
+                        f"Extracted aggregation strategy: {agg_strategy}"
+                    )
+                    return agg_strategy
+        return None
 
     def _extract_filter_from_line(self, line: str) -> Optional[str]:
         """Extract filter expression from plan line.

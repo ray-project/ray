@@ -49,9 +49,6 @@ class RaySQL:
         With configuration:
             >>> config = SQLConfig(log_level=LogLevel.DEBUG)
             >>> engine = RaySQL(config)
-
-    Args:
-        config: SQL engine configuration. Uses default if not provided.
     """
 
     def __init__(self, config: Optional[SQLConfig] = None):

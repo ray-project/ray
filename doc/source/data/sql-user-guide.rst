@@ -21,7 +21,7 @@ Ray Data SQL supports various join types for combining datasets:
 .. testcode::
 
     import ray.data
-    import ray.data.sql register_table, sql
+    from ray.data.sql import register, sql
 
     # Sample data for advanced join examples
     employees = ray.data.from_items([
@@ -37,8 +37,8 @@ Ray Data SQL supports various join types for combining datasets:
         {"id": 30, "name": "Sales", "budget": 300000}
     ])
 
-    register_table("employees", employees)
-    register_table("departments", departments)
+    register("employees", employees)
+    register("departments", departments)
 
     # Self-join to find manager-employee relationships
     result = ray.data.sql("""
@@ -172,7 +172,7 @@ Ray Data SQL automatically infers data types from your datasets:
         {"id": 3, "value": "300", "note": None}  # String number and null
     ])
     
-    register_table("mixed_data", mixed_data)
+    register("mixed_data", mixed_data)
 
 Type conversions
 ----------------
@@ -265,7 +265,7 @@ For large datasets, consider data partitioning:
     
     # Partition by date for time-series queries
     partitioned = large_dataset.repartition(keys=["date"])
-    register_table("sales", partitioned)
+    register("sales", partitioned)
     
     # Queries on partitioned data are more efficient
     result = ray.data.sql("""
@@ -603,7 +603,7 @@ Data Type Limitations
         }
     ])
     
-    register_table("nested_data", nested_data)
+    register("nested_data", nested_data)
     
     # ✅ WORKS: Simple field access
     result = ray.data.sql("SELECT id, nested_dict FROM nested_data")
@@ -850,7 +850,7 @@ Combine SQL queries with Ray Data transformations:
     })
     
     # 3. Register transformed data and continue with SQL
-    register_table("dept_analysis", enriched)
+    register("dept_analysis", enriched)
     
     final_report = sql("""
         SELECT size_category,
@@ -871,7 +871,7 @@ Handle large-scale data processing:
     def process_daily_data(date_str):
         # Load data for the date
         daily_data = ray.data.read_parquet(f"s3://bucket/data/{date_str}/")
-        register_table("daily_events", daily_data)
+        register("daily_events", daily_data)
         
         # SQL aggregation
         summary = sql(f"""
@@ -993,7 +993,7 @@ Test your SQL queries systematically:
             {"id": 3, "dept_id": 20, "salary": 70000}
         ])
         
-        register_table("test_employees", test_employees)
+        register("test_employees", test_employees)
         
         # Test query
         result = ray.data.sql("""

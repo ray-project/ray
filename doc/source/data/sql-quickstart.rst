@@ -29,7 +29,7 @@ Start by creating Ray Datasets and registering them as SQL tables:
 .. testcode::
 
     import ray.data
-    import ray.data.sql
+    from ray.data.sql import register
 
     # Create sample datasets
     users = ray.data.from_items([
@@ -48,8 +48,8 @@ Start by creating Ray Datasets and registering them as SQL tables:
     ])
 
     # Register datasets as SQL tables
-    ray.data.sql.register_table("users", users)
-    ray.data.sql.register_table("orders", orders)
+    register("users", users)
+    register("orders", orders)
 
 Step 2: Execute basic SQL queries
 ---------------------------------

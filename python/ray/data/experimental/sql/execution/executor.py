@@ -108,7 +108,13 @@ class QueryExecutor:
         """
         # Validate that we have a SELECT statement (other statement types not supported)
         if not isinstance(ast, exp.Select):
-            raise NotImplementedError("Only SELECT statements are supported")
+            stmt_type = type(ast).__name__ if ast else "unknown"
+            raise NotImplementedError(
+                f"Unsupported SQL statement type: {stmt_type}. "
+                f"Ray Data SQL supports only SELECT queries. "
+                f"For data manipulation, use Ray Dataset methods: "
+                f"write_parquet(), write_csv(), etc."
+            )
 
         try:
             # Track execution
@@ -153,8 +159,12 @@ class QueryExecutor:
         # Note: DISTINCT is not yet supported in Ray Dataset API
         if ast.args.get("distinct"):
             raise UnsupportedOperationError(
-                "DISTINCT",
-                suggestion="Ray Dataset API does not yet support deduplication operations",
+                "SELECT DISTINCT",
+                suggestion=(
+                    "Ray Dataset API doesn't yet support deduplication. "
+                    "Workaround: Use ds.groupby(...).count() to get unique values. "
+                    "Example: ds.groupby('column').count() for distinct values"
+                ),
             )
 
         return dataset
@@ -572,14 +582,23 @@ class QueryExecutor:
                 # Handle regular table names
                 table_name = str(table_expr.name)
             else:
-                raise ValueError("Invalid FROM clause")
+                raise ValueError(
+                    f"Invalid FROM clause: {table_expr}. "
+                    f"FROM clause must specify a table name or subquery. "
+                    f"Example: FROM my_table or FROM (SELECT * FROM table1)"
+                )
 
             dataset = self.registry.get(table_name)
             return dataset, table_name
 
         default_dataset = self.registry.get_default_table()
         if not default_dataset:
-            raise ValueError("No FROM clause specified and no default table available")
+            available_tables = list(self.registry.list_tables())
+            raise ValueError(
+                f"No FROM clause specified and no default table available. "
+                f"Registered tables: {available_tables}. "
+                f"Use FROM clause to specify a table: SELECT * FROM table_name"
+            )
         table_name = getattr(default_dataset, "_sql_name", "default")
         return default_dataset, table_name
 

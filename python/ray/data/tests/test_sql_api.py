@@ -676,9 +676,9 @@ def test_sql_explicit_registration_precedence(ray_start_regular_shared, sql_engi
 
 def test_sql_auto_discovery_with_cte(ray_start_regular_shared, sql_engine):
     """Test auto-discovery with Common Table Expressions."""
-    base_data = ray.data.from_items(
+    base_data = ray.data.from_items(  # noqa: F841
         [{"id": 1, "value": 10}, {"id": 2, "value": 20}, {"id": 3, "value": 30}]
-    )  # noqa: F841
+    )
 
     # CTE should work with auto-discovered base table
     result = sql(
@@ -712,27 +712,27 @@ def test_sql_auto_discovery_with_aliases_and_joins(
     ray_start_regular_shared, sql_engine
 ):
     """Test auto-discovery with complex aliases and multiple joins."""
-    departments = ray.data.from_items(
+    departments = ray.data.from_items(  # noqa: F841
         [
             {"dept_id": 1, "dept_name": "Engineering"},
             {"dept_id": 2, "dept_name": "Sales"},
         ]
-    )  # noqa: F841
+    )
 
-    employees = ray.data.from_items(
+    employees = ray.data.from_items(  # noqa: F841
         [
             {"emp_id": 1, "name": "Alice", "dept_id": 1},
             {"emp_id": 2, "name": "Bob", "dept_id": 2},
             {"emp_id": 3, "name": "Charlie", "dept_id": 1},
         ]
-    )  # noqa: F841
+    )
 
-    projects = ray.data.from_items(
+    projects = ray.data.from_items(  # noqa: F841
         [
             {"proj_id": 1, "emp_id": 1, "project": "Project A"},
             {"proj_id": 2, "emp_id": 3, "project": "Project B"},
         ]
-    )  # noqa: F841
+    )
 
     # Complex query with multiple auto-discovered tables and aliases
     result = sql(
@@ -826,9 +826,9 @@ def test_sql_auto_discovery_mixed_local_and_global(
 
 def test_sql_auto_discovery_repeated_queries(ray_start_regular_shared, sql_engine):
     """Test that auto-discovery works correctly across multiple queries."""
-    data = ray.data.from_items(
+    data = ray.data.from_items(  # noqa: F841
         [{"id": 1, "value": 100}, {"id": 2, "value": 200}, {"id": 3, "value": 300}]
-    )  # noqa: F841
+    )
 
     # First query
     result1 = sql("SELECT * FROM data WHERE value > 150")

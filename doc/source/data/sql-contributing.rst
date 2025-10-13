@@ -101,6 +101,7 @@ Example API Annotations
 
 .. testcode::
 
+    from ray.data import Dataset
     from ray.util.annotations import PublicAPI, DeveloperAPI
 
     @PublicAPI(stability="beta")

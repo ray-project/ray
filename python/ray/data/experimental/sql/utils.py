@@ -9,10 +9,13 @@ for SQL parsing and AST manipulation.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 # SQLGlot: SQL parser and transpiler - https://github.com/tobymao/sqlglot
 from sqlglot import exp
+
+if TYPE_CHECKING:
+    from ray.data.experimental.sql.config import SQLConfig
 
 
 def setup_logger(name: str = "RaySQL") -> logging.Logger:
@@ -318,7 +321,7 @@ def is_aggregate_function(expr: exp.Expression) -> bool:
     return isinstance(expr, (exp.AggFunc, exp.Anonymous))
 
 
-def get_config_from_context():
+def get_config_from_context() -> "SQLConfig":
     """Get SQL configuration from Ray DataContext.
 
     Returns:
@@ -378,7 +381,7 @@ JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
 }
 
 
-def get_supported_sql_features():
+def get_supported_sql_features() -> Dict[str, Any]:
     """Get a comprehensive list of supported SQL features.
 
     Returns:
@@ -421,7 +424,7 @@ def get_supported_sql_features():
     }
 
 
-def get_feature_suggestion(feature_name: str):
+def get_feature_suggestion(feature_name: str) -> Optional[str]:
     """Get a helpful suggestion for an unsupported SQL feature.
 
     This function provides user-friendly suggestions for unsupported SQL features,
@@ -459,7 +462,9 @@ def get_feature_suggestion(feature_name: str):
     return None
 
 
-def validate_sql_feature_support(sql_string: str, strict_mode: bool = True):
+def validate_sql_feature_support(
+    sql_string: str, strict_mode: bool = True
+) -> Optional[List[str]]:
     """Validate SQL feature support without executing the query.
 
     Args:

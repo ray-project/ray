@@ -215,10 +215,11 @@ Ray Data SQL provides extensive configuration options for different use cases:
     )
     # .. vale on
 
-    # Use with context manager for session-specific settings
-    with ray.data.DataContext() as ctx:
-        ctx.sql_config = config
-        result = ray.data.sql("SELECT * FROM users WHERE age > 30")
+    # Apply configuration to current context
+    ctx = ray.data.DataContext.get_current()
+    ctx.sql_dialect = config.dialect
+    ctx.sql_enable_sqlglot_optimizer = config.enable_sqlglot_optimizer
+    result = ray.data.sql("SELECT * FROM users WHERE age > 30")
 
 Advanced configuration options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

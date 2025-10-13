@@ -146,7 +146,9 @@ class JoinHandler:
         on_condition = join_ast.args.get("on")
         if not isinstance(on_condition, exp.EQ):
             raise NotImplementedError(
-                "Only equi-joins (ON left.col = right.col) are supported"
+                f"Unsupported JOIN condition: {on_condition}. "
+                f"Ray Data SQL supports only equi-joins with = operator. "
+                f"Example: SELECT * FROM table1 JOIN table2 ON table1.id = table2.user_id"
             )
 
         # Extract column names from both sides of the join condition
@@ -182,12 +184,17 @@ class JoinHandler:
                 left_column, right_column = right_column, left_column
             else:
                 raise ValueError(
-                    "Invalid join condition: columns not found in expected tables"
+                    f"JOIN condition uses invalid columns: '{left_column}' and '{right_column}'. "
+                    f"Left table columns: {left_table_columns}. "
+                    f"Right table ('{right_table_name}') columns: {right_table_columns}. "
+                    f"Ensure join columns exist in their respective tables."
                 )
 
         if not left_column or not right_column:
             raise ValueError(
-                "Invalid join condition: both left and right columns must be specified"
+                f"JOIN condition incomplete: left='{left_column}', right='{right_column}'. "
+                f"Both sides of the JOIN condition must specify valid column names. "
+                f"Example: ON table1.id = table2.user_id"
             )
 
         # Create JoinInfo with tuple format for API compatibility

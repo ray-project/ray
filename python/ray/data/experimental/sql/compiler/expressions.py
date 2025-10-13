@@ -97,26 +97,29 @@ class ExpressionCompiler:
     @classmethod
     def compile(cls, expr: exp.Expression) -> Callable[[Mapping[str, Any]], Any]:
         """Compile with caching for performance."""
-        # Create cache key from expression
+        # Create unique cache key from expression type and string representation
         expr_key = cls._get_expression_cache_key(expr)
 
-        # Check cache first with read lock
+        # Fast path: Check if already compiled (read-only, no compilation needed)
         with cls._cache_lock:
             if expr_key in cls._compilation_cache:
                 return cls._compilation_cache[expr_key]
 
-        # Compile outside the lock to avoid holding lock during compilation
+        # Slow path: Compile the expression outside lock to minimize lock contention
+        # This allows other threads to access the cache while we're compiling
         compiled_func = cls._compile_expression(expr)
 
-        # Insert into cache with write lock
+        # Update cache with double-checked locking pattern
         with cls._cache_lock:
-            # Double-check cache in case another thread compiled while we were compiling
+            # Re-check cache: another thread might have compiled this while we were working
+            # This prevents duplicate compilations and ensures thread safety
             if expr_key in cls._compilation_cache:
                 return cls._compilation_cache[expr_key]
 
-            # Cache with size limit
-            if len(cls._compilation_cache) >= 1000:  # Prevent memory bloat
-                # Remove oldest entry (simple FIFO)
+            # Enforce cache size limit to prevent unbounded memory growth
+            if len(cls._compilation_cache) >= 1000:
+                # Simple FIFO eviction: remove oldest entry
+                # Note: Dicts maintain insertion order in Python 3.7+
                 oldest_key = next(iter(cls._compilation_cache))
                 del cls._compilation_cache[oldest_key]
 
@@ -536,16 +539,21 @@ class ExpressionCompiler:
             value = value_func(row)
             pattern = pattern_func(row)
 
+            # SQL NULL semantics: NULL LIKE anything = FALSE
             if value is None or pattern is None:
                 return False
 
             try:
-                # Convert SQL LIKE pattern to regex
+                # Convert SQL LIKE pattern to Python regex pattern
+                # SQL wildcards: % (matches any characters) -> .* (regex any chars)
+                #                _ (matches single char)  -> . (regex single char)
                 import re
 
                 regex_pattern = pattern.replace("%", ".*").replace("_", ".")
+                # Use re.match to match from start of string (SQL LIKE behavior)
                 return bool(re.match(regex_pattern, str(value)))
             except (TypeError, re.error):
+                # Handle invalid regex patterns or type errors gracefully
                 return False
 
         return like_func
@@ -635,34 +643,42 @@ class ExpressionCompiler:
     def _compile_case(cls, expr: exp.Case) -> Callable[[Mapping[str, Any]], Any]:
         """Compile CASE expressions.
 
+        Implements SQL CASE WHEN ... THEN ... ELSE ... END logic.
+        Example: CASE WHEN age > 18 THEN 'adult' ELSE 'minor' END
+
         Args:
             expr: CASE expression.
 
         Returns:
             Function that evaluates conditional logic.
         """
-        # Compile all WHEN conditions and values
+        # Pre-compile all WHEN/THEN branches for performance
+        # Each WHEN clause has: condition (boolean) and result value
         when_conditions = []
         when_values = []
 
         for when_expr in expr.find_all(exp.When):
+            # Compile the WHEN condition (e.g., "age > 18")
             condition_func = cls.compile(when_expr.this)
+            # Compile the THEN value (e.g., "adult")
             value_func = cls.compile(when_expr.args.get("then"))
             when_conditions.append(condition_func)
             when_values.append(value_func)
 
-        # Compile ELSE clause if present
+        # Compile optional ELSE clause (fallback value if no WHEN matches)
         else_func = None
         if expr.args.get("default"):
             else_func = cls.compile(expr.args["default"])
 
         def case_func(row: Mapping[str, Any]) -> Any:
-            # Evaluate WHEN conditions in order
+            # Evaluate WHEN conditions sequentially until one matches
+            # This implements SQL's short-circuit evaluation semantics
             for condition_func, value_func in zip(when_conditions, when_values):
                 if condition_func(row):
+                    # First matching condition: return its THEN value
                     return value_func(row)
 
-            # If no WHEN condition matched, return ELSE value or NULL
+            # No WHEN condition matched: return ELSE value (or NULL if no ELSE)
             if else_func:
                 return else_func(row)
             return None
@@ -719,6 +735,13 @@ class ExpressionCompiler:
     def _parse_literal(cls, literal_expr: exp.Literal) -> Any:
         """Parse a SQLGlot literal into a Python value.
 
+        Converts SQL literal values to appropriate Python types:
+        - Strings: 'hello' -> "hello"
+        - Integers: 42 -> 42
+        - Floats: 3.14 -> 3.14
+        - Booleans: TRUE -> True
+        - NULL: NULL -> None
+
         Args:
             literal_expr: SQLGlot literal expression.
 
@@ -727,24 +750,33 @@ class ExpressionCompiler:
         """
         value = literal_expr.this
 
-        # Handle different literal types
+        # String literals: enclosed in quotes in SQL
         if literal_expr.is_string:
             return str(value)
+
+        # Numeric literals: differentiate between int and float
         elif literal_expr.is_number:
-            # Try to parse as int first, then float
             try:
+                # Check for decimal point to determine int vs float
+                # This preserves precision (e.g., 42 stays int, not float)
                 if "." in str(value):
                     return float(value)
                 else:
                     return int(value)
             except (ValueError, TypeError):
+                # Fallback to string if parsing fails
                 return str(value)
+
+        # Boolean literals: TRUE/FALSE in SQL
         elif str(value).lower() in ("true", "false"):
             return str(value).lower() == "true"
+
+        # NULL literal: SQL's NULL becomes Python's None
         elif str(value).lower() in ("null", "none"):
             return None
+
         else:
-            # Default to string representation
+            # Unknown literal type: default to string representation
             return str(value)
 
     @classmethod

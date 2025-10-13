@@ -15,17 +15,18 @@ from ray.data.experimental.sql.utils import setup_logger
 @dataclass
 class TableSchema:
     """Schema information for a SQL table.
-    
+
     Attributes:
         name: Table name.
         columns: Mapping from column names to SQL types.
     """
+
     name: str
     columns: Dict[str, str] = field(default_factory=dict)
-    
+
     def add_column(self, name: str, sql_type: str) -> None:
         """Add a column to the schema.
-        
+
         Args:
             name: Column name.
             sql_type: SQL type string (e.g., "INTEGER", "VARCHAR").

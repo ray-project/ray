@@ -22,7 +22,7 @@ You can programmatically check what SQL features Ray Data SQL supports:
 
 .. testcode::
 
-    from ray.data.sql.utils import get_supported_sql_features
+    from ray.data.experimental.sql.utils import get_supported_sql_features
     
     features = get_supported_sql_features()
     
@@ -49,7 +49,7 @@ Raises errors for unsupported features. This is the default behavior:
 
 .. testcode::
 
-    from ray.data.sql.utils import validate_sql_feature_support
+    from ray.data.experimental.sql.utils import validate_sql_feature_support
     
     try:
         validate_sql_feature_support("SELECT MEDIAN(price) FROM sales")
@@ -102,7 +102,7 @@ Get suggested alternatives for specific unsupported features:
 
 .. testcode::
 
-    from ray.data.sql.utils import get_feature_suggestion
+    from ray.data.experimental.sql.utils import get_feature_suggestion
     
     # Aggregate functions
     suggestion = get_feature_suggestion("median")
