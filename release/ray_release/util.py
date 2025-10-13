@@ -191,18 +191,6 @@ def python_version_str(python_version: Tuple[int, int]) -> str:
     return "".join([str(x) for x in python_version])
 
 
-def join_cloud_storage_paths(*paths: str):
-    paths = list(paths)
-    if len(paths) > 1:
-        for i in range(1, len(paths)):
-            while paths[i][0] == "/":
-                paths[i] = paths[i][1:]
-    joined_path = os.path.join(*paths)
-    while joined_path[-1] == "/":
-        joined_path = joined_path[:-1]
-    return joined_path
-
-
 def upload_working_dir_to_gcs(working_dir: str) -> str:
     """Upload working directory to GCS bucket.
 
