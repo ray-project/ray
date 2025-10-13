@@ -725,7 +725,7 @@ async def test_tail_job_logs_websocket_abnormal_closure():
         "ray",
         "start",
         "--head",
-        "--dashboard-port",
+        "--port",
         str(port),
         "--dashboard-port",
         str(dashboard_port),
