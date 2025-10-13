@@ -716,24 +716,6 @@ py_test(
 )
 
 py_test(
-    name = "test_wheels",
-    size = "small",
-    srcs = ["ray_release/tests/test_wheels.py"],
-    data = [
-        "//:python_sources",
-    ],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
     name = "test_retry",
     size = "small",
     srcs = ["ray_release/tests/test_retry.py"],
