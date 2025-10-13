@@ -18,7 +18,7 @@ def gen_java_deps():
             "de.ruedigermoeller:fst:2.57",
             "javax.xml.bind:jaxb-api:2.3.0",
             "javax.activation:activation:1.1.1",
-            "org.apache.commons:commons-lang3:3.13.0",
+            "org.apache.commons:commons-lang3:3.18.0",
             "org.msgpack:msgpack-core:0.8.20",
             "org.ow2.asm:asm:6.0",
             "org.apache.logging.log4j:log4j-api:2.17.1",

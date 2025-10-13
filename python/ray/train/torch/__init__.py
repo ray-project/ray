@@ -30,6 +30,8 @@ if is_v2_enabled():
         accelerate,
         backward,
         enable_reproducibility,
+        get_device,
+        get_devices,
         prepare_data_loader,
         prepare_model,
         prepare_optimizer,

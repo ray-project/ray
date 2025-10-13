@@ -2,15 +2,18 @@
 import gc
 import logging
 import sys
+import time
 import weakref
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.internal_api import global_gc
 from ray._common.test_utils import wait_for_condition
+from ray._private.gc_collect_manager import PythonGCThread
+from ray._private.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +217,137 @@ def test_global_gc_actors(shutdown_only):
             del cycle
     finally:
         gc.enable()
+
+
+def test_local_gc_called_once_per_interval(shutdown_only):
+    ray.init(
+        num_cpus=2,
+        _system_config={
+            "local_gc_interval_s": 1,
+            "local_gc_min_interval_s": 0,
+            "global_gc_min_interval_s": 0,
+        },
+    )
+
+    class ObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
+
+    @ray.remote(num_cpus=1)
+    class GarbageHolder:
+        def __init__(self):
+            gc.disable()
+            self.garbage = None
+
+        def make_garbage(self):
+            x = ObjectWithCyclicRef()
+            self.garbage = weakref.ref(x)
+            return True
+
+        def has_garbage(self):
+            return self.garbage() is not None
+
+    def all_garbage_collected(local_ref):
+        return local_ref() is None and not any(
+            ray.get([a.has_garbage.remote() for a in actors])
+        )
+
+    try:
+        gc.disable()
+
+        # Round 1: first batch of garbage should be collected
+        # Local driver.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        ray.get([a.make_garbage.remote() for a in actors])
+
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        wait_for_condition(
+            lambda: all_garbage_collected(local_ref),
+        )
+
+        # Round 2: second batch should NOT be collected within min_interval
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+        ray.get([a.make_garbage.remote() for a in actors])
+
+        with pytest.raises(RuntimeError):
+            wait_for_condition(
+                lambda: all_garbage_collected(local_ref),
+                timeout=2.0,  # shorter than min_interval
+                retry_interval_ms=50,
+            )
+
+        # Round 3: after min_interval passes, garbage should be collected
+        wait_for_condition(
+            lambda: all_garbage_collected(local_ref),
+            timeout=10.0,
+            retry_interval_ms=50,
+        )
+
+    finally:
+        gc.enable()
+
+
+def test_gc_manager_thread_basic_functionality():
+    mock_gc_collect = Mock(return_value=10)
+
+    gc_thread = PythonGCThread(min_interval_s=1, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+        assert gc_thread.is_alive()
+
+        gc_thread.trigger_gc()
+
+        wait_for_condition(lambda: mock_gc_collect.call_count == 1, timeout=2)
+
+        mock_gc_collect.assert_called_once()
+
+    finally:
+        gc_thread.stop()
+        assert not gc_thread.is_alive()
+
+
+def test_gc_manager_thread_min_interval_throttling():
+    mock_gc_collect = Mock(return_value=5)
+
+    gc_thread = PythonGCThread(min_interval_s=2, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+
+        for _ in range(3):
+            gc_thread.trigger_gc()
+            time.sleep(1)
+
+        wait_for_condition(lambda: mock_gc_collect.call_count == 2, timeout=2)
+
+        assert mock_gc_collect.call_count == 2
+
+    finally:
+        gc_thread.stop()
+
+
+def test_gc_manager_thread_exception_handling():
+    mock_gc_collect = Mock(side_effect=RuntimeError("GC failed"))
+
+    gc_thread = PythonGCThread(min_interval_s=5, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+
+        for _ in range(3):
+            gc_thread.trigger_gc()
+            time.sleep(0.1)
+
+        assert gc_thread.is_alive()
+        mock_gc_collect.assert_called_once()
+
+    finally:
+        gc_thread.stop()
 
 
 if __name__ == "__main__":

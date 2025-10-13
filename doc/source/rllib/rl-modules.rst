@@ -569,7 +569,7 @@ If you don't return the ``actions`` key from your forward method:
                 def _forward_exploration(self, batch):
                     ...
                     return {
-                        Columns.ACTIONS: ...  # RLlib uses these actions as-is (no sampling step!)
+                        Columns.ACTIONS: ...,  # RLlib uses these actions as-is (no sampling step!)
                         Columns.ACTION_DIST_INPUTS: ...  # If provided, RLlib uses these dist inputs to compute probs and logp.
                     }
 

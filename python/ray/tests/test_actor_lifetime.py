@@ -1,17 +1,17 @@
 import os
-import time
 import signal
 import sys
+import time
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.exceptions import RayActorError
-from ray.job_config import JobConfig
 from ray._private.test_utils import (
     wait_for_pid_to_exit,
 )
+from ray.exceptions import RayActorError
+from ray.job_config import JobConfig
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

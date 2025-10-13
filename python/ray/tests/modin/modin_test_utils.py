@@ -16,16 +16,16 @@
 # This file is copied and adapted from
 # http://github.com/modin-project/modin/master/modin/pandas/test/utils.py
 
-import pandas
 import modin.pandas as pd
+import numpy as np
+import pandas
 from modin.utils import to_pandas
 from pandas.testing import (
-    assert_series_equal,
-    assert_frame_equal,
     assert_extension_array_equal,
+    assert_frame_equal,
     assert_index_equal,
+    assert_series_equal,
 )
-import numpy as np
 
 
 def categories_equals(left, right):

@@ -54,7 +54,7 @@ For a detailed overview of the Ray dashboard, see the [dashboard documentation](
 Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
 If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
 
-`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
+`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, recovering failed replicas, and performing other relevant actions.
 
 Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
 
@@ -578,7 +578,7 @@ The following metrics are exposed by Ray Serve:
        * application
        * handle
        * actor_id
-     - The current number of requests to this deployment that have been submitted to a replica.
+     - The current number of queries to this deployment waiting to be assigned to a replica.
    * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
      - * deployment
        * application

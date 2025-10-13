@@ -6,7 +6,6 @@ import tempfile
 import mypy.api as mypy_api
 import pytest
 
-
 # Paths are relative to the directory where Bazel is run in the CI
 TYPING_GOOD_PATH = "python/ray/tests/typing_files/check_typing_good.py"
 TYPING_BAD_PATH = "python/ray/tests/typing_files/check_typing_bad.py"

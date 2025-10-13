@@ -2,10 +2,9 @@ import sys
 
 import pytest
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._raylet import NodeID
-
 from ray.runtime_context import RuntimeContext
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):

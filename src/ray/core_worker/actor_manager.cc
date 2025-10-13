@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray {
 namespace core {
@@ -203,7 +203,7 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+  if (!reference_counter_.AddObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
     RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);
@@ -214,8 +214,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
-  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
-  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+  const auto node_id = NodeID::FromBinary(actor_data.address().node_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(node_id)
       << "received notification on actor, state: " << actor_state
       << ", ip address: " << actor_data.address().ip_address()
       << ", port: " << actor_data.address().port()

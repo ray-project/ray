@@ -2,6 +2,7 @@ import copy
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
+from typing_extensions import Self
 
 import ray
 from ray import ObjectRef
@@ -21,7 +22,7 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
@@ -207,7 +208,7 @@ class IMPALAConfig(AlgorithmConfig):
         num_aggregation_workers=DEPRECATED_VALUE,
         max_requests_in_flight_per_aggregator_worker=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "IMPALAConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -358,7 +359,7 @@ class IMPALAConfig(AlgorithmConfig):
         _env_runners_only: Optional[bool] = NotProvided,
         _skip_learners: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> "IMPALAConfig":
+    ) -> Self:
         """Sets the debugging related configuration.
 
         Args:
@@ -528,7 +529,7 @@ class IMPALA(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> IMPALAConfig:
         return IMPALAConfig()
 
     @classmethod
@@ -643,9 +644,8 @@ class IMPALA(Algorithm):
 
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0,
                     return_obj_refs=True,
-                    tags="batches",
+                    tags="get_batches",
                 )
             )
             ma_batches_refs = []
@@ -667,7 +667,7 @@ class IMPALA(Algorithm):
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],
-                    tag="batches",
+                    tag="get_batches",
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
@@ -799,14 +799,11 @@ class IMPALA(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            async_results: List[
-                Tuple[int, ObjectRef]
-            ] = self.env_runner_group.fetch_ready_async_reqs(
+            async_results = self.env_runner_group.foreach_env_runner_async_fetch_ready(
+                func="sample_get_state_and_metrics",
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
-            )
-            self.env_runner_group.foreach_env_runner_async(
-                "sample_get_state_and_metrics"
+                return_actor_ids=True,
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.

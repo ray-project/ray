@@ -127,6 +127,8 @@ class AWSNodeProvider(NodeProvider):
         self.ready_for_new_batch.set()
         self.tag_cache_lock = threading.Lock()
         self.count_lock = threading.Lock()
+        # Prevent concurrent create_node calls to get the same stopped/stopping node to reuse.
+        self._reuse_node_lock = threading.Lock()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -290,32 +292,35 @@ class AWSNodeProvider(NodeProvider):
                     }
                 )
 
-            reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
-            reuse_node_ids = [n.id for n in reuse_nodes]
-            reused_nodes_dict = {n.id: n for n in reuse_nodes}
-            if reuse_nodes:
-                cli_logger.print(
-                    # todo: handle plural vs singular?
-                    "Reusing nodes {}. "
-                    "To disable reuse, set `cache_stopped_nodes: False` "
-                    "under `provider` in the cluster configuration.",
-                    cli_logger.render_list(reuse_node_ids),
-                )
+            with self._reuse_node_lock:
+                reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
+                reuse_node_ids = [n.id for n in reuse_nodes]
+                reused_nodes_dict = {n.id: n for n in reuse_nodes}
+                if reuse_nodes:
+                    cli_logger.print(
+                        # todo: handle plural vs singular?
+                        "Reusing nodes {}. "
+                        "To disable reuse, set `cache_stopped_nodes: False` "
+                        "under `provider` in the cluster configuration.",
+                        cli_logger.render_list(reuse_node_ids),
+                    )
 
-                # todo: timed?
-                with cli_logger.group("Stopping instances to reuse"):
-                    for node in reuse_nodes:
-                        self.tag_cache[node.id] = from_aws_format(
-                            {x["Key"]: x["Value"] for x in node.tags}
-                        )
-                        if node.state["Name"] == "stopping":
-                            cli_logger.print("Waiting for instance {} to stop", node.id)
-                            node.wait_until_stopped()
+                    # todo: timed?
+                    with cli_logger.group("Stopping instances to reuse"):
+                        for node in reuse_nodes:
+                            self.tag_cache[node.id] = from_aws_format(
+                                {x["Key"]: x["Value"] for x in node.tags}
+                            )
+                            if node.state["Name"] == "stopping":
+                                cli_logger.print(
+                                    "Waiting for instance {} to stop", node.id
+                                )
+                                node.wait_until_stopped()
 
-                self.ec2.meta.client.start_instances(InstanceIds=reuse_node_ids)
-                for node_id in reuse_node_ids:
-                    self.set_node_tags(node_id, tags)
-                count -= len(reuse_node_ids)
+                    self.ec2.meta.client.start_instances(InstanceIds=reuse_node_ids)
+                    for node_id in reuse_node_ids:
+                        self.set_node_tags(node_id, tags)
+                    count -= len(reuse_node_ids)
 
         created_nodes_dict = {}
         if count:

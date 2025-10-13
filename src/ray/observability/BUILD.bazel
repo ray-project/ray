@@ -1,0 +1,196 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "open_telemetry_metric_recorder",
+    srcs = [
+        "open_telemetry_metric_recorder.cc",
+    ],
+    hdrs = [
+        "open_telemetry_metric_recorder.h",
+    ],
+    deps = [
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@io_opentelemetry_cpp//api",
+        "@io_opentelemetry_cpp//exporters/otlp:otlp_grpc_metric_exporter",
+        "@io_opentelemetry_cpp//sdk/src/metrics",
+    ],
+)
+
+ray_cc_library(
+    name = "metric_interface",
+    hdrs = ["metric_interface.h"],
+    deps = [
+        "@io_opencensus_cpp//opencensus/stats",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_metric",
+    hdrs = [
+        "fake_metric.h",
+    ],
+    deps = [
+        ":metric_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event_interface",
+    hdrs = [
+        "ray_event_interface.h",
+    ],
+    deps = [
+        "//src/ray/protobuf/public:events_base_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event",
+    hdrs = [
+        "ray_event.h",
+    ],
+    deps = [
+        ":ray_event_interface",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_driver_job_definition_event",
+    srcs = [
+        "ray_driver_job_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_driver_job_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_driver_job_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_driver_job_lifecycle_event",
+    srcs = [
+        "ray_driver_job_lifecycle_event.cc",
+    ],
+    hdrs = [
+        "ray_driver_job_lifecycle_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_actor_definition_event",
+    srcs = [
+        "ray_actor_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_actor_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_actor_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_actor_lifecycle_event",
+    srcs = [
+        "ray_actor_lifecycle_event.cc",
+    ],
+    hdrs = [
+        "ray_actor_lifecycle_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_actor_lifecycle_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_node_definition_event",
+    srcs = [
+        "ray_node_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_node_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_node_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_node_lifecycle_event",
+    srcs = [
+        "ray_node_lifecycle_event.cc",
+    ],
+    hdrs = [
+        "ray_node_lifecycle_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_node_lifecycle_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event_recorder_interface",
+    hdrs = [
+        "ray_event_recorder_interface.h",
+    ],
+    deps = [
+        ":ray_event",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_event_recorder",
+    srcs = [
+        "ray_event_recorder.cc",
+    ],
+    hdrs = [
+        "ray_event_recorder.h",
+    ],
+    deps = [
+        ":metric_interface",
+        ":ray_event",
+        ":ray_event_recorder_interface",
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/rpc:event_aggregator_client",
+        "//src/ray/util:logging",
+        "@boost//:circular_buffer",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_ray_event_recorder",
+    hdrs = ["fake_ray_event_recorder.h"],
+    deps = [
+        ":ray_event_interface",
+        ":ray_event_recorder_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "metric_constants",
+    hdrs = ["metric_constants.h"],
+)

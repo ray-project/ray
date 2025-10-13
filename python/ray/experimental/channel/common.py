@@ -18,9 +18,9 @@ from typing import (
 
 import ray
 import ray.exceptions
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.communicator_handle import CommunicatorHandle
-from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

@@ -46,6 +46,7 @@ def mock_vllm_wrapper():
                     "num_generated_tokens": 3,
                     "time_per_token": 0.1,
                 },
+                0.1,  # time_taken_llm
             )
 
         mock_instance.generate_async.side_effect = mock_generate
@@ -170,7 +171,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
-        disable_log_requests=True,
+        enable_log_requests=False,
     )
 
 
@@ -183,11 +184,8 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
     with (
         patch("vllm.AsyncLLMEngine") as mock_engine,
         patch(
-            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v0"
-        ) as mock_generate_async_v0,
-        patch(
-            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v1"
-        ) as mock_generate_async_v1,
+            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper._generate_async"
+        ) as mock_generate_async,
     ):
         mock_engine.from_engine_args.return_value = AsyncMock()
         num_running_requests = 0
@@ -223,8 +221,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
                 finished=True,
             )
 
-        mock_generate_async_v0.side_effect = mock_generate
-        mock_generate_async_v1.side_effect = mock_generate
+        mock_generate_async.side_effect = mock_generate
 
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
@@ -245,10 +242,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         await asyncio.gather(*tasks)
 
         # Verify all requests were processed
-        assert (
-            mock_generate_async_v0.call_count == 10
-            or mock_generate_async_v1.call_count == 10
-        )
+        assert mock_generate_async.call_count == 10
 
         # Clean up GPU memory
         wrapper.shutdown()
@@ -298,10 +292,11 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -332,8 +327,9 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -380,10 +376,11 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -430,12 +427,13 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         json_obj = json.loads(output["generated_text"])
         assert "answer" in json_obj
         assert isinstance(json_obj["answer"], int)
         assert "explain" in json_obj
         assert isinstance(json_obj["explain"], str)
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()

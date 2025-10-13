@@ -400,10 +400,18 @@ class ApplicationState:
             deleting=False,
         )
 
-    def _delete_deployment(self, name):
+    def _delete_deployment(self, name: str) -> bool:
+        """Delete a deployment in the application.
+
+        Args:
+            name: The name of the deployment to delete.
+
+        Returns:
+            Whether the target state has changed.
+        """
         id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
-        self._deployment_state_manager.delete_deployment(id)
+        return self._deployment_state_manager.delete_deployment(id)
 
     def delete(self):
         """Delete the application"""
@@ -426,8 +434,16 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-    ) -> None:
-        """Deploys a deployment in the application."""
+    ) -> bool:
+        """Deploys a deployment in the application.
+
+        Args:
+            deployment_name: The name of the deployment to apply.
+            deployment_info: The deployment info to apply.
+
+        Returns:
+            Whether the target state has changed.
+        """
         route_prefix = deployment_info.route_prefix
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
@@ -436,7 +452,9 @@ class ApplicationState:
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+        target_state_changed = self._deployment_state_manager.deploy(
+            deployment_id, deployment_info
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -457,6 +475,8 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
+        return target_state_changed
+
     def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
         """(Re-)deploy the application from list of deployment infos.
 
@@ -467,7 +487,6 @@ class ApplicationState:
             or docs path.
         """
 
-        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
@@ -702,28 +721,6 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
-    def _check_ingress_deployments(
-        self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> None:
-        """Check @serve.ingress of deployments in app.
-
-        Raises: RayServeException if more than one @serve.ingress
-            is found among deployments.
-        """
-        num_ingress_deployments = 0
-        for info in deployment_infos.values():
-            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
-                info.replica_config.deployment_def, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-
-        if num_ingress_deployments > 1:
-            raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress"
-                "in your application to avoid this issue."
-            )
-
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
@@ -761,6 +758,7 @@ class ApplicationState:
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
         """
+        target_state_changed = False
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
@@ -784,51 +782,64 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(deployment_name, deploy_info)
+            target_state_changed = (
+                self.apply_deployment_info(deployment_name, deploy_info)
+                or target_state_changed
+            )
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
-                self._delete_deployment(deployment_name)
+                target_state_changed = (
+                    self._delete_deployment(deployment_name) or target_state_changed
+                )
 
-    def update(self) -> bool:
+        return target_state_changed
+
+    def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
         current state of the system.
 
         Returns:
-            A boolean indicating whether the application is ready to be
-            deleted.
+            Whether the target state has changed.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
-        if task_status == BuildAppStatus.SUCCEEDED:
-            self._set_target_state(
-                deployment_infos=infos,
-                code_version=self._build_app_task_info.code_version,
-                api_type=self._target_state.api_type,
-                target_config=self._build_app_task_info.config,
-                target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_direction=(
-                    self._build_app_task_info.target_capacity_direction
-                ),
-            )
-        elif task_status == BuildAppStatus.FAILED:
-            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        target_state_changed = False
+        # If the application is being deleted, ignore any build task results to
+        # avoid flipping the state back to DEPLOYING/RUNNING.
+        if not self._target_state.deleting:
+            infos, task_status, msg = self._reconcile_build_app_task()
+            if task_status == BuildAppStatus.SUCCEEDED:
+                target_state_changed = True
+                self._set_target_state(
+                    deployment_infos=infos,
+                    code_version=self._build_app_task_info.code_version,
+                    api_type=self._target_state.api_type,
+                    target_config=self._build_app_task_info.config,
+                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_capacity_direction=(
+                        self._build_app_task_info.target_capacity_direction
+                    ),
+                )
+            elif task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # Only reconcile deployments when the build app task is finished. If
         # it's not finished, we don't know what the target list of deployments
         # is, so we don't perform any reconciliation.
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
+            target_state_changed = (
+                self._reconcile_target_deployments() or target_state_changed
+            )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return self.is_deleted()
-        return False
+            return self.is_deleted(), target_state_changed
+        return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
@@ -1073,12 +1084,30 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
-    def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
-        """Return a dictionary with {app name: application info}"""
-        return {
-            name: self._application_states[name].get_application_status_info()
-            for name in self._application_states
-        }
+    def list_app_statuses(
+        self, source: Optional[APIType] = None
+    ) -> Dict[str, ApplicationStatusInfo]:
+        """Return a dictionary with {app name: application info}
+
+        Args:
+            source: Optional API type filter. If provided, only returns apps
+                   deployed via the specified API type.
+
+        Returns:
+            Dict[str, ApplicationStatusInfo]: A dictionary mapping application names
+                to their corresponding status information.
+        """
+        if source is None:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+            }
+        else:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+                if self.get_app_source(name) is source
+            }
 
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
@@ -1087,10 +1116,14 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def update(self):
-        """Update each application state"""
+        """Update each application state."""
         apps_to_be_deleted = []
+        any_target_state_changed = False
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+            ready_to_be_deleted, app_target_state_changed = app.update()
+            any_target_state_changed = (
+                any_target_state_changed or app_target_state_changed
+            )
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
@@ -1099,6 +1132,10 @@ class ApplicationStateManager:
             for app_name in apps_to_be_deleted:
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+        if any_target_state_changed:
+            self.save_checkpoint()
+            self._deployment_state_manager.save_checkpoint()
 
     def shutdown(self) -> None:
         self._shutting_down = True

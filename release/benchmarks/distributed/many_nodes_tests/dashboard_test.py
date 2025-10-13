@@ -126,7 +126,7 @@ class DashboardTestAtScale:
 
         # Get the memory usage.
         dashboard_export_addr = build_address(
-            self.addr["raylet_ip_address"], DASHBOARD_METRIC_PORT
+            self.addr["node_ip_address"], DASHBOARD_METRIC_PORT
         )
         metrics = fetch_prometheus_metrics([dashboard_export_addr])
         memories = []

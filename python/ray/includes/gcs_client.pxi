@@ -14,7 +14,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
+# For how async API are implemented, see src/ray/gcs_rpc_client/python_callbacks.h
 from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move
@@ -628,9 +628,8 @@ cdef class InnerGcsClient:
         error_info.set_timestamp(time.time())
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Publisher().PublishError(
-                    move(c_key_id), move(error_info), timeout_ms))
+            self.inner.get().Publisher().PublishError(
+                move(c_key_id), move(error_info), timeout_ms)
 
     def publish_logs(self, log_json: dict, timeout = None):
         cdef:

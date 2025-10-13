@@ -1,7 +1,7 @@
 Limiting Concurrency Per-Method with Concurrency Groups
 =======================================================
 
-Besides setting the max concurrency overall for an actor, Ray allows methods to be separated into *concurrency groups*, each with its own threads(s). This allows you to limit the concurrency per-method, e.g., allow a health-check method to be given its own concurrency quota separate from request serving methods.
+Besides setting the max concurrency overall for an actor, Ray allows methods to be separated into *concurrency groups*, each with its own thread(s). This allows you to limit the concurrency per-method, e.g., allow a health-check method to be given its own concurrency quota separate from request serving methods.
 
 .. tip:: Concurrency groups work with both asyncio and threaded actors. The syntax is the same.
 
@@ -14,7 +14,7 @@ This defines two concurrency groups, "io" with max concurrency = 2 and
 "compute" with max concurrency = 4.  The methods ``f1`` and ``f2`` are
 placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
 into the "compute" group. Note that there is always a default
-concurrency group for actors, which has a default concurrency of 1000
+concurrency group for actors, which has a default concurrency of 1000 for
 AsyncIO actors and 1 otherwise.
 
 .. tab-set::
@@ -143,10 +143,11 @@ The concurrency of the default group can be changed by setting the ``max_concurr
 
         .. code-block:: java
 
-            class ConcurrentActor:
+            class ConcurrentActor {
                 public long f1() {
                     return Thread.currentThread().getId();
                 }
+            }
 
             ConcurrencyGroup group =
                 new ConcurrencyGroupBuilder<ConcurrentActor>()
@@ -156,7 +157,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
                     .build();
 
             ActorHandle<ConcurrentActor> myActor = Ray.actor(ConcurrentActor::new)
-                  .setConcurrencyGroups(group1)
+                  .setConcurrencyGroups(group)
                   .setMaxConcurrency(10)
                   .remote();
 

@@ -97,7 +97,9 @@ class _SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
-        if self._use_external_transport and tensor.device == ctx.torch_device:
+        if self._use_external_transport and (
+            ctx._torch_device is None or ctx._torch_device == tensor.device
+        ):
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
             # tensors should later be popped by the caller and sent via
@@ -172,8 +174,8 @@ class _SerializationContext:
         tensor_device_type: str,
         target_device: Device,
     ):
-        import torch
         import numpy as np
+        import torch
 
         if target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
