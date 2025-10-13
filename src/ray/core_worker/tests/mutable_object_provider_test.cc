@@ -109,11 +109,11 @@ std::shared_ptr<RayletClientInterface> GetMockRayletClient(
 TEST(MutableObjectProvider, RegisterWriterChannel) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
+  auto plasma = std::make_shared<TestPlasma>();
   auto interface = std::make_shared<MockRayletClient>();
 
   MutableObjectProvider provider(
-      *plasma,
+      plasma,
       /*factory=*/absl::bind_front(GetMockRayletClient, interface),
       nullptr);
   provider.RegisterWriterChannel(object_id, {node_id});

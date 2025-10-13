@@ -120,8 +120,6 @@ class FakePlasmaClient : public PlasmaClientInterface {
 
   std::string DebugString() { return ""; }
 
-  int64_t store_capacity() { return 0; }
-
   StatusOr<std::string> GetMemoryUsage() override { return std::string("fake"); }
 
   absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
