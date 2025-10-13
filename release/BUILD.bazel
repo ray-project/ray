@@ -350,22 +350,50 @@ py_library(
 )
 
 py_library(
+    name = "global_config",
+    srcs = ["ray_release/configs/global_config.py"],
+    data = glob(["ray_release/configs/*.yaml"]),
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        bk_require("pyyaml"),
+        bk_require("typing-extensions"),
+    ],
+)
+
+py_library(
+    name = "wheels",
+    srcs = ["ray_release/wheels.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "retry",
+    srcs = ["ray_release/retry.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
     name = "ray_release",
     srcs = glob(
         ["ray_release/**/*.py"],
         exclude = [
             "ray_release/tests/*.py",
+            "ray_release/configs/*.py",
             "ray_release/scripts/*.py",
             "ray_release/bazel.py",
             "ray_release/logger.py",
             "ray_release/result.py",
             "ray_release/exception.py",
             "ray_release/kuberay_util.py",
+            "ray_release/wheels.py",
+            "ray_release/retry.py",
         ],
     ),
     data = glob([
         "ray_release/environments/*.env",
-        "ray_release/configs/*.yaml",
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
@@ -380,9 +408,12 @@ py_library(
     deps = [
         ":bazel",
         ":exception",
+        ":global_config",
         ":kuberay_util",
         ":logger",
         ":result",
+        ":retry",
+        ":wheels",
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
         bk_require("azure-storage-blob"),
@@ -642,7 +673,7 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":global_config",
         ":test_utils",
         bk_require("pytest"),
     ],
@@ -792,7 +823,7 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":retry",
         bk_require("pytest"),
     ],
 )
