@@ -142,49 +142,6 @@ class XGBoostTrainer(DataParallelTrainer):
                 external_memory_batch_size=50000,  # Optimal batch size
             )
             result = large_trainer.fit()
-
-    Args:
-        train_loop_per_worker: The training function to execute on each worker.
-            This function can either take in zero arguments or a single ``Dict``
-            argument which is set by defining ``train_loop_config``.
-            Within this function you can use any of the
-            :ref:`Ray Train Loop utilities <train-loop-api>`.
-        train_loop_config: A configuration ``Dict`` to pass in as an argument to
-            ``train_loop_per_worker``.
-            This is typically used for specifying hyperparameters.
-        xgboost_config: The configuration for setting up the distributed xgboost
-            backend. Defaults to using the "rabit" backend.
-            See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        scaling_config: The configuration for how to scale data parallel training.
-            ``num_workers`` determines how many Python processes are used for training,
-            and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.train.ScalingConfig` for more info.
-        run_config: The configuration for the execution of the training run.
-            See :class:`~ray.train.RunConfig` for more info.
-        datasets: The Ray Datasets to ingest for training.
-            Datasets are keyed by name (``{name: dataset}``).
-            Each dataset can be accessed from within the ``train_loop_per_worker``
-            by calling ``ray.train.get_dataset_shard(name)``.
-            Sharding and additional configuration can be done by
-            passing in a ``dataset_config``.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Dataset are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
-        use_external_memory: Whether to use external memory for DMatrix creation.
-            If True, uses ExtMemQuantileDMatrix for large datasets that don't fit in RAM.
-            If False (default), uses standard DMatrix for in-memory training.
-        external_memory_cache_dir: Directory for caching external memory files.
-            If None, automatically selects the best available directory.
-        external_memory_device: Device to use for external memory training.
-            Options: "cpu" (default) or "cuda" for GPU training.
-        external_memory_batch_size: Batch size for external memory iteration.
-            If None, uses optimal default based on device type.
     """
 
     def __init__(
@@ -206,6 +163,51 @@ class XGBoostTrainer(DataParallelTrainer):
         external_memory_device: str = "cpu",
         external_memory_batch_size: Optional[int] = None,
     ):
+        """Initialize the XGBoost trainer.
+
+        Args:
+            train_loop_per_worker: The training function to execute on each worker.
+                This function can either take in zero arguments or a single ``Dict``
+                argument which is set by defining ``train_loop_config``.
+                Within this function you can use any of the
+                :ref:`Ray Train Loop utilities <train-loop-api>`.
+            train_loop_config: A configuration ``Dict`` to pass in as an argument to
+                ``train_loop_per_worker``.
+                This is typically used for specifying hyperparameters.
+            xgboost_config: The configuration for setting up the distributed xgboost
+                backend. Defaults to using the "rabit" backend.
+                See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
+            scaling_config: The configuration for how to scale data parallel training.
+                ``num_workers`` determines how many Python processes are used for training,
+                and ``use_gpu`` determines whether or not each process should use GPUs.
+                See :class:`~ray.train.ScalingConfig` for more info.
+            run_config: The configuration for the execution of the training run.
+                See :class:`~ray.train.RunConfig` for more info.
+            datasets: The Ray Datasets to ingest for training.
+                Datasets are keyed by name (``{name: dataset}``).
+                Each dataset can be accessed from within the ``train_loop_per_worker``
+                by calling ``ray.train.get_dataset_shard(name)``.
+                Sharding and additional configuration can be done by
+                passing in a ``dataset_config``.
+            dataset_config: The configuration for ingesting the input ``datasets``.
+                By default, all the Ray Dataset are split equally across workers.
+                See :class:`~ray.train.DataConfig` for more details.
+            metadata: Dict that should be made available via
+                `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+                for checkpoints saved from this Trainer. Must be JSON-serializable.
+            resume_from_checkpoint: A checkpoint to resume training from.
+                This checkpoint can be accessed from within ``train_loop_per_worker``
+                by calling ``ray.train.get_checkpoint()``.
+            use_external_memory: Whether to use external memory for DMatrix creation.
+                If True, uses ExtMemQuantileDMatrix for large datasets that don't fit in RAM.
+                If False (default), uses standard DMatrix for in-memory training.
+            external_memory_cache_dir: Directory for caching external memory files.
+                If None, automatically selects the best available directory.
+            external_memory_device: Device to use for external memory training.
+                Options: "cpu" (default) or "cuda" for GPU training.
+            external_memory_batch_size: Batch size for external memory iteration.
+                If None, uses optimal default based on device type.
+        """
         # Legacy API parameters were removed from V2 trainer
         # V2 trainer only supports train_loop_per_worker pattern
 
