@@ -231,7 +231,6 @@ class ApplicationState:
     ):
         """
         Args:
-            self: ApplicationState object.
             name: Application name.
             deployment_state_manager: State manager for all deployments
                 in the cluster.
@@ -1020,7 +1019,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args: arguments for deploying a list of deployments.
+            deployment_args_list: arguments for deploying a list of deployments.
 
         Raises:
             RayServeException: If the list of deployments is trying to
