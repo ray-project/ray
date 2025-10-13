@@ -12,7 +12,7 @@ from xgboost import RabitTracker
 from xgboost.collective import CommunicatorContext
 
 import ray
-from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.backend import Backend, BackendConfig
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class _XGBoostRabitBackend(Backend):
         self._tracker: Optional[RabitTracker] = None
         self._wait_thread: Optional[threading.Thread] = None
 
-    def _setup_xgboost_distributed_backend(self, worker_group: WorkerGroup):
+    def _setup_xgboost_distributed_backend(self, worker_group: BaseWorkerGroup):
         # Set up the rabit tracker on the Train driver.
         num_workers = len(worker_group)
         rabit_args = {"n_workers": num_workers}
@@ -104,12 +104,12 @@ class _XGBoostRabitBackend(Backend):
         worker_group.execute(set_xgboost_communicator_args, rabit_args)
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: XGBoostConfig
+        self, worker_group: BaseWorkerGroup, backend_config: XGBoostConfig
     ):
         assert backend_config.xgboost_communicator == "rabit"
         self._setup_xgboost_distributed_backend(worker_group)
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
+    def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config: XGBoostConfig):
         timeout = 5
 
         if self._wait_thread is not None:
@@ -127,7 +127,7 @@ class _XGBoostRabitBackend_pre_xgb210(Backend):
     def __init__(self):
         self._tracker: Optional[RabitTracker] = None
 
-    def _setup_xgboost_distributed_backend(self, worker_group: WorkerGroup):
+    def _setup_xgboost_distributed_backend(self, worker_group: BaseWorkerGroup):
         # Set up the rabit tracker on the Train driver.
         num_workers = len(worker_group)
         rabit_args = {"DMLC_NUM_WORKER": num_workers}
@@ -167,12 +167,12 @@ class _XGBoostRabitBackend_pre_xgb210(Backend):
         worker_group.execute(set_xgboost_env_vars)
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: XGBoostConfig
+        self, worker_group: BaseWorkerGroup, backend_config: XGBoostConfig
     ):
         assert backend_config.xgboost_communicator == "rabit"
         self._setup_xgboost_distributed_backend(worker_group)
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
+    def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config: XGBoostConfig):
         if not self._tracker:
             return
 

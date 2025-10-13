@@ -487,18 +487,15 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
   UniqueID callback_id = UniqueID::FromRandom();
   ObjectID obj_id = ObjectID::FromRandom();
   int num_callbacks = 0;
-  ASSERT_TRUE(
-      obod_
-          ->SubscribeObjectLocations(callback_id,
-                                     obj_id,
-                                     rpc::Address(),
-                                     [&](const ObjectID &object_id,
-                                         const std::unordered_set<NodeID> &client_ids,
-                                         const std::string &spilled_url,
-                                         const NodeID &spilled_node_id,
-                                         bool pending_creation,
-                                         size_t object_size) { num_callbacks++; })
-          .ok());
+  obod_->SubscribeObjectLocations(callback_id,
+                                  obj_id,
+                                  rpc::Address(),
+                                  [&](const ObjectID &object_id,
+                                      const std::unordered_set<NodeID> &client_ids,
+                                      const std::string &spilled_url,
+                                      const NodeID &spilled_node_id,
+                                      bool pending_creation,
+                                      size_t object_size) { num_callbacks++; });
   ASSERT_EQ(num_callbacks, 0);
 
   // Object pending, no other metadata. This is the same as the initial state,
