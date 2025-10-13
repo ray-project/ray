@@ -270,7 +270,6 @@ def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_o
                     "subprocess.Popen(['sleep', '150']); "
                     "import time; time.sleep(100)",
                 ],
-                stdout=subprocess.PIPE,
                 text=True,
             )
             child_pid = proc.pid
