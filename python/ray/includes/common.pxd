@@ -615,6 +615,12 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const StatusPyCallback &callback
         )
 
+    cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
+        void AsyncAddEvents(
+            CAddEventsRequest &&request,
+            const StatusPyCallback &callback,
+            int64_t timeout_ms)
+
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -643,6 +649,7 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
         CPublisherAccessor& Publisher()
+        CTaskInfoAccessor& Tasks()
         CGcsRpcClient& GetGcsRpcClient()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
@@ -655,10 +662,7 @@ cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc::events" 
 
 cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc" nogil:
     cdef cppclass CGcsRpcClient "ray::rpc::GcsRpcClient":
-        void AddEvents(
-            CAddEventsRequest &&request,
-            const StatusPyCallback &status_callback,
-            int64_t timeout_ms)
+        pass
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(

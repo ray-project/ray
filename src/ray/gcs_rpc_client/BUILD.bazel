@@ -53,7 +53,6 @@ ray_cc_library(
         "//src/ray/pubsub:__pkg__",
     ],
     deps = [
-        "//src/ray/common:gcs_callback_types",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",

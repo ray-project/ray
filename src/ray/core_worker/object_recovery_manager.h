@@ -22,7 +22,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -46,7 +46,7 @@ class ObjectRecoveryManager {
       std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
           object_lookup,
       TaskManagerInterface &task_manager,
-      ReferenceCounter &reference_counter,
+      ReferenceCounterInterface &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
       ObjectRecoveryFailureCallback recovery_failure_callback)
       : task_manager_(task_manager),
@@ -111,7 +111,7 @@ class ObjectRecoveryManager {
   TaskManagerInterface &task_manager_;
 
   /// Used to check whether we own an object.
-  ReferenceCounter &reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

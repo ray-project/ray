@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/network_util.h"
@@ -114,75 +113,6 @@ namespace rpc {
         },                                                                     \
         timeout_ms);                                                           \
     return promise.get_future().get();                                         \
-  }
-
-/// Define a void GCS RPC client method with StatusCallback overload.
-///
-/// This macro generates the standard async/sync methods (via
-/// VOID_GCS_RPC_CLIENT_METHOD_FULL) plus an additional overloaded async method that
-/// accepts gcs::StatusCallback.
-///
-/// The StatusCallback overload calls the original method with an adapter lambda that
-/// discards the reply and only passes the status.
-///
-/// Example:
-///   VOID_GCS_RPC_CLIENT_METHOD_WITH_STATUS_CALLBACK(
-///     ray::rpc,
-///     ray::rpc,
-///     MyService,
-///     DoSomething,
-///     my_client_,
-///     -1,
-///     true,
-///     override)
-///
-///   This generates:
-///     - void DoSomething(Request &&, const ClientCallback<Reply> &, timeout)
-///     - void DoSomething(Request &&, const gcs::StatusCallback &, timeout)  // Overload
-///     - Status SyncDoSomething(Request &&, Reply *, timeout)
-///
-///   Usage:
-///     client.DoSomething(request, [](Status status) {
-///       if (status.ok()) { /* success */ }
-///     });
-///
-/// \param SERVICE_NAMESPACE namespace of the service.
-/// \param METHOD_NAMESPACE namespace of the method.
-/// \param SERVICE name of the service.
-/// \param METHOD name of the RPC method.
-/// \param grpc_client The grpc client to invoke RPC.
-/// \param method_timeout_ms The RPC timeout in ms.
-/// \param handle_payload_status true if the Reply has a status we want to return.
-/// \param SPECS The cpp method spec. For example, override.
-///
-/// TODO: Extend this macro to support other callback types defined in
-/// gcs_callback_types.h
-#define VOID_GCS_RPC_CLIENT_METHOD_WITH_STATUS_CALLBACK(SERVICE_NAMESPACE,     \
-                                                        METHOD_NAMESPACE,      \
-                                                        SERVICE,               \
-                                                        METHOD,                \
-                                                        grpc_client,           \
-                                                        method_timeout_ms,     \
-                                                        handle_payload_status, \
-                                                        SPECS)                 \
-  VOID_GCS_RPC_CLIENT_METHOD_FULL(SERVICE_NAMESPACE,                           \
-                                  METHOD_NAMESPACE,                            \
-                                  SERVICE,                                     \
-                                  METHOD,                                      \
-                                  grpc_client,                                 \
-                                  method_timeout_ms,                           \
-                                  handle_payload_status,                       \
-                                  SPECS)                                       \
-  void METHOD(METHOD_NAMESPACE::METHOD##Request &&request,                     \
-              const gcs::StatusCallback &status_callback,                      \
-              const int64_t timeout_ms = method_timeout_ms) SPECS {            \
-    METHOD(                                                                    \
-        std::move(request),                                                    \
-        [status_callback](const Status &status,                                \
-                          const METHOD_NAMESPACE::METHOD##Reply &) mutable {   \
-          status_callback(status);                                             \
-        },                                                                     \
-        timeout_ms);                                                           \
   }
 
 /// Client used for communicating with gcs server.
@@ -464,13 +394,13 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   /// Add one event data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD_WITH_STATUS_CALLBACK(ray::rpc,
-                                                  ray::rpc::events,
-                                                  RayEventExportGcsService,
-                                                  AddEvents,
-                                                  ray_event_export_grpc_client_,
-                                                  /*method_timeout_ms*/ -1,
-                                                  /*handle_payload_status=*/true, )
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc,
+                                  ray::rpc::events,
+                                  RayEventExportGcsService,
+                                  AddEvents,
+                                  ray_event_export_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/true, )
 
   /// Add task events info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
