@@ -77,11 +77,7 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data.block import (
-    Block,
-    BlockExecStats,
-    BlockMetadataWithSchema,
-)
+from ray.data.block import Block, BlockExecStats, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
@@ -477,6 +473,7 @@ def read(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **reader_args,
@@ -494,28 +491,27 @@ def read(
 
     Supported file types:
 
-    - **Parquet** (.parquet)
-    - **CSV** (.csv, .csv.gz, .csv.br, .csv.zst, .csv.lz4)
-    - **JSON** (.json, .jsonl, .json.gz, .jsonl.gz, .json.br, .jsonl.br, .json.zst, .jsonl.zst, .json.lz4, .jsonl.lz4)
+    - **Parquet** (.parquet, .parquet.gz, .parquet.gzip, .parquet.bz2, .parquet.snappy, .parquet.lz4, .parquet.zstd)
+    - **CSV** (.csv, .csv.gz, .csv.br, .csv.bz2, .csv.zst, .csv.lz4)
+    - **JSON** (.json, .jsonl, .json.gz, .jsonl.gz, .json.br, .jsonl.br, .json.bz2, .jsonl.bz2, .json.zst, .jsonl.zst, .json.lz4, .jsonl.lz4)
     - **Text** (.txt)
     - **Images** (.png, .jpg, .jpeg, .tif, .tiff, .bmp, .gif)
     - **Audio** (.mp3, .wav, .aac, .flac, .ogg, .m4a, .wma, .alac, .aiff, .pcm, .amr, .opus)
     - **Video** (.mp4, .mkv, .mov, .avi, .wmv, .flv, .webm, .m4v, .3gp, .mpeg, .mpg)
     - **NumPy** (.npy)
-    - **Avro** (.avro)
+    - **Avro** (.avro, .avro.gz, .avro.gzip, .avro.bz2, .avro.snappy)
     - **TFRecords** (.tfrecords)
-    - **HTML** (.html, .htm)
     - **WebDataset** (.tar)
     - **Lance** (.lance)
     - **Binary** (any other extension)
 
     **Note:** Lakehouse table formats (Delta Lake, Hudi, Iceberg) are automatically detected
     by examining directory structure:
-    
+
     - **Delta Lake**: Detected by presence of ``_delta_log`` directory
-    - **Apache Hudi**: Detected by presence of ``.hoodie`` directory  
+    - **Apache Hudi**: Detected by presence of ``.hoodie`` directory
     - **Apache Iceberg**: Detected by presence of ``metadata`` directory with version files
-    
+
     You can also use the ``format`` parameter to explicitly specify the format and bypass
     auto-detection.
 
@@ -586,15 +582,29 @@ def read(
         ...     format="lance"
         ... )
 
+        Read using glob patterns:
+
+        >>> ds = ray.data.read("s3://bucket/data/**/*.parquet")  # doctest: +SKIP
+
+        Read with file extension filtering:
+
+        >>> ds = ray.data.read(  # doctest: +SKIP
+        ...     "s3://bucket/mixed-data/",
+        ...     file_extensions=["parquet", "csv"]
+        ... )
+
     Args:
-        paths: Path or list of paths to files or directories. Supports local paths
-            (with ``local://`` prefix), cloud storage (S3, GCS, Azure), and
-            distributed filesystems.
+        paths: Path or list of paths to files or directories.
+
+            Supports local paths (with ``local://`` prefix), cloud storage (S3, GCS, Azure),
+            and distributed filesystems. Also supports glob patterns such as
+            ``"data/*.parquet"`` or ``"s3://bucket/**/*.csv"`` where ``*`` matches any
+            characters and ``**`` enables recursive matching.
         format: Optional format hint to specify the file format explicitly.
             When provided, all files are read using the specified format reader,
             bypassing automatic type detection. Supported formats: "parquet", "csv",
             "json", "text", "images", "audio", "video", "numpy", "avro",
-            "tfrecords", "html", "webdataset", "lance", "delta", "hudi", "iceberg",
+            "tfrecords", "webdataset", "lance", "delta", "hudi", "iceberg",
             "binary". If None, file types are detected automatically from file extensions.
         filesystem: PyArrow filesystem to use for reading. If not specified, the
             filesystem is inferred from the path scheme.
@@ -616,6 +626,11 @@ def read(
             error if any file is not found. Defaults to False.
         shuffle: Whether to shuffle file order. Can be "files" for simple file-level
             shuffling or a FileShuffleConfig for more control.
+        file_extensions: List of file extensions to filter files by. For example,
+            ``["parquet", "csv"]`` or ``[".json", ".jsonl"]``. The leading dot is
+            optional. This filter is applied after glob pattern expansion and before
+            file type detection. Useful for filtering specific file types from
+            directories with mixed formats.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -624,32 +639,190 @@ def read(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        **reader_args: Additional arguments passed to the underlying reader function.
-            The available arguments depend on the detected file type. For example,
-            CSV files support ``delimiter``, ``columns``, etc.
+        **reader_args: Additional format-specific arguments passed to the underlying
+            reader function.
+
+            The available arguments depend on the detected file type:
+
+            - **Parquet**: ``columns``, ``filter``, ``schema``, and other PyArrow Parquet options
+            - **CSV**: ``delimiter``, ``columns``, ``schema``, ``encoding``, and other PyArrow CSV options
+            - **JSON**: ``lines``, ``schema``, ``block_size``, and other PyArrow JSON options
+            - **Images**: ``mode`` (RGB, L, etc.), ``size`` (width, height tuple)
+            - **Delta Lake**: ``columns``, ``version``, ``filter``, and PyArrow Parquet options
+            - **Hudi**: ``columns``, ``filter``, and PyArrow Parquet options
+            - **Iceberg**: ``columns``, ``filter``, and PyArrow Parquet options
+
+            For complete parameter lists, see the specific reader functions:
+            :func:`read_parquet`, :func:`read_csv`, :func:`read_json`, :func:`read_images`, etc.
+
+            Examples:
+
+                Read CSV with custom delimiter::
+
+                    ds = ray.data.read("data.csv", delimiter=";")
+
+                Read Parquet with column projection::
+
+                    ds = ray.data.read("data.parquet", columns=["col1", "col2"])
+
+                Read images with specific size::
+
+                    ds = ray.data.read("images/", mode="RGB", size=(224, 224))
 
     Returns:
         :class:`~ray.data.Dataset` producing rows from the files.
 
     Raises:
-        ValueError: If file type cannot be detected or if mixed incompatible file
-            types are found.
+        ValueError: If file type cannot be detected, if mixed incompatible file
+            types are found (e.g., parquet and video files), or if glob patterns
+            match no files.
         FileNotFoundError: If ``ignore_missing_paths=False`` and files are not found.
 
     Note:
-        When reading directories with mixed file types, the function groups files by
-        type and reads each group separately, then concatenates the results. This
-        means the output schema will be the union of all schemas from different file
-        types.
+        This function reads files using a **single reader**. If multiple file types are
+        detected in the specified paths, an error will be raised. Use the ``format``
+        parameter to specify which format to read, or use ``file_extensions`` to filter
+        to a single file type.
+
+        For example, if a directory contains both ``.parquet`` and ``.csv`` files, you must:
+
+        - Use ``format="parquet"`` to read only Parquet files, OR
+        - Use ``file_extensions=["parquet"]`` to filter to Parquet files, OR
+        - Use separate ``read_parquet()`` and ``read_csv()`` calls
+
+        **Schema Compatibility**: When reading multiple files of the same format,
+        Ray Data automatically handles schema unification. However, if files have
+        significantly different schemas that cannot be unified, an error will be raised.
 
         For more control over reading specific file types, use the dedicated reader
-        functions like :func:`read_parquet`, :func:`read_csv`, etc.
+        functions such as :func:`read_parquet`, :func:`read_csv`, :func:`read_json`,
+        :func:`read_images`, :func:`read_delta`, :func:`read_hudi`, :func:`read_iceberg`, etc.
     """
-    from ray.data._internal.read_unified import read_impl
-    
-    return read_impl(
-        paths=paths,
-        format=format,
+    from ray.data._internal.format_detection import (
+        _detect_lakehouse_format,
+        _get_reader_for_path,
+    )
+    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
+    # Use Ray's existing path resolution
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+    # If format is explicitly specified, use it directly
+    if format is not None:
+        format_lower = format.lower()
+
+        reader_map = {
+            "parquet": read_parquet,
+            "csv": read_csv,
+            "json": read_json,
+            "text": read_text,
+            "images": read_images,
+            "audio": read_audio,
+            "video": read_videos,
+            "numpy": read_numpy,
+            "avro": read_avro,
+            "tfrecords": read_tfrecords,
+            "webdataset": read_webdataset,
+            "lance": read_lance,
+            "mcap": read_mcap,
+            "binary": read_binary_files,
+            "delta": read_delta,
+            "hudi": read_hudi,
+            "iceberg": read_iceberg,
+        }
+
+        reader = reader_map.get(format_lower)
+        if reader is None:
+            raise ValueError(
+                f"Unsupported format: '{format}'. "
+                f"Supported formats: {sorted(reader_map.keys())}"
+            )
+
+        # Call the reader with common args
+        kwargs = {
+            "paths": paths,
+            "filesystem": filesystem,
+            "parallelism": parallelism,
+        }
+        if num_cpus is not None:
+            kwargs["num_cpus"] = num_cpus
+        if num_gpus is not None:
+            kwargs["num_gpus"] = num_gpus
+        if ray_remote_args is not None:
+            kwargs["ray_remote_args"] = ray_remote_args
+        if include_paths:
+            kwargs["include_paths"] = include_paths
+        if ignore_missing_paths:
+            kwargs["ignore_missing_paths"] = ignore_missing_paths
+
+        kwargs.update(reader_args)
+        return reader(**kwargs)
+
+    # Auto-detection: Check for lakehouse format first (single path only)
+    if len(paths) == 1:
+        lakehouse_fmt = _detect_lakehouse_format(paths[0], filesystem)
+        if lakehouse_fmt:
+            logger.info(f"Detected {lakehouse_fmt} table at: {paths[0]}")
+
+            # Build common kwargs for lakehouse readers
+            lakehouse_kwargs = {
+                "path": paths[0],
+                "filesystem": filesystem,
+                "parallelism": parallelism,
+            }
+            if num_cpus is not None:
+                lakehouse_kwargs["num_cpus"] = num_cpus
+            if num_gpus is not None:
+                lakehouse_kwargs["num_gpus"] = num_gpus
+            if memory is not None:
+                lakehouse_kwargs["memory"] = memory
+            if ray_remote_args is not None:
+                lakehouse_kwargs["ray_remote_args"] = ray_remote_args
+            if concurrency is not None:
+                lakehouse_kwargs["concurrency"] = concurrency
+            if override_num_blocks is not None:
+                lakehouse_kwargs["override_num_blocks"] = override_num_blocks
+
+            # Add any format-specific reader args
+            lakehouse_kwargs.update(reader_args)
+
+            if lakehouse_fmt == "delta":
+                return read_delta(**lakehouse_kwargs)
+            elif lakehouse_fmt == "hudi":
+                return read_hudi(**lakehouse_kwargs)
+            elif lakehouse_fmt == "iceberg":
+                return read_iceberg(**lakehouse_kwargs)
+
+    # Auto-detection: Detect format by file extension for all paths
+    # Check that all paths have the same format
+    detected_formats = {}
+    for path in paths:
+        fmt = _get_reader_for_path(path)
+        if fmt is None:
+            fmt = "binary"  # Fallback for unknown extensions
+        detected_formats[fmt] = detected_formats.get(fmt, 0) + 1
+
+    if len(detected_formats) > 1:
+        # Multiple formats detected
+        format_summary = ", ".join(
+            f"{count} {fmt} file(s)" for fmt, count in detected_formats.items()
+        )
+        raise ValueError(
+            f"Mixed file formats detected: {format_summary}. "
+            f"The read() function requires all files to be the same format. "
+            f"Use the 'format' parameter to specify which format to read, "
+            f"use 'file_extensions' to filter to a single type, "
+            f"or call format-specific readers separately (e.g., read_parquet(), read_csv())."
+        )
+
+    # All files have the same format
+    detected_format = list(detected_formats.keys())[0]
+    logger.info(f"Auto-detected format: {detected_format} ({detected_formats[detected_format]} file(s))")
+
+    # Recursively call with detected format
+    return read(
+        paths,
+        format=detected_format,
         filesystem=filesystem,
         parallelism=parallelism,
         num_cpus=num_cpus,
@@ -663,6 +836,7 @@ def read(
         include_paths=include_paths,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+        file_extensions=file_extensions,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **reader_args,
@@ -670,6 +844,7 @@ def read(
 
 
 # Keep the old implementation below for reference during transition
+
 
 @PublicAPI(stability="alpha")
 def read_audio(
@@ -3366,7 +3541,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3496,12 +3671,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()

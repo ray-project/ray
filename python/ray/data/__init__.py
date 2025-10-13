@@ -2,7 +2,6 @@
 # Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
 from packaging.version import parse as parse_version
-
 from ray._private.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
@@ -14,7 +13,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.dataset import ClickHouseTableSettings, Dataset, Schema, SinkMode
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -25,9 +24,9 @@ from ray.data.datasource import (
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
-from ray.data.read_api import (  # noqa: F401
+from ray.data.read_api import (
     from_arrow,
-    from_arrow_refs,
+    from_arrow_refs,  # noqa: F401
     from_blocks,
     from_daft,
     from_dask,
@@ -135,11 +134,12 @@ __all__ = [
     "Schema",
     "SinkMode",
     "TaskPoolStrategy",
+    "from_arrow",
+    "from_arrow_refs",
+    "from_blocks",
     "from_daft",
     "from_dask",
     "from_items",
-    "from_arrow",
-    "from_arrow_refs",
     "from_mars",
     "from_modin",
     "from_numpy",
@@ -155,10 +155,11 @@ __all__ = [
     "read",
     "read_audio",
     "read_avro",
-    "read_text",
+    "read_bigquery",
     "read_binary_files",
     "read_clickhouse",
     "read_csv",
+    "read_databricks_tables",
     "read_datasource",
     "read_delta",
     "read_delta_sharing_tables",
@@ -168,12 +169,13 @@ __all__ = [
     "read_json",
     "read_lance",
     "read_mcap",
-    "read_numpy",
     "read_mongo",
+    "read_numpy",
     "read_parquet",
     "read_parquet_bulk",
     "read_snowflake",
     "read_sql",
+    "read_text",
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",

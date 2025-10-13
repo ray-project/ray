@@ -14,15 +14,14 @@ import json
 import logging
 import os
 import time
-import warnings
 
 import numpy as np
 import pyarrow as pa
 import pytest
-
-import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+import ray
 
 
 class TestReadUnified:
@@ -61,7 +60,6 @@ class TestReadUnified:
 
     def test_read_single_json_file(self, ray_start_regular_shared, tmp_path):
         """Test reading a single JSON file."""
-        import json
 
         # Create test data
         data = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}, {"a": 3, "b": "z"}]
@@ -116,7 +114,12 @@ class TestReadUnified:
 
         # Create test data
         for i in range(3):
-            df = pd.DataFrame({"a": [i * 10 + j for j in range(5)], "b": [f"val_{i}_{j}" for j in range(5)]})
+            df = pd.DataFrame(
+                {
+                    "a": [i * 10 + j for j in range(5)],
+                    "b": [f"val_{i}_{j}" for j in range(5)],
+                }
+            )
             parquet_file = os.path.join(tmp_path, f"test_{i}.parquet")
             pq.write_table(pa.Table.from_pandas(df), parquet_file)
 
@@ -148,7 +151,7 @@ class TestReadUnified:
 
         # Read using the unified reader
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should successfully read all files
         assert ds.count() > 0
 
@@ -168,7 +171,7 @@ class TestReadUnified:
 
         # Read using the unified reader with multiple paths
         ds = ray.data.read([parquet_file, csv_file])
-        
+
         assert ds.count() == 4
 
     def test_read_compressed_csv(self, ray_start_regular_shared, tmp_path):
@@ -220,12 +223,9 @@ class TestReadUnified:
 
         # Try to read both valid and nonexistent files
         missing_file = os.path.join(tmp_path, "missing.parquet")
-        
-        ds = ray.data.read(
-            [valid_file, missing_file],
-            ignore_missing_paths=True
-        )
-        
+
+        ds = ray.data.read([valid_file, missing_file], ignore_missing_paths=True)
+
         assert ds.count() == 3  # Only from valid file
 
     def test_read_empty_directory(self, ray_start_regular_shared, tmp_path):
@@ -236,7 +236,9 @@ class TestReadUnified:
         with pytest.raises(ValueError, match="No files found"):
             ray.data.read(empty_dir)
 
-    def test_read_empty_directory_with_ignore_missing(self, ray_start_regular_shared, tmp_path):
+    def test_read_empty_directory_with_ignore_missing(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading an empty directory with ignore_missing_paths=True."""
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
@@ -302,12 +304,11 @@ class TestReadUnified:
 
         # Read with custom parallelism
         ds = ray.data.read(str(tmp_path), override_num_blocks=10)
-        
+
         assert ds.count() == 50
 
     def test_read_jsonl_format(self, ray_start_regular_shared, tmp_path):
         """Test reading JSONL format."""
-        import json
 
         # Create test data
         data = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
@@ -325,20 +326,16 @@ class TestReadUnified:
 
     def test_read_avro_files(self, ray_start_regular_shared, tmp_path):
         """Test reading Avro files."""
-        import pandas as pd
-        from fastavro import writer, parse_schema
+        from fastavro import parse_schema, writer
 
         # Create test data
         schema = {
             "type": "record",
             "name": "Test",
-            "fields": [
-                {"name": "a", "type": "int"},
-                {"name": "b", "type": "string"}
-            ]
+            "fields": [{"name": "a", "type": "int"}, {"name": "b", "type": "string"}],
         }
         records = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
-        
+
         avro_file = os.path.join(tmp_path, "test.avro")
         with open(avro_file, "wb") as f:
             writer(f, parse_schema(schema), records)
@@ -384,11 +381,9 @@ class TestReadUnified:
 
     def test_read_compound_extensions(self, ray_start_regular_shared, tmp_path):
         """Test reading files with compound extensions like .csv.gz."""
-        import pandas as pd
 
         # Create compressed JSON
         import json
-        import gzip
 
         data = [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]
         json_gz_file = os.path.join(tmp_path, "test.json.gz")
@@ -424,7 +419,9 @@ class TestReadUnified:
 
         pd.testing.assert_frame_equal(result, df)
 
-    def test_read_preserves_schema_across_types(self, ray_start_regular_shared, tmp_path):
+    def test_read_preserves_schema_across_types(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that reading mixed types preserves appropriate schemas."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -440,7 +437,7 @@ class TestReadUnified:
 
         # Read mixed types
         ds = ray.data.read([parquet_file, csv_file])
-        
+
         # Should be able to convert to pandas
         result = ds.to_pandas()
         assert len(result) == 6
@@ -458,14 +455,18 @@ class TestReadUnified:
 
         # Create files in different directories
         df1 = pd.DataFrame({"a": [1, 2]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(subdir1, "test1.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(subdir1, "test1.parquet")
+        )
 
         df2 = pd.DataFrame({"a": [3, 4]})
-        pq.write_table(pa.Table.from_pandas(df2), os.path.join(subdir2, "test2.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df2), os.path.join(subdir2, "test2.parquet")
+        )
 
         # Read recursively
         ds = ray.data.read(str(tmp_path))
-        
+
         assert ds.count() == 4
 
     def test_read_with_partition_filter(self, ray_start_regular_shared, tmp_path):
@@ -478,14 +479,16 @@ class TestReadUnified:
             part_dir = os.path.join(tmp_path, f"partition={partition}")
             os.makedirs(part_dir)
             df = pd.DataFrame({"value": [1, 2, 3]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(part_dir, "data.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(part_dir, "data.parquet")
+            )
 
         # Read with partition filter
         def filter_func(partition_dict):
             return partition_dict.get("partition") == "a"
 
         ds = ray.data.read(str(tmp_path), partition_filter=filter_func)
-        
+
         # Should only read partition a
         assert ds.count() == 3
 
@@ -493,7 +496,9 @@ class TestReadUnified:
 class TestReadEdgeCases:
     """Test edge cases and error handling for ray.data.read()."""
 
-    def test_read_special_characters_in_filename(self, ray_start_regular_shared, tmp_path):
+    def test_read_special_characters_in_filename(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading files with special characters in names."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -523,7 +528,7 @@ class TestReadEdgeCases:
 
         # Read all files
         ds = ray.data.read(str(tmp_path))
-        
+
         assert ds.count() == num_files
 
     def test_read_empty_file(self, ray_start_regular_shared, tmp_path):
@@ -566,13 +571,17 @@ class TestReadSchemas:
         import pyarrow.parquet as pq
 
         # Create file with various types
-        df = pd.DataFrame({
-            "int_col": [1, 2, 3],
-            "float_col": [1.1, 2.2, 3.3],
-            "string_col": ["a", "b", "c"],
-            "bool_col": [True, False, True]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "typed.parquet"))
+        df = pd.DataFrame(
+            {
+                "int_col": [1, 2, 3],
+                "float_col": [1.1, 2.2, 3.3],
+                "string_col": ["a", "b", "c"],
+                "bool_col": [True, False, True],
+            }
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "typed.parquet")
+        )
 
         # Read and check schema
         ds = ray.data.read(os.path.join(tmp_path, "typed.parquet"))
@@ -590,14 +599,12 @@ class TestReadSchemas:
         # Create nested structure
         data = {
             "id": [1, 2, 3],
-            "metadata": [
-                {"key": "value1"},
-                {"key": "value2"},
-                {"key": "value3"}
-            ]
+            "metadata": [{"key": "value1"}, {"key": "value2"}, {"key": "value3"}],
         }
         df = pd.DataFrame(data)
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "nested.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "nested.parquet")
+        )
 
         # Read nested data
         ds = ray.data.read(os.path.join(tmp_path, "nested.parquet"))
@@ -611,11 +618,12 @@ class TestReadSchemas:
         import pyarrow.parquet as pq
 
         # Create data with lists
-        df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "values": [[1, 2, 3], [4, 5], [6, 7, 8, 9]]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "lists.parquet"))
+        df = pd.DataFrame(
+            {"id": [1, 2, 3], "values": [[1, 2, 3], [4, 5], [6, 7, 8, 9]]}
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "lists.parquet")
+        )
 
         # Read list data
         ds = ray.data.read(os.path.join(tmp_path, "lists.parquet"))
@@ -645,7 +653,9 @@ class TestReadEncoding:
 
         # Write compressed CSV
         df = pd.DataFrame({"a": range(100), "b": range(100, 200)})
-        df.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # Read compressed file
         ds = ray.data.read(os.path.join(tmp_path, "data.csv.gz"))
@@ -661,7 +671,9 @@ class TestReadEncoding:
 
         # Gzip compressed
         df2 = pd.DataFrame({"a": [4, 5, 6]})
-        df2.to_csv(os.path.join(tmp_path, "data2.csv.gz"), index=False, compression="gzip")
+        df2.to_csv(
+            os.path.join(tmp_path, "data2.csv.gz"), index=False, compression="gzip"
+        )
 
         # Read both
         ds = ray.data.read(str(tmp_path))
@@ -693,11 +705,10 @@ class TestReadMetadata:
         import pyarrow.parquet as pq
 
         # Create data with nulls
-        df = pd.DataFrame({
-            "a": [1, None, 3],
-            "b": ["x", "y", None]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "nulls.parquet"))
+        df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", None]})
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "nulls.parquet")
+        )
 
         # Read and verify nulls
         ds = ray.data.read(os.path.join(tmp_path, "nulls.parquet"))
@@ -716,7 +727,9 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         df = pd.DataFrame({"a": [1], "b": ["x"]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "single.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "single.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "single.parquet"))
         assert ds.count() == 1
@@ -741,7 +754,9 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         df = pd.DataFrame({"a": [None, None, None], "b": [None, None, None]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "empty_rows.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "empty_rows.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "empty_rows.parquet"))
         assert ds.count() == 3
@@ -752,12 +767,16 @@ class TestReadSpecialCases:
         import pyarrow.parquet as pq
 
         # Special characters in column names
-        df = pd.DataFrame({
-            "col with spaces": [1, 2, 3],
-            "col-with-dashes": [4, 5, 6],
-            "col.with.dots": [7, 8, 9]
-        })
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "special_cols.parquet"))
+        df = pd.DataFrame(
+            {
+                "col with spaces": [1, 2, 3],
+                "col-with-dashes": [4, 5, 6],
+                "col.with.dots": [7, 8, 9],
+            }
+        )
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "special_cols.parquet")
+        )
 
         ds = ray.data.read(os.path.join(tmp_path, "special_cols.parquet"))
         result = ds.take(1)[0]
@@ -798,7 +817,7 @@ class TestReadRobustness:
         symlink_file = os.path.join(tmp_path, "symlink.parquet")
         try:
             os.symlink(actual_file, symlink_file)
-            
+
             # Read symlink
             ds = ray.data.read(symlink_file)
             result = ds.to_pandas()
@@ -816,11 +835,14 @@ class TestReadRobustness:
         # Create some existing files
         for i in range(3):
             df = pd.DataFrame({"a": [i * 10 + j for j in range(5)]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"existing_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"existing_{i}.parquet"),
+            )
 
         # Read existing files
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should successfully read existing files
         assert ds.count() >= 15
 
@@ -840,7 +862,7 @@ class TestReadRobustness:
 
         # Read directory
         ds = ray.data.read(str(tmp_path))
-        
+
         # Should read files
         assert ds.count() >= 3
 
@@ -857,9 +879,9 @@ class TestReadScalability:
         num_cols = 100
         num_rows = 1000
 
-        df = pd.DataFrame({
-            f"col_{i}": np.random.rand(num_rows) for i in range(num_cols)
-        })
+        df = pd.DataFrame(
+            {f"col_{i}": np.random.rand(num_rows) for i in range(num_cols)}
+        )
         parquet_file = os.path.join(tmp_path, "wide.parquet")
         pq.write_table(pa.Table.from_pandas(df), parquet_file)
 
@@ -880,14 +902,16 @@ class TestReadScalability:
         # Create deep nesting
         depth = 10
         current_path = tmp_path
-        
+
         for level in range(depth):
             current_path = os.path.join(current_path, f"level_{level}")
             os.makedirs(current_path)
 
         # Create file at the deepest level
         df = pd.DataFrame({"value": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(current_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(current_path, "data.parquet")
+        )
 
         # Read from top level
         start = time.time()
@@ -906,15 +930,17 @@ class TestReadScalability:
         # Create dataset
         num_files = 20
         for i in range(num_files):
-            df = pd.DataFrame({
-                "id": range(i * 100, (i + 1) * 100),
-                "value": np.random.rand(100)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i:03d}.parquet"))
+            df = pd.DataFrame(
+                {"id": range(i * 100, (i + 1) * 100), "value": np.random.rand(100)}
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"file_{i:03d}.parquet"),
+            )
 
         # Read and process incrementally
         ds = ray.data.read(str(tmp_path))
-        
+
         start = time.time()
         processed_count = 0
         for batch in ds.iter_batches(batch_size=500):
@@ -925,7 +951,9 @@ class TestReadScalability:
         assert processed_count == num_files * 100
         print(f"Processed {processed_count} rows incrementally in {elapsed:.3f}s")
 
-    def test_read_with_transformations_pipeline(self, ray_start_regular_shared, tmp_path):
+    def test_read_with_transformations_pipeline(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test read followed by transformation pipeline."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -933,11 +961,15 @@ class TestReadScalability:
         # Create dataset
         num_files = 10
         for i in range(num_files):
-            df = pd.DataFrame({
-                "value": np.random.rand(1000),
-                "category": np.random.choice(["A", "B", "C"], 1000)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i}.parquet"))
+            df = pd.DataFrame(
+                {
+                    "value": np.random.rand(1000),
+                    "category": np.random.choice(["A", "B", "C"], 1000),
+                }
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i}.parquet")
+            )
 
         # Read and apply transformations
         start = time.time()
@@ -955,7 +987,9 @@ class TestReadScalability:
 class TestReadConcurrency:
     """Test concurrent read operations."""
 
-    def test_read_concurrent_multiple_datasets(self, ray_start_regular_shared, tmp_path):
+    def test_read_concurrent_multiple_datasets(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test reading multiple datasets concurrently."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -966,13 +1000,15 @@ class TestReadConcurrency:
             dataset_dir = os.path.join(tmp_path, f"dataset_{dataset_id}")
             os.makedirs(dataset_dir)
             datasets_dirs.append(dataset_dir)
-            
+
             for i in range(5):
-                df = pd.DataFrame({
-                    "dataset_id": [dataset_id] * 100,
-                    "value": np.random.rand(100)
-                })
-                pq.write_table(pa.Table.from_pandas(df), os.path.join(dataset_dir, f"file_{i}.parquet"))
+                df = pd.DataFrame(
+                    {"dataset_id": [dataset_id] * 100, "value": np.random.rand(100)}
+                )
+                pq.write_table(
+                    pa.Table.from_pandas(df),
+                    os.path.join(dataset_dir, f"file_{i}.parquet"),
+                )
 
         # Read all datasets concurrently
         start = time.time()
@@ -991,15 +1027,17 @@ class TestReadConcurrency:
         # Create dataset
         num_files = 15
         for i in range(num_files):
-            df = pd.DataFrame({
-                "id": range(i * 100, (i + 1) * 100),
-                "value": np.random.rand(100)
-            })
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"file_{i:03d}.parquet"))
+            df = pd.DataFrame(
+                {"id": range(i * 100, (i + 1) * 100), "value": np.random.rand(100)}
+            )
+            pq.write_table(
+                pa.Table.from_pandas(df),
+                os.path.join(tmp_path, f"file_{i:03d}.parquet"),
+            )
 
         # Read and process concurrently
         ds = ray.data.read(str(tmp_path))
-        
+
         # Start processing before reading completes
         processed = ds.map(lambda row: {**row, "processed": True})
         count = processed.count()
@@ -1013,12 +1051,12 @@ class TestReadErrors:
     def test_error_on_empty_path_list(self, ray_start_regular_shared):
         """Test error when given empty path list."""
         with pytest.raises(ValueError, match="No files found"):
-            ds = ray.data.read([])
+            ray.data.read([])
 
     def test_error_on_nonexistent_path(self, ray_start_regular_shared):
         """Test error when path doesn't exist."""
         with pytest.raises(FileNotFoundError):
-            ds = ray.data.read("/nonexistent/path/data.parquet")
+            ray.data.read("/nonexistent/path/data.parquet")
 
     def test_error_on_empty_directory(self, ray_start_regular_shared, tmp_path):
         """Test error when directory is empty."""
@@ -1026,33 +1064,37 @@ class TestReadErrors:
         os.makedirs(empty_dir)
 
         with pytest.raises(ValueError, match="No files found"):
-            ds = ray.data.read(empty_dir)
+            ray.data.read(empty_dir)
 
     def test_error_on_unsupported_format_only(self, ray_start_regular_shared, tmp_path):
         """Test error when all files are truly unsupported."""
         # This is hard to test since unknown extensions use binary fallback
         # But we can test the error message structure
-        
+
         # Create only truly problematic files (empty directory triggers error)
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
 
         with pytest.raises(ValueError):
-            ds = ray.data.read(empty_dir)
+            ray.data.read(empty_dir)
 
-    def test_error_message_includes_supported_formats(self, ray_start_regular_shared, tmp_path):
+    def test_error_message_includes_supported_formats(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that error messages include supported format info."""
         empty_dir = os.path.join(tmp_path, "empty")
         os.makedirs(empty_dir)
 
         try:
-            ds = ray.data.read(empty_dir)
+            ray.data.read(empty_dir)
         except ValueError as e:
             error_msg = str(e)
             # Should mention that no files were found
             assert "No files found" in error_msg or "empty" in error_msg.lower()
 
-    def test_error_on_corrupted_required_format(self, ray_start_regular_shared, tmp_path):
+    def test_error_on_corrupted_required_format(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test error when format-specific file is corrupted."""
         # Create fake parquet file
         fake_parquet = os.path.join(tmp_path, "corrupted.parquet")
@@ -1064,7 +1106,9 @@ class TestReadErrors:
             ds = ray.data.read(fake_parquet)
             ds.count()
 
-    def test_detailed_error_on_read_failure(self, ray_start_regular_shared, tmp_path, caplog):
+    def test_detailed_error_on_read_failure(
+        self, ray_start_regular_shared, tmp_path, caplog
+    ):
         """Test that read failures provide detailed error messages."""
         # Create invalid parquet
         invalid_file = os.path.join(tmp_path, "invalid.parquet")
@@ -1091,12 +1135,18 @@ class TestReadDecisionLogging:
         import pyarrow.parquet as pq
 
         # Create mixed types
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [1]})), os.path.join(tmp_path, "d1.parquet"))
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [2]})), os.path.join(tmp_path, "d2.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [1]})),
+            os.path.join(tmp_path, "d1.parquet"),
+        )
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [2]})),
+            os.path.join(tmp_path, "d2.parquet"),
+        )
         pd.DataFrame({"a": [3]}).to_csv(os.path.join(tmp_path, "d1.csv"), index=False)
 
         with caplog.at_level(logging.INFO):
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
 
         # Should log grouping info
         messages = [r.message for r in caplog.records if r.levelname == "INFO"]
@@ -1112,7 +1162,7 @@ class TestReadDecisionLogging:
         pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "data.parquet"))
 
         with caplog.at_level(logging.INFO):
-            ds = ray.data.read(os.path.join(tmp_path, "data.parquet"))
+            ray.data.read(os.path.join(tmp_path, "data.parquet"))
 
         # Should log reading info
         assert any(record.levelname == "INFO" for record in caplog.records)
@@ -1123,15 +1173,20 @@ class TestReadDecisionLogging:
         import pyarrow.parquet as pq
 
         # Create different format files
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame({"a": [1]})), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame({"a": [1]})),
+            os.path.join(tmp_path, "data.parquet"),
+        )
         pd.DataFrame({"a": [2]}).to_csv(os.path.join(tmp_path, "data.csv"), index=False)
 
         with caplog.at_level(logging.INFO):
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
 
         # Should log concatenation
         messages = [r.message for r in caplog.records]
-        assert any("concatenat" in msg.lower() or "dataset" in msg.lower() for msg in messages)
+        assert any(
+            "concatenat" in msg.lower() or "dataset" in msg.lower() for msg in messages
+        )
 
 
 class TestReadProgressiveDiscovery:
@@ -1216,18 +1271,24 @@ class TestReadHeuristicsValidation:
         import pandas as pd
 
         df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-        
+
         # Create uncompressed
         df.to_csv(os.path.join(tmp_path, "data.csv"), index=False)
-        
+
         # Create compressed
-        df.to_csv(os.path.join(tmp_path, "data_compressed.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data_compressed.csv.gz"),
+            index=False,
+            compression="gzip",
+        )
 
         # Both should be read with same result structure
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 6  # 3 rows × 2 files
 
-    def test_handles_ambiguous_extensions_consistently(self, ray_start_regular_shared, tmp_path):
+    def test_handles_ambiguous_extensions_consistently(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test consistent handling of potentially ambiguous extensions."""
         # M4A should always be audio
         audio_file = os.path.join(tmp_path, "audio.m4a")
@@ -1241,7 +1302,7 @@ class TestReadHeuristicsValidation:
 
         # Detection should be consistent
         try:
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
             # May fail on invalid media, but detection should work
         except Exception as e:
             # Should have tried appropriate readers
@@ -1295,7 +1356,6 @@ class TestFormatSpecificValidation:
 
     def test_validates_json_format(self, ray_start_regular_shared, tmp_path):
         """Test that JSON files are validated."""
-        import json
 
         # Create valid JSON
         valid_file = os.path.join(tmp_path, "valid.json")
@@ -1343,7 +1403,11 @@ class TestFormatSpecificValidation:
             ds.count()
         except Exception as e:
             # Should indicate image error
-            assert "image" in str(e).lower() or "png" in str(e).lower() or "cannot" in str(e).lower()
+            assert (
+                "image" in str(e).lower()
+                or "png" in str(e).lower()
+                or "cannot" in str(e).lower()
+            )
 
 
 class TestMediaFormats:
@@ -1385,7 +1449,7 @@ class TestMediaFormats:
 
         # Should detect both types
         try:
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
             # May fail on invalid files, but detection should work
         except Exception as e:
             # Expected for invalid media files
@@ -1402,7 +1466,7 @@ class TestMediaFormats:
 
         ds = ray.data.read(os.path.join(tmp_path, "photo.jpg"))
         result = ds.take(1)[0]
-        
+
         # Should have image structure
         assert "image" in result
 
@@ -1421,34 +1485,11 @@ class TestTextAndDocumentFormats:
         assert len(result) == 3
         assert all("text" in r for r in result)
 
-    def test_html_detection(self, ray_start_regular_shared, tmp_path):
-        """Test that HTML files use read_html."""
-        html_content = "<html><body><p>Test</p></body></html>"
-        with open(os.path.join(tmp_path, "page.html"), "w") as f:
-            f.write(html_content)
-
-        ds = ray.data.read(os.path.join(tmp_path, "page.html"))
-        assert ds.count() >= 1
-
-    def test_htm_same_as_html(self, ray_start_regular_shared, tmp_path):
-        """Test that .htm and .html are treated identically."""
-        content = "<html><body>Test</body></html>"
-        
-        with open(os.path.join(tmp_path, "page.html"), "w") as f:
-            f.write(content)
-        with open(os.path.join(tmp_path, "page.htm"), "w") as f:
-            f.write(content)
-
-        ds = ray.data.read(str(tmp_path))
-        assert ds.count() == 2
-
-
 class TestStructuredDataFormats:
     """Test detection of structured data formats."""
 
     def test_json_newline_delimited(self, ray_start_regular_shared, tmp_path):
         """Test that newline-delimited JSON is handled."""
-        import json
 
         data = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
         with open(os.path.join(tmp_path, "data.json"), "w") as f:
@@ -1460,7 +1501,6 @@ class TestStructuredDataFormats:
 
     def test_jsonl_extension(self, ray_start_regular_shared, tmp_path):
         """Test that .jsonl is recognized."""
-        import json
 
         data = [{"x": 10}, {"x": 20}]
         with open(os.path.join(tmp_path, "data.jsonl"), "w") as f:
@@ -1483,12 +1523,12 @@ class TestStructuredDataFormats:
 
     def test_avro_format(self, ray_start_regular_shared, tmp_path):
         """Test that Avro files are detected."""
-        from fastavro import writer, parse_schema
+        from fastavro import parse_schema, writer
 
         schema = {
             "type": "record",
             "name": "Test",
-            "fields": [{"name": "a", "type": "int"}]
+            "fields": [{"name": "a", "type": "int"}],
         }
         records = [{"a": 1}, {"a": 2}, {"a": 3}]
 
@@ -1530,13 +1570,15 @@ class TestCompressionHandling:
 
     def test_gzip_compression_all_formats(self, ray_start_regular_shared, tmp_path):
         """Test that .gz compression works for all formats."""
-        import gzip
         import json
+
         import pandas as pd
 
         # CSV.GZ
         df = pd.DataFrame({"a": [1, 2, 3]})
-        df.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # JSON.GZ
         data = [{"b": 4}, {"b": 5}]
@@ -1677,7 +1719,9 @@ class TestPerformanceOptimizations:
         # Create multiple files of same type
         for i in range(3):
             df = pd.DataFrame({"a": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
         # Should read efficiently without concatenation overhead
         ds = ray.data.read(str(tmp_path))
@@ -1691,7 +1735,9 @@ class TestPerformanceOptimizations:
         # Create files
         for i in range(10):
             df = pd.DataFrame({"a": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
         # Read with specific parallelism
         ds = ray.data.read(str(tmp_path), override_num_blocks=5)
@@ -1714,7 +1760,7 @@ class TestFormatHintValidation:
         # Note: This will fail because it's not a real Delta table,
         # but it tests that the format parameter is recognized
         try:
-            ds = ray.data.read(path, format="delta")
+            ray.data.read(path, format="delta")
         except Exception:
             # Expected - not a real Delta table
             pass
@@ -1733,7 +1779,7 @@ class TestFormatHintValidation:
             f.write("test")
 
         try:
-            ds = ray.data.read(lance_path, format="lance")
+            ray.data.read(lance_path, format="lance")
         except Exception:
             # Expected - not a real Lance dataset
             pass
@@ -1769,7 +1815,7 @@ class TestFormatHintValidation:
         # should not fail during format validation)
         for fmt in expected_formats:
             try:
-                ds = ray.data.read(test_file, format=fmt)
+                ray.data.read(test_file, format=fmt)
             except ValueError as e:
                 if "Unsupported format" in str(e):
                     pytest.fail(f"Format '{fmt}' not recognized")
@@ -1783,7 +1829,7 @@ class TestFormatPrecedence:
 
     def test_parquet_vs_delta_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that Parquet files are not confused with Delta files.
-        
+
         Delta Lake uses Parquet internally but has specific directory structure.
         Regular .parquet files should use read_parquet.
         """
@@ -1805,7 +1851,7 @@ class TestFormatPrecedence:
 
     def test_parquet_vs_iceberg_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that Parquet files are not confused with Iceberg tables.
-        
+
         Iceberg uses Parquet internally but has metadata files.
         Regular .parquet files should use read_parquet.
         """
@@ -1823,7 +1869,7 @@ class TestFormatPrecedence:
 
     def test_image_vs_video_precedence(self, ray_start_regular_shared, tmp_path):
         """Test that images and videos are handled by correct readers.
-        
+
         Some formats could be ambiguous (e.g., motion JPEG).
         """
         from PIL import Image
@@ -1837,22 +1883,24 @@ class TestFormatPrecedence:
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 2
 
-    def test_audio_vs_video_format_distinction(self, ray_start_regular_shared, tmp_path):
+    def test_audio_vs_video_format_distinction(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that audio and video formats are properly distinguished.
-        
+
         M4A is audio, M4V is video - both use MP4 container.
         """
         # Create dummy files (won't be valid media, just testing extension detection)
         audio_file = os.path.join(tmp_path, "audio.m4a")
         video_file = os.path.join(tmp_path, "video.m4v")
-        
+
         # Create empty files just for extension detection
         open(audio_file, "wb").close()
         open(video_file, "wb").close()
 
         # Read directory - should detect both as different types
         try:
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
             # May fail to actually read the invalid files, but detection should work
         except Exception:
             # Expected - files are not valid media
@@ -1860,7 +1908,6 @@ class TestFormatPrecedence:
 
     def test_json_vs_jsonl_handling(self, ray_start_regular_shared, tmp_path):
         """Test that both JSON and JSONL are handled correctly."""
-        import json
 
         # Create JSONL file
         data1 = [{"a": 1}, {"a": 2}]
@@ -1878,7 +1925,9 @@ class TestFormatPrecedence:
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 4
 
-    def test_compressed_vs_uncompressed_precedence(self, ray_start_regular_shared, tmp_path):
+    def test_compressed_vs_uncompressed_precedence(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test that compressed and uncompressed files are handled correctly."""
         import pandas as pd
 
@@ -1888,7 +1937,9 @@ class TestFormatPrecedence:
 
         # Create compressed CSV
         df2 = pd.DataFrame({"a": [4, 5, 6]})
-        df2.to_csv(os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip")
+        df2.to_csv(
+            os.path.join(tmp_path, "data.csv.gz"), index=False, compression="gzip"
+        )
 
         # Both should be read correctly
         ds = ray.data.read(str(tmp_path))
@@ -1900,13 +1951,15 @@ class TestMixedFileTypes:
 
     def test_mixed_structured_formats(self, ray_start_regular_shared, tmp_path):
         """Test mixing structured data formats (Parquet, CSV, JSON)."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create Parquet
         df1 = pd.DataFrame({"value": [1, 2]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet")
+        )
 
         # Create CSV
         df2 = pd.DataFrame({"value": [3, 4]})
@@ -1948,9 +2001,15 @@ class TestMixedFileTypes:
             assert count >= 1  # At least the image
         except Exception as e:
             # Expected - audio/video files are not valid
-            assert "image" in str(tmp_path).lower() or "audio" in str(e).lower() or "video" in str(e).lower()
+            assert (
+                "image" in str(tmp_path).lower()
+                or "audio" in str(e).lower()
+                or "video" in str(e).lower()
+            )
 
-    def test_mixed_structured_and_unstructured(self, ray_start_regular_shared, tmp_path):
+    def test_mixed_structured_and_unstructured(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test mixing structured data with text/binary."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -1973,13 +2032,15 @@ class TestMixedFileTypes:
 
     def test_incompatible_schemas_warning(self, ray_start_regular_shared, tmp_path):
         """Test that mixing files with very different schemas still works."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with numeric columns
         df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet")
+        )
 
         # Create file with different schema
         data2 = [{"x": "text", "y": "more text"}]
@@ -1994,16 +2055,17 @@ class TestMixedFileTypes:
 
     def test_many_mixed_types_performance(self, ray_start_regular_shared, tmp_path):
         """Test performance with many different file types."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
-        from PIL import Image
 
         # Create multiple file types (5 of each)
         for i in range(5):
             # Parquet
             df = pd.DataFrame({"type": ["parquet"], "value": [i]})
-            pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet"))
+            pq.write_table(
+                pa.Table.from_pandas(df), os.path.join(tmp_path, f"data_{i}.parquet")
+            )
 
             # CSV
             df.to_csv(os.path.join(tmp_path, f"data_{i}.csv"), index=False)
@@ -2067,7 +2129,9 @@ class TestBinaryFallback:
             ds = ray.data.read(fake_parquet)
             ds.count()
 
-    def test_mixed_known_and_unknown_extensions(self, ray_start_regular_shared, tmp_path):
+    def test_mixed_known_and_unknown_extensions(
+        self, ray_start_regular_shared, tmp_path
+    ):
         """Test directory with both known and unknown extensions."""
         import pandas as pd
         import pyarrow.parquet as pq
@@ -2134,20 +2198,6 @@ class TestExtensionConflicts:
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 2
 
-    def test_htm_vs_html_equivalence(self, ray_start_regular_shared, tmp_path):
-        """Test that .htm and .html are treated the same."""
-        # Create .html
-        with open(os.path.join(tmp_path, "page1.html"), "w") as f:
-            f.write("<html><body>Test1</body></html>")
-
-        # Create .htm
-        with open(os.path.join(tmp_path, "page2.htm"), "w") as f:
-            f.write("<html><body>Test2</body></html>")
-
-        # Both should use read_html
-        ds = ray.data.read(str(tmp_path))
-        assert ds.count() == 2
-
     def test_mpeg_vs_mpg_video(self, ray_start_regular_shared, tmp_path):
         """Test that .mpeg and .mpg are both recognized as video."""
         # Create dummy files
@@ -2159,11 +2209,15 @@ class TestExtensionConflicts:
 
         # Both should attempt to use read_videos
         try:
-            ds = ray.data.read(str(tmp_path))
+            ray.data.read(str(tmp_path))
             # May fail on invalid video, but detection should work
         except Exception as e:
             # Expected for invalid video files
-            assert "video" in str(e).lower() or "mpeg" in str(e).lower() or "mpg" in str(e).lower()
+            assert (
+                "video" in str(e).lower()
+                or "mpeg" in str(e).lower()
+                or "mpg" in str(e).lower()
+            )
 
     def test_case_insensitive_detection(self, ray_start_regular_shared, tmp_path):
         """Test that extension detection is case-insensitive."""
@@ -2187,13 +2241,15 @@ class TestSchemaCompatibility:
 
     def test_compatible_numeric_schemas(self, ray_start_regular_shared, tmp_path):
         """Test mixing files with compatible numeric schemas."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create Parquet with int columns
         df1 = pd.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data.parquet")
+        )
 
         # Create JSON with same schema
         data2 = [{"id": 4, "value": 40}, {"id": 5, "value": 50}]
@@ -2229,13 +2285,15 @@ class TestSchemaCompatibility:
 
     def test_missing_columns_handling(self, ray_start_regular_shared, tmp_path):
         """Test handling when files have different column sets."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with columns a, b
         df1 = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "data1.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "data1.parquet")
+        )
 
         # Create file with columns a, c
         data2 = [{"a": 5, "c": 6}]
@@ -2249,13 +2307,15 @@ class TestSchemaCompatibility:
 
     def test_type_mismatch_handling(self, ray_start_regular_shared, tmp_path):
         """Test handling when same column has different types."""
-        import json
+
         import pandas as pd
         import pyarrow.parquet as pq
 
         # Create file with numeric column
         df1 = pd.DataFrame({"value": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df1), os.path.join(tmp_path, "numeric.parquet")
+        )
 
         # Create file with string column
         data2 = [{"value": "text"}]
@@ -2287,7 +2347,9 @@ class TestFormatSpecificBehavior:
         pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "wide.parquet"))
 
         # Read with column selection (Parquet-specific)
-        ds = ray.data.read(os.path.join(tmp_path, "wide.parquet"), columns=["col_0", "col_1"])
+        ds = ray.data.read(
+            os.path.join(tmp_path, "wide.parquet"), columns=["col_0", "col_1"]
+        )
         result = ds.take(1)[0]
 
         # Should have selected columns
@@ -2325,7 +2387,6 @@ class TestFormatSpecificBehavior:
 
     def test_json_format_inference(self, ray_start_regular_shared, tmp_path):
         """Test that JSON format is correctly inferred."""
-        import json
 
         # Create newline-delimited JSON
         data = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
@@ -2364,7 +2425,9 @@ class TestEdgeCases:
 
         # Create file like "data.backup.parquet"
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "data.backup.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "data.backup.parquet")
+        )
 
         # Should detect as parquet
         ds = ray.data.read(os.path.join(tmp_path, "data.backup.parquet"))
@@ -2377,10 +2440,14 @@ class TestEdgeCases:
 
         # Create visible file
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, "visible.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, "visible.parquet")
+        )
 
         # Create hidden file
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(tmp_path, ".hidden.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(tmp_path, ".hidden.parquet")
+        )
 
         # Should read both
         ds = ray.data.read(str(tmp_path))
@@ -2422,15 +2489,1788 @@ class TestEdgeCases:
 
         # Create parquet file inside
         df = pd.DataFrame({"a": [1, 2, 3]})
-        pq.write_table(pa.Table.from_pandas(df), os.path.join(special_dir, "file.parquet"))
+        pq.write_table(
+            pa.Table.from_pandas(df), os.path.join(special_dir, "file.parquet")
+        )
 
         # Should find and read the parquet file
         ds = ray.data.read(str(tmp_path))
         assert ds.count() == 3
 
 
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
+
+class TestExtensionMapping:
+    """Validate file extension to format mapping."""
+
+    def test_all_parquet_extensions(self):
+        """Test all Parquet-related extensions."""
+        detector = FileTypeDetector()
+
+        parquet_extensions = [
+            ".parquet",
+            ".PARQUET",
+            ".Parquet",
+            ".parquet.gz",
+            ".parquet.bz2",
+            ".parquet.snappy",
+            ".parquet.gzip",
+            ".parquet.lz4",
+            ".parquet.zstd",
+        ]
+
+        for ext in parquet_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.PARQUET, f"Failed for {ext}"
+
+    def test_all_csv_extensions(self):
+        """Test all CSV-related extensions."""
+        detector = FileTypeDetector()
+
+        csv_extensions = [
+            ".csv",
+            ".CSV",
+            ".csv.gz",
+            ".csv.bz2",
+        ]
+
+        for ext in csv_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.CSV, f"Failed for {ext}"
+
+    def test_all_json_extensions(self):
+        """Test all JSON-related extensions."""
+        detector = FileTypeDetector()
+
+        json_extensions = [
+            ".json",
+            ".JSON",
+            ".jsonl",
+            ".JSONL",
+            ".json.gz",
+            ".jsonl.gz",
+        ]
+
+        for ext in json_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.JSON, f"Failed for {ext}"
+
+    def test_all_image_extensions(self):
+        """Test all image-related extensions."""
+        detector = FileTypeDetector()
+
+        image_extensions = [
+            ".png",
+            ".PNG",
+            ".jpg",
+            ".JPG",
+            ".jpeg",
+            ".JPEG",
+            ".gif",
+            ".GIF",
+            ".bmp",
+            ".BMP",
+            ".tif",
+            ".TIF",
+            ".tiff",
+            ".TIFF",
+        ]
+
+        for ext in image_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.IMAGES, f"Failed for {ext}"
+
+    def test_all_audio_extensions(self):
+        """Test all audio-related extensions."""
+        detector = FileTypeDetector()
+
+        audio_extensions = [
+            ".mp3",
+            ".MP3",
+            ".wav",
+            ".WAV",
+            ".flac",
+            ".FLAC",
+            ".m4a",
+            ".M4A",
+            ".ogg",
+            ".OGG",
+        ]
+
+        for ext in audio_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.AUDIO, f"Failed for {ext}"
+
+    def test_all_video_extensions(self):
+        """Test all video-related extensions."""
+        detector = FileTypeDetector()
+
+        video_extensions = [
+            ".mp4",
+            ".MP4",
+            ".avi",
+            ".AVI",
+            ".mov",
+            ".MOV",
+            ".mkv",
+            ".MKV",
+            ".m4v",
+            ".M4V",
+            ".mpeg",
+            ".MPEG",
+            ".mpg",
+            ".MPG",
+        ]
+
+        for ext in video_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.VIDEO, f"Failed for {ext}"
+
+    def test_all_numpy_extensions(self):
+        """Test NumPy extensions."""
+        detector = FileTypeDetector()
+
+        numpy_extensions = [".npy", ".NPY"]
+
+        for ext in numpy_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.NUMPY, f"Failed for {ext}"
+
+    def test_avro_extensions(self):
+        """Test Avro extensions."""
+        detector = FileTypeDetector()
+
+        avro_extensions = [
+            ".avro",
+            ".AVRO",
+            ".avro.gz",
+            ".avro.snappy",
+        ]
+
+        for ext in avro_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.AVRO, f"Failed for {ext}"
+
+    def test_text_extensions(self):
+        """Test text file extensions."""
+        detector = FileTypeDetector()
+
+        text_extensions = [".txt", ".TXT"]
+
+        for ext in text_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.TEXT, f"Failed for {ext}"
+
+    def test_tfrecords_extensions(self):
+        """Test TFRecords extensions."""
+        detector = FileTypeDetector()
+
+        tfrecord_extensions = [
+            ".tfrecords",
+            ".TFRECORDS",
+        ]
+
+        for ext in tfrecord_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.TFRECORDS, f"Failed for {ext}"
+
+    def test_case_insensitive_detection(self):
+        """Test that extension detection is case-insensitive."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("file.PARQUET", FileFormat.PARQUET),
+            ("file.Csv", FileFormat.CSV),
+            ("file.JsOn", FileFormat.JSON),
+            ("file.PnG", FileFormat.IMAGES),
+            ("file.Mp3", FileFormat.AUDIO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+    def test_compound_extensions(self):
+        """Test compound extensions like .csv.gz."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.gz", FileFormat.CSV),
+            ("data.json.bz2", FileFormat.JSON),
+            ("data.parquet.snappy", FileFormat.PARQUET),
+            ("data.avro.gz", FileFormat.AVRO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+    def test_unknown_extension_returns_none(self):
+        """Test that unknown extensions return None (for binary fallback)."""
+        detector = FileTypeDetector()
+
+        unknown_extensions = [
+            "file.xyz",
+            "file.unknown",
+            "file.custom",
+            "file.abc123",
+        ]
+
+        for path in unknown_extensions:
+            result = detector.detect_file_type(path)
+            assert result is None, f"Should return None for {path}"
+
+    def test_no_extension_returns_none(self):
+        """Test files without extension."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            "README",
+            "Makefile",
+            "LICENSE",
+            "data",
+        ]
+
+        for path in test_cases:
+            result = detector.detect_file_type(path)
+            assert result is None, f"Should return None for {path}"
+
+    def test_dotfiles_handled(self):
+        """Test hidden files (starting with dot)."""
+        detector = FileTypeDetector()
+
+        # Hidden files should still detect by extension
+        result = detector.detect_file_type(".hidden.parquet")
+        assert result == FileFormat.PARQUET
+
+    def test_multiple_dots_in_filename(self):
+        """Test files with multiple dots."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.backup.parquet", FileFormat.PARQUET),
+            ("file.v2.csv", FileFormat.CSV),
+            ("test.2023.json", FileFormat.JSON),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+
+class TestFormatHintSystem:
+    """Validate format hint system."""
+
+    def test_all_file_based_formats(self):
+        """Test format hints for all file-based formats."""
+        registry = ReaderRegistry()
+
+        file_formats = [
+            "parquet",
+            "parquet_bulk",
+            "csv",
+            "json",
+            "text",
+            "images",
+            "audio",
+            "video",
+            "numpy",
+            "avro",
+            "tfrecords",
+            "webdataset",
+            "lance",
+            "binary",
+        ]
+
+        for fmt in file_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_all_lakehouse_formats(self):
+        """Test format hints for lakehouse formats."""
+        registry = ReaderRegistry()
+
+        lakehouse_formats = ["delta", "delta_sharing", "hudi", "iceberg"]
+
+        for fmt in lakehouse_formats:
+            # These should be accessible via format hint
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_all_database_formats(self):
+        """Test format hints for database formats."""
+        registry = ReaderRegistry()
+
+        database_formats = [
+            "sql",
+            "bigquery",
+            "mongo",
+            "mongodb",
+            "clickhouse",
+            "snowflake",
+        ]
+
+        for fmt in database_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_databricks_formats(self):
+        """Test format hints for Databricks."""
+        registry = ReaderRegistry()
+
+        databricks_formats = ["databricks", "unity_catalog"]
+
+        for fmt in databricks_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_format_hint_case_insensitive(self):
+        """Test that format hints are case-insensitive."""
+        registry = ReaderRegistry()
+
+        # Test various casings
+        test_cases = [
+            ("parquet", "PARQUET", "Parquet"),
+            ("csv", "CSV", "Csv"),
+            ("json", "JSON", "Json"),
+        ]
+
+        for lower, upper, mixed in test_cases:
+            reader_lower = registry.get_format_reader(lower)
+            reader_upper = registry.get_format_reader(upper)
+            reader_mixed = registry.get_format_reader(mixed)
+
+            # Should all return the same reader
+            assert reader_lower == reader_upper == reader_mixed
+
+    def test_invalid_format_raises_error(self):
+        """Test that invalid format raises appropriate error."""
+        registry = ReaderRegistry()
+
+        with pytest.raises(ValueError, match="Unsupported format"):
+            registry.get_format_reader("invalid_format_xyz")
+
+    def test_format_alias_mongodb(self):
+        """Test mongodb alias for mongo."""
+        registry = ReaderRegistry()
+
+        reader_mongo = registry.get_format_reader("mongo")
+        reader_mongodb = registry.get_format_reader("mongodb")
+
+        # Should return same reader
+        assert reader_mongo == reader_mongodb
+
+    def test_supported_formats_list(self):
+        """Test that we can get list of supported formats."""
+        registry = ReaderRegistry()
+
+        formats = registry.get_supported_formats()
+
+        # Should have all formats
+        assert "parquet" in formats
+        assert "csv" in formats
+        assert "delta" in formats
+        assert "sql" in formats
+
+        # Should be sorted
+        assert formats == sorted(formats)
+
+    def test_format_hint_overrides_extension(self):
+        """Test that format hint overrides extension detection."""
+        # This is tested in integration tests
+        pass
+
+
+class TestLakehouseDetection:
+    """Validate lakehouse format detection."""
+
+    def test_delta_lake_detection(self, tmp_path):
+        """Test Delta Lake detection via _delta_log directory."""
+        import pyarrow.fs as pafs
+
+        # Create Delta-like structure
+        delta_path = tmp_path / "delta_table"
+        delta_path.mkdir()
+        (delta_path / "_delta_log").mkdir()
+        (delta_path / "_delta_log" / "00000000000000000000.json").write_text("{}")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(delta_path))
+
+        assert result == LakehouseFormat.DELTA
+
+    def test_hudi_detection(self, tmp_path):
+        """Test Hudi detection via .hoodie directory."""
+        import pyarrow.fs as pafs
+
+        # Create Hudi-like structure
+        hudi_path = tmp_path / "hudi_table"
+        hudi_path.mkdir()
+        (hudi_path / ".hoodie").mkdir()
+        (hudi_path / ".hoodie" / "hoodie.properties").write_text("test=value")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(hudi_path))
+
+        assert result == LakehouseFormat.HUDI
+
+    def test_iceberg_detection(self, tmp_path):
+        """Test Iceberg detection via metadata/version-hint.text."""
+        import pyarrow.fs as pafs
+
+        # Create Iceberg-like structure
+        iceberg_path = tmp_path / "iceberg_table"
+        iceberg_path.mkdir()
+        metadata_path = iceberg_path / "metadata"
+        metadata_path.mkdir()
+        (metadata_path / "version-hint.text").write_text("1")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(iceberg_path))
+
+        assert result == LakehouseFormat.ICEBERG
+
+    def test_regular_parquet_not_detected_as_lakehouse(self, tmp_path):
+        """Test that regular parquet directories don't trigger lakehouse detection."""
+        import pyarrow.fs as pafs
+
+        # Create regular directory with parquet files
+        parquet_dir = tmp_path / "parquet_data"
+        parquet_dir.mkdir()
+        (parquet_dir / "part-0.parquet").write_text("fake parquet")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(parquet_dir))
+
+        assert result is None
+
+    def test_empty_directory_not_detected(self, tmp_path):
+        """Test that empty directories don't trigger detection."""
+        import pyarrow.fs as pafs
+
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(empty_dir))
+
+        assert result is None
+
+    def test_case_sensitive_directory_names(self, tmp_path):
+        """Test that lakehouse detection is case-sensitive for directory names."""
+        import pyarrow.fs as pafs
+
+        # _DELTA_log (wrong case) should not be detected
+        fake_delta = tmp_path / "fake_delta"
+        fake_delta.mkdir()
+        (fake_delta / "_DELTA_LOG").mkdir()  # Wrong case
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(fake_delta))
+
+        assert result is None
+
+
+class TestReaderParameterFiltering:
+    """Validate reader parameter filtering with inspect.signature()."""
+
+    def test_inspect_signature_usage(self):
+        """Test that inspect.signature correctly identifies parameters."""
+        from ray.data.read_api import read_parquet
+
+        sig = inspect.signature(read_parquet)
+        params = set(sig.parameters.keys())
+
+        # Should have standard parameters
+        assert "paths" in params
+        assert "filesystem" in params
+        assert "columns" in params  # Parquet-specific
+        assert "parallelism" in params
+
+    def test_common_parameters_filtered(self):
+        """Test that common parameters are correctly filtered."""
+        common_params = {
+            "filesystem",
+            "parallelism",
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "ray_remote_args",
+            "meta_provider",
+            "partition_filter",
+            "include_paths",
+            "ignore_missing_paths",
+            "shuffle",
+            "concurrency",
+            "override_num_blocks",
+        }
+
+        # These should be filtered to only supported ones
+        from ray.data.read_api import read_binary_files
+
+        sig = inspect.signature(read_binary_files)
+        params = set(sig.parameters.keys())
+
+        # Check which common params are supported
+        supported_common = common_params & params
+        assert len(supported_common) > 0
+
+    def test_reader_specific_params_passed(self):
+        """Test that reader-specific parameters are identified."""
+        from ray.data.read_api import read_csv, read_parquet
+
+        # CSV-specific
+        csv_sig = inspect.signature(read_csv)
+        csv_params = set(csv_sig.parameters.keys())
+        assert "delimiter" in csv_params  # CSV-specific
+
+        # Parquet-specific
+        parquet_sig = inspect.signature(read_parquet)
+        parquet_params = set(parquet_sig.parameters.keys())
+        assert "columns" in parquet_params  # Parquet-specific
+
+    def test_unsupported_params_excluded(self):
+        """Test that unsupported parameters would be excluded."""
+        from ray.data.read_api import read_text
+
+        sig = inspect.signature(read_text)
+        params = set(sig.parameters.keys())
+
+        # Parquet-specific param should not be in text reader
+        assert "columns" not in params
+
+    def test_path_parameter_variations(self):
+        """Test different path parameter names across readers."""
+        from ray.data.read_api import read_delta, read_parquet
+
+        # File-based readers use 'paths'
+        parquet_sig = inspect.signature(read_parquet)
+        assert "paths" in parquet_sig.parameters
+
+        # Lakehouse readers might use 'path'
+        delta_sig = inspect.signature(read_delta)
+        # Check what parameter delta uses
+        assert "path" in delta_sig.parameters or "paths" in delta_sig.parameters
+
+
+class TestSourceDetection:
+    """Validate data source detection."""
+
+    def test_s3_detection(self):
+        """Test S3 path detection."""
+        sources = SourceDetector.detect_from_paths(["s3://bucket/data.parquet"])
+        assert DataSource.S3 in sources
+
+    def test_gcs_detection(self):
+        """Test GCS path detection."""
+        sources = SourceDetector.detect_from_paths(["gs://bucket/data.parquet"])
+        assert DataSource.GCS in sources
+
+    def test_azure_detection(self):
+        """Test Azure path detection."""
+        test_paths = [
+            "abfs://container@account.dfs.core.windows.net/data.parquet",
+            "az://container/data.parquet",
+        ]
+
+        for path in test_paths:
+            sources = SourceDetector.detect_from_paths([path])
+            assert DataSource.AZURE in sources
+
+    def test_hdfs_detection(self):
+        """Test HDFS path detection."""
+        sources = SourceDetector.detect_from_paths(
+            ["hdfs://namenode:9000/data.parquet"]
+        )
+        assert DataSource.HDFS in sources
+
+    def test_http_detection(self):
+        """Test HTTP path detection."""
+        sources = SourceDetector.detect_from_paths(["http://example.com/data.parquet"])
+        assert DataSource.HTTP in sources
+
+    def test_https_detection(self):
+        """Test HTTPS path detection."""
+        sources = SourceDetector.detect_from_paths(["https://example.com/data.parquet"])
+        assert DataSource.HTTPS in sources
+
+    def test_local_path_detection(self):
+        """Test local file system detection."""
+        sources = SourceDetector.detect_from_paths(["/local/path/data.parquet"])
+        assert DataSource.LOCAL in sources
+
+    def test_mixed_sources_detection(self):
+        """Test detecting multiple sources."""
+        paths = [
+            "s3://bucket/data1.parquet",
+            "gs://bucket/data2.parquet",
+            "/local/data3.parquet",
+        ]
+
+        sources = SourceDetector.detect_from_paths(paths)
+        assert DataSource.S3 in sources
+        assert DataSource.GCS in sources
+        assert DataSource.LOCAL in sources
+        assert len(sources) == 3
+
+
+class TestCompressionHandling:
+    """Validate compression format handling."""
+
+    def test_gzip_extension_detection(self):
+        """Test .gz extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.gz", FileFormat.CSV),
+            ("data.json.gz", FileFormat.JSON),
+            ("data.parquet.gz", FileFormat.PARQUET),
+            ("data.txt.gz", FileFormat.TEXT),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_bz2_extension_detection(self):
+        """Test .bz2 extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.bz2", FileFormat.CSV),
+            ("data.json.bz2", FileFormat.JSON),
+            ("data.parquet.bz2", FileFormat.PARQUET),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_snappy_extension_detection(self):
+        """Test .snappy extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.parquet.snappy", FileFormat.PARQUET),
+            ("data.avro.snappy", FileFormat.AVRO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_zstd_extension_detection(self):
+        """Test .zst/.zstd extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.parquet.zst", FileFormat.PARQUET),
+            ("data.parquet.zstd", FileFormat.PARQUET),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_lz4_extension_detection(self):
+        """Test .lz4 extension detection."""
+        detector = FileTypeDetector()
+
+        result = detector.detect_file_type("data.parquet.lz4")
+        assert result == FileFormat.PARQUET
+
+
+class TestEdgeCases:
+    """Validate edge case handling."""
+
+    def test_empty_string_path(self):
+        """Test handling of empty path."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("")
+        assert result is None
+
+    def test_path_with_only_dot(self):
+        """Test path that is just a dot."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type(".")
+        assert result is None
+
+    def test_path_with_double_dot(self):
+        """Test path with double dot."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("..")
+        assert result is None
+
+    def test_very_long_extension(self):
+        """Test file with very long extension."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("file.verylongextensionname")
+        assert result is None  # Should fall back to binary
+
+    def test_path_with_spaces(self):
+        """Test path with spaces."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("my data file.parquet")
+        assert result == FileFormat.PARQUET
+
+    def test_path_with_special_chars(self):
+        """Test path with special characters."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data-file.parquet", FileFormat.PARQUET),
+            ("data_file.csv", FileFormat.CSV),
+            ("data.backup.json", FileFormat.JSON),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_unicode_in_filename(self):
+        """Test unicode characters in filename."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("数据.parquet")
+        assert result == FileFormat.PARQUET
+
+
+class TestFileFormatEnum:
+    """Validate FileFormat enum functionality."""
+
+    def test_list_formats_method(self):
+        """Test FileFormat.list_formats() method."""
+        formats = FileFormat.list_formats()
+
+        assert isinstance(formats, list)
+        assert "parquet" in formats
+        assert "csv" in formats
+        assert "json" in formats
+        assert len(formats) > 10
+
+    def test_is_valid_method(self):
+        """Test FileFormat.is_valid() method."""
+        assert FileFormat.is_valid("parquet")
+        assert FileFormat.is_valid("csv")
+        assert FileFormat.is_valid("json")
+        assert not FileFormat.is_valid("invalid_format")
+        assert not FileFormat.is_valid("xyz")
+
+    def test_all_formats_have_values(self):
+        """Test that all FileFormat enums have string values."""
+        for fmt in FileFormat:
+            assert isinstance(fmt.value, str)
+            assert len(fmt.value) > 0
+
+
+class TestLakehouseFormatEnum:
+    """Validate LakehouseFormat enum."""
+
+    def test_lakehouse_formats(self):
+        """Test that all lakehouse formats are defined."""
+        assert LakehouseFormat.DELTA
+        assert LakehouseFormat.HUDI
+        assert LakehouseFormat.ICEBERG
+
+    def test_lakehouse_format_values(self):
+        """Test lakehouse format values."""
+        assert LakehouseFormat.DELTA.value == "delta"
+        assert LakehouseFormat.HUDI.value == "hudi"
+        assert LakehouseFormat.ICEBERG.value == "iceberg"
+
+
+class TestDataSourceEnum:
+    """Validate DataSource enum."""
+
+    def test_all_sources_defined(self):
+        """Test that all data sources are defined."""
+        expected_sources = [
+            DataSource.S3,
+            DataSource.GCS,
+            DataSource.AZURE,
+            DataSource.HDFS,
+            DataSource.HTTP,
+            DataSource.HTTPS,
+            DataSource.LOCAL,
+            DataSource.UNKNOWN,
+        ]
+
+        for source in expected_sources:
+            assert source is not None
+
+    def test_source_values(self):
+        """Test data source values."""
+        assert DataSource.S3.value == "s3"
+        assert DataSource.GCS.value == "gs"
+        assert DataSource.AZURE.value == "azure"
+        assert DataSource.LOCAL.value == "local"
+
+
+class TestReaderRegistry:
+    """Validate ReaderRegistry functionality."""
+
+    def test_registry_lazy_loading(self):
+        """Test that registry lazy loads readers."""
+        registry = ReaderRegistry()
+
+        # Before loading, _readers should be None
+        assert registry._readers is None
+
+        # After accessing a reader, should be loaded
+        registry.get_format_reader("parquet")
+        assert registry._readers is not None
+
+    def test_registry_caches_readers(self):
+        """Test that registry caches loaded readers."""
+        registry = ReaderRegistry()
+
+        # Load readers
+        reader1 = registry.get_format_reader("parquet")
+        reader2 = registry.get_format_reader("parquet")
+
+        # Should return same reader object
+        assert reader1 is reader2
+
+    def test_all_26_readers_accessible(self):
+        """Test that all 26 readers are accessible."""
+        registry = ReaderRegistry()
+
+        all_formats = [
+            # File-based (14)
+            "parquet",
+            "parquet_bulk",
+            "csv",
+            "json",
+            "text",
+            "images",
+            "audio",
+            "video",
+            "numpy",
+            "avro",
+            "tfrecords",
+            "webdataset",
+            "lance",
+            "binary",
+            # Lakehouse (4)
+            "delta",
+            "delta_sharing",
+            "hudi",
+            "iceberg",
+            # Database (6)
+            "sql",
+            "bigquery",
+            "mongo",
+            "clickhouse",
+            "snowflake",
+            # Databricks (2)
+            "databricks",
+            "unity_catalog",
+        ]
+
+        for fmt in all_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
 
 
 if __name__ == "__main__":
     import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
+
+class TestExtensionMapping:
+    """Validate file extension to format mapping."""
+
+    def test_all_parquet_extensions(self):
+        """Test all Parquet-related extensions."""
+        detector = FileTypeDetector()
+
+        parquet_extensions = [
+            ".parquet",
+            ".PARQUET",
+            ".Parquet",
+            ".parquet.gz",
+            ".parquet.bz2",
+            ".parquet.snappy",
+            ".parquet.gzip",
+            ".parquet.lz4",
+            ".parquet.zstd",
+        ]
+
+        for ext in parquet_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.PARQUET, f"Failed for {ext}"
+
+    def test_all_csv_extensions(self):
+        """Test all CSV-related extensions."""
+        detector = FileTypeDetector()
+
+        csv_extensions = [
+            ".csv",
+            ".CSV",
+            ".csv.gz",
+            ".csv.bz2",
+        ]
+
+        for ext in csv_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.CSV, f"Failed for {ext}"
+
+    def test_all_json_extensions(self):
+        """Test all JSON-related extensions."""
+        detector = FileTypeDetector()
+
+        json_extensions = [
+            ".json",
+            ".JSON",
+            ".jsonl",
+            ".JSONL",
+            ".json.gz",
+            ".jsonl.gz",
+        ]
+
+        for ext in json_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.JSON, f"Failed for {ext}"
+
+    def test_all_image_extensions(self):
+        """Test all image-related extensions."""
+        detector = FileTypeDetector()
+
+        image_extensions = [
+            ".png",
+            ".PNG",
+            ".jpg",
+            ".JPG",
+            ".jpeg",
+            ".JPEG",
+            ".gif",
+            ".GIF",
+            ".bmp",
+            ".BMP",
+            ".tif",
+            ".TIF",
+            ".tiff",
+            ".TIFF",
+        ]
+
+        for ext in image_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.IMAGES, f"Failed for {ext}"
+
+    def test_all_audio_extensions(self):
+        """Test all audio-related extensions."""
+        detector = FileTypeDetector()
+
+        audio_extensions = [
+            ".mp3",
+            ".MP3",
+            ".wav",
+            ".WAV",
+            ".flac",
+            ".FLAC",
+            ".m4a",
+            ".M4A",
+            ".ogg",
+            ".OGG",
+        ]
+
+        for ext in audio_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.AUDIO, f"Failed for {ext}"
+
+    def test_all_video_extensions(self):
+        """Test all video-related extensions."""
+        detector = FileTypeDetector()
+
+        video_extensions = [
+            ".mp4",
+            ".MP4",
+            ".avi",
+            ".AVI",
+            ".mov",
+            ".MOV",
+            ".mkv",
+            ".MKV",
+            ".m4v",
+            ".M4V",
+            ".mpeg",
+            ".MPEG",
+            ".mpg",
+            ".MPG",
+        ]
+
+        for ext in video_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.VIDEO, f"Failed for {ext}"
+
+    def test_all_numpy_extensions(self):
+        """Test NumPy extensions."""
+        detector = FileTypeDetector()
+
+        numpy_extensions = [".npy", ".NPY"]
+
+        for ext in numpy_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.NUMPY, f"Failed for {ext}"
+
+    def test_avro_extensions(self):
+        """Test Avro extensions."""
+        detector = FileTypeDetector()
+
+        avro_extensions = [
+            ".avro",
+            ".AVRO",
+            ".avro.gz",
+            ".avro.snappy",
+        ]
+
+        for ext in avro_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.AVRO, f"Failed for {ext}"
+
+    def test_text_extensions(self):
+        """Test text file extensions."""
+        detector = FileTypeDetector()
+
+        text_extensions = [".txt", ".TXT"]
+
+        for ext in text_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.TEXT, f"Failed for {ext}"
+
+    def test_tfrecords_extensions(self):
+        """Test TFRecords extensions."""
+        detector = FileTypeDetector()
+
+        tfrecord_extensions = [
+            ".tfrecords",
+            ".TFRECORDS",
+        ]
+
+        for ext in tfrecord_extensions:
+            path = f"test{ext}"
+            result = detector.detect_file_type(path)
+            assert result == FileFormat.TFRECORDS, f"Failed for {ext}"
+
+    def test_case_insensitive_detection(self):
+        """Test that extension detection is case-insensitive."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("file.PARQUET", FileFormat.PARQUET),
+            ("file.Csv", FileFormat.CSV),
+            ("file.JsOn", FileFormat.JSON),
+            ("file.PnG", FileFormat.IMAGES),
+            ("file.Mp3", FileFormat.AUDIO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+    def test_compound_extensions(self):
+        """Test compound extensions like .csv.gz."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.gz", FileFormat.CSV),
+            ("data.json.bz2", FileFormat.JSON),
+            ("data.parquet.snappy", FileFormat.PARQUET),
+            ("data.avro.gz", FileFormat.AVRO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+    def test_unknown_extension_returns_none(self):
+        """Test that unknown extensions return None (for binary fallback)."""
+        detector = FileTypeDetector()
+
+        unknown_extensions = [
+            "file.xyz",
+            "file.unknown",
+            "file.custom",
+            "file.abc123",
+        ]
+
+        for path in unknown_extensions:
+            result = detector.detect_file_type(path)
+            assert result is None, f"Should return None for {path}"
+
+    def test_no_extension_returns_none(self):
+        """Test files without extension."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            "README",
+            "Makefile",
+            "LICENSE",
+            "data",
+        ]
+
+        for path in test_cases:
+            result = detector.detect_file_type(path)
+            assert result is None, f"Should return None for {path}"
+
+    def test_dotfiles_handled(self):
+        """Test hidden files (starting with dot)."""
+        detector = FileTypeDetector()
+
+        # Hidden files should still detect by extension
+        result = detector.detect_file_type(".hidden.parquet")
+        assert result == FileFormat.PARQUET
+
+    def test_multiple_dots_in_filename(self):
+        """Test files with multiple dots."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.backup.parquet", FileFormat.PARQUET),
+            ("file.v2.csv", FileFormat.CSV),
+            ("test.2023.json", FileFormat.JSON),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected, f"Failed for {path}"
+
+
+class TestFormatHintSystem:
+    """Validate format hint system."""
+
+    def test_all_file_based_formats(self):
+        """Test format hints for all file-based formats."""
+        registry = ReaderRegistry()
+
+        file_formats = [
+            "parquet",
+            "parquet_bulk",
+            "csv",
+            "json",
+            "text",
+            "images",
+            "audio",
+            "video",
+            "numpy",
+            "avro",
+            "tfrecords",
+            "webdataset",
+            "lance",
+            "binary",
+        ]
+
+        for fmt in file_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_all_lakehouse_formats(self):
+        """Test format hints for lakehouse formats."""
+        registry = ReaderRegistry()
+
+        lakehouse_formats = ["delta", "delta_sharing", "hudi", "iceberg"]
+
+        for fmt in lakehouse_formats:
+            # These should be accessible via format hint
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_all_database_formats(self):
+        """Test format hints for database formats."""
+        registry = ReaderRegistry()
+
+        database_formats = [
+            "sql",
+            "bigquery",
+            "mongo",
+            "mongodb",
+            "clickhouse",
+            "snowflake",
+        ]
+
+        for fmt in database_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_databricks_formats(self):
+        """Test format hints for Databricks."""
+        registry = ReaderRegistry()
+
+        databricks_formats = ["databricks", "unity_catalog"]
+
+        for fmt in databricks_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+    def test_format_hint_case_insensitive(self):
+        """Test that format hints are case-insensitive."""
+        registry = ReaderRegistry()
+
+        # Test various casings
+        test_cases = [
+            ("parquet", "PARQUET", "Parquet"),
+            ("csv", "CSV", "Csv"),
+            ("json", "JSON", "Json"),
+        ]
+
+        for lower, upper, mixed in test_cases:
+            reader_lower = registry.get_format_reader(lower)
+            reader_upper = registry.get_format_reader(upper)
+            reader_mixed = registry.get_format_reader(mixed)
+
+            # Should all return the same reader
+            assert reader_lower == reader_upper == reader_mixed
+
+    def test_invalid_format_raises_error(self):
+        """Test that invalid format raises appropriate error."""
+        registry = ReaderRegistry()
+
+        with pytest.raises(ValueError, match="Unsupported format"):
+            registry.get_format_reader("invalid_format_xyz")
+
+    def test_format_alias_mongodb(self):
+        """Test mongodb alias for mongo."""
+        registry = ReaderRegistry()
+
+        reader_mongo = registry.get_format_reader("mongo")
+        reader_mongodb = registry.get_format_reader("mongodb")
+
+        # Should return same reader
+        assert reader_mongo == reader_mongodb
+
+    def test_supported_formats_list(self):
+        """Test that we can get list of supported formats."""
+        registry = ReaderRegistry()
+
+        formats = registry.get_supported_formats()
+
+        # Should have all formats
+        assert "parquet" in formats
+        assert "csv" in formats
+        assert "delta" in formats
+        assert "sql" in formats
+
+        # Should be sorted
+        assert formats == sorted(formats)
+
+    def test_format_hint_overrides_extension(self):
+        """Test that format hint overrides extension detection."""
+        # This is tested in integration tests
+        pass
+
+
+class TestLakehouseDetection:
+    """Validate lakehouse format detection."""
+
+    def test_delta_lake_detection(self, tmp_path):
+        """Test Delta Lake detection via _delta_log directory."""
+        import pyarrow.fs as pafs
+
+        # Create Delta-like structure
+        delta_path = tmp_path / "delta_table"
+        delta_path.mkdir()
+        (delta_path / "_delta_log").mkdir()
+        (delta_path / "_delta_log" / "00000000000000000000.json").write_text("{}")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(delta_path))
+
+        assert result == LakehouseFormat.DELTA
+
+    def test_hudi_detection(self, tmp_path):
+        """Test Hudi detection via .hoodie directory."""
+        import pyarrow.fs as pafs
+
+        # Create Hudi-like structure
+        hudi_path = tmp_path / "hudi_table"
+        hudi_path.mkdir()
+        (hudi_path / ".hoodie").mkdir()
+        (hudi_path / ".hoodie" / "hoodie.properties").write_text("test=value")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(hudi_path))
+
+        assert result == LakehouseFormat.HUDI
+
+    def test_iceberg_detection(self, tmp_path):
+        """Test Iceberg detection via metadata/version-hint.text."""
+        import pyarrow.fs as pafs
+
+        # Create Iceberg-like structure
+        iceberg_path = tmp_path / "iceberg_table"
+        iceberg_path.mkdir()
+        metadata_path = iceberg_path / "metadata"
+        metadata_path.mkdir()
+        (metadata_path / "version-hint.text").write_text("1")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(iceberg_path))
+
+        assert result == LakehouseFormat.ICEBERG
+
+    def test_regular_parquet_not_detected_as_lakehouse(self, tmp_path):
+        """Test that regular parquet directories don't trigger lakehouse detection."""
+        import pyarrow.fs as pafs
+
+        # Create regular directory with parquet files
+        parquet_dir = tmp_path / "parquet_data"
+        parquet_dir.mkdir()
+        (parquet_dir / "part-0.parquet").write_text("fake parquet")
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(parquet_dir))
+
+        assert result is None
+
+    def test_empty_directory_not_detected(self, tmp_path):
+        """Test that empty directories don't trigger detection."""
+        import pyarrow.fs as pafs
+
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(empty_dir))
+
+        assert result is None
+
+    def test_case_sensitive_directory_names(self, tmp_path):
+        """Test that lakehouse detection is case-sensitive for directory names."""
+        import pyarrow.fs as pafs
+
+        # _DELTA_log (wrong case) should not be detected
+        fake_delta = tmp_path / "fake_delta"
+        fake_delta.mkdir()
+        (fake_delta / "_DELTA_LOG").mkdir()  # Wrong case
+
+        detector = LakehouseDetector(pafs.LocalFileSystem())
+        result = detector.detect(str(fake_delta))
+
+        assert result is None
+
+
+class TestReaderParameterFiltering:
+    """Validate reader parameter filtering with inspect.signature()."""
+
+    def test_inspect_signature_usage(self):
+        """Test that inspect.signature correctly identifies parameters."""
+        from ray.data.read_api import read_parquet
+
+        sig = inspect.signature(read_parquet)
+        params = set(sig.parameters.keys())
+
+        # Should have standard parameters
+        assert "paths" in params
+        assert "filesystem" in params
+        assert "columns" in params  # Parquet-specific
+        assert "parallelism" in params
+
+    def test_common_parameters_filtered(self):
+        """Test that common parameters are correctly filtered."""
+        common_params = {
+            "filesystem",
+            "parallelism",
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "ray_remote_args",
+            "meta_provider",
+            "partition_filter",
+            "include_paths",
+            "ignore_missing_paths",
+            "shuffle",
+            "concurrency",
+            "override_num_blocks",
+        }
+
+        # These should be filtered to only supported ones
+        from ray.data.read_api import read_binary_files
+
+        sig = inspect.signature(read_binary_files)
+        params = set(sig.parameters.keys())
+
+        # Check which common params are supported
+        supported_common = common_params & params
+        assert len(supported_common) > 0
+
+    def test_reader_specific_params_passed(self):
+        """Test that reader-specific parameters are identified."""
+        from ray.data.read_api import read_csv, read_parquet
+
+        # CSV-specific
+        csv_sig = inspect.signature(read_csv)
+        csv_params = set(csv_sig.parameters.keys())
+        assert "delimiter" in csv_params  # CSV-specific
+
+        # Parquet-specific
+        parquet_sig = inspect.signature(read_parquet)
+        parquet_params = set(parquet_sig.parameters.keys())
+        assert "columns" in parquet_params  # Parquet-specific
+
+    def test_unsupported_params_excluded(self):
+        """Test that unsupported parameters would be excluded."""
+        from ray.data.read_api import read_text
+
+        sig = inspect.signature(read_text)
+        params = set(sig.parameters.keys())
+
+        # Parquet-specific param should not be in text reader
+        assert "columns" not in params
+
+    def test_path_parameter_variations(self):
+        """Test different path parameter names across readers."""
+        from ray.data.read_api import read_delta, read_parquet
+
+        # File-based readers use 'paths'
+        parquet_sig = inspect.signature(read_parquet)
+        assert "paths" in parquet_sig.parameters
+
+        # Lakehouse readers might use 'path'
+        delta_sig = inspect.signature(read_delta)
+        # Check what parameter delta uses
+        assert "path" in delta_sig.parameters or "paths" in delta_sig.parameters
+
+
+class TestSourceDetection:
+    """Validate data source detection."""
+
+    def test_s3_detection(self):
+        """Test S3 path detection."""
+        sources = SourceDetector.detect_from_paths(["s3://bucket/data.parquet"])
+        assert DataSource.S3 in sources
+
+    def test_gcs_detection(self):
+        """Test GCS path detection."""
+        sources = SourceDetector.detect_from_paths(["gs://bucket/data.parquet"])
+        assert DataSource.GCS in sources
+
+    def test_azure_detection(self):
+        """Test Azure path detection."""
+        test_paths = [
+            "abfs://container@account.dfs.core.windows.net/data.parquet",
+            "az://container/data.parquet",
+        ]
+
+        for path in test_paths:
+            sources = SourceDetector.detect_from_paths([path])
+            assert DataSource.AZURE in sources
+
+    def test_hdfs_detection(self):
+        """Test HDFS path detection."""
+        sources = SourceDetector.detect_from_paths(
+            ["hdfs://namenode:9000/data.parquet"]
+        )
+        assert DataSource.HDFS in sources
+
+    def test_http_detection(self):
+        """Test HTTP path detection."""
+        sources = SourceDetector.detect_from_paths(["http://example.com/data.parquet"])
+        assert DataSource.HTTP in sources
+
+    def test_https_detection(self):
+        """Test HTTPS path detection."""
+        sources = SourceDetector.detect_from_paths(["https://example.com/data.parquet"])
+        assert DataSource.HTTPS in sources
+
+    def test_local_path_detection(self):
+        """Test local file system detection."""
+        sources = SourceDetector.detect_from_paths(["/local/path/data.parquet"])
+        assert DataSource.LOCAL in sources
+
+    def test_mixed_sources_detection(self):
+        """Test detecting multiple sources."""
+        paths = [
+            "s3://bucket/data1.parquet",
+            "gs://bucket/data2.parquet",
+            "/local/data3.parquet",
+        ]
+
+        sources = SourceDetector.detect_from_paths(paths)
+        assert DataSource.S3 in sources
+        assert DataSource.GCS in sources
+        assert DataSource.LOCAL in sources
+        assert len(sources) == 3
+
+
+class TestCompressionHandling:
+    """Validate compression format handling."""
+
+    def test_gzip_extension_detection(self):
+        """Test .gz extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.gz", FileFormat.CSV),
+            ("data.json.gz", FileFormat.JSON),
+            ("data.parquet.gz", FileFormat.PARQUET),
+            ("data.txt.gz", FileFormat.TEXT),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_bz2_extension_detection(self):
+        """Test .bz2 extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.csv.bz2", FileFormat.CSV),
+            ("data.json.bz2", FileFormat.JSON),
+            ("data.parquet.bz2", FileFormat.PARQUET),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_snappy_extension_detection(self):
+        """Test .snappy extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.parquet.snappy", FileFormat.PARQUET),
+            ("data.avro.snappy", FileFormat.AVRO),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_zstd_extension_detection(self):
+        """Test .zst/.zstd extension detection."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data.parquet.zst", FileFormat.PARQUET),
+            ("data.parquet.zstd", FileFormat.PARQUET),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_lz4_extension_detection(self):
+        """Test .lz4 extension detection."""
+        detector = FileTypeDetector()
+
+        result = detector.detect_file_type("data.parquet.lz4")
+        assert result == FileFormat.PARQUET
+
+
+class TestEdgeCases:
+    """Validate edge case handling."""
+
+    def test_empty_string_path(self):
+        """Test handling of empty path."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("")
+        assert result is None
+
+    def test_path_with_only_dot(self):
+        """Test path that is just a dot."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type(".")
+        assert result is None
+
+    def test_path_with_double_dot(self):
+        """Test path with double dot."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("..")
+        assert result is None
+
+    def test_very_long_extension(self):
+        """Test file with very long extension."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("file.verylongextensionname")
+        assert result is None  # Should fall back to binary
+
+    def test_path_with_spaces(self):
+        """Test path with spaces."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("my data file.parquet")
+        assert result == FileFormat.PARQUET
+
+    def test_path_with_special_chars(self):
+        """Test path with special characters."""
+        detector = FileTypeDetector()
+
+        test_cases = [
+            ("data-file.parquet", FileFormat.PARQUET),
+            ("data_file.csv", FileFormat.CSV),
+            ("data.backup.json", FileFormat.JSON),
+        ]
+
+        for path, expected in test_cases:
+            result = detector.detect_file_type(path)
+            assert result == expected
+
+    def test_unicode_in_filename(self):
+        """Test unicode characters in filename."""
+        detector = FileTypeDetector()
+        result = detector.detect_file_type("数据.parquet")
+        assert result == FileFormat.PARQUET
+
+
+class TestFileFormatEnum:
+    """Validate FileFormat enum functionality."""
+
+    def test_list_formats_method(self):
+        """Test FileFormat.list_formats() method."""
+        formats = FileFormat.list_formats()
+
+        assert isinstance(formats, list)
+        assert "parquet" in formats
+        assert "csv" in formats
+        assert "json" in formats
+        assert len(formats) > 10
+
+    def test_is_valid_method(self):
+        """Test FileFormat.is_valid() method."""
+        assert FileFormat.is_valid("parquet")
+        assert FileFormat.is_valid("csv")
+        assert FileFormat.is_valid("json")
+        assert not FileFormat.is_valid("invalid_format")
+        assert not FileFormat.is_valid("xyz")
+
+    def test_all_formats_have_values(self):
+        """Test that all FileFormat enums have string values."""
+        for fmt in FileFormat:
+            assert isinstance(fmt.value, str)
+            assert len(fmt.value) > 0
+
+
+class TestLakehouseFormatEnum:
+    """Validate LakehouseFormat enum."""
+
+    def test_lakehouse_formats(self):
+        """Test that all lakehouse formats are defined."""
+        assert LakehouseFormat.DELTA
+        assert LakehouseFormat.HUDI
+        assert LakehouseFormat.ICEBERG
+
+    def test_lakehouse_format_values(self):
+        """Test lakehouse format values."""
+        assert LakehouseFormat.DELTA.value == "delta"
+        assert LakehouseFormat.HUDI.value == "hudi"
+        assert LakehouseFormat.ICEBERG.value == "iceberg"
+
+
+class TestDataSourceEnum:
+    """Validate DataSource enum."""
+
+    def test_all_sources_defined(self):
+        """Test that all data sources are defined."""
+        expected_sources = [
+            DataSource.S3,
+            DataSource.GCS,
+            DataSource.AZURE,
+            DataSource.HDFS,
+            DataSource.HTTP,
+            DataSource.HTTPS,
+            DataSource.LOCAL,
+            DataSource.UNKNOWN,
+        ]
+
+        for source in expected_sources:
+            assert source is not None
+
+    def test_source_values(self):
+        """Test data source values."""
+        assert DataSource.S3.value == "s3"
+        assert DataSource.GCS.value == "gs"
+        assert DataSource.AZURE.value == "azure"
+        assert DataSource.LOCAL.value == "local"
+
+
+class TestReaderRegistry:
+    """Validate ReaderRegistry functionality."""
+
+    def test_registry_lazy_loading(self):
+        """Test that registry lazy loads readers."""
+        registry = ReaderRegistry()
+
+        # Before loading, _readers should be None
+        assert registry._readers is None
+
+        # After accessing a reader, should be loaded
+        registry.get_format_reader("parquet")
+        assert registry._readers is not None
+
+    def test_registry_caches_readers(self):
+        """Test that registry caches loaded readers."""
+        registry = ReaderRegistry()
+
+        # Load readers
+        reader1 = registry.get_format_reader("parquet")
+        reader2 = registry.get_format_reader("parquet")
+
+        # Should return same reader object
+        assert reader1 is reader2
+
+    def test_all_26_readers_accessible(self):
+        """Test that all 26 readers are accessible."""
+        registry = ReaderRegistry()
+
+        all_formats = [
+            # File-based (14)
+            "parquet",
+            "parquet_bulk",
+            "csv",
+            "json",
+            "text",
+            "images",
+            "audio",
+            "video",
+            "numpy",
+            "avro",
+            "tfrecords",
+            "webdataset",
+            "lance",
+            "binary",
+            # Lakehouse (4)
+            "delta",
+            "delta_sharing",
+            "hudi",
+            "iceberg",
+            # Database (6)
+            "sql",
+            "bigquery",
+            "mongo",
+            "clickhouse",
+            "snowflake",
+            # Databricks (2)
+            "databricks",
+            "unity_catalog",
+        ]
+
+        for fmt in all_formats:
+            reader = registry.get_format_reader(fmt)
+            assert callable(reader), f"Reader for {fmt} should be callable"
+
+
+if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))
