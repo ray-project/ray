@@ -7,7 +7,12 @@ import string
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
-from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
+from ray_release.anyscale_util import (
+    create_cluster_env_from_image,
+    get_cluster_name,
+    get_custom_cluster_env_name,
+    LAST_LOGS_LENGTH,
+)
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
@@ -46,8 +51,6 @@ from ray_release.signal_handling import (
     register_handler,
 )
 from ray_release.util import (
-    create_cluster_env_from_image,
-    get_custom_cluster_env_name,
     upload_working_dir_to_gcs,
 )
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
