@@ -418,7 +418,8 @@ class NodeManagerTest : public ::testing::Test {
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        [](const std::string &) {});
+        [](const std::string &) {},
+        nullptr);
   }
 
   instrumented_io_context io_service_;
