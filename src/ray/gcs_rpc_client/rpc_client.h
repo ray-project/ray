@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/network_util.h"
