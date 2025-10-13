@@ -467,6 +467,7 @@ py_library(
         ["ray_release/**/*.py"],
         exclude = [
             "ray_release/tests/*.py",
+            "ray_release/configs/*.py",
             "ray_release/scripts/*.py",
             "ray_release/test_automation/*.py",
             "ray_release/bazel.py",
@@ -485,7 +486,6 @@ py_library(
     ),
     data = glob([
         "ray_release/environments/*.env",
-        "ray_release/configs/*.yaml",
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
@@ -503,6 +503,7 @@ py_library(
         ":bazel",
         ":cloud_util",
         ":exception",
+        ":global_config",
         ":kuberay_util",
         ":logger",
         ":result",

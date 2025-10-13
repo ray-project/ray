@@ -1,5 +1,6 @@
 import time
 
+from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.exception import (
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
