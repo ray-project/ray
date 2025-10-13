@@ -482,8 +482,6 @@ py_library(
             "ray_release/aws.py",
             "ray_release/test.py",
         ],
-    ) + [
-        "ray_release/scripts/ray_bisect.py",
     ],
     data = glob([
         "ray_release/environments/*.env",
