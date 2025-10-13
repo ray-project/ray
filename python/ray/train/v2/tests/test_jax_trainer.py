@@ -13,17 +13,7 @@ assert is_v2_enabled()
 
 
 @pytest.fixture
-def jax_runtime_env():
-    return {
-        "pip": ["jax"],
-        "env_vars": {
-            "JAX_PLATFORMS": "cpu",
-        },
-    }
-
-
-@pytest.fixture
-def ray_tpu_single_host(monkeypatch, jax_runtime_env):
+def ray_tpu_single_host(monkeypatch):
     """Start a mock single-host TPU Ray cluster with 2x4 v6e (8 chips per host)."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-8")
@@ -34,14 +24,14 @@ def ray_tpu_single_host(monkeypatch, jax_runtime_env):
             resources={"TPU": 8},
         )
 
-        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
+        ray.init(address=cluster.address)
 
         yield cluster
         ray.shutdown()
 
 
 @pytest.fixture
-def ray_tpu_multi_host(monkeypatch, jax_runtime_env):
+def ray_tpu_multi_host(monkeypatch):
     """Start a simulated multi-host TPU Ray cluster."""
     with _ray_start_cluster() as cluster:
         monkeypatch.setenv("TPU_NAME", "test-slice-1")
@@ -59,7 +49,7 @@ def ray_tpu_multi_host(monkeypatch, jax_runtime_env):
             resources={"TPU": 4},
         )
 
-        ray.init(address=cluster.address, runtime_env=jax_runtime_env)
+        ray.init(address=cluster.address)
 
         yield cluster
         ray.shutdown()
