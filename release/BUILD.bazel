@@ -326,19 +326,19 @@ py_library(
 )
 
 py_library(
-    name = "result",
-    srcs = ["ray_release/result.py"],
+    name = "exception",
+    srcs = ["ray_release/exception.py"],
     imports = ["."],
     visibility = ["//visibility:private"],
 )
 
 py_library(
-    name = "exception",
-    srcs = ["ray_release/exception.py"],
+    name = "result",
+    srcs = ["ray_release/result.py"],
     imports = ["."],
     visibility = ["//visibility:private"],
     deps = [
-        ":result",
+        ":exception",
     ],
 )
 
