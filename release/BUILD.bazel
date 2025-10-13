@@ -376,6 +376,18 @@ py_library(
 )
 
 py_library(
+    name = "cloud_util",
+    srcs = ["ray_release/cloud_util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":logger",
+        bk_require("azure-storage-blob"),
+        bk_require("azure-identity"),
+    ],
+)
+
+py_library(
     name = "ray_release",
     srcs = glob(
         ["ray_release/**/*.py"],
@@ -390,6 +402,7 @@ py_library(
             "ray_release/kuberay_util.py",
             "ray_release/wheels.py",
             "ray_release/retry.py",
+            "ray_release/cloud_util.py",
         ],
     ),
     data = glob([
@@ -407,6 +420,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bazel",
+        ":cloud_util",
         ":exception",
         ":global_config",
         ":kuberay_util",
@@ -843,15 +857,15 @@ py_test(
 )
 
 py_test(
-    name = "test_util",
-    srcs = ["ray_release/tests/test_util.py"],
+    name = "test_cloud_util",
+    srcs = ["ray_release/tests/test_cloud_util.py"],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":cloud_util",
         bk_require("pytest"),
     ],
 )
