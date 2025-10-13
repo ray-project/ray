@@ -816,9 +816,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked "
-             "as "
-             "dead by the "
-          << "GCS: GCS failed to check the health of this node for "
+             "as dead by the GCS: GCS failed to check the health of this node for "
           << RayConfig::instance().health_check_failure_threshold() << " times."
           << " This is likely because the machine or raylet has become overloaded.";
       RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD").WithField("node_id", self_node_id_.Hex())

@@ -1218,10 +1218,18 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
 
-TEST_F(NodeManagerTest, TestNoCrashIfGcsPublishesSelfDeadWhenShuttingDown) {
-  // The raylet shouldn't crash if the node starts shutting down (could be from a sigterm
-  // in which case shutting_down_ is set + GCS Unregister RPC is made externally) and then
-  // the GCS publishes that the node is dead.
+class NodeManagerDeathTest : public NodeManagerTest,
+                             public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
+  // The raylet shouldn't crash if the GCS publishes the node's death while the node
+  // is shutting down (could be from a sigterm in which case shutting_down_ is set +
+  // GCS Unregister RPC is made externally). If the node isn't shutting down when the GCS
+  // publishes the node death, the raylet should kill itself.
+
+  // is_dying_already parameterizes based on whether the node was shutting down already at
+  // the time of the GCS death publish.
+  const bool is_dying_already = GetParam();
 
   gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
@@ -1231,13 +1239,22 @@ TEST_F(NodeManagerTest, TestNoCrashIfGcsPublishesSelfDeadWhenShuttingDown) {
       });
   node_manager_->RegisterGcs();
 
-  shutting_down_ = true;
+  shutting_down_ = is_dying_already;
 
   auto dead_node_info = rpc::GcsNodeInfo();
   dead_node_info.set_node_id(raylet_node_id_.Binary());
   dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
-  publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+  if (is_dying_already) {
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+  } else {
+    ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
+                 ".*Exiting because this node manager has.*");
+  }
 }
+
+INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
+                         NodeManagerDeathTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 
