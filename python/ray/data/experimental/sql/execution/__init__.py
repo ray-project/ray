@@ -6,7 +6,7 @@ SQL operations into Ray Dataset operations. It contains the core components
 responsible for executing parsed SQL queries against distributed datasets.
 
 Key Components:
-- SQLExecutionEngine: Main execution engine that handles all SQL operations
+- QueryExecutor: Main execution engine that handles all SQL operations
 - JoinHandler: Handles JOIN operations (INNER, LEFT, RIGHT, FULL)
 - AggregateAnalyzer: Analyzes and processes GROUP BY and aggregate functions
 - ExpressionCompiler: Compiles SQL expressions to Python functions
@@ -24,10 +24,10 @@ All execution maintains Ray Dataset's lazy evaluation semantics and distributed
 processing capabilities, ensuring efficient execution on large-scale data.
 """
 
-from ray.data.experimental.sql.execution.engine import SQLExecutionEngine
+from ray.data.experimental.sql.execution.executor import QueryExecutor
 from ray.data.experimental.sql.execution.types import JoinInfo
 
 __all__ = [
-    "SQLExecutionEngine",
+    "QueryExecutor",
     "JoinInfo",
 ]
