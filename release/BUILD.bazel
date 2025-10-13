@@ -319,12 +319,47 @@ py_library(
 )
 
 py_library(
+    name = "logger",
+    srcs = ["ray_release/logger.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "exception",
+    srcs = ["ray_release/exception.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "result",
+    srcs = ["ray_release/result.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":exception",
+    ],
+)
+
+py_library(
+    name = "kuberay_util",
+    srcs = ["ray_release/kuberay_util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
     name = "ray_release",
     srcs = glob(
         ["ray_release/**/*.py"],
         exclude = [
             "ray_release/tests/*.py",
             "ray_release/bazel.py",
+            "ray_release/logger.py",
+            "ray_release/result.py",
+            "ray_release/exception.py",
+            "ray_release/kuberay_util.py",
         ],
     ),
     data = glob([
@@ -343,6 +378,10 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bazel",
+        ":exception",
+        ":kuberay_util",
+        ":logger",
+        ":result",
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
         bk_require("azure-storage-blob"),
@@ -638,7 +677,8 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":exception",
+        ":result",
         bk_require("pytest"),
     ],
 )
@@ -688,7 +728,7 @@ py_test(
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":kuberay_util",
         bk_require("pytest"),
     ],
 )
