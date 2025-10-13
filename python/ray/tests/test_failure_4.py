@@ -499,6 +499,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
                 assert is_alive
             if node_id in worker_node_ids:
                 assert not is_alive
+        return True
 
     wait_for_condition(nodes_gcs_state_updated, timeout=1)
 

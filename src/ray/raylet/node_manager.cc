@@ -2086,22 +2086,22 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (shutting_down_.exchange(true)) {
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  if (shutting_down_) {
     RAY_LOG(INFO)
         << "Node is already shutting down. Ignoring the ShutdownRaylet request.";
     return;
   }
-  auto shutdown_after_reply = [&]() {
-    rpc::DrainServerCallExecutor();
-    // Note that the callback is posted to the io service after the shutdown GRPC
-    // request is replied. Otherwise, the RPC might not be replied to GCS before it
-    // shutsdown itself.
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Terminated by autoscaler.");
-    shutdown_raylet_gracefully_(node_death_info);
-  };
-  send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
+
+  // Draining the server call executor so that we try to reply to the RPC before the
+  // raylet shuts down.
+  rpc::DrainServerCallExecutor();
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  node_death_info.set_reason_message("Terminated by autoscaler.");
+  shutdown_raylet_gracefully_(node_death_info);
 }
 
 void NodeManager::HandleReleaseUnusedActorWorkers(

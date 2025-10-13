@@ -409,7 +409,6 @@ int main(int argc, char *argv[]) {
         RAY_LOG(INFO) << "Raylet graceful shutdown triggered, reason = "
                       << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
                       << "reason message = " << node_death_info.reason_message();
-        RAY_LOG(INFO) << "Shutting down...";
 
         auto unregister_done_callback = [&main_service,
                                          &raylet_socket_name,
