@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 
 #include "ray/thirdparty/aligned_alloc.h"
