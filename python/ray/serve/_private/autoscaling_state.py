@@ -221,6 +221,11 @@ class AutoscalingState:
         """
 
         total_requests = self.get_total_num_requests()
+        queued_q = 0.0
+        for h in self._handle_requests.values():
+            ts = getattr(h, "queued_requests", None)
+            if ts:
+                queued_q += float(ts[-1].value)
         ctx: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -234,7 +239,7 @@ class AutoscalingState:
             policy_state=self._policy_state.copy(),
             current_time=time.time(),
             config=self._config,
-            queued_requests=None,
+            queued_requests=queued_q,
             requests_per_replica=None,
             aggregated_metrics=None,
             raw_metrics=None,
@@ -584,13 +589,7 @@ class AutoscalingState:
         min_replicas = ctx.capacity_adjusted_min_replicas
         max_replicas = ctx.capacity_adjusted_max_replicas
 
-        # Aggregate queued requests (best-effort)
-        if self._handle_requests:
-            queued_requests = sum(
-                h.queued_requests for h in self._handle_requests.values()
-            )
-        else:
-            queued_requests = 0.0
+        queued_requests = float(ctx.queued_requests or 0.0)
 
         if self._latest_metrics_timestamp is not None:
             time_since_last_collected_metrics_s = (
@@ -622,6 +621,8 @@ class AutoscalingState:
         if time_since_last_collected_metrics_s is None:
             errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
 
+        policy = ctx.config.policy.get_policy()
+        policy_name_str = f"{policy.__module__}.{policy.__name__}"
         return DeploymentSnapshot(
             timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             app=self._deployment_id.app_name,
@@ -631,7 +632,7 @@ class AutoscalingState:
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             scaling_status=scaling_status,
-            policy_name=ctx.config.policy.name,
+            policy_name=policy_name_str,
             look_back_period_s=look_back_period_s,
             queued_requests=float(queued_requests),
             ongoing_requests=float(ctx.total_num_requests),
