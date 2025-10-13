@@ -420,7 +420,7 @@ class NodeManagerTest : public ::testing::Test {
         [](const auto &) {},
         [](const std::string &) {},
         nullptr,
-        shutting_down_);
+        shutdown_state_);
   }
 
   instrumented_io_context io_service_;
@@ -449,7 +449,7 @@ class NodeManagerTest : public ::testing::Test {
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
 
-  std::atomic<bool> shutting_down_ = false;
+  std::atomic<RayletShutdownState> shutdown_state_ = RayletShutdownState::ALIVE;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -1219,17 +1219,14 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          testing::Bool());
 
 class NodeManagerDeathTest : public NodeManagerTest,
-                             public ::testing::WithParamInterface<bool> {};
+                             public ::testing::WithParamInterface<RayletShutdownState> {};
 
 TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
-  // The raylet shouldn't crash if the GCS publishes the node's death while the node
-  // is shutting down (could be from a sigterm in which case shutting_down_ is set +
-  // GCS Unregister RPC is made externally). If the node isn't shutting down when the GCS
-  // publishes the node death, the raylet should kill itself.
-
-  // is_dying_already parameterizes based on whether the node was shutting down already at
-  // the time of the GCS death publish.
-  const bool is_dying_already = GetParam();
+  // When the GCS publishes the node's death,
+  // 1. The raylet should kill itself immediately if it's ALIVE
+  // 2. The raylet should ignore the death publish if the shutdown process has already
+  //    started
+  const RayletShutdownState shutdown_state_during_death_publish = GetParam();
 
   gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
@@ -1239,22 +1236,25 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
       });
   node_manager_->RegisterGcs();
 
-  shutting_down_ = is_dying_already;
+  shutdown_state_ = shutdown_state_during_death_publish;
 
   auto dead_node_info = rpc::GcsNodeInfo();
   dead_node_info.set_node_id(raylet_node_id_.Binary());
   dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
-  if (is_dying_already) {
-    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
-  } else {
+
+  if (shutdown_state_during_death_publish == RayletShutdownState::ALIVE) {
     ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
                  ".*Exiting because this node manager has.*");
+  } else {
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
-                         testing::Bool());
+                         testing::Values(RayletShutdownState::ALIVE,
+                                         RayletShutdownState::SHUTDOWN_QUEUED,
+                                         RayletShutdownState::SHUTTING_DOWN));
 
 }  // namespace ray::raylet
 

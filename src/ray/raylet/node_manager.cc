@@ -147,7 +147,7 @@ NodeManager::NodeManager(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
     std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-    std::atomic<bool> &shutting_down)
+    std::atomic<RayletShutdownState> &shutdown_state)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -201,7 +201,7 @@ NodeManager::NodeManager(
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
-      shutting_down_(shutting_down) {
+      shutdown_state_(shutdown_state) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -812,7 +812,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
-    if (!shutting_down_) {
+    if (shutdown_state_ == RayletShutdownState::ALIVE) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked "
@@ -2087,7 +2087,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     std::_Exit(EXIT_SUCCESS);
   }
 
-  if (shutting_down_) {
+  if (shutdown_state_ != RayletShutdownState::ALIVE) {
     RAY_LOG(INFO)
         << "Node is already shutting down. Ignoring the ShutdownRaylet request.";
     return;

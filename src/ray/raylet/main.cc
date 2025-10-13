@@ -387,7 +387,8 @@ int main(int argc, char *argv[]) {
 #endif
   };
 
-  std::atomic<bool> shutting_down = false;
+  std::atomic<ray::raylet::RayletShutdownState> shutdown_state =
+      ray::raylet::RayletShutdownState::ALIVE;
 
   // Shut down raylet gracefully, in a synchronous fashion.
   // This can be run by the signal handler or on the main io service.
@@ -397,12 +398,10 @@ int main(int argc, char *argv[]) {
        &raylet_socket_name,
        &gcs_client,
        &object_manager_rpc_threads,
-       &shutting_down](const ray::rpc::NodeDeathInfo &node_death_info) {
-        // Make the shutdown method idempotent since graceful shutdown can be triggered
-        // by many places.
-        shutting_down = true;
-        static std::atomic<bool> shutting_down_internal = false;
-        if (shutting_down_internal.exchange(true)) {
+       &shutdown_state](const ray::rpc::NodeDeathInfo &node_death_info) {
+        // Make sure shutdown is only triggered once.
+        if (shutdown_state.exchange(ray::raylet::RayletShutdownState::SHUTTING_DOWN) ==
+            ray::raylet::RayletShutdownState::SHUTTING_DOWN) {
           RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
           return;
         }
@@ -433,9 +432,11 @@ int main(int argc, char *argv[]) {
       };
 
   auto shutdown_raylet_gracefully =
-      [&main_service, &shutting_down, shutdown_raylet_gracefully_internal](
+      [&main_service, &shutdown_state, shutdown_raylet_gracefully_internal](
           const ray::rpc::NodeDeathInfo &node_death_info) {
-        if (shutting_down.exchange(true)) {
+        auto expected = ray::raylet::RayletShutdownState::ALIVE;
+        if (!shutdown_state.compare_exchange_strong(
+                expected, ray::raylet::RayletShutdownState::SHUTDOWN_QUEUED)) {
           RAY_LOG(INFO) << "Raylet is already shutting down. Ignoring death info: "
                         << node_death_info.DebugString();
           return;
@@ -951,7 +952,7 @@ int main(int argc, char *argv[]) {
         shutdown_raylet_gracefully,
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
-        shutting_down);
+        shutdown_state);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

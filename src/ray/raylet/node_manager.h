@@ -122,6 +122,12 @@ struct NodeManagerConfig {
   absl::flat_hash_map<std::string, std::string> labels;
 };
 
+enum RayletShutdownState : std::uint8_t {
+  ALIVE,
+  SHUTDOWN_QUEUED,
+  SHUTTING_DOWN,
+};
+
 class NodeManager : public rpc::NodeManagerServiceHandler,
                     public syncer::ReporterInterface,
                     public syncer::ReceiverInterface {
@@ -156,7 +162,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-      std::atomic<bool> &shutting_down);
+      std::atomic<RayletShutdownState> &shutdown_state);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -886,8 +892,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Controls the lifecycle of the CgroupManager.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
-  /// Whether the raylet is already shutting down.
-  std::atomic<bool> &shutting_down_;
+  std::atomic<RayletShutdownState> &shutdown_state_;
 };
 
 }  // namespace ray::raylet
