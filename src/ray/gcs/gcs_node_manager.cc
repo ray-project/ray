@@ -354,12 +354,12 @@ rpc::GcsNodeAddressAndLiveness ConvertToGcsNodeAddressAndLiveness(
 }
 }  // namespace
 
-std::vector<rpc::GcsNodeAddressAndLiveness> GcsNodeManager::GetAllNodeAddressAndLiveness(
+void GcsNodeManager::GetAllNodeAddressAndLiveness(
     const absl::flat_hash_set<NodeID> &node_ids,
     std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
-    int64_t limit) const {
+    int64_t limit,
+    const std::function<void(rpc::GcsNodeAddressAndLiveness &&)> &callback) const {
   absl::ReaderMutexLock lock(&mutex_);
-  std::vector<rpc::GcsNodeAddressAndLiveness> result;
   int64_t num_added = 0;
 
   if (!node_ids.empty()) {
@@ -371,29 +371,29 @@ std::vector<rpc::GcsNodeAddressAndLiveness> GcsNodeManager::GetAllNodeAddressAnd
       if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::ALIVE) {
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
-          result.push_back(ConvertToGcsNodeAddressAndLiveness(*iter->second));
+          callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
           ++num_added;
         }
       }
       if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::DEAD) {
         auto iter = dead_nodes_.find(node_id);
         if (iter != dead_nodes_.end()) {
-          result.push_back(ConvertToGcsNodeAddressAndLiveness(*iter->second));
+          callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
           ++num_added;
         }
       }
     }
-    return result;
+    return;
   }
 
-  auto add_to_result =
+  auto add_with_callback =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
         for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          result.push_back(ConvertToGcsNodeAddressAndLiveness(*node_info_ptr));
+          callback(ConvertToGcsNodeAddressAndLiveness(*node_info_ptr));
           num_added += 1;
         }
       };
@@ -401,31 +401,25 @@ std::vector<rpc::GcsNodeAddressAndLiveness> GcsNodeManager::GetAllNodeAddressAnd
   if (state_filter.has_value()) {
     switch (state_filter.value()) {
     case rpc::GcsNodeInfo::ALIVE:
-      result.reserve(alive_nodes_.size());
-      add_to_result(alive_nodes_);
+      add_with_callback(alive_nodes_);
       break;
     case rpc::GcsNodeInfo::DEAD:
-      result.reserve(dead_nodes_.size());
-      add_to_result(dead_nodes_);
+      add_with_callback(dead_nodes_);
       break;
     default:
       RAY_LOG(ERROR) << "Unexpected state filter: " << state_filter.value();
       break;
     }
   } else {
-    result.reserve(alive_nodes_.size() + dead_nodes_.size());
-    add_to_result(alive_nodes_);
-    add_to_result(dead_nodes_);
+    add_with_callback(alive_nodes_);
+    add_with_callback(dead_nodes_);
   }
-  return result;
 }
 
 void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
     rpc::GetAllNodeAddressAndLivenessRequest request,
     rpc::GetAllNodeAddressAndLivenessReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  absl::ReaderMutexLock lock(&mutex_);
-
   // Extract node IDs from the request
   absl::flat_hash_set<NodeID> node_ids;
   for (auto &selector : *request.mutable_node_ids()) {
@@ -442,67 +436,11 @@ void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
 
-  // Build reply directly without intermediate vector
-  int64_t num_added = 0;
-
-  if (!node_ids.empty()) {
-    // Optimized path if request only wants specific node ids
-    for (const auto &node_id : node_ids) {
-      if (num_added >= limit) {
-        break;
-      }
-      if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::ALIVE) {
-        auto iter = alive_nodes_.find(node_id);
-        if (iter != alive_nodes_.end()) {
-          *reply->add_node_info_list() =
-              ConvertToGcsNodeAddressAndLiveness(*iter->second);
-          ++num_added;
-        }
-      }
-      if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::DEAD) {
-        auto iter = dead_nodes_.find(node_id);
-        if (iter != dead_nodes_.end()) {
-          *reply->add_node_info_list() =
-              ConvertToGcsNodeAddressAndLiveness(*iter->second);
-          ++num_added;
-        }
-      }
-    }
-  } else {
-    // Add nodes directly to reply
-    auto add_to_reply =
-        [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
-                &nodes) {
-          for (const auto &[node_id, node_info_ptr] : nodes) {
-            if (num_added >= limit) {
-              break;
-            }
-            *reply->add_node_info_list() =
-                ConvertToGcsNodeAddressAndLiveness(*node_info_ptr);
-            num_added += 1;
-          }
-        };
-
-    if (state_filter.has_value()) {
-      switch (state_filter.value()) {
-      case rpc::GcsNodeInfo::ALIVE:
-        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
-        add_to_reply(alive_nodes_);
-        break;
-      case rpc::GcsNodeInfo::DEAD:
-        reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
-        add_to_reply(dead_nodes_);
-        break;
-      default:
-        RAY_LOG(ERROR) << "Unexpected state filter: " << state_filter.value();
-        break;
-      }
-    } else {
-      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
-      add_to_reply(alive_nodes_);
-      add_to_reply(dead_nodes_);
-    }
-  }
+  // Call helper method which handles its own locking and directly populates reply
+  GetAllNodeAddressAndLiveness(
+      node_ids, state_filter, limit, [reply](rpc::GcsNodeAddressAndLiveness &&node) {
+        *reply->add_node_info_list() = std::move(node);
+      });
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];

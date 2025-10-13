@@ -431,8 +431,14 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   // Test 1: Get all nodes without filter
   {
     absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
-    auto result = node_manager.GetAllNodeAddressAndLiveness(
-        node_ids, std::nullopt, std::numeric_limits<int64_t>::max());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
 
     EXPECT_EQ(result.size(), 8);  // 5 alive + 3 dead
   }
@@ -440,8 +446,14 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   // Test 2: Get only alive nodes
   {
     absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
-    auto result = node_manager.GetAllNodeAddressAndLiveness(
-        node_ids, rpc::GcsNodeInfo::ALIVE, std::numeric_limits<int64_t>::max());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::ALIVE,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
 
     EXPECT_EQ(result.size(), 5);
 
@@ -454,8 +466,14 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   // Test 3: Get only dead nodes
   {
     absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
-    auto result = node_manager.GetAllNodeAddressAndLiveness(
-        node_ids, rpc::GcsNodeInfo::DEAD, std::numeric_limits<int64_t>::max());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::DEAD,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
 
     EXPECT_EQ(result.size(), 3);
 
@@ -471,8 +489,14 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   {
     absl::flat_hash_set<NodeID> node_ids;
     node_ids.insert(NodeID::FromBinary(alive_nodes[0]->node_id()));
-    auto result = node_manager.GetAllNodeAddressAndLiveness(
-        node_ids, std::nullopt, std::numeric_limits<int64_t>::max());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
 
     EXPECT_EQ(result.size(), 1);
     EXPECT_EQ(result[0].node_id(), alive_nodes[0]->node_id());
@@ -481,7 +505,11 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   // Test 5: Apply limit
   {
     absl::flat_hash_set<NodeID> node_ids;  // empty = all nodes
-    auto result = node_manager.GetAllNodeAddressAndLiveness(node_ids, std::nullopt, 3);
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids, std::nullopt, 3, [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
 
     EXPECT_EQ(result.size(), 3);
   }
