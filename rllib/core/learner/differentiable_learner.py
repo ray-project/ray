@@ -746,6 +746,7 @@ class DifferentiableLearner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
                 reduce="sum",
+                with_throughput=True,
             )
             total_module_steps += module_batch_size
 
