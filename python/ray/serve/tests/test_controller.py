@@ -287,7 +287,6 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     Tests deterministic autoscaling: 1 -> 2 replicas.
     """
-    import asyncio
 
     DEPLOY_NAME = f"snap_app_{int(time.time())}"
 
@@ -301,11 +300,10 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             "look_back_period_s": 0.5,
             "upscale_delay_s": 0.0,
             "downscale_delay_s": 600.0,
-            "target_ongoing_requests": 2.0,
+            "target_ongoing_requests": 1.0,
         },
     )
     async def snap_app():
-        await asyncio.sleep(0.5)
         return "ok"
 
     handle = serve.run(snap_app.bind())
