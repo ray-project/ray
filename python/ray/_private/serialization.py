@@ -1,12 +1,13 @@
 import logging
+import os
 import threading
 import traceback
-import os
-import numpy as np
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
+
+import warnings
 
 import google.protobuf.message
 
@@ -56,6 +57,15 @@ from ray.exceptions import (
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
+
+
+class UnsafeReconstructionWarning(UserWarning):
+    """Warning issued when an object is reconstructed without calling __init__."""
+
+    pass
+
+
+warnings.filterwarnings("once", category=UnsafeReconstructionWarning)
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
@@ -555,45 +565,118 @@ class SerializationContext:
             # throws an exception.
             return PlasmaObjectNotAvailable
 
-    def _convert_numpy_to_tensors(self, obj: Any) -> Any:
-        # Recursively restores PyTorch tensors from marked NumPy arrays.
-        # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
-        # Non-marked values (e.g., str, int, raw np.ndarray) are returned unchanged.
-        if (
-            isinstance(obj, dict)
-            and obj.get(self._zero_copy_maker_key) == self._zero_copy_maker_value
-        ):
-            try:
-                import torch
-            except ImportError:
-                # If torch not available, return raw data
-                return obj[self._zero_copy_payload]
+    def _supports_dict_based_reconstruction(self, obj) -> bool:
+        """
+        Heuristic to determine if an object is likely safe to reconstruct
+        via object.__new__ + __dict__ assignment.
+        """
+        typ = type(obj)
 
-            data = obj[self._zero_copy_payload]
-            tensor = torch.from_numpy(data)
-            return tensor
+        # Skip built-in or well-known non-user types
+        if typ.__module__ in ("builtins", "torch", "numpy", "collections", "typing"):
+            return False
 
-        elif isinstance(obj, dict):
-            return {k: self._convert_numpy_to_tensors(v) for k, v in obj.items()}
+        # Must have __dict__
+        if not hasattr(obj, "__dict__"):
+            return False
+
+        # Must NOT have meaningful __slots__
+        if hasattr(typ, "__slots__"):
+            slots = typ.__slots__
+            if slots is not None and slots != ():
+                return False
+
+        # Optional: skip if it's a type that looks like a function/callable
+        if callable(obj) or isinstance(obj, type):
+            return False
+
+        return True
+
+    def _walk_and_transform(
+        self,
+        obj: Any,
+        convert_node: Callable[[Any], Any],
+        _visited: Optional[Set[int]] = None,
+    ) -> Any:
+        """
+        Recursively traverses obj and applies convert_node to each node.
+        Stops recursing into a node if convert_node returns a new object.
+        Handles circular references and supports dict/list/tuple/custom objects.
+        """
+        if _visited is None:
+            _visited = set()
+
+        obj_id = id(obj)
+        if obj_id in _visited:
+            return obj
+
+        converted = convert_node(obj)
+        if converted is not obj:
+            return converted
+
+        should_recurse = isinstance(
+            obj, (dict, list, tuple)
+        ) or self._supports_dict_based_reconstruction(obj)
+
+        if should_recurse:
+            _visited.add(obj_id)
+
+        if isinstance(obj, dict):
+            return {
+                k: self._walk_and_transform(v, convert_node, _visited)
+                for k, v in obj.items()
+            }
 
         elif isinstance(obj, (list, tuple)):
-            converted = [self._convert_numpy_to_tensors(item) for item in obj]
-            return type(obj)(converted)
+            converted_items = [
+                self._walk_and_transform(item, convert_node, _visited) for item in obj
+            ]
+            return type(obj)(converted_items)
 
-        elif hasattr(obj, "__dict__") and not isinstance(obj, (str, bytes, np.ndarray)):
+        elif self._supports_dict_based_reconstruction(obj):
+            typ = type(obj)
+            # Warn if __init__ is non-trivial
+            if typ.__init__ is not object.__init__:
+                warnings.warn(
+                    f"Reconstructing instance of {typ.__module__}.{typ.__qualname__} "
+                    f"without calling __init__; object state may be inconsistent.",
+                    UnsafeReconstructionWarning,
+                    stacklevel=3,
+                )
+
             try:
-                new_obj = object.__new__(type(obj))
+                new_obj = object.__new__(typ)
                 new_obj.__dict__ = {
-                    k: self._convert_numpy_to_tensors(v)
+                    k: self._walk_and_transform(v, convert_node, _visited)
                     for k, v in obj.__dict__.items()
                 }
                 return new_obj
-            except (TypeError, AttributeError):
+            except Exception:
+                # If reconstruction fails, fall back
                 return obj
 
         else:
             # Return primitives or unsupported types as-is.
             return obj
+
+    def _convert_numpy_to_tensors(self, obj: Any) -> Any:
+        # Recursively restores PyTorch tensors from marked NumPy arrays.
+        # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
+        # Non-marked values (e.g., str, int, raw np.ndarray) are returned unchanged.
+        def convert_marked_dict_node(node):
+            if (
+                isinstance(node, dict)
+                and node.get(self._zero_copy_maker_key) == self._zero_copy_maker_value
+            ):
+                try:
+                    import torch
+
+                    return torch.from_numpy(node[self._zero_copy_payload])
+                except ImportError:
+                    return node[self._zero_copy_payload]
+            return node
+
+        return self._walk_and_transform(obj, convert_marked_dict_node)
 
     def deserialize_objects(
         self,
@@ -642,41 +725,19 @@ class SerializationContext:
         # Recursively converts PyTorch tensors in an object to NumPy arrays.
         # Supports nested dicts, lists, tuples, and custom objects (via `__dict__`).
         # Non-tensor values (e.g., str, int, np.ndarray) are returned unchanged.
-        try:
-            import torch
-        except ImportError:
-            return obj
-
-        if isinstance(obj, torch.Tensor):
-            # Mark as serialized tensor for zero-copy restoration in deserialization.
-            # Move to CPU for .numpy() compatibility.
-            # Ensure contiguous for safe zero-copy conversion.
-            return {
-                self._zero_copy_maker_key: self._zero_copy_maker_value,
-                self._zero_copy_payload: obj.detach().cpu().contiguous().numpy(),
-            }
-
-        elif isinstance(obj, dict):
-            return {k: self._convert_tensors_to_numpy(v) for k, v in obj.items()}
-
-        elif isinstance(obj, (list, tuple)):
-            converted = [self._convert_tensors_to_numpy(item) for item in obj]
-            return type(obj)(converted)
-
-        elif hasattr(obj, "__dict__") and not isinstance(obj, (str, bytes, np.ndarray)):
+        def convert_tensor_node(node):
             try:
-                new_obj = object.__new__(type(obj))
-                new_obj.__dict__ = {
-                    k: self._convert_tensors_to_numpy(v)
-                    for k, v in obj.__dict__.items()
+                import torch
+            except ImportError:
+                return node
+            if isinstance(node, torch.Tensor):
+                return {
+                    self._zero_copy_maker_key: self._zero_copy_maker_value,
+                    self._zero_copy_payload: node.detach().cpu().contiguous().numpy(),
                 }
-                return new_obj
-            except (TypeError, AttributeError):
-                return obj
+            return node
 
-        else:
-            # Return primitives or unsupported types as-is.
-            return obj
+        return self._walk_and_transform(obj, convert_tensor_node)
 
     def _serialize_to_pickle5(self, metadata, value):
         writer = Pickle5Writer()
