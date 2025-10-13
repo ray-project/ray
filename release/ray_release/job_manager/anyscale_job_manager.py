@@ -9,7 +9,6 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJobConfig,
     HaJobStates,
 )
-
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (

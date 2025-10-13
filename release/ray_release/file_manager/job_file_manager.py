@@ -3,12 +3,11 @@ import shutil
 import sys
 import tempfile
 from typing import Optional
-
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
+
 import boto3
 from google.cloud import storage
-
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cloud_util import generate_tmp_cloud_storage_path
 from ray_release.cluster_manager.cluster_manager import ClusterManager
