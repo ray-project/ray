@@ -533,8 +533,7 @@ py_test(
         "team:ci",
     ],
     deps = [
-        "custom_byod_build_lib",
-        ":ray_release",
+        ":custom_byod_build_lib",
         bk_require("pytest"),
     ],
 )
@@ -574,7 +573,6 @@ py_test(
     ],
     deps = [
         ":custom_image_build_and_test_init_lib",
-        ":ray_release",
         bk_require("pytest"),
     ],
 )
