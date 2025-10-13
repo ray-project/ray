@@ -11,6 +11,11 @@ from ray_release.cloud_util import (
     convert_abfss_uri_to_https,
 )
 from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.cloud_util import (
+    convert_abfss_uri_to_https,
+    generate_tmp_cloud_storage_path,
+    upload_working_dir_to_azure,
+)
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
     TestCommandTimeout,
