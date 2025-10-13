@@ -309,10 +309,23 @@ py_binary(
 )
 
 py_library(
+    name = "bazel",
+    srcs = ["ray_release/bazel.py"],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        bk_require("bazel-runfiles"),
+    ],
+)
+
+py_library(
     name = "ray_release",
     srcs = glob(
         ["ray_release/**/*.py"],
-        exclude = ["ray_release/tests/*.py"],
+        exclude = [
+            "ray_release/tests/*.py",
+            "ray_release/bazel.py",
+        ],
     ),
     data = glob([
         "ray_release/environments/*.env",
@@ -329,6 +342,7 @@ py_library(
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        ":bazel",
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
         bk_require("azure-storage-blob"),
@@ -692,6 +706,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":bazel",
         ":ray_release",
         bk_require("pytest"),
     ],
