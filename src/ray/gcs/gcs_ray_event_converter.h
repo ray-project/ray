@@ -28,7 +28,7 @@ namespace gcs {
 /// \param request The AddEventsRequest to convert.
 /// \return A list of AddTaskEventDataRequest grouped by job id.
 std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
-    const rpc::events::AddEventsRequest &request);
+    rpc::events::AddEventsRequest &&request);
 
 }  // namespace gcs
 }  // namespace ray
