@@ -302,8 +302,6 @@ class GPUObjectManager:
         For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
         fulfill a `ray.get` call.
 
-        NOTE: This function is only expected to be called by the owner process of the GPU object.
-
         Args:
             obj_id: The object ID of the GPU object.
             tensor_transport: The tensor transport to use to fetch the GPU object.
@@ -549,6 +547,7 @@ class GPUObjectManager:
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
+            # NOTE: This may have to change if we support lineage reconstruction for RDT
             self.managed_gpu_object_metadata.pop(object_id)
         except Exception as e:
             logger.error(
