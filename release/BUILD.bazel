@@ -384,7 +384,6 @@ py_library(
         ":logger",
         bk_require("azure-storage-blob"),
         bk_require("azure-identity"),
-        bk_require("urllib3"),
     ],
 )
 
