@@ -450,6 +450,74 @@ def test_config_optimizer_type_validation(ray_start_regular_shared):
     config.enable_sqlglot_optimizer = original_value
 
 
+def test_config_all_properties(ray_start_regular_shared):
+    """Test all SQL config properties are accessible via config proxy."""
+    ctx = ray.data.DataContext.get_current()
+
+    # Test log_level
+    original_log_level = config.log_level
+    config.log_level = "DEBUG"
+    assert config.log_level == "DEBUG"
+    assert ctx.sql_log_level == "DEBUG"
+    config.log_level = original_log_level
+
+    # Test case_sensitive
+    original_case = config.case_sensitive
+    config.case_sensitive = False
+    assert config.case_sensitive is False
+    assert ctx.sql_case_sensitive is False
+    config.case_sensitive = original_case
+
+    # Test strict_mode
+    original_strict = config.strict_mode
+    config.strict_mode = True
+    assert config.strict_mode is True
+    assert ctx.sql_strict_mode is True
+    config.strict_mode = original_strict
+
+    # Test enable_optimization
+    original_opt = config.enable_optimization
+    config.enable_optimization = False
+    assert config.enable_optimization is False
+    assert ctx.sql_enable_optimization is False
+    config.enable_optimization = original_opt
+
+    # Test max_join_partitions
+    original_max = config.max_join_partitions
+    config.max_join_partitions = 50
+    assert config.max_join_partitions == 50
+    assert ctx.sql_max_join_partitions == 50
+    config.max_join_partitions = original_max
+
+    # Test enable_predicate_pushdown
+    original_pred = config.enable_predicate_pushdown
+    config.enable_predicate_pushdown = False
+    assert config.enable_predicate_pushdown is False
+    assert ctx.sql_enable_predicate_pushdown is False
+    config.enable_predicate_pushdown = original_pred
+
+    # Test enable_projection_pushdown
+    original_proj = config.enable_projection_pushdown
+    config.enable_projection_pushdown = False
+    assert config.enable_projection_pushdown is False
+    assert ctx.sql_enable_projection_pushdown is False
+    config.enable_projection_pushdown = original_proj
+
+    # Test query_timeout_seconds
+    original_timeout = config.query_timeout_seconds
+    config.query_timeout_seconds = 60
+    assert config.query_timeout_seconds == 60
+    assert ctx.sql_query_timeout_seconds == 60
+    config.query_timeout_seconds = original_timeout
+
+    # Test use_datafusion
+    original_df = config.use_datafusion
+    config.use_datafusion = False
+    assert config.use_datafusion is False
+    assert ctx.sql_use_datafusion is False
+    config.use_datafusion = original_df
+
+
 def test_datafusion_config(ray_start_regular_shared):
     """Test DataFusion engine configuration."""
     ctx = ray.data.DataContext.get_current()

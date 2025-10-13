@@ -169,13 +169,17 @@ class _Config:
 
     All SQL configuration is stored in ray.data.DataContext for consistency
     with Ray Data patterns. This class provides a convenient interface.
+
+    All properties map to DataContext.sql_* fields.
     """
 
     @property
     def dialect(self) -> str:
-        """SQL dialect. Default: duckdb
+        """SQL dialect for query parsing.
 
-        Stored in DataContext.sql_dialect
+        Default: 'duckdb'
+        Supported: duckdb, postgres, mysql, sqlite, snowflake, bigquery, etc.
+        Maps to: DataContext.sql_dialect
         """
         from ray.data import DataContext
 
@@ -183,7 +187,6 @@ class _Config:
 
     @dialect.setter
     def dialect(self, value: str) -> None:
-        """Set SQL dialect via DataContext."""
         from ray.data import DataContext
         from ray.data.experimental.sql.config import SQLDialect
 
@@ -198,10 +201,148 @@ class _Config:
         DataContext.get_current().sql_dialect = value.lower()
 
     @property
-    def enable_sqlglot_optimizer(self) -> bool:
-        """Whether SQLGlot query optimization is enabled.
+    def log_level(self) -> str:
+        """SQL logging level.
 
-        Stored in DataContext.sql_enable_sqlglot_optimizer
+        Default: 'INFO'
+        Supported: DEBUG, INFO, WARNING, ERROR
+        Maps to: DataContext.sql_log_level
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_log_level
+
+    @log_level.setter
+    def log_level(self, value: str) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_log_level = value.upper()
+
+    @property
+    def case_sensitive(self) -> bool:
+        """Whether SQL identifiers are case-sensitive.
+
+        Default: True
+        Maps to: DataContext.sql_case_sensitive
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_case_sensitive
+
+    @case_sensitive.setter
+    def case_sensitive(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_case_sensitive = bool(value)
+
+    @property
+    def strict_mode(self) -> bool:
+        """Whether to enable strict SQL validation mode.
+
+        Default: False
+        Maps to: DataContext.sql_strict_mode
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_strict_mode
+
+    @strict_mode.setter
+    def strict_mode(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_strict_mode = bool(value)
+
+    @property
+    def enable_optimization(self) -> bool:
+        """Whether to enable SQL query optimization.
+
+        Default: True
+        Maps to: DataContext.sql_enable_optimization
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_enable_optimization
+
+    @enable_optimization.setter
+    def enable_optimization(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_enable_optimization = bool(value)
+
+    @property
+    def max_join_partitions(self) -> int:
+        """Maximum partitions for SQL join operations.
+
+        Default: 20
+        Maps to: DataContext.sql_max_join_partitions
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_max_join_partitions
+
+    @max_join_partitions.setter
+    def max_join_partitions(self, value: int) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_max_join_partitions = int(value)
+
+    @property
+    def enable_predicate_pushdown(self) -> bool:
+        """Whether to enable predicate pushdown optimization.
+
+        Default: True
+        Maps to: DataContext.sql_enable_predicate_pushdown
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_enable_predicate_pushdown
+
+    @enable_predicate_pushdown.setter
+    def enable_predicate_pushdown(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_enable_predicate_pushdown = bool(value)
+
+    @property
+    def enable_projection_pushdown(self) -> bool:
+        """Whether to enable projection pushdown optimization.
+
+        Default: True
+        Maps to: DataContext.sql_enable_projection_pushdown
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_enable_projection_pushdown
+
+    @enable_projection_pushdown.setter
+    def enable_projection_pushdown(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_enable_projection_pushdown = bool(value)
+
+    @property
+    def query_timeout_seconds(self):
+        """SQL query timeout in seconds.
+
+        Default: None (no timeout)
+        Maps to: DataContext.sql_query_timeout_seconds
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_query_timeout_seconds
+
+    @query_timeout_seconds.setter
+    def query_timeout_seconds(self, value) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_query_timeout_seconds = value
+
+    @property
+    def enable_sqlglot_optimizer(self) -> bool:
+        """Whether to enable experimental SQLGlot AST optimization.
+
+        Default: False
+        Maps to: DataContext.sql_enable_sqlglot_optimizer
         """
         from ray.data import DataContext
 
@@ -209,10 +350,28 @@ class _Config:
 
     @enable_sqlglot_optimizer.setter
     def enable_sqlglot_optimizer(self, value: bool) -> None:
-        """Enable/disable SQLGlot optimization via DataContext."""
         from ray.data import DataContext
 
         DataContext.get_current().sql_enable_sqlglot_optimizer = bool(value)
+
+    @property
+    def use_datafusion(self) -> bool:
+        """Whether to use Apache DataFusion for query optimization.
+
+        Default: True
+        When True, uses DataFusion's cost-based optimizer then executes with
+        Ray Data. Falls back to SQLGlot if DataFusion unavailable.
+        Maps to: DataContext.sql_use_datafusion
+        """
+        from ray.data import DataContext
+
+        return DataContext.get_current().sql_use_datafusion
+
+    @use_datafusion.setter
+    def use_datafusion(self, value: bool) -> None:
+        from ray.data import DataContext
+
+        DataContext.get_current().sql_use_datafusion = bool(value)
 
 
 config = _Config()
