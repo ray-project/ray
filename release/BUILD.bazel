@@ -365,7 +365,7 @@ py_library(
     name = "wheels",
     srcs = ["ray_release/wheels.py"],
     imports = ["."],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(
