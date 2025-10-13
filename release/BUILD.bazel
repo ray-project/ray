@@ -324,6 +324,7 @@ py_library(
         ["ray_release/**/*.py"],
         exclude = [
             "ray_release/tests/*.py",
+            "ray_release/scripts/*.py",
             "ray_release/bazel.py",
         ],
     ),
@@ -413,6 +414,16 @@ py_test(
     ],
 )
 
+py_library(
+    name = "bisect_lib",
+    srcs = ["ray_release/scripts/ray_bisect.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
 py_test(
     name = "test_bisect",
     size = "small",
@@ -427,6 +438,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":bisect_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -482,6 +494,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        "custom_byod_build_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -521,6 +534,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":custom_image_build_and_test_init_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -788,10 +802,30 @@ py_binary(
     ],
 )
 
+py_library(
+    name = "custom_byod_build_lib",
+    srcs = ["ray_release/scripts/custom_byod_build.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
 py_binary(
     name = "custom_byod_build",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
     exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_library(
+    name = "custom_image_build_and_test_init_lib",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
     deps = [
         ":ray_release",
     ],
