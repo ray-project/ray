@@ -1,6 +1,6 @@
 """Apply chat template stage"""
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Type, Union
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -19,6 +19,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         model: str,
         chat_template: Optional[str] = None,
+        chat_template_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the ChatTemplateUDF.
@@ -30,6 +31,7 @@ class ChatTemplateUDF(StatefulStageUDF):
             chat_template: The chat template in Jinja template format. This is
                            usually not needed if the model checkpoint already contains the
                            chat template.
+            chat_template_kwargs: The optional kwargs to pass apply_chat_template.
         """
         from transformers import AutoProcessor
 
@@ -45,10 +47,15 @@ class ChatTemplateUDF(StatefulStageUDF):
             download_model=NodeModelDownloadable.TOKENIZER_ONLY,
             download_extra_files=False,
         )
-        self.processor = AutoProcessor.from_pretrained(
-            model_path, trust_remote_code=True
-        )
+        if TYPE_CHECKING:
+            from transformers.processing_utils import ProcessorMixin
+            from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+        self.processor: Union[
+            "PreTrainedTokenizerBase", "ProcessorMixin"
+        ] = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
         self.chat_template = chat_template
+        self.chat_template_kwargs = chat_template_kwargs
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -80,6 +87,7 @@ class ChatTemplateUDF(StatefulStageUDF):
                     chat_template=self.chat_template,
                     add_generation_prompt=add_generation_prompt,
                     continue_final_message=continue_final_message,
+                    **(self.chat_template_kwargs or {}),
                 )
             )
         assert len(batch) == len(prompts)

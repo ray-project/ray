@@ -47,7 +47,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: NumPy
 
@@ -65,7 +65,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            data    ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: TFRecords
 
@@ -128,7 +128,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
             label   int64
 
     .. tab-item:: Parquet
@@ -147,7 +147,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            img     struct<bytes: binary, path: string>
             label   int64
 
 

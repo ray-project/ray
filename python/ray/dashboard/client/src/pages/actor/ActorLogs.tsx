@@ -13,7 +13,7 @@ export const ActorLogs = ({
   actor: {
     actorId,
     pid,
-    address: { workerId, rayletId },
+    address: { workerId, nodeId },
   },
 }: ActorLogsProps) => {
   const tabs: MultiTabLogViewerTabDetails[] = [
@@ -29,7 +29,7 @@ export const ActorLogs = ({
     },
     {
       title: "system",
-      nodeId: rayletId,
+      nodeId: nodeId,
       // TODO(aguo): Have API return the log file name.
       filename: `python-core-worker-${workerId}_${pid}.log`,
     },

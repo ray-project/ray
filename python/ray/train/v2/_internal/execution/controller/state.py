@@ -90,8 +90,12 @@ class SchedulingState(TrainControllerState):
 
 
 class ReschedulingState(TrainControllerState):
-    def __init__(self):
+    def __init__(
+        self,
+        training_failed_error: TrainingFailedError,
+    ):
         super().__init__(state_type=TrainControllerStateType.RESCHEDULING)
+        self.training_failed_error = training_failed_error
 
 
 class RunningState(TrainControllerState):

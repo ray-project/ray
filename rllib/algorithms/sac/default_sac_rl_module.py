@@ -1,17 +1,10 @@
 from abc import abstractmethod
 from typing import Any, Dict, List, Tuple
 
-from ray.rllib.algorithms.sac.sac_learner import (
-    ACTION_DIST_INPUTS_NEXT,
-    QF_PREDS,
-    QF_TWIN_PREDS,
-)
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
@@ -129,27 +122,6 @@ class DefaultSACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         # else:
         #     return {}
         return {}
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecType:
-        return [
-            SampleBatch.OBS,
-            SampleBatch.ACTIONS,
-            SampleBatch.NEXT_OBS,
-        ]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return (
-            [
-                QF_PREDS,
-                SampleBatch.ACTION_DIST_INPUTS,
-                ACTION_DIST_INPUTS_NEXT,
-            ]
-            + [QF_TWIN_PREDS]
-            if self.twin_q
-            else []
-        )
 
     @abstractmethod
     @OverrideToImplementCustomLogic

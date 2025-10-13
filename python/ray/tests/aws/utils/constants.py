@@ -1,11 +1,11 @@
 import copy
-import ray
 from datetime import datetime
 
+import ray
 from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
-    NODE_KIND_HEAD,
     TAG_RAY_USER_NODE_TYPE,
 )
 

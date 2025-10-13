@@ -11,6 +11,7 @@ from fairseq import options
 from fairseq_cli.train import main
 
 import ray
+from ray._common.network_utils import build_address
 
 _original_save_checkpoint = fairseq.checkpoint_utils.save_checkpoint
 
@@ -112,7 +113,7 @@ def run_fault_tolerant_loop():
         # fairseq distributed training.
         ip = ray.get(workers[0].get_node_ip.remote())
         port = ray.get(workers[0].find_free_port.remote())
-        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        address = f"tcp://{build_address(ip, port)}"
 
         # Start the remote processes, and check whether their are any process
         # fails. If so, restart all the processes.

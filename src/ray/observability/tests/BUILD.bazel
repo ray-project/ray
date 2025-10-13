@@ -1,0 +1,61 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "open_telemetry_metric_recorder_test",
+    size = "small",
+    srcs = ["open_telemetry_metric_recorder_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:open_telemetry_metric_recorder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_event_recorder_test",
+    size = "small",
+    srcs = ["ray_event_recorder_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:fake_metric",
+        "//src/ray/observability:ray_actor_definition_event",
+        "//src/ray/observability:ray_actor_lifecycle_event",
+        "//src/ray/observability:ray_driver_job_definition_event",
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
+        "//src/ray/observability:ray_event_recorder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_driver_job_lifecycle_event_test",
+    size = "small",
+    srcs = ["ray_driver_job_lifecycle_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_actor_definition_event_test",
+    size = "small",
+    srcs = ["ray_actor_definition_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_actor_definition_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_actor_lifecycle_event_test",
+    size = "small",
+    srcs = ["ray_actor_lifecycle_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_actor_lifecycle_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

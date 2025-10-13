@@ -30,7 +30,7 @@ should step.
 .. scale: 75 %
 ..    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/utils/external_env_protocol.py>`__
+RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py>`__
 called :ref:`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your :py:class:`~ray.rllib.env.env_runner.EnvRunner` class
 toward communicating through :ref:`RLlink <rllink-protocol-docs>` with one or more clients.
 An example, `tcp-based EnvRunner implementation with RLlink is available here <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
@@ -68,7 +68,7 @@ Message Structure
 
 RLlink messages consist of a header and a body:
 
-  - **Header**: 8-byte length field indicating the size of the body, for example `00000016` for a body of length 16 (thus, in total, the message size ).
+  - **Header**: 8-byte length field indicating the size of the body, for example `00000016` for a body of length 16 (thus, in total, the message size).
   - **Body**: JSON-encoded content with a `type` field indicating the message type.
 
 Example Messages: PING and EPISODES_AND_GET_STATE
@@ -153,7 +153,7 @@ Responses: Server → Client
 
 - **``SET_STATE``**
 
-  - Example: ``{"type": "PONG"}``
+  - Example: ``{"type": "SET_STATE", "weights_seq_no": 123, "onnx_file": "... [base64 encoded ONNX file] ..."}``
   - Purpose: Provide the client with the current state (for example, model weights).
   - Body:
 

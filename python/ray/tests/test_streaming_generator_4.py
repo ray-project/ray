@@ -1,13 +1,14 @@
-import pytest
-import numpy as np
-import sys
-import time
+import asyncio
 import gc
 import os
-import signal
 import random
-import asyncio
+import signal
+import sys
+import time
 from typing import Optional
+
+import numpy as np
+import pytest
 from pydantic import BaseModel
 
 import ray
@@ -47,7 +48,6 @@ def test_caller_death(monkeypatch, shutdown_only):
     This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
     be retried indefinitely.
     """
-    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
     ray.init()
 
     @ray.remote

@@ -1,0 +1,102 @@
+- name: DEFAULTS
+  group: multimodal-inference-benchmarks
+  working_dir: nightly_tests/multimodal_inference_benchmarks
+
+  frequency: manual
+  team: data
+
+- name: image_classification
+
+  cluster:
+    cluster_compute: image_classification/compute.yaml
+    byod:
+      post_build_script: byod_install_daft_image_classification.sh
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: ray
+      run:
+        script: python image_classification/ray_data_main.py
+
+    - __suffix__: daft
+      run:
+        script: python image_classification/daft_main.py
+
+- name: large_image_embedding
+
+  cluster:
+    cluster_compute: large_image_embedding/compute.yaml
+    byod:
+      post_build_script: byod_install_daft_image_embedding.sh
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: ray
+      run:
+        script: python large_image_embedding/ray_data_main.py
+
+    - __suffix__: daft
+      run:
+        script: python large_image_embedding/daft_main.py
+
+- name: document_embedding
+
+  cluster:
+    cluster_compute: document_embedding/compute.yaml
+    byod:
+      post_build_script: byod_install_daft_document_embedding.sh
+
+  run:
+    timeout: 3600
+
+  variations:
+  - __suffix__: ray
+    run:
+      script: python document_embedding/ray_data_main.py
+
+  - __suffix__: daft
+    run:
+      script: python document_embedding/daft_main.py
+
+
+- name: audio_transcription
+  python: "3.10"
+  cluster:
+    cluster_compute: audio_transcription/compute.yaml
+    byod:
+      post_build_script: byod_install_daft_audio_transcription.sh
+      python_depset: audio_transcription_py3.10.lock
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: ray
+      run:
+        script: python audio_transcription/ray_data_main.py
+
+    - __suffix__: daft
+      run:
+        script: python audio_transcription/daft_main.py
+
+- name: video_object_detection
+
+  cluster:
+    cluster_compute: video_object_detection/compute.yaml
+    byod:
+      post_build_script: byod_install_daft_video_object_detection.sh
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: ray
+      run:
+        script: python video_object_detection/ray_data_main.py
+
+    - __suffix__: daft
+      run:
+        script: python video_object_detection/daft_main.py

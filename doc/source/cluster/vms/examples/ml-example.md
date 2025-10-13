@@ -12,7 +12,7 @@ In this guide, we show you how to run a sample Ray machine learning
 workload on AWS. The similar steps can be used to deploy on GCP or Azure as well.
 
 We will run Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
-To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
+To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-xgboost>`.
 
 ## VM cluster setup
 
@@ -119,7 +119,7 @@ you might not match {ref}`the numbers quoted in the benchmark docs <xgboost-benc
 #### Model parameters
 The file `model.json` in the Ray head node contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head node.
-Refer to the {ref}`XGBoostTrainer documentation <train-gbdt-guide>` for details.
+Refer to the {ref}`XGBoostTrainer documentation <train-xgboost>` for details.
 
 ```{admonition} Scale-down
 If autoscaling is enabled, Ray worker nodes will scale down after the specified idle timeout.

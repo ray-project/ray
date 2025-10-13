@@ -35,7 +35,11 @@ class RangeDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
     ) -> List[ReadTask]:
+        if self._n == 0:
+            return []
+
         read_tasks: List[ReadTask] = []
         n = self._n
         block_format = self._block_format
@@ -45,8 +49,10 @@ class RangeDatasource(Datasource):
         # context if it was overridden. Set target max block size during
         # optimizer stage to fix this.
         ctx = DataContext.get_current()
-        if self._n == 0:
-            target_rows_per_block = 0
+        if ctx.target_max_block_size is None:
+            # If target_max_block_size is ``None``, treat it as unlimited and
+            # avoid further splitting.
+            target_rows_per_block = n  # whole block in one shot
         else:
             row_size_bytes = self.estimate_inmemory_data_size() // self._n
             row_size_bytes = max(row_size_bytes, 1)
@@ -105,6 +111,7 @@ class RangeDatasource(Datasource):
                     ),
                     meta,
                     schema=self._schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
             i += block_size

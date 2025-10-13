@@ -14,13 +14,14 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace ray {
 namespace rpc {
 namespace testing {
 
-enum class RpcFailure {
+enum class RpcFailure : uint8_t {
   None,
   // Failure before server receives the request
   Request,

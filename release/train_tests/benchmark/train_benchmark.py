@@ -34,10 +34,24 @@ def train_fn_per_worker(config):
 
     runner.run()
 
-    metrics = runner.get_metrics(dataset_creation_time=config["dataset_creation_time"])
+    metrics = runner.get_metrics(
+        dataset_creation_time=config.get("dataset_creation_time", 0)
+    )
     if ray.train.get_context().get_world_rank() == 0:
         with open(METRICS_OUTPUT_PATH, "w") as f:
             json.dump(metrics, f)
+
+
+def get_datasets_and_data_config(factory: BenchmarkFactory):
+    dataloader_factory = factory.get_dataloader_factory()
+    if isinstance(dataloader_factory, RayDataLoaderFactory):
+        datasets = dataloader_factory.get_ray_datasets()
+        data_config = dataloader_factory.get_ray_data_config()
+    else:
+        datasets = {}
+        data_config = None
+
+    return datasets, data_config
 
 
 def main():
@@ -60,13 +74,7 @@ def main():
     else:
         raise ValueError(f"Unknown task: {benchmark_config.task}")
 
-    dataloader_factory = factory.get_dataloader_factory()
-    if isinstance(dataloader_factory, RayDataLoaderFactory):
-        datasets = dataloader_factory.get_ray_datasets()
-        data_config = dataloader_factory.get_ray_data_config()
-    else:
-        datasets = {}
-        data_config = None
+    datasets, data_config = get_datasets_and_data_config(factory)
 
     dataset_creation_time = time.perf_counter() - start_time
 

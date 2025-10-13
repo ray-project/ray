@@ -1,16 +1,17 @@
 import asyncio
-import pytest
-import numpy as np
+import gc
 import sys
 import time
-import gc
+
+import numpy as np
+import pytest
 
 import ray
-from ray.experimental.state.api import list_actors
-from ray._common.test_utils import SignalActor
 from ray._common.test_utils import (
+    SignalActor,
     wait_for_condition,
 )
+from ray.experimental.state.api import list_actors
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,

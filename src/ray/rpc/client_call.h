@@ -30,6 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
 
@@ -57,12 +58,6 @@ class ClientCall {
 };
 
 class ClientCallManager;
-
-/// Represents the client callback function of a particular rpc method.
-///
-/// \tparam Reply Type of the reply message.
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -206,9 +201,14 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  /// \param record_stats Whether to record stats for calls made with this client
+  /// \param cluster_id UUID of the destination cluster
+  /// \param num_threads The number of threads used for polling for completion events
+  /// \param call_timeout_ms Set's the default call timeout for requests on this client
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              bool record_stats,
+                             std::string local_address,
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
@@ -216,8 +216,8 @@ class ClientCallManager {
         main_service_(main_service),
         num_threads_(num_threads),
         record_stats_(record_stats),
+        local_address_(std::move(local_address)),
         shutdown_(false),
-        rr_index_(std::rand() % num_threads_),
         call_timeout_ms_(call_timeout_ms) {
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -298,6 +298,8 @@ class ClientCallManager {
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
 
+  const std::string &GetLocalAddress() const { return local_address_; }
+
  private:
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
@@ -363,11 +365,14 @@ class ClientCallManager {
   /// Whether to record stats for these client calls.
   bool record_stats_;
 
+  /// The local address of the client.
+  std::string local_address_;
+
   /// Whether the client has shutdown.
   std::atomic<bool> shutdown_;
 
   /// The index to send RPCs in a round-robin fashion
-  std::atomic<unsigned int> rr_index_;
+  std::atomic<uint64_t> rr_index_ = 0;
 
   /// The gRPC `CompletionQueue` object used to poll events.
   std::vector<std::unique_ptr<grpc::CompletionQueue>> cqs_;

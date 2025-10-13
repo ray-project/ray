@@ -1,5 +1,6 @@
-import asyncio
 import argparse
+import asyncio
+
 import ray
 
 ray.init()

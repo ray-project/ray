@@ -73,17 +73,17 @@ class CountBasedCuriosity(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes=episodes, agents_that_stepped_only=False
         ):
-            # Loop through all obs, except the last one.
+            # Loop through all observations, except the last one.
             observations = sa_episode.get_observations(slice(None, -1))
-            # Get all respective (extrinsic) rewards.
+            # Get all respective extrinsic rewards.
             rewards = sa_episode.get_rewards()
 
             for i, (obs, rew) in enumerate(zip(observations, rewards)):
-                obs = tuple(obs)
                 # Add 1 to obs counter.
+                obs = tuple(obs)
                 self._counts[obs] += 1
-                # Compute our count-based intrinsic reward and add it to the main
-                # (extrinsic) reward.
+                # Compute the count-based intrinsic reward and add it to the extrinsic
+                # reward.
                 rew += self.intrinsic_reward_coeff * (1 / self._counts[obs])
                 # Store the new reward back to the episode (under the correct
                 # timestep/index).

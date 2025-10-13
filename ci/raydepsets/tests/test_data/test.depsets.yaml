@@ -1,0 +1,67 @@
+build_arg_sets:
+  py311_cpu:
+      CUDA_VERSION: cpu
+      PYTHON_VERSION: py311
+  py311_cuda128:
+      CUDA_VERSION: 128
+      PYTHON_VERSION: py311
+
+depsets:
+  - name: ray_base_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    constraints:
+      - requirement_constraints_test.txt
+    output: requirements_compiled.txt
+  - name: general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_general.txt
+    build_arg_sets:
+      - py311_cpu
+  - name: build_args_test_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_general_${PYTHON_VERSION}_${CUDA_VERSION}.txt
+    build_arg_sets:
+      - py311_cpu
+  - name: subset_general_depset
+    operation: subset
+    source_depset: general_depset__py311_cpu
+    requirements:
+      - requirement_constraints_subset.txt
+    output: requirements_compiled_subset_general.txt
+  - name: expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - requirements_expanded.txt
+    output: requirements_compiled_expanded.txt
+    build_arg_sets:
+      - py311_cpu
+  - name: expand_general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    operation: expand
+    depsets:
+      - general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+      - expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    constraints:
+      - requirement_constraints_expand.txt
+    output: requirements_compiled_expand_general.txt
+    build_arg_sets:
+      - py311_cpu
+  - name: pre_hook_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - pre-hook-test.sh
+  - name: pre_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - pre-hook-error-test.sh

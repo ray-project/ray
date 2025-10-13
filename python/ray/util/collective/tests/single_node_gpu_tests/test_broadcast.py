@@ -1,8 +1,8 @@
 """Test the broadcast API."""
-import pytest
 import cupy as cp
-import ray
+import pytest
 
+import ray
 from ray.util.collective.tests.util import create_collective_workers
 
 

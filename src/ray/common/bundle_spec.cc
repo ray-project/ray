@@ -14,6 +14,10 @@
 
 #include "ray/common/bundle_spec.h"
 
+#include "ray/common/scheduling/label_selector.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+
 namespace ray {
 
 void BundleSpecification::ComputeResources() {
@@ -140,59 +144,6 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
     RAY_CHECK(data->bundle_index == -1);
     return data->original_resource;
   }
-}
-
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
-  // Check whether the resource is CPU resource or CPU resource inside PG.
-  if (resource_id == ResourceID::CPU()) {
-    return true;
-  }
-
-  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                       /*for_wildcard_resource*/ true,
-                                                       /*for_indexed_resource*/ true);
-  if (possible_pg_resource.has_value() &&
-      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
-    return true;
-  }
-
-  return false;
-}
-
-std::optional<PgFormattedResourceData> ParsePgFormattedResource(
-    const std::string &resource, bool for_wildcard_resource, bool for_indexed_resource) {
-  // Check if it is a wildcard pg resource.
-  PgFormattedResourceData data;
-  std::smatch match_groups;
-  RAY_CHECK(for_wildcard_resource || for_indexed_resource)
-      << "Either one of for_wildcard_resource or for_indexed_resource must be true";
-
-  if (for_wildcard_resource) {
-    static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
-
-    if (std::regex_match(resource, match_groups, wild_card_resource_pattern) &&
-        match_groups.size() == 3) {
-      data.original_resource = match_groups[1].str();
-      data.bundle_index = -1;
-      data.group_id = match_groups[2].str();
-      return data;
-    }
-  }
-
-  // Check if it is a regular pg resource.
-  if (for_indexed_resource) {
-    static const std::regex pg_resource_pattern("^(.+)_group_(\\d+)_([0-9a-zA-Z]+)");
-    if (std::regex_match(resource, match_groups, pg_resource_pattern) &&
-        match_groups.size() == 4) {
-      data.original_resource = match_groups[1].str();
-      data.bundle_index = stoi(match_groups[2].str());
-      data.group_id = match_groups[3].str();
-      return data;
-    }
-  }
-
-  // If it is not a wildcard or pg formatted resource, return nullopt.
-  return {};
 }
 
 std::string GetDebugStringForBundles(

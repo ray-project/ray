@@ -5,14 +5,14 @@ import subprocess
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.test_utils import (
     TelemetryStorage,
     check_ray_started,
     check_ray_stopped,
 )
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 parser = argparse.ArgumentParser(
     description="Example Python script taking command line arguments."

@@ -42,6 +42,7 @@ def mock_sglang_wrapper():
                     "generated_text": f"Response to: {row['prompt']}",
                     "num_generated_tokens": 3,
                 },
+                0.1,  # time_taken_llm
             )
 
         mock_instance.generate_async.side_effect = mock_generate
@@ -226,9 +227,10 @@ async def test_sglang_wrapper(
     assert mock_generate_async.call_count == batch_size
 
     # Verify the outputs match expected values
-    for i, (request, output) in enumerate(results):
+    for i, (request, output, time_taken_llm) in enumerate(results):
         assert output["prompt"] == f"Test {i}"
         assert output["num_generated_tokens"] == i + 5  # max_new_tokens we set
+        assert time_taken_llm > 0
 
 
 @pytest.mark.asyncio

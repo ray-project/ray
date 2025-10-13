@@ -1,0 +1,138 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
+# Public targets.
+ray_cc_library(
+    name = "cgroup_manager",
+    srcs = select({
+        ":is_linux": ["cgroup_manager.cc"],
+        "//conditions:default": ["noop_cgroup_manager.cc"],
+    }),
+    hdrs = [
+        "cgroup_manager.h",
+        "scoped_cgroup_operation.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cgroup_driver_interface",
+        ":cgroup_manager_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ] + select({
+        ":is_linux": [
+            "//src/ray/util:logging",
+            "@com_google_absl//absl/strings",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+ray_cc_library(
+    name = "cgroup_driver_interface",
+    hdrs = [
+        "cgroup_driver_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_manager_interface",
+    hdrs = [
+        "cgroup_manager_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cgroup_driver_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "sysfs_cgroup_driver",
+    srcs = select({
+        ":is_linux": ["sysfs_cgroup_driver.cc"],
+        "//conditions:default": ["noop_sysfs_cgroup_driver.cc"],
+    }),
+    hdrs = [
+        "sysfs_cgroup_driver.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cgroup_driver_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ] + select({
+        ":is_linux": [
+            "//src/ray/util:logging",
+            "@com_google_absl//absl/strings",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Private targets
+#
+# TODO(#54703): This target builds the noop implementations.
+# There's a corressponding test that runs on Linux and Non-Linux
+# CI so breakages are caught in premerge before these targets are
+# cleaned up at the end of the resource isolation milestone 1
+# project.
+ray_cc_library(
+    name = "noop_cgroup_targets",
+    srcs = [
+        "noop_cgroup_manager.cc",
+        "noop_sysfs_cgroup_driver.cc",
+    ],
+    hdrs = [
+        "cgroup_manager.h",
+        "scoped_cgroup_operation.h",
+        "sysfs_cgroup_driver.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":cgroup_driver_interface",
+        ":cgroup_manager_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_cgroup_driver",
+    hdrs = [
+        "fake_cgroup_driver.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":cgroup_driver_interface",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_test_utils",
+    srcs = ["cgroup_test_utils.cc"],
+    hdrs = ["cgroup_test_utils.h"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)

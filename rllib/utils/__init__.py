@@ -5,7 +5,7 @@ import tree
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.framework import (

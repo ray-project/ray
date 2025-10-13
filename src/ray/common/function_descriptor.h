@@ -145,7 +145,7 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
 
   virtual std::string ClassName() const { return typed_message_->class_name(); }
 
-  const std::string &FunctionName() const { return typed_message_->function_name(); }
+  virtual std::string FunctionName() const { return typed_message_->function_name(); }
 
   const std::string &Signature() const { return typed_message_->signature(); }
 

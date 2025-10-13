@@ -2,16 +2,6 @@
 
 .. _connector-v2-docs:
 
-ConnectorV2 and ConnectorV2 pipelines
-=====================================
-
-.. toctree::
-    :hidden:
-
-    env-to-module-connector
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
@@ -32,6 +22,24 @@ ConnectorV2 and ConnectorV2 pipelines
 
             Env-to-module pipelines
 
+    .. grid-item-card::
+        :img-top: /rllib/images/connector_v2/learner_connector.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: learner-pipeline-docs
+
+            Learner connector pipelines
+
+ConnectorV2 and ConnectorV2 pipelines
+=====================================
+
+.. toctree::
+    :hidden:
+
+    env-to-module-connector
+    learner-connector
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib stores and transports all trajectory data in the form of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
 or :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects.
@@ -66,8 +74,8 @@ Three ConnectorV2 pipeline types
 There are three different types of connector pipelines in RLlib:
 
 1) :ref:`Env-to-module pipeline <env-to-module-pipeline-docs>`, which creates tensor batches for action computing forward passes.
-2) Module-to-env pipeline, which translates a model's output into RL environment actions.
-3) Learner connector pipeline, which creates the train batch for a model update.
+2) Module-to-env pipeline (documentation pending), which translates a model's output into RL environment actions.
+3) :ref:`Learner connector pipeline <learner-pipeline-docs>`, which creates the train batch for a model update.
 
 The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
 customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling
@@ -140,11 +148,9 @@ individual submodules' forward passes using the individual batches under the res
 See :ref:`here for how to write your own multi-module or multi-agent forward logic <implementing-custom-multi-rl-modules>`
 and override this default behavior of :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.
 
-
 Finally, if you have a stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional
 default connector pieces to the pipeline, :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`
 and :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`:
-
 
 .. figure:: images/connector_v2/pipeline_batch_phases_single_agent_w_states.svg
     :width: 900
@@ -159,7 +165,6 @@ and :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.Ad
     ``state_out`` values of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` under the ``state_in`` column name to the batch. Note that
     RLlib only adds the ``state_in`` values for the first timestep in each sequence and therefore also doesn't add a time dimension to the data in the
     ``state_in`` column.
-
 
 .. note::
 

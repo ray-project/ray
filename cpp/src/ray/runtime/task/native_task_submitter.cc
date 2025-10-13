@@ -26,23 +26,23 @@ using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
-  if (invocation.remote_function_holder.lang_type == LangType::CPP) {
+  if (invocation.remote_function_holder.lang_type_ == LangType::CPP) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-        invocation.remote_function_holder.function_name,
+        invocation.remote_function_holder.function_name_,
         "",
-        invocation.remote_function_holder.class_name);
+        invocation.remote_function_holder.class_name_);
     return RayFunction(ray::Language::CPP, function_descriptor);
-  } else if (invocation.remote_function_holder.lang_type == LangType::PYTHON) {
+  } else if (invocation.remote_function_holder.lang_type_ == LangType::PYTHON) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
-        invocation.remote_function_holder.module_name,
-        invocation.remote_function_holder.class_name,
-        invocation.remote_function_holder.function_name,
+        invocation.remote_function_holder.module_name_,
+        invocation.remote_function_holder.class_name_,
+        invocation.remote_function_holder.function_name_,
         "");
     return RayFunction(ray::Language::PYTHON, function_descriptor);
-  } else if (invocation.remote_function_holder.lang_type == LangType::JAVA) {
+  } else if (invocation.remote_function_holder.lang_type_ == LangType::JAVA) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildJava(
-        invocation.remote_function_holder.class_name,
-        invocation.remote_function_holder.function_name,
+        invocation.remote_function_holder.class_name_,
+        invocation.remote_function_holder.function_name_,
         "");
     return RayFunction(ray::Language::JAVA, function_descriptor);
   } else {
@@ -200,8 +200,7 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
       create_options.name,
       (ray::core::PlacementStrategy)create_options.strategy,
       create_options.bundles,
-      false,
-      1.0);
+      false);
   ray::PlacementGroupID placement_group_id;
   auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);

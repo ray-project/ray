@@ -1,0 +1,7 @@
+applications:
+  - args:
+      llm_configs:
+        - ./model_config/llm_config.yaml
+    import_path: ray.serve.llm:build_openai_app
+    name: llm-endpoint
+    route_prefix: /

@@ -16,6 +16,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -28,11 +29,13 @@ from typing import (
 
 import numpy as np
 import pandas as pd
+
+# NOTE: pyarrow.fs module needs to be explicitly imported!
 import pyarrow
-from packaging.version import parse as parse_version
+import pyarrow.fs
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
+from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 import psutil
@@ -63,12 +66,6 @@ GiB = 1024 * MiB
 SENTINEL = object()
 
 
-# NOTE: Make sure that these lower and upper bounds stay in sync with version
-# constraints given in python/setup.py.
-# Inclusive minimum pyarrow version.
-MIN_PYARROW_VERSION = "6.0.1"
-RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
-_VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
@@ -126,39 +123,12 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    """Check that pyarrow's version is within the supported bounds."""
-    global _VERSION_VALIDATED
-
-    if not _VERSION_VALIDATED:
-        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
-            _VERSION_VALIDATED = True
-            return
-
-        version = get_pyarrow_version()
-        if version is not None:
-            if version < parse_version(MIN_PYARROW_VERSION):
-                raise ImportError(
-                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
-                    f"{version} is installed. Reinstall with "
-                    f'`pip install -U "pyarrow"`. '
-                    "If you want to disable this pyarrow version check, set the "
-                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-                )
-        else:
-            logger.warning(
-                "You are using the 'pyarrow' module, but the exact version is unknown "
-                "(possibly carried as an internal component by another module). Please "
-                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Dataset. "
-                "If you want to disable this pyarrow version check, set the "
-                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-            )
-        _VERSION_VALIDATED = True
+    ray._private.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(
     parallelism: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     ctx: DataContext,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
@@ -201,9 +171,14 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
-    if mem_size is not None and not np.isnan(mem_size):
+    if (
+        mem_size is not None
+        and not np.isnan(mem_size)
+        and target_max_block_size is not None
+    ):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
@@ -242,13 +217,18 @@ def _autodetect_parallelism(
             reason = (
                 "output blocks of size at least "
                 "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                f"{ctx.target_min_block_size / MiB} MiB"
             )
         elif parallelism == min_safe_parallelism:
+            # Handle ``None`` (unlimited) gracefully in the log message.
+            if ctx.target_max_block_size is None:
+                display_val = "unlimited"
+            else:
+                display_val = f"{ctx.target_max_block_size / MiB} MiB"
             reason = (
                 "output blocks of size at most "
                 "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                f"{display_val}"
             )
         else:
             reason = (
@@ -561,7 +541,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -620,25 +600,33 @@ def get_compute_strategy(
         return compute
     elif concurrency is not None:
         if isinstance(concurrency, tuple):
-            if (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
+            # Validate tuple length and that all elements are integers
+            if len(concurrency) not in (2, 3) or not all(
+                isinstance(c, int) for c in concurrency
             ):
-                if is_callable_class:
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximum number of workers to use."
-                    )
-            else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
+                )
+
+            # Check if function is callable class (common validation)
+            if not is_callable_class:
+                raise ValueError(
+                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                    "control maximum number of workers to use."
+                )
+
+            # Create ActorPoolStrategy based on tuple length
+            if len(concurrency) == 2:
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:  # len(concurrency) == 3
+                return ActorPoolStrategy(
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    initial_size=concurrency[2],
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
@@ -1396,46 +1384,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
-def call_with_retry(
-    f: Callable[[], Any],
-    description: str,
-    *,
-    match: Optional[List[str]] = None,
-    max_attempts: int = 10,
-    max_backoff_s: int = 32,
-) -> Any:
-    """Retry a function with exponential backoff.
-
-    Args:
-        f: The function to retry.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
-        description: An imperitive description of the function being retried. For
-            example, "open the file".
-        max_attempts: The maximum number of attempts to retry.
-        max_backoff_s: The maximum number of seconds to backoff.
-    """
-    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
-
-    for i in range(max_attempts):
-        try:
-            return f()
-        except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
-            if is_retryable and i + 1 < max_attempts:
-                # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
-                logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
-                )
-                time.sleep(backoff)
-            else:
-                logger.debug(
-                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
-                )
-                raise e from None
-
-
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1734,3 +1682,30 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
 
     return actual_items_counts == expected_items_counts
+
+
+def merge_resources_to_ray_remote_args(
+    num_cpus: Optional[int],
+    num_gpus: Optional[int],
+    memory: Optional[int],
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert the given resources to Ray remote args.
+
+    Args:
+        num_cpus: The number of CPUs to be added to the Ray remote args.
+        num_gpus: The number of GPUs to be added to the Ray remote args.
+        memory: The memory to be added to the Ray remote args.
+        ray_remote_args: The Ray remote args to be merged.
+
+    Returns:
+        The converted arguments.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if num_cpus is not None:
+        ray_remote_args["num_cpus"] = num_cpus
+    if num_gpus is not None:
+        ray_remote_args["num_gpus"] = num_gpus
+    if memory is not None:
+        ray_remote_args["memory"] = memory
+    return ray_remote_args

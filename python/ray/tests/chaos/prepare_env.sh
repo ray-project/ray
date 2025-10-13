@@ -28,7 +28,11 @@ helm install raycluster kuberay/ray-cluster \
     --set worker.resources.limits.cpu=500m \
     --set worker.resources.requests.cpu=500m \
     --set head.resources.limits.cpu=500m \
-    --set head.resources.requests.cpu=500m
+    --set head.resources.requests.cpu=500m \
+    --set worker.resources.limits.memory=4Gi \
+    --set worker.resources.requests.memory=4Gi \
+    --set head.resources.limits.memory=4Gi \
+    --set head.resources.requests.memory=4Gi
 
 kubectl wait pod -l ray.io/cluster=raycluster-kuberay \
     --for=condition=Ready=True --timeout=5m

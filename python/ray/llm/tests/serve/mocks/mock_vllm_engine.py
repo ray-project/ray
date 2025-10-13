@@ -4,6 +4,7 @@ import random
 from random import randint
 from typing import AsyncGenerator, Dict, Union
 
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -12,15 +13,15 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):
@@ -49,6 +50,21 @@ class MockVLLMEngine(LLMEngine):
 
     async def check_health(self) -> None:
         """Check the health of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def start_profile(self) -> None:
+        """Start profiling of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def stop_profile(self) -> None:
+        """Stop profiling of the mock engine."""
         if not self.started:
             raise RuntimeError("Engine not started")
 
@@ -117,6 +133,41 @@ class MockVLLMEngine(LLMEngine):
             usage={
                 "prompt_tokens": len(str(request.input).split()),
                 "total_tokens": len(str(request.input).split()),
+            },
+        )
+        yield response
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
+        """Mock score generation for text pairs."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract text_1 and text_2 from the request
+        text_1 = getattr(request, "text_1", "")
+        text_2 = getattr(request, "text_2", "")
+
+        # Convert to lists if they aren't already
+        text_1_list = text_1 if isinstance(text_1, list) else [text_1]
+        text_2_list = text_2 if isinstance(text_2, list) else [text_2]
+
+        # Generate mock scores for each pair
+        score_data = []
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
+            # Generate a random score (can be any float value)
+            score = random.uniform(-10.0, 10.0)
+
+            score_data.append({"object": "score", "score": score, "index": i})
+
+        # Create the response
+        response = ScoreResponse(
+            object="list",
+            data=score_data,
+            model=getattr(request, "model", "mock-model"),
+            usage={
+                "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+                "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
         yield response
@@ -265,15 +316,26 @@ class MockVLLMEngine(LLMEngine):
 
 
 class FakeLoraModelLoader(LoraModelLoader):
-    """Fake LoRA model loader for testing."""
+    """Fake LoRA model loader for testing that bypasses S3 entirely."""
+
+    async def load_model_from_config(
+        self, lora_model_id: str, llm_config
+    ) -> DiskMultiplexConfig:
+        """Load a fake LoRA model without any S3 access."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
+        )
 
     async def load_model(
-        self, lora_model_id: str, llm_config: LLMConfig
+        self, lora_model_id: str, lora_mirror_config: LoraMirrorConfig
     ) -> DiskMultiplexConfig:
         """Load a fake LoRA model."""
         return DiskMultiplexConfig(
             model_id=lora_model_id,
-            max_total_tokens=llm_config.max_request_context_length,
+            max_total_tokens=lora_mirror_config.max_total_tokens,
             local_path="/fake/local/path",
             lora_assigned_int_id=random.randint(1, 100),
         )

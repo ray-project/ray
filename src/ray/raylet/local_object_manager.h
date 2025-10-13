@@ -23,13 +23,12 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/object_manager/common.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/util/time.h"
 
 namespace ray {
 
@@ -184,14 +183,14 @@ class LocalObjectManager : public LocalObjectManagerInterface {
     LocalObjectInfo(const rpc::Address &owner_address,
                     const ObjectID &generator_id,
                     size_t object_size)
-        : owner_address(owner_address),
-          generator_id(generator_id.IsNil() ? std::nullopt
-                                            : std::optional<ObjectID>(generator_id)),
-          object_size(object_size) {}
-    rpc::Address owner_address;
-    bool is_freed = false;
-    std::optional<ObjectID> generator_id;
-    size_t object_size;
+        : owner_address_(owner_address),
+          generator_id_(generator_id.IsNil() ? std::nullopt
+                                             : std::optional<ObjectID>(generator_id)),
+          object_size_(object_size) {}
+    rpc::Address owner_address_;
+    bool is_freed_ = false;
+    std::optional<ObjectID> generator_id_;
+    size_t object_size_;
   };
 
   FRIEND_TEST(LocalObjectManagerTest, TestTryToSpillObjectsZero);

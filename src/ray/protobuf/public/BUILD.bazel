@@ -1,0 +1,157 @@
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "events_base_event_proto",
+    srcs = ["events_base_event.proto"],
+    deps = [
+        ":events_actor_definition_event_proto",
+        ":events_actor_lifecycle_event_proto",
+        ":events_actor_task_definition_event_proto",
+        ":events_driver_job_definition_event_proto",
+        ":events_driver_job_lifecycle_event_proto",
+        ":events_node_definition_event_proto",
+        ":events_node_lifecycle_event_proto",
+        ":events_task_definition_event_proto",
+        ":events_task_execution_event_proto",
+        "//src/ray/protobuf:events_task_profile_events_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_base_event_cc_proto",
+    deps = [":events_base_event_proto"],
+)
+
+proto_library(
+    name = "events_actor_task_definition_event_proto",
+    srcs = ["events_actor_task_definition_event.proto"],
+    deps = [
+        ":runtime_environment_proto",
+        "//src/ray/protobuf:common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_actor_task_definition_event_cc_proto",
+    deps = [":events_actor_task_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_task_definition_event_proto",
+    srcs = ["events_task_definition_event.proto"],
+    deps = [
+        ":runtime_environment_proto",
+        "//src/ray/protobuf:common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_task_definition_event_cc_proto",
+    deps = [":events_task_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_task_execution_event_proto",
+    srcs = ["events_task_execution_event.proto"],
+    deps = [
+        "//src/ray/protobuf:common_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_task_execution_event_cc_proto",
+    deps = [":events_task_execution_event_proto"],
+)
+
+proto_library(
+    name = "events_driver_job_definition_event_proto",
+    srcs = ["events_driver_job_definition_event.proto"],
+    deps = [
+        ":runtime_environment_proto",
+        "//src/ray/protobuf:common_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_driver_job_definition_event_cc_proto",
+    deps = [":events_driver_job_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_driver_job_lifecycle_event_proto",
+    srcs = ["events_driver_job_lifecycle_event.proto"],
+    deps = [
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_driver_job_lifecycle_event_cc_proto",
+    deps = [":events_driver_job_lifecycle_event_proto"],
+)
+
+proto_library(
+    name = "events_actor_definition_event_proto",
+    srcs = ["events_actor_definition_event.proto"],
+)
+
+cc_proto_library(
+    name = "events_actor_definition_event_cc_proto",
+    deps = [":events_actor_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_actor_lifecycle_event_proto",
+    srcs = ["events_actor_lifecycle_event.proto"],
+    deps = [
+        "//src/ray/protobuf:common_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+proto_library(
+    name = "events_node_definition_event_proto",
+    srcs = ["events_node_definition_event.proto"],
+    deps = [
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_node_definition_event_cc_proto",
+    deps = [":events_node_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_node_lifecycle_event_proto",
+    srcs = ["events_node_lifecycle_event.proto"],
+    deps = [
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_actor_lifecycle_event_cc_proto",
+    deps = [":events_actor_lifecycle_event_proto"],
+)
+
+cc_proto_library(
+    name = "events_node_lifecycle_event_cc_proto",
+    deps = [":events_node_lifecycle_event_proto"],
+)
+
+proto_library(
+    name = "runtime_environment_proto",
+    srcs = ["runtime_environment.proto"],
+)
+
+cc_proto_library(
+    name = "runtime_environment_cc_proto",
+    deps = [":runtime_environment_proto"],
+)

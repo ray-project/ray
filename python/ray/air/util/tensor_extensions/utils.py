@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Sequence, Union, List, Protocol
+from typing import TYPE_CHECKING, Any, List, Protocol, Sequence, Union
 
 import numpy as np
 

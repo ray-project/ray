@@ -1,0 +1,176 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "common",
+    srcs = ["common.cc"],
+    hdrs = ["common.h"],
+    visibility = ["//visibility:private"],
+)
+
+ray_cc_library(
+    name = "client_call",
+    hdrs = ["client_call.h"],
+    visibility = [
+        ":__pkg__",
+        "//src/ray/core_worker:__pkg__",
+    ],
+    deps = [
+        ":rpc_callback_types",
+        "//src/ray/common:asio",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_client",
+    hdrs = ["grpc_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":client_call",
+        ":common",
+        ":rpc_chaos",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/util:network_util",
+    ],
+)
+
+ray_cc_library(
+    name = "retryable_grpc_client",
+    srcs = ["retryable_grpc_client.cc"],
+    hdrs = ["retryable_grpc_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_client",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics_agent_client",
+    srcs = ["metrics_agent_client.cc"],
+    hdrs = ["metrics_agent_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_client",
+        "//src/ray/protobuf:reporter_cc_grpc",
+        "//src/ray/protobuf:reporter_cc_proto",
+        "//src/ray/util:logging",
+        "//src/ray/util:network_util",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "event_aggregator_client",
+    hdrs = ["event_aggregator_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_client",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_grpc",
+        "//src/ray/util:logging",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_chaos",
+    srcs = ["rpc_chaos.cc"],
+    hdrs = ["rpc_chaos.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "server_call",
+    srcs = ["server_call.cc"],
+    hdrs = ["server_call.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":rpc_callback_types",
+        "//src/ray/common:asio",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/stats:stats_metric",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_server",
+    srcs = ["grpc_server.cc"],
+    hdrs = ["grpc_server.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":common",
+        ":server_call",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/util:network_util",
+        "//src/ray/util:thread_utils",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_reflection",
+        "@com_github_grpc_grpc//:grpcpp_admin",
+    ],
+)
+
+ray_cc_library(
+    name = "node_manager_server",
+    hdrs = [
+        "node_manager/node_manager_server.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_server",
+    hdrs = [
+        "object_manager_server.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
+        "//src/ray/protobuf:object_manager_cc_grpc",
+        "//src/ray/rpc:grpc_server",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "utils",
+    hdrs = ["utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_callback_types",
+    hdrs = ["rpc_callback_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
+    ],
+)

@@ -29,6 +29,7 @@ class TorchTrainer(DataParallelTrainer):
     Example:
 
         .. testcode::
+            :skipif: True
 
             import os
             import tempfile
@@ -131,11 +132,6 @@ class TorchTrainer(DataParallelTrainer):
 
             # Inspect the results.
             final_loss = result.metrics["loss"]
-
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
 

@@ -1,0 +1,43 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+message ActorDefinitionEvent {
+  // The ID of the actor that was created.
+  bytes actor_id = 1;
+  // The ID of the job that created the actor.
+  bytes job_id = 2;
+  // Whether the actor is persistent.
+  bool is_detached = 3;
+  // Name of the actor.
+  string name = 4;
+  // The actor's namespace. Named `ray_namespace` to avoid conflicting with c++ keyword.
+  string ray_namespace = 5;
+  // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
+  // it here instead of grabbing it from the task spec because the task spec is cleared
+  // for deleted actors: https://github.com/ray-project/ray/pull/11149.
+  string serialized_runtime_env = 6;
+  // The actor's class name. This is necessary because the task spec's lifetime
+  // is shorter than the ActorTableData.
+  string class_name = 7;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 8;
+  // Placement group ID if the actor requires a placement group.
+  bytes placement_group_id = 9;
+  // The label selector for the actor.
+  map<string, string> label_selector = 11;
+}

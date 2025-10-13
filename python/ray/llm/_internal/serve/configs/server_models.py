@@ -1,19 +1,14 @@
-import os
 from enum import Enum
 from typing import (
     Any,
     Dict,
-    List,
     Optional,
-    Sequence,
     TypeVar,
     Union,
 )
 
-import pydantic
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     PositiveInt,
     PrivateAttr,
@@ -21,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -32,8 +26,10 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+)
+from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
+    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
@@ -100,14 +96,15 @@ class LoraConfig(BaseModelExtended):
             return value
 
         assert is_remote_path(value), (
-            "Only AWS S3 and Google Cloud Storage are supported. The "
-            'dynamic_lora_loading_path must start with "s3://" or "gs://". '
+            "Only AWS S3, Google Cloud Storage, and Azure Storage are supported. The "
+            'dynamic_lora_loading_path must start with "s3://", "gs://", "abfss://", or "azure://". '
             f'Got "{value}" instead.'
         )
         return value.rstrip("/")
 
 
 class ModelLoadingConfig(BaseModelExtended):
+
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
@@ -134,22 +131,17 @@ EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
-    # model_config is a Pydantic setting. This setting merges with
-    # model_configs in parent classes.
-    model_config = ConfigDict(
-        extra="forbid",
-    )
 
     runtime_env: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description=(
             "The runtime_env to use for the model deployment replica "
             "and the engine workers."
         ),
     )
 
-    model_loading_config: ModelLoadingConfig = Field(
-        description="The settings for how to download and expose the model."
+    model_loading_config: Union[Dict[str, Any], ModelLoadingConfig] = Field(
+        description="The settings for how to download and expose the model. Validated against ModelLoadingConfig."
     )
 
     llm_engine: str = Field(
@@ -167,20 +159,24 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
-    )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    lora_config: Optional[LoraConfig] = Field(
-        default=None, description="Settings for LoRA adapter."
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+        ),
+    )
+
+    lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
+        default=None,
+        description="Settings for LoRA adapter. Validated against LoraConfig.",
     )
 
     deployment_config: Dict[str, Any] = Field(
@@ -192,7 +188,7 @@ class LLMConfig(BaseModelExtended):
             `autoscaling_config`, `max_queued_requests`, `user_config`,
             `health_check_period_s`, `health_check_timeout_s`,
             `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
-            `logging_config`.
+            `logging_config`, `request_router_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
@@ -205,14 +201,14 @@ class LLMConfig(BaseModelExtended):
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
         f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_router_replicas`: The number of replicas for the router. Ray "
+        "- `num_ingress_replicas`: The number of replicas for the router. Ray "
         "Serve will take the max amount all the replicas. Default would be 2 "
         "router replicas per model replica.\n",
     )
 
     log_engine_metrics: Optional[bool] = Field(
-        False,
-        description="Enable additional engine metrics via Ray Prometheus port. Only compatible with V1 vLLM engine. NOTE: once v1 is fully rolled out, we will remove this flag and turn it on by default.",
+        default=True,
+        description="Enable additional engine metrics via Ray Prometheus port. Default is True.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -225,8 +221,16 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-        self._supports_vision = hasattr(hf_config, "vision_config")
+        try:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            self._supports_vision = hasattr(hf_config, "vision_config")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                f"Original error: {repr(e)}"
+            ) from e
 
     def _set_model_architecture(
         self,
@@ -238,9 +242,23 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `architectures`.
         """
         if model_id_or_path:
-            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
-            if hasattr(hf_config, "architectures") and hf_config.architectures:
-                self._model_architecture = hf_config.architectures[0]
+            try:
+                hf_config = transformers.PretrainedConfig.from_pretrained(
+                    model_id_or_path
+                )
+                if (
+                    hf_config
+                    and hasattr(hf_config, "architectures")
+                    and hf_config.architectures
+                ):
+                    self._model_architecture = hf_config.architectures[0]
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load Hugging Face config for model_id='{model_id_or_path}'.\
+                        Ensure `model_id` is a valid Hugging Face repo or a local path that \
+                        contains a valid `config.json` file. "
+                    f"Original error: {repr(e)}"
+                ) from e
 
         if model_architecture:
             self._model_architecture = model_architecture
@@ -312,6 +330,49 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
+    @field_validator("model_loading_config")
+    def validate_model_loading_config(
+        cls, value: Union[Dict[str, Any], ModelLoadingConfig]
+    ) -> ModelLoadingConfig:
+        """Validates the model loading config dictionary."""
+        if isinstance(value, ModelLoadingConfig):
+            return value
+
+        try:
+            model_loading_config = ModelLoadingConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid model_loading_config: {value}") from e
+
+        return model_loading_config
+
+    @field_validator("lora_config")
+    def validate_lora_config(
+        cls, value: Optional[Union[Dict[str, Any], LoraConfig]]
+    ) -> Optional[LoraConfig]:
+        """Validates the lora config dictionary."""
+        if value is None or isinstance(value, LoraConfig):
+            return value
+
+        try:
+            lora_config = LoraConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid lora_config: {value}") from e
+
+        return lora_config
+
+    @field_validator("experimental_configs")
+    def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the experimental configs dictionary."""
+        # TODO(Kourosh): Remove this deprecation check after users have
+        # migrated.
+        if "num_router_replicas" in value:
+            raise ValueError(
+                "The 'num_router_replicas' key in experimental_configs has "
+                "been renamed to 'num_ingress_replicas'. Please update "
+                "your configuration to use 'num_ingress_replicas' instead."
+            )
+        return value
+
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
         # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
@@ -360,204 +421,39 @@ class LLMConfig(BaseModelExtended):
 
         return self._engine_config
 
-    def _set_deployment_placement_options(self) -> Dict[str, Any]:
-        deployment_config = self.deployment_config
-        engine_config = self.get_engine_config()
+    def update_engine_kwargs(self, **kwargs: Any) -> None:
+        """Update the engine_kwargs and the engine_config engine_kwargs.
 
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
-        deployment_config["ray_actor_options"] = ray_actor_options
-
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-        if (
-            "placement_group_bundles" in deployment_config
-            or "placement_group_strategy" in deployment_config
-        ):
-            raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
-                "Use scaling_config to configure replica placement group."
-            )
-
-        try:
-            bundles = engine_config.placement_bundles
-        except ValueError:
-            # May happen if all bundles are empty.
-            bundles = []
-
-        bundles = [replica_actor_resources] + bundles
-        deployment_config.update(
-            {
-                "placement_group_bundles": bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
-            }
-        )
-
-        return deployment_config
-
-    def _get_deployment_name(self) -> str:
-        return self.model_id.replace("/", "--").replace(".", "_")
-
-    def get_serve_options(
-        self,
-        *,
-        name_prefix: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Get the Serve options for the given LLM config.
-
-        This method is used to generate the Serve options for the given LLM config.
-
-
-        Examples:
-            .. testcode::
-                :skipif: True
-
-                from ray import serve
-                from ray.serve.llm import LLMConfig, LLMServer
-
-                llm_config = LLMConfig(
-                    model_loading_config=dict(model_id="test_model"),
-                    accelerator_type="L4",
-                    runtime_env={"env_vars": {"FOO": "bar"}},
-                )
-                serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
-                serve.run(llm_app)
-
-        Args:
-            name_prefix: Optional prefix to be used for the deployment name.
-
-        Returns:
-            The dictionary to use in .options() when creating the deployment.
+        This is typically called during engine starts, when certain engine_kwargs
+        (e.g., data_parallel_rank) become available.
         """
+        self.engine_kwargs.update(kwargs)
+        # engine_config may be created before engine starts, this makes sure
+        # the engine_config is updated with the latest engine_kwargs.
+        if self._engine_config:
+            self._engine_config.engine_kwargs.update(kwargs)
 
-        deployment_config = self._set_deployment_placement_options()
+    def setup_engine_backend(self):
+        self._setup_kv_connector_backend()
 
-        default_runtime_env = ray.get_runtime_context().runtime_env
-        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
-            default_runtime_env[
-                "worker_process_setup_hook"
-            ] = "ray.llm._internal.serve._worker_process_setup_hook"
+    def _setup_kv_connector_backend(self):
+        """Private method to setup kv connector depending on the local deployment state"""
+        # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
+        kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
+        if not kv_transfer_config:
+            return
 
-        ray_actor_options = deployment_config.get("ray_actor_options", {})
-        ray_actor_options["runtime_env"] = {
-            **default_runtime_env,
-            # Existing runtime_env should take precedence over the default.
-            **ray_actor_options.get("runtime_env", {}),
-            **(self.runtime_env if self.runtime_env else {}),
-        }
-        deployment_config["ray_actor_options"] = ray_actor_options
+        kv_connector = kv_transfer_config.get("kv_connector")
+        if not kv_connector:
+            raise ValueError("Connector type is not specified.")
 
-        # Set the name of the deployment config to map to the model ID.
-        if "name" not in deployment_config:
-            deployment_config["name"] = self._get_deployment_name()
-        if name_prefix:
-            deployment_config["name"] = name_prefix + deployment_config["name"]
+        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
+        if not kv_connector_backend_class:
+            raise ValueError(f"Unsupported connector type: {kv_connector}")
 
-        return deployment_config
-
-
-def _is_yaml_file(filename: str) -> bool:
-    yaml_extensions = [".yml", ".yaml", ".json"]
-    for s in yaml_extensions:
-        if filename.endswith(s):
-            return True
-    return False
-
-
-def _parse_path_args(path: str) -> List[LLMConfig]:
-    assert os.path.exists(
-        path
-    ), f"Could not load model from {path}, as it does not exist."
-    if os.path.isfile(path):
-        with open(path, "r") as f:
-            llm_config = LLMConfig.parse_yaml(f)
-            return [llm_config]
-    elif os.path.isdir(path):
-        apps = []
-        for root, _dirs, files in os.walk(path):
-            for p in files:
-                if _is_yaml_file(p):
-                    with open(os.path.join(root, p), "r") as f:
-                        llm_config = LLMConfig.parse_yaml(f)
-                        apps.append(llm_config)
-        return apps
-    else:
-        raise ValueError(
-            f"Could not load model from {path}, as it is not a file or directory."
-        )
-
-
-def parse_args(
-    args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
-) -> List[LLMConfig]:
-    """Parse the input args and return a standardized list of LLMConfig objects
-
-    Supported args format:
-    1. The path to a yaml file defining your LLMConfig
-    2. The path to a folder containing yaml files, which define your LLMConfigs
-    3. A list of yaml files defining multiple LLMConfigs
-    4. A dict or LLMConfig object
-    5. A list of dicts or LLMConfig objects
-    """
-
-    raw_models = [args]
-    if isinstance(args, list):
-        raw_models = args
-
-    # For each
-    models: List[LLMConfig] = []
-    for raw_model in raw_models:
-        if isinstance(raw_model, str):
-            if os.path.exists(raw_model):
-                parsed_models = _parse_path_args(raw_model)
-            else:
-                try:
-                    llm_config = LLMConfig.parse_yaml(raw_model)
-                    parsed_models = [llm_config]
-                except pydantic.ValidationError as e:
-                    raise ValueError(
-                        f"Could not parse string as yaml. If you are "
-                        "specifying a path, make sure it exists and can be "
-                        f"reached. raw_model: {raw_model}"
-                    ) from e
-        else:
-            try:
-                llm_config = LLMConfig.model_validate(raw_model)
-                parsed_models = [llm_config]
-            except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
-        models += parsed_models
-
-    return models
-
-
-class LLMServingArgs(BaseModel):
-    llm_configs: List[Union[str, LLMConfig]] = Field(
-        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
-    )
-
-    def parse_args(self) -> "LLMServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
-
-        llm_configs = []
-        for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
-            if not isinstance(parsed_config, LLMConfig):
-                raise ValueError(
-                    "When using the new Serve config format, all model "
-                    "configs must also use the new model config format. Got "
-                    "a model config that doesn't match new format. Type: "
-                    f"{type(parsed_config)}. Contents: {parsed_config}."
-                )
-            llm_configs.append(parsed_config)
-
-        return LLMServingArgs(llm_configs=llm_configs)
+        # 2. Setup the backend
+        kv_connector_backend = kv_connector_backend_class(self)
+        kv_connector_backend.setup()
 
 
 class DiskMultiplexConfig(BaseModelExtended):

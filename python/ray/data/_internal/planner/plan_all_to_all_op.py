@@ -38,9 +38,7 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=(
-            logical_op._num_outputs or data_context.default_hash_shuffle_parallelism
-        ),
+        num_partitions=logical_op._num_outputs,
         should_sort=logical_op._sort,
         # TODO wire in aggregator args overrides
     )
@@ -65,9 +63,7 @@ def _plan_hash_shuffle_aggregate(
         aggregation_fns=tuple(logical_op._aggs),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=(
-            logical_op._num_partitions or data_context.default_hash_shuffle_parallelism
-        ),
+        num_partitions=logical_op._num_partitions,
         # TODO wire in aggregator args overrides
     )
 
@@ -85,8 +81,6 @@ def plan_all_to_all_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    target_max_block_size = None
-
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op)
         # Randomize block order does not actually compute anything, so we
@@ -103,7 +97,6 @@ def plan_all_to_all_op(
             op._ray_remote_args,
             debug_limit_shuffle_execution_to_num_blocks,
         )
-        target_max_block_size = data_context.target_shuffle_max_block_size
 
     elif isinstance(op, Repartition):
         if op._keys:
@@ -119,7 +112,6 @@ def plan_all_to_all_op(
                 )
 
         elif op._shuffle:
-            target_max_block_size = data_context.target_shuffle_max_block_size
             debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
                 "debug_limit_shuffle_execution_to_num_blocks", None
             )
@@ -143,7 +135,6 @@ def plan_all_to_all_op(
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
-        target_max_block_size = data_context.target_shuffle_max_block_size
 
     elif isinstance(op, Aggregate):
         if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
@@ -159,7 +150,6 @@ def plan_all_to_all_op(
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
-        target_max_block_size = data_context.target_shuffle_max_block_size
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -167,7 +157,6 @@ def plan_all_to_all_op(
         fn,
         input_physical_dag,
         data_context,
-        target_max_block_size=target_max_block_size,
         num_outputs=op._num_outputs,
         sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,

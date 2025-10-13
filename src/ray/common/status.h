@@ -30,17 +30,187 @@
 
 #include <cstring>
 #include <iosfwd>
+#include <optional>
 #include <string>
+#include <variant>
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/macros.h"
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
+//////////////////////////////
+// USAGE EXAMPLE FOR StatusSet
+//////////////////////////////
+
+// Function that only returns IOError or OutOfMemory
+// StatusSet<StatusT::IOError, StatusT::OutOfMemory> DoThing() {
+//   if (std::rand() % 2 == 0) {
+//     return StatusT::OK();
+//   }
+//   return StatusT::OutOfMemory("error message");
+// }
+
+// Use the StatusSet
+// void UseDoThing() {
+//   auto result = DoThing();
+//   if (result.has_error()) {
+//     std::visit(overloaded{[](const StatusT::IOError &) {
+//                             // Handle IOError
+//                           },
+//                           [](const StatusT::OutOfMemory &) {
+//                             // Handle OutOfMemory
+//                           }},
+//                result.error());
+//     return;
+//   }
+//   RAY_CHECK(result.ok());
+// }
+
+////////////////////////////////
+// USAGE EXAMPLE FOR StatusSetOr
+////////////////////////////////
+
+// Function that only returns int64_t if it succeeds, otherwise returns IOError or
+// OutOfMemory
+// StatusSetOr<int64_t, StatusT::IOError, StatusT::OutOfMemory> DoThing() {
+//   if (std::rand() % 2 == 0) {
+//     return 100;
+//   }
+//   return StatusT::OutOfMemory("error message");
+// }
+
+// Use the StatusSetOr
+// inline void UseDoThing() {
+//   auto result = DoThing();
+//   if (result.has_error()) {
+//     std::visit(overloaded{[](const StatusT::IOError &) {
+//                             // Handle IOError
+//                           },
+//                           [](const StatusT::OutOfMemory &) {
+//                             // Handle OutOfMemory
+//                           }},
+//                result.error());
+//     return;
+//   }
+//   RAY_CHECK(result.has_value());
+//   std::cout << "Got a result! " << result.value();
+// }
+
 namespace boost::system {
 class error_code;
 }  // namespace boost::system
+
+namespace ray {
+
+// Just some magic for visiting a variant
+// See https://en.cppreference.com/w/cpp/utility/variant/visit2.html
+template <class... Ts>
+struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+// explicit deduction guide (not needed as of C++20)
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
+namespace StatusT {
+
+#define STATUS_TYPE(status_name)                                                     \
+  class status_name {                                                                \
+   public:                                                                           \
+    template <                                                                       \
+        typename T,                                                                  \
+        typename Enable = std::enable_if_t<std::is_constructible_v<std::string, T>>> \
+    explicit status_name(T &&message) : message_(std::forward<T>(message)) {}        \
+                                                                                     \
+    const std::string &message() const { return message_; }                          \
+    std::string &message() { return message_; }                                      \
+                                                                                     \
+    std::string ToString() const {                                                   \
+      return absl::StrCat("StatusT: " #status_name ", Message: ", message_);         \
+    }                                                                                \
+                                                                                     \
+   private:                                                                          \
+    std::string message_;                                                            \
+  };
+
+class OK {};
+
+STATUS_TYPE(OutOfMemory);
+STATUS_TYPE(KeyError);
+STATUS_TYPE(IOError);
+STATUS_TYPE(Invalid);
+STATUS_TYPE(NotFound);
+STATUS_TYPE(PermissionDenied);
+STATUS_TYPE(InvalidArgument);
+STATUS_TYPE(AlreadyExists);
+
+};  // namespace StatusT
+
+template <typename... StatusTypes>
+class StatusSet {
+ public:
+  static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
+                "OK cannot be an error type");
+
+  StatusSet(StatusT::OK ok) : error_(std::nullopt) {}
+
+  template <typename StatusType,
+            typename Enable = std::enable_if_t<
+                std::is_constructible_v<std::variant<StatusTypes...>, StatusType>>>
+  StatusSet(StatusType &&status) : error_(std::forward<StatusType>(status)) {}
+
+  bool ok() const { return !error_.has_value(); }
+
+  bool has_error() const { return error_.has_value(); }
+
+  const std::variant<StatusTypes...> &error() const { return *error_; }
+
+  std::variant<StatusTypes...> &error() { return *error_; }
+
+ private:
+  std::optional<std::variant<StatusTypes...>> error_;
+};
+
+template <typename ResultType, typename... StatusTypes>
+class StatusSetOr {
+ public:
+  static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
+                "Ok cannot be an error type");
+
+  template <typename ArgType,
+            typename Enable = std::enable_if_t<std::is_constructible_v<
+                std::variant<ResultType, std::variant<StatusTypes...>>,
+                ArgType>>>
+  StatusSetOr(ArgType &&value) : value_(std::forward<ArgType>(value)) {}
+
+  bool has_value() const { return std::holds_alternative<ResultType>(value_); }
+
+  bool has_error() const {
+    return std::holds_alternative<std::variant<StatusTypes...>>(value_);
+  }
+
+  const ResultType &value() const { return std::get<ResultType>(value_); }
+
+  ResultType &value() { return std::get<ResultType>(value_); }
+
+  const std::variant<StatusTypes...> &error() const {
+    return std::get<std::variant<StatusTypes...>>(value_);
+  }
+
+  std::variant<StatusTypes...> &error() {
+    return std::get<std::variant<StatusTypes...>>(value_);
+  }
+
+ private:
+  std::variant<ResultType, std::variant<StatusTypes...>> value_;
+};
+
+/////////////////
+/// LEGACY STATUS
+/////////////////
 
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
@@ -53,12 +223,10 @@ class error_code;
 
 // If the status is not OK, CHECK-fail immediately, appending the status to the
 // logged message. The message can be appended with <<.
-#define RAY_CHECK_OK(s)                          \
-  if (const ::ray::Status &_status_ = (s); true) \
-  RAY_CHECK_WITH_DISPLAY(_status_.ok(), #s)      \
-      << "Status not OK: " << _status_.ToString() << " "
-
-namespace ray {
+#define RAY_CHECK_OK(s)                                          \
+  if (const ::ray::Status & RAY_UNIQUE_VARIABLE(_s) = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)       \
+      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 // If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
@@ -76,6 +244,8 @@ enum class StatusCode : char {
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
   CreationTaskError = 16,
+  // Indicates that the caller request a resource that could not be found. A common
+  // example is that a request file does not exist.
   NotFound = 17,
   Disconnected = 18,
   SchedulingCancelled = 19,
@@ -101,6 +271,9 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // Indicates that the executing user does not have permissions to perform the
+  // requested operation. A common example is filesystem permissions.
+  PermissionDenied = 37,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -254,6 +427,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status PermissionDenied(const std::string &msg) {
+    return Status(StatusCode::PermissionDenied, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -274,11 +451,6 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool ShouldExitWorker() const {
-    return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnexpectedSystemExit ||
-           code() == StatusCode::CreationTaskError;
-  }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
@@ -308,6 +480,7 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+  bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

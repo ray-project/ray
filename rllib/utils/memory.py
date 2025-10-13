@@ -1,4 +1,4 @@
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.numpy import aligned_array, concat_aligned  # noqa
 
 deprecation_warning(

@@ -409,3 +409,17 @@ readthedocs-flyout {
 .anyscale-cta {
   margin-bottom: 16px;
 }
+
+
+/* Prevent text wrapping around left-aligned images on ultra-wide screens */
+@media (min-width: 1600px) {
+  .bd-content .align-left,
+  .bd-content .figure.align-left,
+  .bd-content img.align-left {
+    float: none !important;
+    display: block;
+    clear: both;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}

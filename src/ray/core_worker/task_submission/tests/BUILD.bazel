@@ -1,0 +1,81 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "dependency_resolver_test",
+    size = "small",
+    srcs = ["dependency_resolver_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:task_common",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:fake_actor_creator",
+        "//src/ray/core_worker/task_submission:dependency_resolver",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_test(
+    name = "out_of_order_actor_submit_queue_test",
+    size = "small",
+    srcs = ["out_of_order_actor_submit_queue_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "direct_actor_transport_test",
+    srcs = ["direct_actor_transport_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/core_worker/task_submission:actor_task_submitter",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "actor_task_submitter_test",
+    srcs = ["actor_task_submitter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:asio",
+        "//src/ray/common:task_common",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:actor_creator",
+        "//src/ray/core_worker:fake_actor_creator",
+        "//src/ray/core_worker:reference_counter",
+        "//src/ray/core_worker:task_manager",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "normal_task_submitter_test",
+    size = "small",
+    srcs = ["normal_task_submitter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:task_common",
+        "//src/ray/common:test_utils",
+        "//src/ray/core_worker:fake_actor_creator",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker/task_submission:normal_task_submitter",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

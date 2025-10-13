@@ -7,6 +7,7 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.env.env_errors import StepFailedRecreateEnvError
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.framework import try_import_tf
@@ -25,6 +26,7 @@ tf1, tf, _ = try_import_tf()
 
 ENV_RESET_FAILURE = "env_reset_failure"
 ENV_STEP_FAILURE = "env_step_failure"
+NUM_ENV_STEP_FAILURES_LIFETIME = "num_env_step_failures"
 
 
 # TODO (sven): As soon as RolloutWorker is no longer supported, make this base class
@@ -226,17 +228,21 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 raise e
 
     def _try_env_step(self, actions):
-        """Tries stepping the env and - if an error orrurs - handles it gracefully."""
+        """Tries stepping the env and - if an error occurs - handles it gracefully."""
         try:
             with self.metrics.log_time(ENV_STEP_TIMER):
                 results = self.env.step(actions)
             return results
         except Exception as e:
+            self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
+
+            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
-                logger.exception(
-                    "Stepping the env resulted in an error! The original error "
-                    f"is: {e.args[0]}"
-                )
+                if not isinstance(e, StepFailedRecreateEnvError):
+                    logger.exception(
+                        "Stepping the env resulted in an error! The original error "
+                        f"is: {e}"
+                    )
                 # Recreate the env.
                 self.make_env()
                 # And return that the stepping failed. The caller will then handle
@@ -244,6 +250,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 # data and repeating the step attempt).
                 return ENV_STEP_FAILURE
             else:
+                if isinstance(e, StepFailedRecreateEnvError):
+                    raise ValueError(
+                        "Environment raised StepFailedRecreateEnvError but config.restart_failed_sub_environments is False."
+                    ) from e
                 raise e
 
     def _convert_to_tensor(self, struct) -> TensorType:

@@ -3,12 +3,14 @@ import sys
 import pytest
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 
 
 def block_import(import_name):
@@ -69,8 +71,30 @@ def test_deserialization_error(ray_start_4_cpus):
         run_config=ray.train.RunConfig(callbacks=[BlockTorchImportCallback()]),
         scaling_config=ray.train.ScalingConfig(num_workers=2),
     )
-    with pytest.raises(ray.exceptions.RayTaskError, match="torch not installed"):
+    with pytest.raises(ControllerError, match="torch not installed on this node"):
         trainer.fit()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        WorkerGroupError(
+            "Training failed on multiple workers",
+            {0: ValueError("worker 0 failed"), 1: RuntimeError("worker 1 failed")},
+        ),
+        ControllerError(Exception("Controller crashed")),
+    ],
+)
+def test_exceptions_are_picklable(error):
+    """Test that WorkerGroupError and ControllerError are picklable."""
+
+    # Test pickle/unpickle for WorkerGroupError
+    pickled_error = ray_pickle.dumps(error)
+    unpickled_error = ray_pickle.loads(pickled_error)
+
+    # Verify attributes are preserved
+    assert str(unpickled_error) == str(error)
+    assert type(unpickled_error) is type(error)
 
 
 if __name__ == "__main__":

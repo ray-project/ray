@@ -6,10 +6,11 @@ locally in LocalNodeProvider. To start the webserver the user runs:
 import argparse
 import json
 import logging
-import threading
 import socket
+import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class OnPremCoordinatorServer(threading.Thread):
         """Initialize HTTPServer and serve forever by invoking self.run()."""
 
         logger.info(
-            "Running on prem coordinator server on address " + host + ":" + str(port)
+            "Running on prem coordinator server on address " + build_address(host, port)
         )
         threading.Thread.__init__(self)
         self._port = port

@@ -30,7 +30,9 @@
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/spdlog_newliner_sink.h"

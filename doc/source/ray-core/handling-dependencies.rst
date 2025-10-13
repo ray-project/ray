@@ -39,7 +39,7 @@ Preparing an environment using the Ray Cluster launcher
 
 The first way to set up dependencies is to prepare a single environment across the cluster before starting the Ray runtime.
 
-- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your :ref:`Cluster YAML Configuration <cluster-config>`.
 
 - You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference <cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
@@ -377,6 +377,11 @@ run a Ray Serve application with `uv run serve run app:main`.
 
 **Best Practices and Tips:**
 
+- If you are running on a Ray Cluster, the Ray and Python versions of your uv environment must be the same as the Ray and Python versions of your cluster or you will get a version mismatch exception. There are multiple ways to solve this:
+
+  1. If you are using ephemeral Ray clusters, run the application on a cluster with the right versions.
+  2. If you need to run on a cluster with a different versions, consider modifying the versions of your uv environment by updating the `pyproject.toml` file or by using the `--active` flag with `uv run` (i.e., `uv run --active main.py`).
+
 - Use `uv lock` to generate a lockfile and make sure all your dependencies are frozen, so things won't change in uncontrolled ways if a new version of a package gets released.
 
 - If you have a requirements.txt file, you can use `uv add -r requirement.txt` to add the dependencies to your `pyproject.toml` and then use that with uv run.
@@ -613,7 +618,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
 
-  - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
+  - Non-existent variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
 - ``nsight`` (Union[str, Dict[str, str]]): specifies the config for the Nsight System Profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, or (2) a dict of Nsight System Profiler options and their values.
   See :ref:`here <profiling-nsight-profiler>` for more details on setup and usage.
@@ -847,7 +852,7 @@ Your ``runtime_env`` dictionary should contain:
   Check for hidden files and metadata directories in zipped dependencies.
   You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
   Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
-  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you what to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
+  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
   If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
 
 Currently, four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
@@ -859,7 +864,7 @@ Currently, four types of remote URIs are supported for hosting ``working_dir`` a
 
   - Example:
 
-    - ``runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}``
+    - ``runtime_env = {"working_dir": "https://github.com/example_username/example_repository/archive/HEAD.zip"}``
 
 - ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
   To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and ``pip install boto3``).

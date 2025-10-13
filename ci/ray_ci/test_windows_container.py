@@ -1,10 +1,11 @@
 import sys
-import pytest
-from unittest import mock
 from typing import List
+from unittest import mock
 
-from ci.ray_ci.windows_container import WindowsContainer
+import pytest
+
 from ci.ray_ci.container import _DOCKER_ENV
+from ci.ray_ci.windows_container import WindowsContainer
 
 
 def test_install_ray() -> None:
@@ -24,9 +25,7 @@ def test_install_ray() -> None:
         },
     ):
         WindowsContainer("hi").install_ray()
-        image = (
-            "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-hi"
-        )
+        image = "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:hi"
         assert install_ray_cmds[-1] == [
             "docker",
             "build",
@@ -65,7 +64,7 @@ def test_get_run_command() -> None:
         "/hi:/hello",
         "--workdir",
         "C:\\rayci",
-        "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
+        "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:test",
         "bash",
         "-c",
         "hi\nhello",

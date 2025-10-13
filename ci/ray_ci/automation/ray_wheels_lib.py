@@ -1,6 +1,7 @@
-import boto3
-from typing import List
 import os
+from typing import List
+
+import boto3
 
 from ci.ray_ci.utils import logger
 
@@ -16,7 +17,6 @@ PYTHON_VERSIONS = [
 ALL_PLATFORMS = [
     "manylinux2014_x86_64",
     "manylinux2014_aarch64",
-    "macosx_12_0_x86_64",
     "macosx_12_0_arm64",
     "win_amd64",
 ]

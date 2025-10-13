@@ -1,4 +1,4 @@
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 
 
 @Deprecated(

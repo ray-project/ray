@@ -1,8 +1,8 @@
 import sys
 import unittest
 
-import pytest
 import numpy as np
+import pytest
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.debug import _logged

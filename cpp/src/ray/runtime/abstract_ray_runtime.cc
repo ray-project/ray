@@ -172,7 +172,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
   invocation_spec.args =
-      TransformArgs(args, remote_function_holder.lang_type != LangType::CPP);
+      TransformArgs(args, remote_function_holder.lang_type_ != LangType::CPP);
   return invocation_spec;
 }
 
@@ -199,23 +199,23 @@ std::string AbstractRayRuntime::CallActor(
     std::vector<ray::internal::TaskArg> &args,
     const CallOptions &call_options) {
   InvocationSpec invocation_spec{};
-  if (remote_function_holder.lang_type == LangType::PYTHON) {
+  if (remote_function_holder.lang_type_ == LangType::PYTHON) {
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
         ray::ActorID::FromBinary(actor));
     auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
     auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
     RemoteFunctionHolder func_holder = remote_function_holder;
-    func_holder.module_name = typed_descriptor->ModuleName();
-    func_holder.class_name = typed_descriptor->ClassName();
+    func_holder.module_name_ = typed_descriptor->ModuleName();
+    func_holder.class_name_ = typed_descriptor->ClassName();
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
-  } else if (remote_function_holder.lang_type == LangType::JAVA) {
+  } else if (remote_function_holder.lang_type_ == LangType::JAVA) {
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
         ray::ActorID::FromBinary(actor));
     auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
     auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
     RemoteFunctionHolder func_holder = remote_function_holder;
-    func_holder.class_name = typed_descriptor->ClassName();
+    func_holder.class_name_ = typed_descriptor->ClassName();
     invocation_spec = BuildInvocationSpec1(
         TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
   } else {

@@ -7,12 +7,13 @@ from copy import deepcopy
 
 import httpx
 import pytest
+import pytest_asyncio
 
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
-from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
@@ -22,7 +23,11 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
-from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
+from ray.tests.conftest import (  # noqa
+    external_redis,
+    propagate_logs,
+    pytest_runtest_makereport,
+)
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -152,6 +157,15 @@ def _shared_serve_instance():
     yield _get_global_client()
 
 
+@pytest_asyncio.fixture
+async def serve_instance_async(_shared_serve_instance):
+    yield _shared_serve_instance
+    # Clear all state for 2.x applications and deployments.
+    _shared_serve_instance.delete_all_apps()
+    # Clear the ServeHandle cache between tests to avoid them piling up.
+    await _shared_serve_instance.shutdown_cached_handles_async()
+
+
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
@@ -183,6 +197,7 @@ def check_ray_stop():
 @pytest.fixture(scope="function")
 def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
+    ray.shutdown()
     wait_for_condition(
         check_ray_stop,
         timeout=15,
@@ -192,7 +207,10 @@ def ray_start_stop():
         lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
         timeout=15,
     )
+    ray.init("auto")
     yield
+    serve.shutdown()
+    ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(
         check_ray_stop,
@@ -253,6 +271,7 @@ def ray_instance(request):
         },
     )
 
+    serve.shutdown()
     ray.shutdown()
 
     os.environ.clear()

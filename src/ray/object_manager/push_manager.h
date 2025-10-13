@@ -79,43 +79,43 @@ class PushManager {
 
   /// Tracks the state of an active object push to another node.
   struct PushState {
-    NodeID node_id;
-    ObjectID object_id;
+    NodeID node_id_;
+    ObjectID object_id_;
 
     /// total number of chunks of this object.
-    int64_t num_chunks;
+    int64_t num_chunks_;
     /// The function to send chunks with.
-    std::function<void(int64_t)> chunk_send_fn;
+    std::function<void(int64_t)> chunk_send_fn_;
     /// The index of the next chunk to send.
-    int64_t next_chunk_id = 0;
+    int64_t next_chunk_id_ = 0;
     /// The number of chunks remaining to send.
-    int64_t num_chunks_to_send;
+    int64_t num_chunks_to_send_;
 
     PushState(NodeID node_id,
               ObjectID object_id,
               int64_t num_chunks,
               std::function<void(int64_t)> chunk_send_fn)
-        : node_id(node_id),
-          object_id(object_id),
-          num_chunks(num_chunks),
-          chunk_send_fn(std::move(chunk_send_fn)),
-          num_chunks_to_send(num_chunks) {}
+        : node_id_(node_id),
+          object_id_(object_id),
+          num_chunks_(num_chunks),
+          chunk_send_fn_(std::move(chunk_send_fn)),
+          num_chunks_to_send_(num_chunks) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
-      chunk_send_fn = std::move(send_fn);
-      int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
-      num_chunks_to_send = num_chunks;
+      chunk_send_fn_ = std::move(send_fn);
+      int64_t additional_chunks_to_send = num_chunks_ - num_chunks_to_send_;
+      num_chunks_to_send_ = num_chunks_;
       return additional_chunks_to_send;
     }
 
     /// Send one chunk. Return true if a new chunk is sent, false if no more chunk to
     /// send.
     void SendOneChunk() {
-      num_chunks_to_send--;
+      num_chunks_to_send_--;
       // Send the next chunk for this push.
-      chunk_send_fn(next_chunk_id);
-      next_chunk_id = (next_chunk_id + 1) % num_chunks;
+      chunk_send_fn_(next_chunk_id_);
+      next_chunk_id_ = (next_chunk_id_ + 1) % num_chunks_;
     }
   };
 

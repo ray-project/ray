@@ -7,20 +7,25 @@
 # You can obtain this list from the ray.egg-info/requires.txt
 
 ## setup.py install_requires
-click>=7.0
+# Click 8.3.0 does not work with copy.deepcopy on Python 3.10
+# TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
+click>=7.0, !=8.3.0
 cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
 packaging
-protobuf!=3.19.5,>=3.15.3
+protobuf>=3.20.3
 pyyaml
 requests
 watchfiles
 
 # Python version-specific requirements
+grpcio >= 1.32.0; python_version < '3.10'
+grpcio >= 1.42.0; python_version >= '3.10'
+# Version used in mac CI; needs upgrade.
 grpcio == 1.54.2; sys_platform == "darwin"
-grpcio >= 1.54.2; sys_platform != "darwin"
+
 numpy>=1.20
 
 pyarrow >= 9.0.0
@@ -38,7 +43,7 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
-gymnasium==1.0.0
+gymnasium==1.1.1
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
@@ -58,3 +63,4 @@ py-spy>=0.2.0; python_version < '3.12'
 py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows
 pyOpenSSL
+celery

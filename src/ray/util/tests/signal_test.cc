@@ -14,13 +14,16 @@
 
 #include <signal.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
+#include "ray/util/path_utils.h"
+#include "ray/util/raii.h"
 
 // This test just print some call stack information.
 namespace ray {
@@ -104,9 +107,9 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       /*log_filepath=*/
-      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       /*err_log_filepath=*/
-      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);

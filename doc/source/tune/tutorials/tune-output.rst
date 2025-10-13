@@ -206,7 +206,7 @@ You can save trial artifacts directly in the trainable, as shown below:
         .. code-block:: python
 
             import logging_library  # ex: mlflow, wandb
-            from ray import train
+            from ray import tune
 
             def trainable(config):
                 logging_library.init(

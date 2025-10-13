@@ -3,14 +3,15 @@ import binascii
 import errno
 import importlib
 import inspect
-from inspect import signature
 import os
-import psutil
 import random
 import string
 import sys
 import tempfile
+from inspect import signature
 from typing import Any, Coroutine, Dict, Optional
+
+import psutil
 
 
 def import_attr(full_path: str, *, reload_module: bool = False):

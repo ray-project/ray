@@ -1,11 +1,11 @@
-import time
 import sys
-import pytest
+import time
 from unittest import mock
 
+import pytest
+from ray_release.test import Test
 
 from ci.ray_ci.bisect.generic_validator import WAIT, GenericValidator
-from ray_release.test import Test
 
 START = time.time()
 

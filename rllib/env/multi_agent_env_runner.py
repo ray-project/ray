@@ -28,7 +28,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -158,9 +158,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         Args:
             num_timesteps: The number of timesteps to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
-                Note that only one of `num_timetseps` or `num_episodes` may be provided.
+                Note that only one of `num_timesteps` or `num_episodes` may be provided.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
                 `forward_inference()` method. If None (default), will use the `explore`
@@ -183,8 +183,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 f"{self} doesn't have an env! Can't call `sample()` on it."
             )
 
-        assert not (num_timesteps is not None and num_episodes is not None)
-
+        assert not (num_timesteps is not None and num_episodes is not None), (
+            "Provide "
+            "either `num_timesteps` or `num_episodes`. Both provided here:"
+            f"{num_timesteps=}, {num_episodes=}"
+        )
         # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
@@ -214,7 +217,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     * self.num_envs
                 )
 
-            # Sample n timesteps.
+            # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
                 samples = self._sample(
                     num_timesteps=num_timesteps,
@@ -222,15 +225,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     random_actions=random_actions,
                     force_reset=force_reset,
                 )
-            # Sample m episodes.
+            # Sample "num_episodes" episodes.
             elif num_episodes is not None:
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
                 )
-            # For complete episodes mode, sample as long as the number of timesteps
-            # done is smaller than the `train_batch_size`.
+            # For batch_mode="complete_episodes" (env_runners configuration), continue sampling as long as the number of timesteps done is smaller than the `train_batch_size`.
             else:
                 samples = self._sample(
                     num_episodes=self.num_envs,
@@ -284,10 +286,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self._needs_initial_reset = True
 
         # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
-        ts = 0
+        env_ts = 0
+        agent_ts = 0
         eps = 0
         while (
-            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+            (eps < num_episodes)
+            if num_timesteps is None
+            else (
+                env_ts < num_timesteps
+                if self.config.count_steps_by == "env_steps"
+                else agent_ts < num_timesteps
+            )
         ):
             # Act randomly.
             if random_actions:
@@ -318,7 +327,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         # count times the number of env runners in the algo.
                         global_env_steps_lifetime = (
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                            + ts
+                            + env_ts
                         ) * (self.config.num_env_runners or 1)
                         with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
                             to_env = self.module.forward_exploration(
@@ -339,14 +348,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                     )
                 # In case all environments had been terminated `to_module` will be
-                # empty and no actions are needed b/c we reset all environemnts.
+                # empty and no actions are needed b/c we reset all environments.
                 else:
                     to_env = {}
             shared_data["vector_env_episodes_map"] = {}
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
-            # already unsquashed/clipped) to be sent to the environment) and might not
+            # already unsquashed/clipped) to be sent to the environment and might not
             # be identical to the actions produced by the RLModule/distribution, which
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS, [{} for _ in episodes])
@@ -354,6 +363,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
+                logging.warning(
+                    f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner."
+                )
                 return self._sample(
                     num_timesteps=num_timesteps,
                     num_episodes=num_episodes,
@@ -365,7 +377,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             call_on_episode_start = set()
             # Store the data from the last environment step into the
-            # episodes for all sub-envrironments.
+            # episodes for all sub-environments.
             for env_index in range(self.num_envs):
                 extra_model_outputs = defaultdict(dict)
                 # `to_env` returns a dictionary with column keys and
@@ -403,9 +415,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     )
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
-                    ts += self._increase_sampled_metrics(
+                    env_ts += self._increase_sampled_metrics(
                         1, observations[env_index], episodes[env_index]
                     )
+                    agent_ts += len(observations[env_index])
 
             done_episodes_to_run_env_to_module = []
             for env_index in range(self.num_envs):
@@ -702,7 +715,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-            # Only update the weigths, if this is the first synchronization or
+            # Only update the weights, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]

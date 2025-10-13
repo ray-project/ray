@@ -1,15 +1,14 @@
 """Test the collective reducescatter API."""
-import pytest
-import ray
-
 import numpy as np
+import pytest
 import torch
 
-from ray.util.collective.types import Backend
+import ray
 from ray.util.collective.tests.cpu_util import (
     create_collective_workers,
     init_tensors_for_gather_scatter,
 )
+from ray.util.collective.types import Backend
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -125,7 +124,8 @@ def test_reducescatter_torch_numpy(ray_start_single_node, backend):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
