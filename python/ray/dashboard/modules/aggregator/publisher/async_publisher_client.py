@@ -89,7 +89,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             self._executor,
             lambda: [
                 json.loads(
-                    message_to_json(e, always_print_fields_with_no_presence=True)
+                    message_to_json(
+                        e,
+                        always_print_fields_with_no_presence=True,
+                        preserving_proto_field_name=True,
+                    )
                 )
                 for e in filtered
             ],
