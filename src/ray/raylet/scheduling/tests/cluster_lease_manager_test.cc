@@ -387,12 +387,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             *scheduler_,
             lease_dependency_manager_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeAddressAndLiveness * {
+            [this](
+                const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
               node_info_calls_++;
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                return std::optional((node_info_[node_id]));
               }
-              return nullptr;
+              return std::nullopt;
             },
             pool_,
             leased_workers_,
@@ -414,12 +415,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             id_,
             *scheduler_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeAddressAndLiveness * {
+            [this](
+                const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
               node_info_calls_++;
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                return std::optional((node_info_[node_id]));
               }
-              return nullptr;
+              return std::nullopt;
             },
             /* announce_infeasible_lease= */
             [this](const RayLease &lease) { announce_infeasible_lease_calls_++; },

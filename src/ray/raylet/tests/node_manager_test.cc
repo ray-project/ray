@@ -368,7 +368,8 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.labels);
 
     auto get_node_info_func = [&](const NodeID &node_id) {
-      return mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
+      auto ptr = mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
 
     auto max_task_args_memory = static_cast<int64_t>(

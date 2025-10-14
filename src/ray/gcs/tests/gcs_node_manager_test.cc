@@ -364,13 +364,13 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
   // Test getting address and liveness for existing alive node
   auto address_and_liveness = node_manager.GetAliveNodeAddress(node_id);
   ASSERT_TRUE(address_and_liveness.has_value());
-  EXPECT_EQ(address_and_liveness.value()->node_id(), node->node_id());
-  EXPECT_EQ(address_and_liveness.value()->node_manager_address(),
+  EXPECT_EQ(address_and_liveness.value().node_id(), node->node_id());
+  EXPECT_EQ(address_and_liveness.value().node_manager_address(),
             node->node_manager_address());
-  EXPECT_EQ(address_and_liveness.value()->node_manager_port(), node->node_manager_port());
-  EXPECT_EQ(address_and_liveness.value()->object_manager_port(),
+  EXPECT_EQ(address_and_liveness.value().node_manager_port(), node->node_manager_port());
+  EXPECT_EQ(address_and_liveness.value().object_manager_port(),
             node->object_manager_port());
-  EXPECT_EQ(address_and_liveness.value()->state(), rpc::GcsNodeInfo::ALIVE);
+  EXPECT_EQ(address_and_liveness.value().state(), rpc::GcsNodeInfo::ALIVE);
 
   // Test getting address and liveness for non-existent node
   auto non_existent_node_id = NodeID::FromRandom();

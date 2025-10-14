@@ -835,8 +835,10 @@ int main(int argc, char *argv[]) {
         /*labels*/
         node_manager_config.labels);
 
-    auto get_node_info_func = [&](const ray::NodeID &id) {
-      return gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+    auto get_node_info_func =
+        [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
+      auto ptr = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
       /// Publish the infeasible lease error to GCS so that drivers can subscribe to it

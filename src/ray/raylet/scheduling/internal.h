@@ -103,6 +103,6 @@ class Work {
 };
 
 using NodeInfoGetter =
-    std::function<const rpc::GcsNodeAddressAndLiveness *(const NodeID &node_id)>;
+    std::function<std::optional<rpc::GcsNodeAddressAndLiveness>(const NodeID &node_id)>;
 
 }  // namespace ray::raylet::internal

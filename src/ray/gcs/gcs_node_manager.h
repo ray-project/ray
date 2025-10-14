@@ -146,8 +146,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \return If the node is known to be dead
   bool IsNodeAlive(const ray::NodeID &node_id) const;
 
-  std::optional<std::shared_ptr<const rpc::GcsNodeAddressAndLiveness>>
-  GetAliveNodeAddress(const NodeID &node_id) const;
+  std::optional<rpc::GcsNodeAddressAndLiveness> GetAliveNodeAddress(
+      const NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
