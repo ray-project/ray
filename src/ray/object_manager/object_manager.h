@@ -27,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/metrics.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/pull_manager.h"

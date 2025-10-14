@@ -356,6 +356,8 @@ class NodeManagerTest : public ::testing::Test {
           return mock_gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
                  nullptr;
         },
+        /*resource_usage_gauge*/
+        fake_resource_usage_gauge_,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -397,7 +399,14 @@ class NodeManagerTest : public ::testing::Test {
             std::vector<std::unique_ptr<RayObject>> *results) {
           return node_manager_->GetObjectsFromPlasma(object_ids, results);
         },
-        max_task_args_memory);
+        max_task_args_memory,
+        /*scheduler_metrics=*/
+        ray::raylet::SchedulerMetrics{
+            fake_scheduler_tasks_gauge_,
+            fake_scheduler_unscheduleable_tasks_gauge_,
+            fake_scheduler_failed_worker_startup_total_gauge_,
+            fake_internal_num_spilled_tasks_gauge_,
+            fake_internal_num_infeasible_scheduling_classes_gauge_});
 
     cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
@@ -468,6 +477,13 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_task_by_state_counter_;
 
   std::atomic_bool shutting_down_ = RayletShutdownState::ALIVE;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
+  ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
+  ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
+  ray::observability::FakeGauge fake_memory_manager_worker_eviction_total_gauge_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {

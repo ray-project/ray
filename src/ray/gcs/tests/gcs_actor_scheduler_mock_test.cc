@@ -64,6 +64,7 @@ class GcsActorSchedulerMockTest : public Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
+        resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
     local_lease_manager_ = std::make_unique<raylet::NoopLocalLeaseManager>();
     cluster_lease_manager = std::make_unique<ClusterLeaseManager>(

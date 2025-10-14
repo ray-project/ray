@@ -39,6 +39,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"

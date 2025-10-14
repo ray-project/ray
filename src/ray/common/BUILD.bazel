@@ -230,6 +230,7 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common:metrics",
         "//src/ray/common/scheduling:label_selector",
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
@@ -281,6 +282,7 @@ ray_cc_library(
     ],
     deps = [
         ":event_stats",
+        ":metrics",
         ":ray_config",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
@@ -311,6 +313,7 @@ ray_cc_library(
         "event_stats.h",
     ],
     deps = [
+        ":metrics",
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",
