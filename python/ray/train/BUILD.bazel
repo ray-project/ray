@@ -449,7 +449,7 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
-    # TODO: move over, rename to test_torch_gpu_utils
+    # NOTE: Migrated relevant tests to v2/tests/test_torch_gpu.py
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
