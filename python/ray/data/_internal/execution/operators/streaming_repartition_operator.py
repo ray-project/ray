@@ -2,7 +2,6 @@ import math
 from collections import deque
 from typing import Deque, List, Optional, Tuple
 
-import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
@@ -48,11 +47,10 @@ def _split_single_block(b: Block, left_size: int) -> Tuple[Block, Block]:
     return left, right
 
 
-def _merge_blocks(blocks: List[Block]) -> Tuple[Block, BlockMetadata]:
+def _merge_blocks(*blocks: Block) -> Tuple[Block, BlockMetadata]:
     # Merge a list of blocks into a single block and compute its metadata.
     from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
-    blocks = [ray.get(b) if isinstance(b, ray.ObjectRef) else b for b in blocks]
     builder = DelegatingBlockBuilder()
     for b in blocks:
         builder.add_block(b)
@@ -93,8 +91,8 @@ class StreamingRepartitionOperator(OneToOneOperator):
         super().__init__(name, input_op, data_context)
         self._target_num_rows_per_block = target_num_rows_per_block
 
-        # Internal buffer of input bundles not yet merged.
-        self._buffer: List[RefBundle] = []
+        # Internal buffer of input bundles not yet merged (FIFO to preserve order).
+        self._buffer: Deque[RefBundle] = deque()
         self._rows_in_buffer: int = 0
 
         # Output queue of ready bundles.
@@ -188,10 +186,13 @@ class StreamingRepartitionOperator(OneToOneOperator):
 
         # Submit remote merge task.
         # NOTE: We call `.remote` with the concrete blocks; Ray handles passing refs.
-        merged_block_ref, meta_ref = _merge_blocks_remote.options(num_cpus=0).remote(
-            blocks
+        merged_block_ref, _ = _merge_blocks_remote.options(num_cpus=0).remote(*blocks)
+        metadata = BlockMetadata(  # not using meta ref from _merge_blocks_remote because we dont want to be blocked by the merge task
+            num_rows=sum(m.num_rows for m in metas),
+            size_bytes=sum(m.size_bytes for m in metas),
+            input_files=[],
+            exec_stats=None,
         )
-        metadata: BlockMetadata = ray.get(meta_ref)
         self._output_blocks_stats.append(metadata.to_stats())
 
         out_refs = RefBundle(
@@ -213,7 +214,8 @@ class StreamingRepartitionOperator(OneToOneOperator):
         out: List[RefBundle] = []
         acc = 0
         while acc < nrow:
-            b = self._buffer.pop()
+            # Dequeue from the front to preserve input order.
+            b = self._buffer.popleft()
             self._metrics.on_input_dequeued(b)
             bn = b.num_rows()
             assert bn is not None
@@ -224,7 +226,8 @@ class StreamingRepartitionOperator(OneToOneOperator):
                 left, right = self._split_bundle(b, nrow - acc)
                 out.append(left)
                 acc += left.num_rows()
-                self._buffer.append(right)
+                # Re-queue remainder at the front to maintain order.
+                self._buffer.appendleft(right)
                 self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
