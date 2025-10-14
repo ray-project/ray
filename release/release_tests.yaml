@@ -4186,7 +4186,7 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
-  
+
 - name: pytorch_profiling  # do not use dashes (regex sensitive)
   frequency: weekly
   group: ray-examples
