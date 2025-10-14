@@ -343,7 +343,7 @@ class PhysicalOperator(Operator):
         """
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_queue_size = (
+        internal_input_queue_size = (
             self.internal_input_queue_size()
             if isinstance(self, InternalQueueOperatorMixin)
             else 0
@@ -352,7 +352,7 @@ class PhysicalOperator(Operator):
         if not self._execution_finished:
             if (
                 self._inputs_complete
-                and internal_queue_size == 0
+                and internal_input_queue_size == 0
                 and self.num_active_tasks() == 0
             ):
                 # NOTE: Operator is considered completed iff

@@ -188,9 +188,6 @@ class ActorPoolMapOperator(MapOperator):
         #   - Own bundle's queue
         return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
 
-    def internal_output_queue_size(self) -> int:
-        return 0
-
     def completed(self) -> bool:
         # TODO separate marking as completed from the check
         return (
