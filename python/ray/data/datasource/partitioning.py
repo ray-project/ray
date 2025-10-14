@@ -280,7 +280,7 @@ class PathPartitionParser:
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = dict([d.split("=") for d in dirs] if dirs else [])
         # url decode the partition values
-        kv_pairs = {k: urllib.parse.unquote(v) for k, v in kv_pairs.items()}
+        kv_pairs = [[pair[0], urllib.parse.unquote_plus(pair[1])] for pair in kv_pairs]
 
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
@@ -295,7 +295,7 @@ class PathPartitionParser:
                         f"Expected partition key {field_name} but found "
                         f"{kv_pairs[i][0]}"
                     )
-        return kv_pairs
+        return dict(kv_pairs)
 
     def _parse_dir_path(self, dir_path: str) -> Dict[str, str]:
         """Directory partition path parser.
