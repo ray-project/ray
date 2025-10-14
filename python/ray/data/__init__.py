@@ -69,6 +69,7 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
     read_tfrecords,
     read_unity_catalog,
+    read_xml,
     read_videos,
     read_webdataset,
 )
@@ -175,6 +176,7 @@ __all__ = [
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
+    "read_xml",
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",

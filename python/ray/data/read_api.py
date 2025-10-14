@@ -57,6 +57,10 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.xml_datasource import (
+    XML_FILE_EXTENSIONS,
+    XMLDatasource,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import (
@@ -1831,6 +1835,160 @@ def read_text(
         paths,
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI
+def read_xml(
+    paths: Union[str, List[str]],
+    *,
+    xpath: Optional[str] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = XML_FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from XML files.
+
+    This function reads XML files and converts them to a tabular format. It supports
+    various XML structures including simple flat XML with repeating elements,
+    XML with attributes, nested XML structures, and compressed XML files.
+
+    The function uses lxml for parsing when available, falling back to
+    xml.etree.ElementTree from the standard library if lxml isn't installed.
+
+    Examples:
+        Read an XML file in remote storage.
+
+        >>> import ray
+        >>> # Read XML file with repeating <record> elements
+        >>> ds = ray.data.read_xml(  # doctest: +SKIP
+        ...     "s3://anonymous@bucket/data.xml",
+        ...     xpath=".//record"
+        ... )
+
+        Read multiple local XML files.
+
+        >>> ray.data.read_xml(  # doctest: +SKIP
+        ...    ["local:///path/to/file1.xml", "local:///path/to/file2.xml"])
+
+        Read multiple directories.
+
+        >>> ray.data.read_xml(  # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        By default, :meth:`~ray.data.read_xml` parses
+        `Hive-style partitions <https://athena.guide/articles/\
+        hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_xml(  # doctest: +SKIP
+        ...     "s3://bucket/year=2022/month=09/data.xml",
+        ...     xpath=".//sale"
+        ... )
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        xpath: Optional XPath expression to select specific elements from the XML.
+            If ``None``, reads all direct children of the root element.
+            For example, use ``".//record"`` to select all <record> elements
+            anywhere in the document. This parameter requires lxml for full XPath
+            support; xml.etree.ElementTree has limited XPath capabilities.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
+            when opening input files to read.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you don't need to set this. If ``None``,
+            this function uses a system-chosen implementation.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a
+            dataset.
+            By default, this filters out any file paths whose file extension doesn't
+            match "*.xml".
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/\
+                hive-style-partitioning/>`_.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that aren't
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
+            the input files, such as ``FileShuffleConfig(seed=42)``.
+            Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified XML files.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    if meta_provider is None:
+        meta_provider = DefaultFileMetadataProvider()
+
+    datasource = XMLDatasource(
+        paths,
+        xpath=xpath,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
