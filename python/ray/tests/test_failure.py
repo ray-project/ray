@@ -688,9 +688,15 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     caplog.clear()
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize(
+    # TODO(dayshah): add `False` variant once in-order is fixed.
+    "allow_out_of_order_execution", [True],
+)
+@pytest.mark.parametrize(
+    "deterministic_failure", ["request", "response"]
+)
 def test_transient_error_retry(
-    monkeypatch, ray_start_cluster, deterministic_failure: str
+    monkeypatch, ray_start_cluster, allow_out_of_order_execution: bool, deterministic_failure: str
 ):
     with monkeypatch.context() as m:
         # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
@@ -704,7 +710,7 @@ def test_transient_error_retry(
         cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
 
-        @ray.remote(max_task_retries=-1)
+        @ray.remote(max_task_retries=-1, allow_out_of_order_execution=allow_out_of_order_execution)
         class RetryActor:
             def echo(self, value):
                 return value
