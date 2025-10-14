@@ -17,7 +17,8 @@ py_library(
     deps = [
         "//release:bazel",
         "//release:global_config",
-        "//release:ray_release",
+        "//release:test",
+        "//release:test_automation",
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
