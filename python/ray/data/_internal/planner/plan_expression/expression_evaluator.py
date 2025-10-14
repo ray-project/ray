@@ -714,6 +714,13 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
 
     # Empty projection
     if len(exprs) == 0:
+        # No expressions at all - return empty projection
+        if block_accessor.num_rows() > 0:
+            from ray.data._internal.arrow_block import (
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
+            )
+
+            return BlockAccessor.for_block(block).fill_column(_STUB, None)
         return block_accessor.select([])
 
     # Identity projection: single star() with no other expressions

@@ -306,7 +306,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table
 
     def num_rows(self) -> int:
-        return self._table.num_rows
+        # Arrow may represent an empty table via an N > 0 row, 0-column table, e.g. when
+        # slicing an empty table, so we return 0 if num_columns == 0.
+        return self._table.num_rows if self._table.num_columns > 0 else 0
 
     def size_bytes(self) -> int:
         return self._table.nbytes
