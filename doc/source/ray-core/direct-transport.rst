@@ -211,7 +211,7 @@ Usage with NIXL (CPUs or NVIDIA GPUs)
 Installation
 ^^^^^^^^^^^^
 
-For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
+For maximum performance, run the `install-gdrcopy.sh <https://github.com/ray-project/ray/blob/master/ci/env/install-gdrcopy.sh>`__ script (e.g., ``install-gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
 
 Walkthrough
 ^^^^^^^^^^^
