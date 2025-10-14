@@ -314,9 +314,6 @@ bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
     return false;
   }
 
-  RAY_LOG(INFO) << "[DEBUG] Within IsTaskTerminated with state events";
-  RAY_LOG(INFO) << "[DEBUG] task_events debug string: " << task_event.DebugString();
-
   const auto &state_updates = task_event.state_updates();
   return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED) ||
          state_updates.state_ts_ns().contains(rpc::TaskStatus::FAILED);

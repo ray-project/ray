@@ -66,40 +66,39 @@ void AddDroppedTaskAttemptsToRequest(
 /// \param language The language of the task.
 /// \param task_info The output TaskInfoEntry to populate.
 void PopulateTaskRuntimeAndFunctionInfo(
-    std::string &&serialized_runtime_env,
-    rpc::FunctionDescriptor &&function_descriptor,
-    ::google::protobuf::Map<std::string, double> &&required_resources,
+    const std::string &serialized_runtime_env,
+    const rpc::FunctionDescriptor &function_descriptor,
+    const ::google::protobuf::Map<std::string, double> &required_resources,
     rpc::Language language,
     rpc::TaskInfoEntry *task_info) {
   task_info->set_language(language);
+  // Use set instead of move to copy from const reference
   task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
-      std::move(serialized_runtime_env));
+      serialized_runtime_env);
   switch (language) {
   case rpc::Language::CPP:
     if (function_descriptor.has_cpp_function_descriptor()) {
       task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_cpp_function_descriptor()
-                         ->mutable_function_name()));
+          function_descriptor.cpp_function_descriptor().function_name());
     }
     break;
   case rpc::Language::PYTHON:
     if (function_descriptor.has_python_function_descriptor()) {
       task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_python_function_descriptor()
-                         ->mutable_function_name()));
+          function_descriptor.python_function_descriptor().function_name());
     }
     break;
   case rpc::Language::JAVA:
     if (function_descriptor.has_java_function_descriptor()) {
       task_info->set_func_or_class_name(
-          std::move(*function_descriptor.mutable_java_function_descriptor()
-                         ->mutable_function_name()));
+          function_descriptor.java_function_descriptor().function_name());
     }
     break;
   default:
     RAY_CHECK(false) << "Unsupported language: " << language;
   }
-  task_info->mutable_required_resources()->swap(required_resources);
+  // Copy the required resources instead of swap
+  *task_info->mutable_required_resources() = required_resources;
 }
 
 /// Convert a TaskDefinitionEvent to a TaskEvents.
@@ -122,9 +121,10 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
     task_info->set_placement_group_id(event.placement_group_id());
   }
 
-  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
-                                     std::move(*event.mutable_task_func()),
-                                     std::move(*event.mutable_required_resources()),
+  // Pass by const reference to avoid dangling arena pointers
+  PopulateTaskRuntimeAndFunctionInfo(event.serialized_runtime_env(),
+                                     event.task_func(),
+                                     event.required_resources(),
                                      event.language(),
                                      task_info);
   return task_event;
@@ -144,7 +144,8 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
   task_state_update->set_worker_pid(event.worker_pid());
-  *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
+  // Use CopyFrom instead of move to avoid dangling arena pointers
+  task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
@@ -175,9 +176,10 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
   }
-  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
-                                     std::move(*event.mutable_actor_func()),
-                                     std::move(*event.mutable_required_resources()),
+  // Pass by const reference to avoid dangling arena pointers
+  PopulateTaskRuntimeAndFunctionInfo(event.serialized_runtime_env(),
+                                     event.actor_func(),
+                                     event.required_resources(),
                                      event.language(),
                                      task_info);
   return task_event;
@@ -193,7 +195,8 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  // Use CopyFrom instead of move to avoid dangling arena pointers
+  task_event.mutable_profile_events()->CopyFrom(event.profile_events());
   return task_event;
 }
 
@@ -239,12 +242,14 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
         requests_per_job_id.emplace_back();
         auto *data = requests_per_job_id.back().mutable_data();
         data->set_job_id(job_id_key);
-        *data->add_events_by_task() = std::move(*task_event);
+        // Use CopyFrom instead of move to avoid dangling arena pointers
+        data->add_events_by_task()->CopyFrom(*task_event);
         job_id_to_index.emplace(job_id_key, idx);
       } else {
         // add taskEvent to existing AddTaskEventDataRequest with same job id
         auto *data = requests_per_job_id[it->second].mutable_data();
-        *data->add_events_by_task() = std::move(*task_event);
+        // Use CopyFrom instead of move to avoid dangling arena pointers
+        data->add_events_by_task()->CopyFrom(*task_event);
       }
     }
   }

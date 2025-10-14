@@ -119,6 +119,12 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   }
 
   rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  std::stringstream error_message;
+  error_message << "Worker running the task (" << worker_id.Hex()
+                << ") died with exit_type: " << exit_type
+                << " with error_message: " << exit_detail;
+  error_info.set_error_message(error_message.str());
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(task_locator, end_time_ms * 1000 * 1000, error_info);
@@ -138,16 +144,27 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   }
 
   auto &task_events = locator->GetTaskEventsMutable();
+
+  // Add validation that message is valid (not using dangling arena pointers)
+  RAY_LOG(INFO) << "[DEBUG] Validating TaskEvents before accessing";
+  RAY_CHECK(task_events.IsInitialized()) << "TaskEvents not properly initialized";
+  RAY_LOG(INFO) << "[DEBUG] TaskEvents validated successfully";
+
   // We don't mark tasks as failed if they are already terminated.
   if (IsTaskTerminated(task_events)) {
+    RAY_LOG(INFO) << "[DEBUG] Task already terminated, skipping";
     return;
   }
+
+  RAY_LOG(INFO) << "[DEBUG] Marking task as failed";
 
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
   (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
+
+  RAY_LOG(INFO) << "[DEBUG] Task marked as failed successfully";
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
