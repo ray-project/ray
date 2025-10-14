@@ -1485,6 +1485,7 @@ class TestTextAndDocumentFormats:
         assert len(result) == 3
         assert all("text" in r for r in result)
 
+
 class TestStructuredDataFormats:
     """Test detection of structured data formats."""
 
@@ -2502,6 +2503,7 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
 
 class TestExtensionMapping:
     """Validate file extension to format mapping."""

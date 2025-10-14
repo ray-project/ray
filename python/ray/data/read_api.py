@@ -817,7 +817,9 @@ def read(
 
     # All files have the same format
     detected_format = list(detected_formats.keys())[0]
-    logger.info(f"Auto-detected format: {detected_format} ({detected_formats[detected_format]} file(s))")
+    logger.info(
+        f"Auto-detected format: {detected_format} ({detected_formats[detected_format]} file(s))"
+    )
 
     # Recursively call with detected format
     return read(
