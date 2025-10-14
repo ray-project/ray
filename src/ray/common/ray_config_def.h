@@ -30,7 +30,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray event stats metrics for main services
 /// such as gcs and raylet (which today are the sole consumers of
 /// this config)
-RAY_CONFIG(bool, emit_main_service_metrics, false)
+RAY_CONFIG(bool, emit_main_service_metrics, true)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
@@ -412,7 +412,7 @@ RAY_CONFIG(bool, support_fork, false)
 
 /// Maximum timeout for GCS reconnection in seconds.
 /// Each reconnection ping will be retried every 1 second.
-RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
+RAY_CONFIG(uint32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// The timeout for GCS connection in seconds
 RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
@@ -552,7 +552,7 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// `ray_io_context_event_loop_lag_ms`.
 ///
 /// A probe task is only posted after a previous probe task has completed.
-RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 250)
+RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
@@ -696,7 +696,7 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
 /// Timeout for core worker grpc server reconnection in seconds.
-RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
+RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -962,7 +962,7 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
 
 /// Timeout for raylet grpc server reconnection in seconds.
-RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
+RAY_CONFIG(uint32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 
 // The number of grpc threads spun up on the worker process. This config is consumed
 // by the raylet and then broadcast to the worker process at time of the worker
