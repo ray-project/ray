@@ -10,7 +10,7 @@ separate Ray task, which has following benefits:
 
 * Running validation in parallel without blocking the training loop
 * Running validation on different hardware than training
-* Leveraging :ref:`Autoscaling <vms-autoscaling>` to rent user-specified machines only for the duration of the validation
+* Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
 * Letting training continue immediately after saving a checkpoint with partial metrics (e.g. loss)
   and then receiving validation metrics (e.g. accuracy) as soon as they are available.
 
@@ -19,7 +19,7 @@ separate Ray task, which has following benefits:
 Basic instructions
 -------------------
 
-First, define a ``validate_fn`` that takes a :class:`~ray.train.Checkpoint` to validate
+First, define a ``validate_fn`` that takes a :class:`ray.train.Checkpoint` to validate
 and an optional ``validate_config`` dictionary. This dictionary can contain arguments needed
 for validation, such as the validation dataset. Your function should return a dictionary of metrics
 from that validation. Here is a simple example:
@@ -35,7 +35,7 @@ from that validation. Here is a simple example:
     serialize all captured variables. Instead, package large objects in the ``Checkpoint`` and
     access from shared storage later.
 
-Next, within your training loop, call :func:`~ray.train.report` with ``validate_fn`` and
+Next, within your training loop, call :func:`ray.train.report` with ``validate_fn`` and
 ``validate_config`` as arguments like so.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
@@ -44,13 +44,13 @@ Next, within your training loop, call :func:`~ray.train.report` with ``validate_
     :end-before: __validate_fn_report_end__
 
 Finally, after training is done, you can access your checkpoints and their associated metrics via the
-:class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
+:class:`ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
 Writing a distributed validation function
 -----------------------------------------
 
 The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
-even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`~ray.train.torch.TorchTrainer`
+even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`ray.train.torch.TorchTrainer`
 to calculate average cross entropy loss on a validation set. Note the following about this example:
 
 * It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
@@ -64,7 +64,7 @@ to calculate average cross entropy loss on a validation set. Note the following 
     :end-before: __validate_fn_torch_trainer_end__
 
 Here is another example ``validate_fn`` that distributes validation across multiple Ray tasks/actors.
-This time, it uses :func:`~ray.data.Dataset.map_batches` to
+This time, it uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
 ``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
 
@@ -89,7 +89,7 @@ You should use ``map_batches`` if:
   aggregation manually using low-level collective operations or rely on third-party libraries
   such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
 
-Checkpoint Metrics Lifecycle
+Checkpoint metrics lifecycle
 -----------------------------
 
 This is what happens to your checkpoints and metrics during the training loop:
@@ -101,7 +101,7 @@ This is what happens to your checkpoints and metrics during the training loop:
 3. When that validation task completes, Ray Train associates the metrics returned by your ``validate_fn``
    with that checkpoint.
 4. After training is done, you can access your checkpoints and their associated metrics via the
-   :class:`~ray.train.Result` object. See :ref:`train-inspect-results` for more details.
+   :class:`ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
 .. figure:: ../images/checkpoint_metrics_lifecycle.png
 

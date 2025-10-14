@@ -3,8 +3,10 @@
 import os
 import torch
 
+import ray.train
 
-def validate_fn(checkpoint, config):
+
+def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
     # Load the checkpoint
     model = ...
     with checkpoint.as_directory() as checkpoint_dir:
@@ -29,11 +31,10 @@ def validate_fn(checkpoint, config):
 import torchmetrics
 from torch.nn import CrossEntropyLoss
 
-import ray.train
 import ray.train.torch
 
 
-def eval_only_train_fn(config_dict):
+def eval_only_train_fn(config_dict: dict) -> None:
     # Load the checkpoint
     model = ...
     with config_dict["checkpoint"].as_directory() as checkpoint_dir:
@@ -65,7 +66,7 @@ def eval_only_train_fn(config_dict):
     )
 
 
-def validate_fn(checkpoint, config):
+def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_fn,
         train_loop_config={"checkpoint": checkpoint},
@@ -89,21 +90,21 @@ def validate_fn(checkpoint, config):
 
 
 class Predictor:
-    def __init__(self, checkpoint):
+    def __init__(self, checkpoint: ray.train.Checkpoint):
         self.model = ...
         with checkpoint.as_directory() as checkpoint_dir:
             model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
             self.model.load_state_dict(model_state_dict)
         self.model.cuda().eval()
 
-    def __call__(self, batch):
+    def __call__(self, batch: dict) -> dict:
         image = torch.as_tensor(batch["image"], dtype=torch.float32, device="cuda")
         label = torch.as_tensor(batch["label"], dtype=torch.float32, device="cuda")
         pred = self.model(image)
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_fn(checkpoint, config):
+def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
     eval_res = config["dataset"].map_batches(
         Predictor,
         batch_size=128,
@@ -125,7 +126,7 @@ import tempfile
 import ray.data
 
 
-def train_func(config):
+def train_func(config: dict) -> None:
     ...
     epochs = ...
     model = ...
@@ -154,7 +155,7 @@ def train_func(config):
             ray.train.report({}, None)
 
 
-def run_trainer():
+def run_trainer() -> ray.result.Result:
     train_dataset = ray.data.read_parquet(...)
     validation_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
