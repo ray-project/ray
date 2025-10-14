@@ -1,5 +1,9 @@
 (serve-external-scale-webhook)=
 
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
 # External Scaling Webhook
 
 Ray Serve exposes a REST API endpoint that you can use to dynamically scale your deployments from outside the Ray cluster. This endpoint gives you flexibility to implement custom scaling logic based on any metrics or signals you choose, such as external monitoring systems, business metrics, or predictive models.
