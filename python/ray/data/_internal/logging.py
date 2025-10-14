@@ -220,7 +220,6 @@ def configure_logging() -> None:
                 return
 
     # Configure logging
-    config["disable_existing_loggers"] = False
     logging.config.dictConfig(config)
 
     _logging_configured = True
@@ -245,17 +244,17 @@ def reset_logging() -> None:
     global _configured_logger_handlers
     global _logging_configured
 
+    def _clear_logger_handlers(handler_names: List[str]):
+        for name in handler_names:
+            logger = logging.getLogger(name)
+            logger.handlers.clear()
+            logger.setLevel(logging.NOTSET)
+
     # Clear handlers from all loggers we track
-    for name in list(_configured_logger_handlers.keys()):
-        logger = logging.getLogger(name)
-        logger.handlers.clear()
-        logger.setLevel(logging.NOTSET)
+    _clear_logger_handlers(list(_configured_logger_handlers.keys()))
 
     # Also clear all loggers managed by Ray Data logging config
-    for name in _get_logger_names():
-        logger = logging.getLogger(name)
-        logger.handlers.clear()
-        logger.setLevel(logging.NOTSET)
+    _clear_logger_handlers(_get_logger_names())
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
