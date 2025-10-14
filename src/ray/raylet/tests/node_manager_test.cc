@@ -1220,25 +1220,36 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
 
-TEST_F(NodeManagerTest, TestHandleKillLocalActorIdempotency) {
-  // Test that calling HandleKillLocalActor twice results in KillActor RPC being
-  // called twice on the core worker client. HandleKillLocalActor is a simple wrapper
-  // that calls KillActor on the core worker client, so idempotency is really handled in
-  // KillActor and documented in the ShutdownCoordinator tests.
+class NodeManagerKillActorTest : public NodeManagerTest,
+                                 public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerKillActorTest, TestHandleKillLocalActorIdempotency) {
+  // worker_is_alive: determines whether the worker is alive and whether KillActor RPC
+  // should be sent. worker_is_alive == true: Worker is alive and KillActor RPC should be
+  // sent twice. worker_is_alive == false: Worker is dead and KillActor RPC should not be
+  // sent.
+
+  bool worker_is_alive = GetParam();
 
   WorkerID worker_id = WorkerID::FromRandom();
   JobID job_id = JobID::FromInt(1);
   ActorID actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
 
-  auto worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
   auto fake_rpc_client = std::make_shared<rpc::FakeCoreWorkerClient>();
-  worker->Connect(fake_rpc_client);
+  std::shared_ptr<raylet::MockWorker> worker;
 
-  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
-      .Times(2)
-      .WillRepeatedly(Return(worker));
+  if (worker_is_alive) {
+    worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
+    worker->Connect(fake_rpc_client);
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(worker));
+  } else {
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(nullptr));
+  }
 
-  // Create the request
   rpc::KillLocalActorRequest request;
   request.set_worker_id(worker_id.Binary());
   request.set_intended_actor_id(actor_id.Binary());
@@ -1263,8 +1274,13 @@ TEST_F(NodeManagerTest, TestHandleKillLocalActorIdempotency) {
         ASSERT_TRUE(s.ok());
       });
 
-  ASSERT_EQ(fake_rpc_client->num_kill_actor_requests, 2);
+  size_t expected_rpc_calls = worker_is_alive ? 2 : 0;
+  ASSERT_EQ(fake_rpc_client->num_kill_actor_requests, expected_rpc_calls)
+      << "Expected " << expected_rpc_calls
+      << " KillActor RPC calls for worker_is_alive==" << worker_is_alive;
 }
+
+INSTANTIATE_TEST_SUITE_P(WorkerState, NodeManagerKillActorTest, ::testing::Bool());
 
 }  // namespace ray::raylet
 

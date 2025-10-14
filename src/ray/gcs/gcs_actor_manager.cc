@@ -1749,18 +1749,19 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   request.set_worker_id(actor->GetWorkerID().Binary());
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
+  if (!actor->LocalRayletAddress()) {
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " has not been assigned a lease";
+    return;
+  }
   auto actor_raylet_client =
-      raylet_client_pool_.GetOrConnectByAddress(actor->GetLocalRayletAddress());
+      raylet_client_pool_.GetOrConnectByAddress(actor->LocalRayletAddress().value());
   RAY_LOG(DEBUG)
           .WithField(actor->GetActorID())
           .WithField(actor->GetWorkerID())
           .WithField(actor->GetNodeID())
       << "Send request to kill actor to worker at node";
   actor_raylet_client->KillLocalActor(
-      request, [actor_id = actor->GetActorID()](auto &status, auto &&) {
-        RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
-                       << ", actor_id: " << actor_id;
-      });
+      request, [](const ray::Status &status, rpc::KillLocalActorReply &&reply) {});
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {

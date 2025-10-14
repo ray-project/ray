@@ -181,7 +181,7 @@ class GcsActor {
   /// Get the address of the actor's owner.
   const rpc::Address &GetOwnerAddress() const;
   /// Get the address of the local raylet for this actor
-  const rpc::Address &GetLocalRayletAddress() const;
+  const std::optional<rpc::Address> &LocalRayletAddress() const;
   /// Update the address of the local raylet for this actor
   void UpdateLocalRayletAddress(const rpc::Address &address);
   /// Update the `Address` of this actor (see gcs.proto).
@@ -311,7 +311,7 @@ class GcsActor {
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
   /// Address of the local raylet of the worker where this actor is running
-  rpc::Address local_raylet_address_;
+  std::optional<rpc::Address> local_raylet_address_;
 };
 
 using RestartActorForLineageReconstructionCallback =

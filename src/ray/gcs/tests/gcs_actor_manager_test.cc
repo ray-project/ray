@@ -120,6 +120,7 @@ class GcsActorManagerTest : public ::testing::Test {
 }
   )");
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
+    raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
     std::vector<rpc::ChannelType> channels = {rpc::ChannelType::GCS_ACTOR_CHANNEL};
@@ -140,10 +141,8 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = scheduler.get();
-    raylet_client_pool_ =
-        std::make_unique<rpc::RayletClientPool>([](const rpc::Address &address) {
-          return std::make_shared<rpc::FakeRayletClient>();
-        });
+    raylet_client_pool_ = std::make_unique<rpc::RayletClientPool>(
+        [this](const rpc::Address &address) { return raylet_client_; });
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
@@ -231,6 +230,7 @@ class GcsActorManagerTest : public ::testing::Test {
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
+  std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
@@ -553,8 +553,8 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "owner has died."));
-  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
-  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
+  // The worker has not yet been granted a lease, so no KillActor RPC should be sent.
+  ASSERT_EQ(raylet_client_->killed_actors.size(), 0);
 
   // Remove the actor's node and check that the actor is not restarted, since
   // its owner has died.
@@ -598,7 +598,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
   OnNodeDead(owner_node_id);
   // The child actor should not be marked as dead.
-  ASSERT_TRUE(worker_client_->killed_actors_.empty());
+  ASSERT_TRUE(raylet_client_->killed_actors.empty());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
 
@@ -1346,8 +1346,11 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
   // Make sure actor in the phase of creating, that is the worker id is not nil and the
   // actor state is not alive yet.
   actor->UpdateAddress(RandomAddress());
+  actor->UpdateLocalRayletAddress(RandomAddress());
   const auto &worker_id = actor->GetWorkerID();
   ASSERT_TRUE(!worker_id.IsNil());
+  const auto &local_raylet_address = actor->LocalRayletAddress();
+  ASSERT_TRUE(local_raylet_address.has_value());
   ASSERT_NE(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Then handle the kill actor requst (restart).
@@ -1364,9 +1367,9 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
       [](Status, std::function<void()>, std::function<void()>) {});
   io_service_.run_one();
 
-  // Make sure the `KillActor` rpc is send.
-  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
-  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
+  // Make sure the `KillLocalActor` rpc is sent.
+  ASSERT_EQ(raylet_client_->killed_actors.size(), 1);
+  ASSERT_EQ(raylet_client_->killed_actors.front(), actor->GetActorID());
 
   // Make sure the actor is restarting.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
@@ -1619,8 +1622,11 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
   // Make sure actor in the phase of creating, that is the worker id is not nil and the
   // actor state is not alive yet.
   actor->UpdateAddress(RandomAddress());
+  actor->UpdateLocalRayletAddress(RandomAddress());
   const auto &worker_id = actor->GetWorkerID();
   ASSERT_TRUE(!worker_id.IsNil());
+  const auto &local_raylet_address = actor->LocalRayletAddress();
+  ASSERT_TRUE(local_raylet_address.has_value());
   ASSERT_NE(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Then handle the kill actor requst (no restart).
@@ -1638,9 +1644,9 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
   io_service_.run_one();
   io_service_.run_one();
 
-  // Make sure the `KillActor` rpc is send.
-  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
-  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
+  // Make sure the `KillLocalActor` rpc is sent.
+  ASSERT_EQ(raylet_client_->killed_actors.size(), 1);
+  ASSERT_EQ(raylet_client_->killed_actors.front(), actor->GetActorID());
 
   // Make sure the actor is dead.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
@@ -1668,7 +1674,7 @@ TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
   ASSERT_EQ(register_reply.status().code(),
             static_cast<int>(StatusCode::SchedulingCancelled));
   ASSERT_EQ(kill_reply.status().code(), static_cast<int>(StatusCode::OK));
-  ASSERT_EQ(worker_client_->killed_actors_.size(), 0);
+  ASSERT_EQ(raylet_client_->killed_actors.size(), 0);
   ASSERT_TRUE(gcs_actor_manager_->GetRegisteredActors().empty());
 }
 
