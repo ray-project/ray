@@ -12,7 +12,7 @@ lora_rank: 8
 lora_target: all
 
 ### deepspeed
-deepspeed: /mnt/cluster_storage/ds_z3_config.json # Path to the DeepSpeed config
+deepspeed: /mnt/cluster_storage/ds_z3_config.json # path to the DeepSpeed config
 
 ### dataset
 dataset: my_glaive_toolcall_en_demo
