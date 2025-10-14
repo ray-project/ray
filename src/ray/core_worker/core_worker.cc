@@ -2142,9 +2142,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.
-  RAY_CHECK(actor_manager_->EmplaceNewActorHandle(
-      std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
-      << "Actor " << actor_id << " already exists";
+  actor_manager_->EmplaceNewActorHandle(
+      std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached);
   *return_actor_id = actor_id;
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
