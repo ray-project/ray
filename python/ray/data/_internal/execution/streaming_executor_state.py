@@ -187,6 +187,8 @@ class OpDisplayMetrics:
     tasks: int = 0
     actors: int = 0
     queued: int = 0
+    task_backpressured: bool = False
+    output_backpressured: bool = False
     extra_info: str = ""
 
     def display_str(self) -> str:
@@ -198,6 +200,13 @@ class OpDisplayMetrics:
         metrics.append(f"{self.cpu:.1f} CPU,{gpu_str} {mem_str} object store")
         # task
         task_str = f"Tasks: {self.tasks}"
+        if self.task_backpressured or self.output_backpressured:
+            backpressured = []
+            if self.task_backpressured:
+                backpressured.append("tasks")
+            if self.output_backpressured:
+                backpressured.append("outputs")
+            task_str += f" [backpressured: {','.join(backpressured)}]"
         if self.extra_info:
             task_str += f": {self.extra_info}"
         metrics.append(task_str)
@@ -321,6 +330,13 @@ class OpState:
         self.op_display_metrics.tasks = self.op.num_active_tasks()
         self.op_display_metrics.queued = self.total_enqueued_input_bundles()
         self.op_display_metrics.actors = self.op.get_actor_info().running
+
+        self.op_display_metrics.task_backpressured = (
+            self.op._in_task_submission_backpressure
+        )
+        self.op_display_metrics.output_backpressured = (
+            self.op._in_task_output_backpressure
+        )
 
         self.op_display_metrics.extra_info = self.op.progress_str()
 
