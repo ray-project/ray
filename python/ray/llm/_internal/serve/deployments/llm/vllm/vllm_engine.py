@@ -151,14 +151,14 @@ class VLLMEngine(LLMEngine):
         callback = self.llm_config.get_or_create_callback()
         await callback.run_callback("on_before_node_init")
         if callback.ctx.run_init_node:
-            node_initialization = await initialize_node(self.llm_config)
+            await initialize_node(self.llm_config)
         await callback.run_callback("on_after_node_init")
 
         (
             vllm_engine_args,
             vllm_frontend_args,
             vllm_engine_config,
-        ) = self._prepare_engine_config(node_initialization)
+        ) = self._prepare_engine_config(callback.ctx)
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
@@ -172,7 +172,7 @@ class VLLMEngine(LLMEngine):
         self._engine_client = self._start_async_llm_engine(
             vllm_engine_args,
             vllm_engine_config,
-            node_initialization.placement_group,
+            callback.ctx.placement_group,
         )
 
         state = State()

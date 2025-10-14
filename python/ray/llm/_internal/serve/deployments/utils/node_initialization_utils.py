@@ -66,5 +66,3 @@ async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
         len(set(paths)) == 1
     ), "Paths returned from download_model_files are not the same"
     llm_config.get_engine_config().hf_model_id = paths[0]
-
-    return callback.ctx
