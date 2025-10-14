@@ -208,6 +208,7 @@ class XMLDatasource(FileBasedDatasource):
             # Try to use lxml for better performance and features
             # Reference: https://lxml.de/
             import lxml.etree as ET
+
             use_lxml = True
             logger.debug("Using lxml parser for XML processing")
             # Disable external entity resolution to prevent XXE attacks
@@ -222,6 +223,7 @@ class XMLDatasource(FileBasedDatasource):
             # Fall back to standard library xml.etree.ElementTree
             # Reference: https://docs.python.org/3/library/xml.etree.elementtree.html
             import xml.etree.ElementTree as ET
+
             use_lxml = False
             parser = None
             logger.debug(

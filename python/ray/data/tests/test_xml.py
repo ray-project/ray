@@ -255,4 +255,3 @@ def test_xml_ignore_missing_paths(ray_start_regular_shared, tmp_path):
     result = ds.to_pandas()
 
     assert len(result) == 2
-

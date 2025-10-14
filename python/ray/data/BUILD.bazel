@@ -997,6 +997,20 @@ py_test(
 )
 
 py_test(
+    name = "test_xml",
+    size = "medium",
+    srcs = ["tests/test_xml.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/test_tf.py"],
