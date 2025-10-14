@@ -221,25 +221,27 @@ def test_poll_status_finished():
     assert not status.errors
 
 
-@pytest.mark.parametrize("training_failure", [True, False])
-@pytest.mark.parametrize("poll_failure", [True, False])
-def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
+@pytest.mark.parametrize("actor_failure", [True, False])
+def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
+    dummy_file = tmp_path / "dummy.txt"
+
     def train_fn():
-        if training_failure:
-            raise RuntimeError("train error")
+        # Error when the worker group initialization is finished.
+        while not dummy_file.exists():
+            time.sleep(0.01)
 
-    if poll_failure:
-
-        def patched_poll_status(worker_self):
-            raise RuntimeError("poll error")
-
-        monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
+        if actor_failure:
+            os._exit(1)
+        else:
+            raise RuntimeError("Mock user code error")
 
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(train_fn),
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
+
+    dummy_file.touch()
     while not wg.poll_status().finished:
         time.sleep(0.01)
 
@@ -248,9 +250,8 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
     assert len(status.worker_statuses) == 4
     assert status.finished
-    if poll_failure:
+    if actor_failure:
         assert len(status.errors) == 4
-        assert ["poll" in str(error) for error in status.errors.values()]
         assert [
             isinstance(error, WorkerHealthCheckFailedError)
             for error in status.errors.values()
@@ -259,11 +260,11 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
             isinstance(error.health_check_failure, RuntimeError)
             for error in status.errors.values()
         ]
-    elif training_failure:
-        assert len(status.errors) == 4
-        assert ["train" in str(error) for error in status.errors.values()]
     else:
-        assert not status.errors
+        assert len(status.errors) == 4
+        assert all(
+            ["user code error" in str(error) for error in status.errors.values()]
+        )
 
 
 def test_poll_status_healthcheck_timeout(monkeypatch):
