@@ -889,6 +889,7 @@ class Unique(AggregateFnV2):
             return {x}
 
 
+@PublicAPI(stability="beta")
 class ValueCounter(AggregateFnV2):
     """Counts the number of times each value appears in a column."""
 
