@@ -299,7 +299,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // If all objects were fetched already, return. Note that we always need to
   // call UnblockIfNeeded() to cancel the get request.
   if (remaining.empty() || *got_exception) {
-    return UnblockIfNeeded(raylet_ipc_client_, ctx);
+    return raylet_ipc_client_->CancelGetRequest();
+    // return UnblockIfNeeded(raylet_ipc_client_, ctx);
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
@@ -339,7 +340,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       Status status = check_signals_();
       if (!status.ok()) {
         // TODO(edoakes): in this case which status should we return?
-        RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
+        // RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
+        RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
         return status;
       }
     }
@@ -354,13 +356,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   if (!remaining.empty() && timed_out) {
-    RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
+    // RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
   // fetch_only=false.
-  return UnblockIfNeeded(raylet_ipc_client_, ctx);
+  // return raylet_ipc_client_->CancelGetRequest
+  // return UnblockIfNeeded(raylet_ipc_client_, ctx);
+  return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
