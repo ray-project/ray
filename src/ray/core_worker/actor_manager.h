@@ -106,15 +106,14 @@ class ActorManager {
   ///
   /// NOTE: Getting an actor handle from GCS (named actor) is considered as adding a new
   /// actor handle.
+  /// NOTE: This function will Ray Check fail if the actor handle already exists.
   ///
   /// \param actor_handle The handle to the actor.
   /// \param[in] call_site The caller's site.
   /// \param[in] owned Whether or not we own the this actor, i.e. the actor is
   /// not detached and we were the process that submitted the actor creation
   /// task.
-  /// \return True if the handle was added and False if we already had a handle to
-  /// the same actor.
-  bool EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+  void EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                              const std::string &call_site,
                              const rpc::Address &caller_address,
                              bool owned);

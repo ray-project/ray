@@ -223,8 +223,8 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                      false);
 
   // Add an actor handle.
-  ASSERT_TRUE(actor_manager_->EmplaceNewActorHandle(
-      std::move(actor_handle), call_site, caller_address, true));
+  actor_manager_->EmplaceNewActorHandle(
+      std::move(actor_handle), call_site, caller_address, true);
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure the subscription request is sent to GCS.
@@ -244,9 +244,10 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       "",
                                                       -1,
                                                       false);
-  // Make sure the same actor id adding will return false.
-  ASSERT_FALSE(actor_manager_->EmplaceNewActorHandle(
-      std::move(actor_handle2), call_site, caller_address, true));
+  // Make sure adding the same actor id triggers a RAY_CHECK failure.
+  ASSERT_DEATH(actor_manager_->EmplaceNewActorHandle(
+                   std::move(actor_handle2), call_site, caller_address, true),
+               "Actor handle already exists for actor id");
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure we can get an actor handle correctly.

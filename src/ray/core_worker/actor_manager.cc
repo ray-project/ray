@@ -119,7 +119,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+void ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                          const std::string &call_site,
                                          const rpc::Address &caller_address,
                                          bool owned) {
@@ -129,12 +129,8 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
-    if (actor_handles_.contains(actor_id)) {
-      return false;
-    }
-    // Place a sentinel value in the map to indicate that the actor handle is being
-    // created.
-    actor_handles_.emplace(actor_id, nullptr);
+    RAY_CHECK(!actor_handles_.contains(actor_id))
+        << "Actor handle already exists for actor id: " << actor_id;
   }
 
   // Detached actor doesn't need ref counting.
@@ -148,14 +144,14 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
                                       /*add_local_ref=*/true);
   }
 
-  return AddActorHandle(std::move(actor_handle),
-                        call_site,
-                        caller_address,
-                        actor_id,
-                        actor_creation_return_id,
-                        /*add_local_ref=*/false,
-                        /*is_self*/ false,
-                        owned);
+  AddActorHandle(std::move(actor_handle),
+                 call_site,
+                 caller_address,
+                 actor_id,
+                 actor_creation_return_id,
+                 /*add_local_ref=*/false,
+                 /*is_self*/ false,
+                 owned);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -178,14 +174,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
-    // check if the actor handle is a sentinel value
-    auto it = actor_handles_.find(actor_id);
-    if (it != actor_handles_.end() && it->second == nullptr) {
-      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle));
-      inserted = true;
-    } else {
-      inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
-    }
+    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
 
   if (is_self) {
