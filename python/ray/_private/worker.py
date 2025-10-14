@@ -1835,10 +1835,10 @@ def init(
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
-            "DeprecationWarning: local mode is an experimental feature that is no "
-            "longer maintained and will be removed in the future."
-            " For debugging consider using Ray Distributed Debugger. ",
-            DeprecationWarning,
+            "`local_mode` is an experimental feature that is no "
+            "longer maintained and will be removed in the near future. "
+            "For debugging consider using the Ray distributed debugger.",
+            FutureWarning,
             stacklevel=2,
         )
     else:
@@ -3545,6 +3545,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, Any]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3700,10 +3701,14 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+        label_selector: [Experimental] If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy: [Experimental] If specified, expresses soft constraints for scheduling
+                through a list of dicts of decorator options to fall back on when scheduling on a node.
+                Decorator options are evaluated together during scheduling. The first satisfied
+                dict of options is used. Currently only `label_selector` is a supported option.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.
@@ -3769,8 +3774,6 @@ def remote(
             node id based affinity scheduling.
             See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
             for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
         _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
