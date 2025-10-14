@@ -3,7 +3,15 @@ import logging
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.network_utils import build_address
@@ -301,6 +309,9 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def _dump_all_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_state_manager.get_all_metrics()
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
@@ -920,6 +931,19 @@ class ServeController:
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
+
+    def update_deployment_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ) -> None:
+        """Update the target number of replicas for a deployment.
+
+        Args:
+            deployment_id: The deployment to update.
+            target_num_replicas: The new target number of replicas.
+        """
+        self.deployment_state_manager.set_target_num_replicas(
+            deployment_id, target_num_replicas
+        )
 
     def get_serve_instance_details(self, source: Optional[APIType] = None) -> Dict:
         """Gets details on all applications on the cluster and system-level info.

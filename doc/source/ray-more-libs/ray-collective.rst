@@ -30,7 +30,7 @@ See below the current support matrix for all collective calls with different bac
    :header-rows: 1
 
    * - Backend
-     - `gloo <https://github.com/ray-project/pygloo>`_
+     - `torch.distributed.gloo <https://pytorch.org/docs/stable/distributed.html#gloo>`_
      -
      - `nccl <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`_
      -
@@ -110,12 +110,12 @@ Usage
 Installation and Importing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either `pygloo <https://github.com/ray-project/pygloo>`_
-or `cupy <https://docs.cupy.dev/en/stable/install.html>`_ in order to use collective communication with the GLOO and NCCL backend, respectively.
+Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either `torch <https://pytorch.org/get-started/locally/>`_
+or `cupy <https://docs.cupy.dev/en/stable/install.html>`_ in order to use collective communication with the GLOO (torch.distributed.gloo) and NCCL backend, respectively.
 
 .. code-block:: python
 
-   pip install pygloo
+   pip install torch
    pip install cupy-cudaxxx # replace xxx with the right cuda version in your environment
 
 To use these APIs, import the collective package in your actor/task or driver code via:

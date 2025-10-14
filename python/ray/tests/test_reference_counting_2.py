@@ -37,6 +37,8 @@ def one_cpu_100MiB_shared():
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
         "automatic_object_spilling_enabled": False,
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
     }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config

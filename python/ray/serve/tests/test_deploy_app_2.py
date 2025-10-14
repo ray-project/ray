@@ -588,13 +588,17 @@ def test_num_replicas_auto_api(serve_instance):
         "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
 
@@ -641,13 +645,17 @@ def test_num_replicas_auto_basic(serve_instance):
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)

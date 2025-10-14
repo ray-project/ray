@@ -132,7 +132,7 @@ async def test_is_ready_check_timeout():
 @pytest.mark.parametrize(
     ("response", "is_healthy"),
     [
-        (None, True),
+        (True, True),
         (RayTaskError("check_health", "<traceback>", "cuz"), False),
     ],
 )

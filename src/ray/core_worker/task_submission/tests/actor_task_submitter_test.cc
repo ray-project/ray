@@ -15,15 +15,16 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 
 namespace ray::core {
 
@@ -53,7 +54,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   return task;
 }
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
@@ -98,7 +99,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             *task_manager_,
             actor_creator_,
             [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-            [this](const ActorID &actor_id, int64_t num_queued) {
+            [this](const ActorID &actor_id, const std::string &, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
             io_context,

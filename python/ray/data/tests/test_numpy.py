@@ -7,7 +7,8 @@ import pytest
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-from ray.data import DataContext, Schema
+from ray.data.context import DataContext
+from ray.data.dataset import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,

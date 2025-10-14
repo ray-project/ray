@@ -74,6 +74,7 @@ def get_step_for_test_group(
     priority: int = 0,
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
+    block_step_key: Optional[str] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -92,6 +93,7 @@ def get_step_for_test_group(
                     env=env,
                     priority_val=priority,
                     global_config=global_config,
+                    block_step_key=block_step_key,
                 )
 
                 if not is_concurrency_limit:
@@ -115,6 +117,7 @@ def get_step(
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     env = env or {}
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
@@ -150,6 +153,13 @@ def get_step(
     #  3. Specified in the global environment, as RELEASE_DEFAULT_PROJECT env var
     default_project_id = env_dict.get("RELEASE_DEFAULT_PROJECT")
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
+
+    if test.is_azure():
+        for env_var in ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"]:
+            value = os.environ.get(env_var)
+            if not value:
+                raise ValueError(f"{env_var} must be set")
+            env_dict[env_var] = value
 
     step["env"].update(env_dict)
     step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
@@ -196,10 +206,23 @@ def get_step(
 
     image = test.get_anyscale_byod_image()
     if test.require_custom_byod_image():
-        step["depends_on"] = generate_custom_build_step_key(
-            test.get_anyscale_byod_image(build_id="")
-        )
+        step["depends_on"] = generate_custom_build_step_key(image)
     else:
         step["depends_on"] = get_prerequisite_step(image)
 
+    if block_step_key:
+        if not step["depends_on"]:
+            step["depends_on"] = block_step_key
+        else:
+            step["depends_on"] = [step["depends_on"], block_step_key]
+    return step
+
+
+def generate_block_step(num_tests: int):
+    step = {
+        "block": "Run release tests",
+        "depends_on": None,
+        "key": "block_run_release_tests",
+        "prompt": f"You are triggering {num_tests} tests. Do you want to proceed?",
+    }
     return step

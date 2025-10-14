@@ -9,15 +9,19 @@ py_library(
             "test_*.py",
             "test_in_docker.py",
             "build_in_docker.py",
+            "build_in_docker_windows.py",
         ],
     ),
     data = glob(["*.yaml"]),
     visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
+        "//release:bazel",
+        "//release:global_config",
+        "//release:test",
+        "//release:test_automation",
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
-        "//release:ray_release",
     ],
 )
 
@@ -108,6 +112,21 @@ py_test(
     deps = [
         ":ray_ci_lib",
         ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_container",
+    size = "small",
+    srcs = ["test_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
         ci_require("pytest"),
     ],
 )

@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -33,6 +32,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -52,7 +52,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       io_service_.run();
     }));
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(std::make_shared<FakeRayletClient>());
+      raylet_clients_.push_back(std::make_shared<rpc::FakeRayletClient>());
     }
     gcs_table_storage_ =
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
@@ -143,7 +143,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     rpc::NodeDeathInfo death_info;
-    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()), death_info);
+    gcs_node_manager_->RemoveNode(
+        NodeID::FromBinary(node->node_id()), death_info, rpc::GcsNodeInfo::DEAD, 1000);
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
   }
 
@@ -295,7 +296,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<InMemoryStoreClient> store_client_;
 
-  std::vector<std::shared_ptr<FakeRayletClient>> raylet_clients_;
+  std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
