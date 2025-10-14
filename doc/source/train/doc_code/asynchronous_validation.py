@@ -141,9 +141,7 @@ def train_func(config):
             )
             ray.train.report(
                 training_metrics,
-                checkpoint=ray.train.Checkpoint.from_directory(
-                    local_checkpoint_dir
-                ),
+                checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
                 validate_fn=validate_fn,
                 validate_config={
