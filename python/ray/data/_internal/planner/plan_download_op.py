@@ -79,13 +79,23 @@ def plan_download_op(
             init_fn=init_fn,
         )
 
+        # NOTE: Partition actor doesn't use the user-provided `ray_remote_args` since
+        #       those only apply to the actual download tasks. Partitioning is a
+        #       lightweight internal operation that doesn't need custom resource
+        #       requirements.
+        #
+        # NOTE: We set `_generator_backpressure_num_objects`` to -1 to unblock
+        #       backpressure since partitioning is extremely fast. Without this, the
+        #       partition actor gets bottlenecked by the Ray Data scheduler, which can
+        #       prevent Ray Data from launching enough download tasks.
+        partition_ray_remote_args = {"_generator_backpressure_num_objects": -1}
         partition_map_operator = MapOperator.create(
             partition_map_transformer,
             input_physical_dag,
             data_context,
             name="URIPartitioner",
             compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            ray_remote_args=ray_remote_args,
+            ray_remote_args=partition_ray_remote_args,
         )
 
     fn, init_fn = _get_udf(
