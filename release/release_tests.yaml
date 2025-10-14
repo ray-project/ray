@@ -2276,14 +2276,14 @@
   variations:
     - __suffix__: aws
       repeated_run: 5
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_64_gce.yaml
-    - __suffix__: aws.py312
-      frequency: weekly
-      python: "3.12"
+    # - __suffix__: gce
+    #   env: gce
+    #   frequency: manual
+    #   cluster:
+    #     cluster_compute: tpl_64_gce.yaml
+    # - __suffix__: aws.py312
+    #   frequency: weekly
+    #   python: "3.12"
 
 - name: compiled_graphs
   python: "3.10"
