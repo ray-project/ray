@@ -716,27 +716,13 @@ async def test_tail_job_logs_websocket_abnormal_closure():
     """
     Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
 
-    This test starts its own Ray cluster to avoid interfering with other tests,
+    This test starts its own Ray cluster using default ports,
     then forcefully stops Ray while tailing logs to simulate an abnormal WebSocket closure.
     """
-    port = get_current_unused_port()
-    dashboard_port = get_current_unused_port()
-
-    # Start a fresh Ray cluster for this test only
-    subprocess.check_output(
-        [
-            "ray",
-            "start",
-            "--head",
-            "--port",
-            str(port),
-            "--dashboard-port",
-            str(dashboard_port),
-        ]
-    )
+    subprocess.check_output(["ray", "start", "--head"])
+    address = "127.0.0.1:8265"
 
     try:
-        address = f"localhost:{dashboard_port}"
         assert wait_until_server_available(address)
         client = JobSubmissionClient(format_web_url(address))
 
@@ -768,7 +754,7 @@ for i in range(100):
 
     finally:
         # Ensure Ray is stopped even if test fails
-        subprocess.run(["ray", "stop", "--force"], capture_output=True, check=False)
+        subprocess.check_output(["ray", "stop", "--force"])
 
 
 def _hook(env):
