@@ -204,7 +204,7 @@ class SimpleImputer(Preprocessor):
 
 
 def _get_most_frequent_values(
-    dataset: Dataset,
+    dataset: "Dataset",
     columns: List[str],
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
