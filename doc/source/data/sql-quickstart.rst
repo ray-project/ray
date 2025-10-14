@@ -287,4 +287,4 @@ Now that you've learned the basics, explore more advanced features:
 
 - **Ray Data Integration**: Learn how to seamlessly integrate SQL with other Ray Data features in the main :ref:`Ray Data documentation <data>`.
 
-- **Examples**: Find more SQL examples and use cases in the :ref:`Ray Data Examples <examples>` section. 
+- **Examples**: Find more SQL examples and use cases in the :ref:`SQL Examples <data_sql_examples>` section. 

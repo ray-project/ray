@@ -198,7 +198,7 @@ Performance optimization
 ========================
 
 Query optimization strategies
-----------------------------
+-----------------------------
 
 Follow these best practices for optimal performance:
 
@@ -943,7 +943,7 @@ Resource Management
     clear_tables()
 
 Production Considerations
-========================
+=========================
 
 Monitoring and Observability
 ----------------------------
@@ -1021,6 +1021,6 @@ What's Next?
 
 - **Ray Data Features**: Learn about other Ray Data capabilities in the main :ref:`Ray Data documentation <data>`.
 
-- **Performance Tuning**: Check out Ray Data's :ref:`performance tips <performance-tips>` for general optimization strategies.
+- **Performance Tuning**: Check out Ray Data's performance tips for general optimization strategies.
 
-- **Examples**: Find more complex SQL examples in the :ref:`Ray Data Examples <examples>` section. 
+- **Examples**: Find more complex SQL examples in the :ref:`SQL Examples <data_sql_examples>` section. 

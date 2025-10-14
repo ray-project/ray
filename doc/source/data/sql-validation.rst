@@ -120,7 +120,7 @@ Get suggested alternatives for specific unsupported features:
     # Output: "Use Dataset.union() method instead"
 
 Supported Features Reference
----------------------------
+----------------------------
 
 **Aggregate Functions**
   ``SUM``, ``MIN``, ``MAX``, ``COUNT``, ``AVG``, ``MEAN``, ``STD``, ``STDDEV``

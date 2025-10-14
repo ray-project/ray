@@ -328,4 +328,4 @@ What's next?
 - **Learn SQL basics**: Check out the :ref:`SQL Quickstart <data_sql_quickstart>`
 - **Explore advanced features**: Read the :ref:`SQL User Guide <data_sql_user_guide>`
 - **Browse the API**: See the complete :ref:`SQL API Reference <data_sql_api>`
-- **Try examples**: Find SQL examples in :ref:`Ray Data Examples <examples>` 
+- **Try examples**: Find SQL examples in the :ref:`SQL Examples <data_sql_examples>` 
