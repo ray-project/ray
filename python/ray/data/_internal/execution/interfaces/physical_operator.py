@@ -782,6 +782,9 @@ class PhysicalOperator(Operator):
         )
         return upstream_op_num_outputs
 
+    def explain(self, mode: str = "simple") -> str:
+        return repr(self)
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod

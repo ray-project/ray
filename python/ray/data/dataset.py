@@ -6063,8 +6063,13 @@ class Dataset:
         return self._get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self, mode: str = "simple"):
         """Show the logical plan and physical plan of the dataset.
+
+        Args:
+            mode: The explain mode. Supported modes are "simple" and "verbose".
+                "simple" shows a simplified plan, while "verbose" shows more
+                detailed metrics about physical operators(WIP).
 
         Examples:
 
@@ -6073,7 +6078,7 @@ class Dataset:
             import ray
             from ray.data import Dataset
             ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
+            ds = ds.map(lambda x: {"id": x["id"] + 1})
             ds.explain()
 
         .. testoutput::
@@ -6086,7 +6091,7 @@ class Dataset:
             +- InputDataBuffer[Input]
             <BLANKLINE>
         """
-        print(self._plan.explain())
+        print(self._plan.explain(mode))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
