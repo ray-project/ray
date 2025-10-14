@@ -435,6 +435,11 @@ void GcsAutoscalerStateManager::GetNodeStates(
     // Add Ray node labels.
     const auto &node_labels = gcs_node_info.labels();
     node_state_proto->mutable_labels()->insert(node_labels.begin(), node_labels.end());
+    // Add label constraint usage counts.
+    const auto &label_constraint_usage_counts =
+        node_resource_data.label_constraint_usage_counts();
+    node_state_proto->mutable_label_constraint_usage_counts()->insert(
+        label_constraint_usage_counts.begin(), label_constraint_usage_counts.end());
   };
 
   const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();

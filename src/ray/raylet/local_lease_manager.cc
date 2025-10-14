@@ -336,6 +336,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
           cluster_resource_scheduler_.GetLocalResourceManager()
               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                          spec.GetLabelSelector(),
                                           allocated_instances);
       if (!schedulable) {
         ReleaseLeaseArgs(lease_id);
@@ -602,7 +603,8 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     granted = false;
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
-        work->allocated_instances_);
+        work->allocated_instances_,
+        work->lease_.GetLeaseSpecification().GetLabelSelector());
     work->allocated_instances_ = nullptr;
     // Release pinned task args.
     ReleaseLeaseArgs(lease_id);
@@ -901,7 +903,8 @@ void LocalLeaseManager::CancelLeaseToGrant(
   if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
-        work->allocated_instances_);
+        work->allocated_instances_,
+        work->lease_.GetLeaseSpecification().GetLabelSelector());
     // Release pinned lease args.
     ReleaseLeaseArgs(lease_id);
   }
@@ -1043,7 +1046,9 @@ void LocalLeaseManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> 
   auto allocated_instances = worker->GetAllocatedInstances()
                                  ? worker->GetAllocatedInstances()
                                  : worker->GetLifetimeAllocatedInstances();
-  if (allocated_instances == nullptr) {
+  auto label_selector =
+      worker->GetGrantedLease().GetLeaseSpecification().GetLabelSelector();
+  if (allocated_instances == nullptr && label_selector.GetConstraints().empty()) {
     return;
   }
 
@@ -1065,7 +1070,7 @@ void LocalLeaseManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> 
   }
 
   cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
-      allocated_instances);
+      allocated_instances, label_selector);
   worker->ClearAllocatedInstances();
   worker->ClearLifetimeAllocatedInstances();
 }

@@ -364,6 +364,8 @@ void ClusterLeaseManager::FillResourceUsage(rpc::ResourcesData &data) {
   data.set_is_draining(resource_view_sync_message.is_draining());
   data.set_draining_deadline_timestamp_ms(
       resource_view_sync_message.draining_deadline_timestamp_ms());
+  (*data.mutable_label_constraint_usage_counts()) =
+      std::move(*resource_view_sync_message.mutable_label_constraint_usage_counts());
 }
 
 const RayLease *ClusterLeaseManager::AnyPendingLeasesForResourceAcquisition(

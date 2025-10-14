@@ -47,6 +47,10 @@ message ResourceViewSyncMessage {
   repeated string node_activity = 7;
   // The key-value labels of this node.
   map<string, string> labels = 8;
+  // The label constraint usage counts of this node.
+  // Key is the label constraint string representation. For example,
+  // "ray.io/node-id:in(123,456)".
+  map<string, int32> label_constraint_usage_counts = 9;
 }
 
 message RaySyncMessage {

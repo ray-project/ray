@@ -83,4 +83,22 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
   EXPECT_EQ(values.size(), 1);
   EXPECT_TRUE(values.contains("dev"));
 }
+
+TEST(LabelConstraintTest, ToString) {
+  LabelConstraint single_value_in =
+      LabelConstraint("ray.io/node-id", LabelSelectorOperator::LABEL_IN, {"123"});
+  EXPECT_EQ(single_value_in.ToString(), "ray.io/node-id:123");
+
+  LabelConstraint single_value_not_in =
+      LabelConstraint("ray.io/node-id", LabelSelectorOperator::LABEL_NOT_IN, {"123"});
+  EXPECT_EQ(single_value_not_in.ToString(), "ray.io/node-id:!123");
+
+  LabelConstraint multiple_values_in =
+      LabelConstraint("ray.io/node-id", LabelSelectorOperator::LABEL_IN, {"456", "123"});
+  EXPECT_EQ(multiple_values_in.ToString(), "ray.io/node-id:in(123,456)");
+
+  LabelConstraint multiple_values_not_in = LabelConstraint(
+      "ray.io/node-id", LabelSelectorOperator::LABEL_NOT_IN, {"123", "456"});
+  EXPECT_EQ(multiple_values_not_in.ToString(), "ray.io/node-id:!in(123,456)");
+}
 }  // namespace ray

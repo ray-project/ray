@@ -14,12 +14,14 @@
 
 #pragma once
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "google/protobuf/map.h"
 #include "ray/common/constants.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -49,6 +51,48 @@ class LabelConstraint {
   LabelSelectorOperator GetOperator() const { return op_; }
 
   const absl::flat_hash_set<std::string> &GetLabelValues() const { return values_; }
+
+  /// Return the string representation of the label constraint.
+  /// For example, "ray.io/node-id:!in(123,456)".
+  std::string ToString() const {
+    std::string result = absl::StrCat(key_, ":");
+    std::vector<std::string> values(values_.begin(), values_.end());
+    std::sort(values.begin(), values.end());
+    if (op_ == LabelSelectorOperator::LABEL_IN) {
+      if (values.size() == 1) {
+        absl::StrAppend(&result, values[0]);
+      } else {
+        absl::StrAppend(&result, "in(");
+        bool first = true;
+        for (const std::string &value : values) {
+          if (first) {
+            first = false;
+          } else {
+            absl::StrAppend(&result, ",");
+          }
+          absl::StrAppend(&result, value);
+        }
+        absl::StrAppend(&result, ")");
+      }
+    } else if (op_ == LabelSelectorOperator::LABEL_NOT_IN) {
+      if (values.size() == 1) {
+        absl::StrAppend(&result, "!", values[0]);
+      } else {
+        absl::StrAppend(&result, "!in(");
+        bool first = false;
+        for (const std::string &value : values) {
+          if (first) {
+            first = false;
+          } else {
+            absl::StrAppend(&result, ",");
+          }
+          absl::StrAppend(&result, value);
+        }
+        absl::StrAppend(&result, ")");
+      }
+    }
+    return result;
+  }
 
  private:
   std::string key_;
@@ -93,15 +137,21 @@ inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
 }
 
 template <typename H>
+H AbslHashValue(H h, const LabelConstraint &label_constraint) {
+  h = H::combine(std::move(h),
+                 label_constraint.GetLabelKey(),
+                 static_cast<int>(label_constraint.GetOperator()));
+  const auto &values = label_constraint.GetLabelValues();
+  h = H::combine(std::move(h), values.size());
+  h = H::combine_unordered(std::move(h), values.begin(), values.end());
+  return h;
+}
+
+template <typename H>
 H AbslHashValue(H h, const LabelSelector &label_selector) {
   h = H::combine(std::move(h), label_selector.GetConstraints().size());
   for (const auto &constraint : label_selector.GetConstraints()) {
-    h = H::combine(std::move(h),
-                   constraint.GetLabelKey(),
-                   static_cast<int>(constraint.GetOperator()));
-    for (const auto &value : constraint.GetLabelValues()) {
-      h = H::combine(std::move(h), value);
-    }
+    h = H::combine(std::move(h), constraint);
   }
   return h;
 }

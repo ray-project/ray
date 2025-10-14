@@ -482,6 +482,7 @@ message ResourceLoad {
   repeated ResourceDemand resource_demands = 1;
 }
 
+// TODO: Need to update anywhere the ResourceData is used
 message ResourcesData {
   reserved 3, 8, 17;
   // Node id.
@@ -519,8 +520,12 @@ message ResourcesData {
   // The value is the timestamp when
   // the node will be force killed.
   int64 draining_deadline_timestamp_ms = 18;
-  // Te key-value labels of this node.
+  // The key-value labels of this node.
   map<string, string> labels = 19;
+  // Labels and their reference count.
+  // Key is the label constraint string representation. For example,
+  // "ray.io/node-id:in(123,456)".
+  map<string, int32> label_constraint_usage_counts = 20;
 }
 
 message ResourceUsageBatchData {

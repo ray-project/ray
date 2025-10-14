@@ -173,9 +173,11 @@ Status NewPlacementGroupResourceManager::ReturnBundle(
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
+  // The allocation is to check whether all bundle resources are released.
+  // So pass in an empty label selector.
   auto allocated =
       cluster_resource_scheduler_.GetLocalResourceManager().AllocateLocalTaskResources(
-          placement_group_resources, resource_instances);
+          placement_group_resources, LabelSelector(), resource_instances);
 
   if (!allocated) {
     RAY_LOG(WARNING) << "Bundle resources are still in use. GCS should retry to release "
@@ -187,7 +189,7 @@ Status NewPlacementGroupResourceManager::ReturnBundle(
     // Return original resources to resource allocator `ClusterResourceScheduler`.
     auto original_resources = it->second->resources_;
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
-        original_resources);
+        original_resources, bundle_spec.GetRequiredResources().GetLabelSelector());
   }
 
   for (const auto &resource : placement_group_resources) {
