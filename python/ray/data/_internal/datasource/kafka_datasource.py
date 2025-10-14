@@ -3,7 +3,8 @@
 This module provides a Kafka datasource implementation for Ray Data that works
 with the UnboundedDataOperator.
 
-Requires: kafka-python or confluent-kafka
+Requires:
+    - kafka-python: https://kafka-python.readthedocs.io/
 """
 
 import logging

@@ -3,7 +3,8 @@
 This module provides a Kinesis datasource implementation for Ray Data that works
 with the UnboundedDataOperator.
 
-Requires: boto3
+Requires:
+    - boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
 """
 
 import logging

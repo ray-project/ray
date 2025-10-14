@@ -3,7 +3,9 @@
 This module provides a Flink datasource implementation for Ray Data that works
 with the UnboundedDataOperator.
 
-Requires: requests (for REST API access)
+Requires:
+    - requests: https://requests.readthedocs.io/ (for REST API access)
+    - pyflink: https://nightlies.apache.org/flink/flink-docs-release-1.18/docs/dev/python/overview/ (optional, for table source type)
 """
 
 import logging
