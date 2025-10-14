@@ -921,8 +921,8 @@ enum TaskStatus {
   FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
   FAILED = 12;
-  // The task is attempting to pin args and fetch them for execution, used for metrics only
-  // and is a sub state of RUNNING
+  // The task is attempting to pin args and fetch them for execution, used for metrics
+  // only and is a sub state of RUNNING
   GETTING_AND_PINNING_ARGS = 13;
 }
 
