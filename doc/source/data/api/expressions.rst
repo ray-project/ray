@@ -17,7 +17,7 @@ Public API
     :nosignatures:
     :toctree: doc/
 
-    all
+    star
     col
     lit
     udf
