@@ -349,8 +349,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // raylet side, we never proactively close the plasma store connection even
   // during shutdown. So any error from the raylet side should be a sign of raylet
   // death.
-  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
-      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
+  auto plasma_client =
+      std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -359,7 +359,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
-      /*store_client=*/plasma_client,
+      /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
@@ -406,7 +406,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider->store_client(),
+          plasma_store_provider->store_client(),
           raylet_channel_client_factory,
           options.check_signals);
 #endif

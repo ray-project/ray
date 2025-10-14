@@ -845,6 +845,17 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// failures.
 ///     export RAY_testing_rpc_failure="*=-1:25:50"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
+///
+/// You can also provide an optional fourth and/or fifth parameter to specify that there
+/// should be at least a certain amount of failures on the request and response. The
+/// fourth parameter is for the request and the fifth parameter is for the response. By
+/// default these are set to 0, but by setting them to positive values it guarantees
+/// that the first X request RPCs will fail, followed by Y response RPCs that will fail.
+/// Afterwards, it will revert to the probabilistic failures. You can combine this with
+/// the wildcard so that each RPC method will have the same lower bounds applied.
+/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+/// failures with at least 2 request failures and 3 response failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50:2:3"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 import tempfile
-from ray_release.util import (
+from ray_release.cloud_util import (
     upload_file_to_azure,
     upload_working_dir_to_azure,
     _parse_abfss_uri,
@@ -29,8 +29,8 @@ class FakeBlobClient:
         self.uploaded_data = data.read()
 
 
-@patch("ray_release.util.BlobServiceClient")
-@patch("ray_release.util.DefaultAzureCredential")
+@patch("ray_release.cloud_util.BlobServiceClient")
+@patch("ray_release.cloud_util.DefaultAzureCredential")
 def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
     with tempfile.TemporaryDirectory() as tmp_path:
         local_file = os.path.join(tmp_path, "test.txt")
@@ -53,7 +53,7 @@ def test_upload_file_to_azure(mock_credential, mock_blob_service_client):
             assert fake_blob_client.uploaded_data == expected_data
 
 
-@patch("ray_release.util.upload_file_to_azure")
+@patch("ray_release.cloud_util.upload_file_to_azure")
 def test_upload_working_dir_to_azure(mock_upload_file_to_azure):
     with tempfile.TemporaryDirectory() as tmp_path:
         working_dir = os.path.join(tmp_path, "working_dir")
