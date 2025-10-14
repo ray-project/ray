@@ -230,6 +230,8 @@ class ApplicationState:
         external_scaler_enabled: bool = False,
     ):
         """
+        Initialize the ApplicationState object.
+
         Args:
             name: Application name.
             deployment_state_manager: State manager for all deployments
