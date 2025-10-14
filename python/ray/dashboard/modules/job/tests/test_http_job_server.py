@@ -24,7 +24,6 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    get_current_unused_port,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
