@@ -115,6 +115,9 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
     def internal_input_queue_size(self) -> int:
         return len(self._input_buffer)
 
+    def internal_output_queue_size(self) -> int:
+        return len(self._output_buffer)
+
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,

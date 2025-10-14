@@ -80,7 +80,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return num_rows
 
     def internal_input_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+        return sum(len(buf) for buf in self._input_buffers)
 
     def internal_output_queue_size(self) -> int:
         return len(self._output_buffer)
