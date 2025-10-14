@@ -994,7 +994,7 @@ def test_aggregator_agent_publish_to_both_gcs_and_http(
         {
             "env_vars": {
                 # Disable HTTP publisher to test GCS filtering in isolation
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC": "False",
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "False",
                 # Enable GCS publisher
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
             },
