@@ -140,6 +140,7 @@ class FileFormat(str, Enum):
     TFRECORDS = "tfrecords"
     WEBDATASET = "webdataset"
     LANCE = "lance"
+    MCAP = "mcap"
     BINARY = "binary"
 
     @classmethod
@@ -417,7 +418,7 @@ class FileTypeDetector:
             self.extension_map[ext.lower()] = FileFormat.TFRECORDS
 
         for ext in McapDatasource._FILE_EXTENSIONS:
-            self.extension_map[ext.lower()] = FileFormat.BINARY  # MCAP is binary
+            self.extension_map[ext.lower()] = FileFormat.MCAP
 
         # Media formats
         for ext in ImageDatasource._FILE_EXTENSIONS:
@@ -1121,6 +1122,7 @@ class ReaderRegistry:
             read_images,
             read_json,
             read_lance,
+            read_mcap,
             read_mongo,
             read_numpy,
             read_parquet,
@@ -1149,6 +1151,7 @@ class ReaderRegistry:
             "tfrecords": read_tfrecords,
             "webdataset": read_webdataset,
             "lance": read_lance,
+            "mcap": read_mcap,
             "binary": read_binary_files,
             # Lakehouse formats
             "delta": read_delta,

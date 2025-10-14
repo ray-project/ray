@@ -1895,3 +1895,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_read_unified",
+    size = "large",
+    srcs = ["tests/test_read_unified.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

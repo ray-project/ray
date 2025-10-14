@@ -18,10 +18,10 @@ import time
 import numpy as np
 import pyarrow as pa
 import pytest
-from ray.data.tests.conftest import *  # noqa
-from ray.tests.conftest import *  # noqa
 
 import ray
+from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 class TestReadUnified:
