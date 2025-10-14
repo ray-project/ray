@@ -27,10 +27,15 @@ namespace {
 // Requires: `interval_ms` > 0.
 void LagProbeLoop(instrumented_io_context &io_context,
                   int64_t interval_ms,
-                  const std::optional<std::string> &context_name) {
+                  const std::optional<std::string> &context_name,
+                  ray::stats::Gauge &io_context_event_loop_lag_ms_gauge_metric) {
   auto begin = std::chrono::steady_clock::now();
   io_context.post(
-      [&io_context, begin, interval_ms, context_name]() {
+      [&io_context,
+       begin,
+       interval_ms,
+       context_name,
+       &io_context_event_loop_lag_ms_gauge_metric]() {
         auto end = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
@@ -45,12 +50,21 @@ void LagProbeLoop(instrumented_io_context &io_context,
         // for `interval_ms - duration`.
         auto delay = interval_ms - duration.count();
         if (delay <= 0) {
-          LagProbeLoop(io_context, interval_ms, context_name);
+          LagProbeLoop(io_context,
+                       interval_ms,
+                       context_name,
+                       io_context_event_loop_lag_ms_gauge_metric);
         } else {
           execute_after(
               io_context,
-              [&io_context, interval_ms, context_name]() {
-                LagProbeLoop(io_context, interval_ms, context_name);
+              [&io_context,
+               interval_ms,
+               context_name,
+               &io_context_event_loop_lag_ms_gauge_metric]() {
+                LagProbeLoop(io_context,
+                             interval_ms,
+                             context_name,
+                             io_context_event_loop_lag_ms_gauge_metric);
               },
               std::chrono::milliseconds(delay));
         }
@@ -59,7 +73,8 @@ void LagProbeLoop(instrumented_io_context &io_context,
 }
 
 void ScheduleLagProbe(instrumented_io_context &io_context,
-                      const std::optional<std::string> &context_name) {
+                      const std::optional<std::string> &context_name,
+                      ray::stats::Gauge &io_context_event_loop_lag_ms_gauge_metric) {
   auto interval =
       RayConfig::instance().io_context_event_loop_lag_collection_interval_ms();
   if (interval <= 0) {
@@ -71,8 +86,14 @@ void ScheduleLagProbe(instrumented_io_context &io_context,
   // At this time, the `io_context` may not be running yet, so we need to post the
   // first probe.
   io_context.post(
-      [&io_context, interval, context_name]() {
-        LagProbeLoop(io_context, interval, context_name);
+      [&io_context,
+       interval,
+       context_name,
+       &io_context_event_loop_lag_ms_gauge_metric]() {
+        LagProbeLoop(io_context,
+                     interval,
+                     context_name,
+                     io_context_event_loop_lag_ms_gauge_metric);
       },
       "event_loop_lag_probe");
 }
@@ -88,7 +109,7 @@ instrumented_io_context::instrumented_io_context(
       emit_metrics_(emit_metrics),
       context_name_(context_name) {
   if (emit_metrics) {
-    ScheduleLagProbe(*this, context_name_);
+    ScheduleLagProbe(*this, context_name_, io_context_event_loop_lag_ms_gauge_metric_);
   }
 }
 

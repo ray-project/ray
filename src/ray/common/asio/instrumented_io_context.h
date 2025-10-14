@@ -67,4 +67,7 @@ class instrumented_io_context : public boost::asio::io_context {
   std::shared_ptr<EventTracker> event_stats_;
   bool emit_metrics_;
   std::optional<std::string> context_name_;
+
+  mutable ray::stats::Gauge io_context_event_loop_lag_ms_gauge_metric_{
+      ray::GetIoContextEventLoopLagMsGaugeMetric()};
 };
