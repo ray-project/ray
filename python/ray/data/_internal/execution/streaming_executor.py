@@ -494,25 +494,25 @@ class StreamingExecutor(Executor, threading.Thread):
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
 
-                def error_string(size: int):
-                    return f"""Expected Internal Input Queue for {op.name} to be empty,
-                                but found {size} bundles"""
+                def error_string(queue_type: str, size: int):
+                    return f"Expected {queue_type} Queue for {op.name} to be empty, but found {size} bundles"
 
                 if isinstance(op, InternalQueueOperatorMixin):
-
                     # 1) Check Internal Input Queue is empty
                     assert op.internal_input_queue_size() == 0, error_string(
-                        op.internal_input_queue_size()
+                        "Internal Input", op.internal_input_queue_size()
                     )
 
                     # 2) Check Internal Output Queue is empty
                     assert op.internal_output_queue_size() == 0, error_string(
-                        op.internal_output_queue_size()
+                        "Internal Output", op.internal_output_queue_size()
                     )
 
                 # 3) Check that External Input Queue is empty
                 for input_q in state.input_queues:
-                    assert len(input_q) == 0, error_string(len(input_q))
+                    assert len(input_q) == 0, error_string(
+                        "External Input", len(input_q)
+                    )
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
