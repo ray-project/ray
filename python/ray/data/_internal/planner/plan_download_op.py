@@ -9,6 +9,9 @@ import pyarrow as pa
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -79,13 +82,22 @@ def plan_download_op(
             init_fn=init_fn,
         )
 
-        partition_map_operator = MapOperator.create(
+        partition_map_operator = ActorPoolMapOperator(
             partition_map_transformer,
             input_physical_dag,
             data_context,
             name="URIPartitioner",
+            # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
+            #       since those only apply to the actual download tasks. Partitioning is
+            #       a lightweight internal operation that doesn't need custom resource
+            #       requirements.
+            ray_remote_args=None,
             compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            ray_remote_args=ray_remote_args,
+            # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
+            #       backpressure since partitioning is extremely fast. Without this, the
+            #       partition actor gets bottlenecked by the Ray Data scheduler, which
+            #       can prevent Ray Data from launching enough download tasks.
+            ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
     fn, init_fn = _get_udf(
