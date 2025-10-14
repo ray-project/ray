@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import AggregationFunction
 
 QUEUED_REQUESTS_KEY = "queued"
 
@@ -257,44 +258,11 @@ class InMemoryMetricsStore:
             return None
         return self.data[key][-1].value
 
-    def aggregate_min(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Find the min value across all timeseries values at the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the min across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the min.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, min)
-
-    def aggregate_max(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Find the max value across all timeseries values at the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the max across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the max.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, max)
-
     def aggregate_sum(
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
         """Sum the entire set of timeseries values across the specified keys.
-
         Args:
             keys: Iterable of keys to aggregate across.
         Returns:
@@ -394,6 +362,22 @@ def time_weighted_average(
         total_duration += duration
 
     return total_weighted_value / total_duration if total_duration > 0 else None
+
+
+def aggregate_timeseries(
+    timeseries: List[TimeStampedValue],
+    aggregation_function: AggregationFunction,
+    last_window_s: float = 1.0,
+) -> Optional[float]:
+    """Aggregate the values in a timeseries using a specified function."""
+    if aggregation_function == AggregationFunction.MEAN:
+        return time_weighted_average(timeseries, last_window_s=last_window_s)
+    elif aggregation_function == AggregationFunction.MAX:
+        return max(ts.value for ts in timeseries) if timeseries else None
+    elif aggregation_function == AggregationFunction.MIN:
+        return min(ts.value for ts in timeseries) if timeseries else None
+    else:
+        raise ValueError(f"Invalid aggregation function: {aggregation_function}")
 
 
 def merge_instantaneous_total(

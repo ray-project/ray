@@ -109,3 +109,32 @@ For comprehensive troubleshooting of multi-node GPU serving issues, refer to {re
 ### Why are changes to the RayCluster or RayJob CR not taking effect?
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.
+
+### How to configure reconcile concurrency when there are large mount of CRs?
+
+In this example, [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909),
+the user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
+
+The KubeRay operator supports configuring the `ReconcileConcurrency` setting, which controls the number of concurrent workers processing Ray custom resources (CRs).
+
+To configure the `ReconcileConcurrency` number, you can edit the deployment's container args:
+
+```bash
+kubectl edit deployment kuberay-operator
+```
+
+Specify the `ReconcileConcurrency` number in the container args:
+
+```yaml
+spec:
+  containers:
+  - args:
+    - --reconcile-concurrency
+    - "10"
+```
+
+You can also use the following command for kuberay version >= 1.5.0:
+
+```bash
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0 --set reconcileConcurrency=10
+```

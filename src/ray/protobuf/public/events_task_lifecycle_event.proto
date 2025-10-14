@@ -19,19 +19,21 @@ import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
-// Message containing the execution information of a task (can apply to both normal
+// Message containing the lifecycle information of a task (can apply to both normal
 // tasks and actor tasks).
-message TaskExecutionEvent {
+message TaskLifecycleEvent {
   // task_id and task_attempt form the unique identifier of a task.
   bytes task_id = 1;
   int32 task_attempt = 2;
 
   // The task execution information
 
-  // The map of task state to the time when the state was last updated.
-  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
-  // Value is the timestamp when status changes to the target status indicated by the key.
-  map<int32, google.protobuf.Timestamp> task_state = 3;
+  message StateTransition {
+    TaskStatus state = 1;
+    google.protobuf.Timestamp timestamp = 2;
+  }
+
+  repeated StateTransition state_transitions = 3;
   RayErrorInfo ray_error_info = 4;
 
   // The correlation ids of the task that can be used to correlate the task with

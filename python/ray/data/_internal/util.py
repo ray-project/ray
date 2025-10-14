@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import Counter
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -574,13 +573,6 @@ def get_compute_strategy(
             )
 
     if compute is not None:
-        # Legacy code path to support `compute` argument.
-        logger.warning(
-            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
-            "argument ``concurrency`` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "stateful-transforms."
-        )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
@@ -599,6 +591,13 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
+        # Legacy code path to support `concurrency` argument.
+        logger.warning(
+            "The argument ``concurrency`` is deprecated in Ray 2.51. Please specify "
+            "argument ``compute`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
         if isinstance(concurrency, tuple):
             # Validate tuple length and that all elements are integers
             if len(concurrency) not in (2, 3) or not all(
@@ -1675,13 +1674,18 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    actual_rows = actual.to_dict(orient="records")
-    expected_rows = expected.to_dict(orient="records")
+    if len(actual) == len(expected) == 0:
+        return True
 
-    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
-    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
-
-    return actual_items_counts == expected_items_counts
+    try:
+        pd.testing.assert_frame_equal(
+            actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
+            expected.sort_values(sorted(expected.columns)).reset_index(drop=True),
+            check_dtype=False,
+        )
+        return True
+    except AssertionError:
+        return False
 
 
 def merge_resources_to_ray_remote_args(

@@ -2,19 +2,14 @@ import collections
 import hashlib
 import json
 import os
-import random
-import string
 import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from google.cloud import storage
 import requests
-import shutil
 
 from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
-from ray_release.exception import ClusterEnvCreateError
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -32,7 +27,11 @@ class DeferredEnvVar:
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
+AZURE_CLOUD_STORAGE = "abfss"
+AZURE_STORAGE_CONTAINER = "working-dirs"
+AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+AZURE_REGISTRY_NAME = "rayreleasetest"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
@@ -80,14 +79,6 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
     sha = hashlib.sha256()
     sha.update(json_str.encode())
     return sha.hexdigest()
-
-
-def url_exists(url: str) -> bool:
-    try:
-        return requests.head(url, allow_redirects=True).status_code == 200
-    except requests.exceptions.RequestException:
-        logger.exception(f"Failed to check url exists: {url}")
-        return False
 
 
 def resolve_url(url: str) -> str:
@@ -196,109 +187,3 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
-
-
-def generate_tmp_cloud_storage_path() -> str:
-    return "".join(random.choice(string.ascii_lowercase) for i in range(10))
-
-
-def join_cloud_storage_paths(*paths: str):
-    paths = list(paths)
-    if len(paths) > 1:
-        for i in range(1, len(paths)):
-            while paths[i][0] == "/":
-                paths[i] = paths[i][1:]
-    joined_path = os.path.join(*paths)
-    while joined_path[-1] == "/":
-        joined_path = joined_path[:-1]
-    return joined_path
-
-
-def upload_working_dir(working_dir: str) -> str:
-    """Upload working directory to GCS bucket.
-
-    Args:
-        working_dir: Path to directory to upload.
-    Returns:
-        GCS path where directory was uploaded.
-    """
-    # Create archive of working dir
-    timestamp = str(int(time.time()))
-    archived_filename = f"ray_release_{timestamp}.zip"
-    output_path = os.path.abspath(archived_filename)
-
-    logger.info(f"Archiving working directory: {working_dir}")
-    shutil.make_archive(output_path[:-4], "zip", working_dir)
-
-    # Upload to GCS
-    gcs_client = storage.Client()
-    bucket = gcs_client.bucket("ray-release-working-dir")
-    blob = bucket.blob(archived_filename)
-    blob.upload_from_filename(archived_filename)
-
-    return f"gs://ray-release-working-dir/{blob.name}"
-
-
-def get_custom_cluster_env_name(image: str, test_name: str) -> str:
-    image_normalized = image.replace("/", "_").replace(":", "_").replace(".", "_")
-    return f"test_env_{image_normalized}_{test_name}"
-
-
-def create_cluster_env_from_image(
-    image: str,
-    test_name: str,
-    runtime_env: Dict[str, Any],
-    sdk: Optional["AnyscaleSDK"] = None,
-    cluster_env_id: Optional[str] = None,
-    cluster_env_name: Optional[str] = None,
-) -> str:
-    anyscale_sdk = sdk or get_anyscale_sdk()
-    if not cluster_env_name:
-        cluster_env_name = get_custom_cluster_env_name(image, test_name)
-
-    # Find whether there is identical cluster env
-    paging_token = None
-    while not cluster_env_id:
-        result = anyscale_sdk.search_cluster_environments(
-            dict(
-                name=dict(equals=cluster_env_name),
-                paging=dict(count=50, paging_token=paging_token),
-                project_id=None,
-            )
-        )
-        paging_token = result.metadata.next_paging_token
-
-        for res in result.results:
-            if res.name == cluster_env_name:
-                cluster_env_id = res.id
-                logger.info(f"Cluster env already exists with ID " f"{cluster_env_id}")
-                break
-
-        if not paging_token or cluster_env_id:
-            break
-
-    if not cluster_env_id:
-        logger.info("Cluster env not found. Creating new one.")
-        try:
-            result = anyscale_sdk.create_byod_cluster_environment(
-                dict(
-                    name=cluster_env_name,
-                    config_json=dict(
-                        docker_image=image,
-                        ray_version="nightly",
-                        env_vars=runtime_env,
-                    ),
-                )
-            )
-            cluster_env_id = result.result.id
-        except Exception as e:
-            logger.warning(
-                f"Got exception when trying to create cluster "
-                f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                f"try again..."
-            )
-            raise ClusterEnvCreateError("Could not create cluster env.") from e
-
-        logger.info(f"Cluster env created with ID {cluster_env_id}")
-
-    return cluster_env_id
