@@ -2162,7 +2162,8 @@ class DeploymentState:
         Skips if deleting, if `decision_num_replicas` is None, or matches the
         current target. Otherwise updates the state and logs an up/down scaling.
         Args:
-            decision_num_replicas: Optional target replica count to apply.
+            decision_num_replicas: target replica count to apply.
+
         Returns:
             bool: True if the target state was updated, False if no change occurred.
         """
@@ -3424,9 +3425,11 @@ class DeploymentStateManager:
 
     def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
         """Autoscale the deployment to the target number of replicas.
+
         Args:
             deployment_id: The deployment ID.
             target_num_replicas: The target number of replicas.
+
         Returns:
             True if the deployment was autoscaled, False otherwise.
         """
