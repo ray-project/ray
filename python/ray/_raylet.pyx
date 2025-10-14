@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-from functools import wraps
 import gc
 import inspect
 import logging
@@ -16,13 +15,11 @@ import io
 import os
 import pickle
 import random
-import signal
 import sys
 import threading
 import time
 import traceback
 import _thread
-import typing
 from typing import (
     Any,
     AsyncGenerator,
@@ -43,7 +40,6 @@ import collections
 from libc.stdint cimport (
     int32_t,
     int64_t,
-    INT64_MAX,
     uint64_t,
     uint8_t,
 )
@@ -96,7 +92,6 @@ from ray.includes.common cimport (
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
-    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -105,9 +100,6 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
-    CLabelExists,
-    CLabelDoesNotExist,
-    CLabelOperator,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -130,10 +122,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
-    CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
-    GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
@@ -164,7 +154,6 @@ from ray.includes.libcoreworker cimport (
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
-    CActorHandle,
     CGeneratorBackpressureWaiter,
     CReaderRefInfo,
 )
@@ -232,7 +221,6 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -242,8 +230,6 @@ from ray._private.async_compat import (
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
-import ray._private.memory_monitor as memory_monitor
-import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
@@ -321,9 +307,7 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         assert hasattr(worker, "core_worker")
 
-    """
-    Public APIs
-    """
+    # Public APIs
 
     def __iter__(self) -> "ObjectRefGenerator":
         return self
@@ -437,9 +421,7 @@ class ObjectRefGenerator:
         else:
             return False
 
-    """
-    Private APIs
-    """
+    # Private APIs
 
     def _get_next_ref(self) -> ObjectRef:
         """Return the next reference from a generator.
@@ -532,7 +514,7 @@ class ObjectRefGenerator:
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
-            ready, unready = await asyncio.wait(
+            _ready, unready = await asyncio.wait(
                 [asyncio.create_task(self._suppress_exceptions(ref))],
                 timeout=timeout_s
             )
@@ -860,7 +842,6 @@ cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
     cdef:
-        c_string resource_name
         list unit_resources
 
     if resource_dict is None:
@@ -891,7 +872,6 @@ cdef int prepare_resources(
 cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
     cdef:
         c_vector[CFunctionDescriptor] fd_list
-        CRayFunction ray_function
 
     fd_list.reserve(len(pyfd_list))
     for pyfd in pyfd_list:
@@ -1855,7 +1835,6 @@ cdef void execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -1893,7 +1872,7 @@ cdef void execute_task(
         next_title = f"ray::{class_name}"
 
         def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
+            function = execution_info.function  # no-cython-lint
 
             if core_worker.current_actor_is_asyncio():
                 if not has_async_methods(actor.__class__):
@@ -2225,7 +2204,6 @@ cdef execute_task_with_cancellation_handler(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
@@ -3238,7 +3216,6 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
-            unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
             int64_t c_timeout_ms = timeout_ms
@@ -4452,7 +4429,6 @@ cdef class CoreWorker:
 
         cdef:
             CConcurrencyGroup c_concurrency_group
-            c_vector[CFunctionDescriptor] c_function_descriptors
 
         self.cgname_to_eventloop_dict = {}
         self.fd_to_cgname_dict = {}
@@ -4567,7 +4543,7 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, async_thread = self.get_event_loop(
+        eventloop, _async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
 
         async def async_func():
@@ -4910,7 +4886,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     except Exception:
         # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
-        logger.exception(f"failed to run async callback (user func)")
+        logger.exception("failed to run async callback (user func)")
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
