@@ -44,6 +44,7 @@ from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
         self._progress_manager: Optional[RichExecutionProgressManager] = None
 
-        if not self._use_rich_progress():
+        if not self._use_rich_progress() and log_once("rich_progress_disabled"):
             logger.info(
                 "A new progress UI is available. To enable, set "
                 "`ray.data.DataContext.get_current()."
@@ -186,11 +187,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar(
                 "Running", dag.num_output_rows_total(), unit="row"
             )
-            i = 1
+            num_progress_bars = 1
             for op_state in list(self._topology.values()):
                 if not isinstance(op_state.op, InputDataBuffer):
-                    i += op_state.initialize_progress_bars(
-                        i, self._options.verbose_progress
+                    num_progress_bars += op_state.initialize_progress_bars(
+                        num_progress_bars, self._options.verbose_progress
                     )
 
         self._resource_manager = ResourceManager(
@@ -303,6 +304,9 @@ class StreamingExecutor(Executor, threading.Thread):
             for op, state in self._topology.items():
                 op.shutdown(timer, force=force)
                 if not self._use_rich_progress():
+                    # we only close sub-progress bars for the tqdm
+                    # implementation because closing is centrally
+                    # managed in the rich implementation.
                     state.close_progress_bars()
 
             min_ = round(timer.min(), 3)

@@ -100,7 +100,7 @@ class AbstractProgressBar(ABC):
         ...
 
     @abstractmethod
-    def update(self, i: int = 0, total: Optional[int] = None) -> None:
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
         ...
 
     def refresh(self):
@@ -144,6 +144,7 @@ class ProgressBar(AbstractProgressBar):
         elif tqdm:
             from ray.data.context import DataContext
 
+            # TODO (kyuds): rename to use_tqdm_in_worker for clarity.
             if DataContext.get_current().use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
@@ -175,15 +176,15 @@ class ProgressBar(AbstractProgressBar):
         if self._bar:
             self._bar.refresh()
 
-    def update(self, i: int = 0, total: Optional[int] = None) -> None:
-        if self._bar and (i != 0 or self._bar.total != total):
-            self._progress += i
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
+        if self._bar and (increment != 0 or self._bar.total != total):
+            self._progress += increment
             if total is not None:
                 self._bar.total = total
             if self._bar.total is not None and self._progress > self._bar.total:
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
-            self._bar.update(i)
+            self._bar.update(increment)
 
     def close(self):
         if self._bar:

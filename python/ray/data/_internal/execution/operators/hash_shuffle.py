@@ -375,26 +375,29 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
     def reduce_name(self) -> str:
         ...
 
+    def _validate_sub_progress_bar_names(self):
+        assert self.shuffle_name is not None, "shuffle_name should not be None"
+        assert self.reduce_name is not None, "reduce_name should not be None"
+
     def initialize_sub_progress_bars(self, position: int) -> int:
-        """Display all sub progres bars in the termainl, and return the number of bars."""
+        """Display all sub progress bars in the termainl, and return the number of bars."""
+        self._validate_sub_progress_bar_names()
 
         # shuffle
         progress_bars_created = 0
         self.shuffle_bar = None
-        if self.shuffle_name is not None:
-            self.shuffle_bar, position = _create_sub_pb(
-                self.shuffle_name, self.num_output_rows_total(), position
-            )
-            progress_bars_created += 1
+        self.shuffle_bar, position = _create_sub_pb(
+            self.shuffle_name, self.num_output_rows_total(), position
+        )
+        progress_bars_created += 1
         self.shuffle_metrics = OpRuntimeMetrics(self)
 
         # reduce
         self.reduce_bar = None
-        if self.reduce_name is not None:
-            self.reduce_bar, position = _create_sub_pb(
-                self.reduce_name, self.num_output_rows_total(), position
-            )
-            progress_bars_created += 1
+        self.reduce_bar, position = _create_sub_pb(
+            self.reduce_name, self.num_output_rows_total(), position
+        )
+        progress_bars_created += 1
         self.reduce_metrics = OpRuntimeMetrics(self)
 
         return progress_bars_created
@@ -405,20 +408,17 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
         self.reduce_bar.close()
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        names = []
+        self._validate_sub_progress_bar_names()
 
         # shuffle
         self.shuffle_bar = None
         self.shuffle_metrics = OpRuntimeMetrics(self)
-        if self.shuffle_name is not None:
-            names.append(self.shuffle_name)
 
         # reduce
         self.reduce_bar = None
         self.reduce_metrics = OpRuntimeMetrics(self)
-        if self.reduce_name is not None:
-            names.append(self.reduce_name)
-        return names if names else None
+
+        return [self.shuffle_name, self.reduce_name]
 
     def set_sub_progress_bar(self, name, pg):
         # No type-hints due to circular imports. `name` should be a `str`
@@ -730,7 +730,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 self.shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
 
                 # Update Shuffle progress bar
-                self.shuffle_bar.update(i=input_block_metadata.num_rows)
+                self.shuffle_bar.update(increment=input_block_metadata.num_rows)
 
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
@@ -848,7 +848,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             # Update Finalize progress bar
             self.reduce_bar.update(
-                i=bundle.num_rows(), total=self.num_output_rows_total()
+                increment=bundle.num_rows(), total=self.num_output_rows_total()
             )
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):

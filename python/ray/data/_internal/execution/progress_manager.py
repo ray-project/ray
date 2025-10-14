@@ -4,8 +4,9 @@ import sys
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional
 
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -20,9 +21,9 @@ try:
     from rich.progress import (
         BarColumn,
         Progress,
-        ProgressColumn,
         SpinnerColumn,
         TextColumn,
+        TimeElapsedColumn,
     )
     from rich.table import Column, Table
     from rich.text import Text
@@ -87,43 +88,6 @@ class _ManagerMode(str, Enum):
             return cls.ALL
 
 
-if rich:
-
-    class CustomTimeColumn(ProgressColumn):
-        """A column that shows elapsed<remaining time like tqdm."""
-
-        def render(self, task):
-            """Show time in format: elapsed<remaining"""
-            elapsed = task.elapsed
-            if elapsed is None:
-                return Text("--:--<--:--", style="progress.remaining")
-
-            # Format elapsed time
-            elapsed_str = self._format_time(elapsed)
-
-            # Calculate remaining time
-            if task.speed and task.remaining:
-                remaining = task.remaining / task.speed if task.speed > 0 else 0
-                remaining_str = self._format_time(remaining)
-            else:
-                remaining_str = "--:--"
-
-            return Text(f"{elapsed_str}<{remaining_str}", style="progress.remaining")
-
-        def _format_time(self, seconds):
-            """Format seconds into MM:SS or HH:MM:SS format."""
-            if seconds is None or seconds < 0:
-                return "--:--"
-
-            hours, remainder = divmod(int(seconds), 3600)
-            minutes, seconds = divmod(remainder, 60)
-
-            if hours > 0:
-                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            else:
-                return f"{minutes:02d}:{seconds:02d}"
-
-
 class SubProgressBar(AbstractProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
 
@@ -179,22 +143,20 @@ class SubProgressBar(AbstractProgressBar):
         assert self._enabled
         if self._start_time is None:
             self._start_time = time.time()
-        completed, total, rate, count_str = _get_progress_metrics(
-            self._start_time, completed, total
-        )
+        metrics = _get_progress_metrics(self._start_time, completed, total)
         self._progress.update(
             self._tid,
-            completed=completed,
-            total=total,
-            rate=rate,
-            count_str=count_str,
+            completed=metrics.completed,
+            total=metrics.total,
+            rate_str=metrics.rate_str,
+            count_str=metrics.count_str,
         )
 
-    def update(self, i: int = 0, total: Optional[int] = None) -> None:
-        if self._enabled and i != 0:
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
+        if self._enabled and increment != 0:
             if total is not None:
                 self._total = total
-            self._completed += i
+            self._completed += increment
             self._update(self._completed, self._total)
 
     def complete(self) -> None:
@@ -234,24 +196,7 @@ class RichExecutionProgressManager:
 
         # rich
         self._console = Console(file=sys.stderr)
-        self._total = Progress(
-            TextColumn(" ", table_column=Column(no_wrap=True)),
-            SpinnerColumn(finished_text="•"),
-            TextColumn(
-                "{task.description} {task.percentage:>3.0f}%",
-                table_column=Column(no_wrap=True),
-            ),
-            BarColumn(bar_width=15),
-            TextColumn("{task.fields[count_str]}", table_column=Column(no_wrap=True)),
-            TextColumn("["),
-            CustomTimeColumn(),
-            TextColumn(","),
-            TextColumn("{task.fields[rate]}", table_column=Column(no_wrap=True)),
-            TextColumn("]"),
-            console=self._console,
-            transient=False,
-            expand=False,
-        )
+        self._total = self._make_progress_bar(" ", "•", 15)
         self._current_rows = 0
         self._total_resources = Text(
             f"{_RESOURCE_REPORT_HEADER}Initializing...", no_wrap=True
@@ -267,6 +212,9 @@ class RichExecutionProgressManager:
 
         # empty new line to prevent "packed" feeling
         self._layout_table.add_row(Text())
+
+        # rich.Live is the auto-refreshing rich component display.
+        # refreshing/closing is all done through rich.Live
         self._live = Live(
             self._layout_table,
             console=self._console,
@@ -277,7 +225,7 @@ class RichExecutionProgressManager:
         self._total_task_id = self._total.add_task(
             f"Dataset {self._dataset_id} running:",
             total=_TOTAL_PROGRESS_TOTAL,
-            rate="? rows/s",
+            rate_str="? rows/s",
             count_str="0/?",
         )
 
@@ -289,25 +237,7 @@ class RichExecutionProgressManager:
                 continue
             if self._mode.show_op():
                 uid = uuid.uuid4()
-                progress = Progress(
-                    TextColumn(_TREE_BRANCH, table_column=Column(no_wrap=True)),
-                    SpinnerColumn(),
-                    TextColumn("{task.description}", table_column=Column(no_wrap=True)),
-                    BarColumn(bar_width=10),
-                    TextColumn(
-                        "{task.fields[count_str]}", table_column=Column(no_wrap=True)
-                    ),
-                    TextColumn("["),
-                    CustomTimeColumn(),
-                    TextColumn(","),
-                    TextColumn(
-                        "{task.fields[rate]}", table_column=Column(no_wrap=True)
-                    ),
-                    TextColumn("]"),
-                    console=self._console,
-                    transient=False,
-                    expand=False,
-                )
+                progress = self._make_progress_bar(_TREE_BRANCH, " ", 10)
                 stats = Text(f"{_TREE_VERTICAL_INDENT}Initializing...", no_wrap=True)
                 total = state.op.num_output_rows_total()
                 name = truncate_operator_name(state.op.name, self.MAX_NAME_LENGTH)
@@ -315,7 +245,7 @@ class RichExecutionProgressManager:
                     name,
                     total=total if total is not None else 1,
                     start=True,
-                    rate="? rows/s",
+                    rate_str="? rows/s",
                     count_str="0/?",
                 )
                 self._layout_table.add_row(progress)
@@ -341,36 +271,15 @@ class RichExecutionProgressManager:
                 total = None
 
                 if enabled:
-                    progress = Progress(
-                        TextColumn(
-                            _TREE_VERTICAL_SUB_PROGRESS,
-                            table_column=Column(no_wrap=True),
-                        ),
-                        TextColumn(
-                            "{task.description}", table_column=Column(no_wrap=True)
-                        ),
-                        BarColumn(bar_width=10),
-                        TextColumn(
-                            "{task.fields[count_str]}",
-                            table_column=Column(no_wrap=True),
-                        ),
-                        TextColumn("["),
-                        CustomTimeColumn(),
-                        TextColumn(","),
-                        TextColumn(
-                            "{task.fields[rate]}", table_column=Column(no_wrap=True)
-                        ),
-                        TextColumn("]"),
-                        console=self._console,
-                        transient=False,
-                        expand=False,
+                    progress = self._make_progress_bar(
+                        _TREE_VERTICAL_SUB_PROGRESS, "", 10
                     )
                     total = state.op.num_output_rows_total()
                     tid = progress.add_task(
                         name,
                         total=total if total is not None else 1,
                         start=True,
-                        rate="? rows/s",
+                        rate_str="? rows/s",
                         count_str="0/?",
                     )
                     self._layout_table.add_row(progress)
@@ -384,6 +293,28 @@ class RichExecutionProgressManager:
                 )
                 state.op.set_sub_progress_bar(name, pg)
                 self._sub_progress_bars.append(pg)
+
+    def _make_progress_bar(self, indent_str, spinner_finish, bar_width):
+        # no type hints because rich import is conditional.
+        assert self._mode.is_enabled()
+        return Progress(
+            TextColumn(indent_str, table_column=Column(no_wrap=True)),
+            SpinnerColumn(finished_text=spinner_finish),
+            TextColumn(
+                "{task.description} {task.percentage:>3.0f}%",
+                table_column=Column(no_wrap=True),
+            ),
+            BarColumn(bar_width=bar_width),
+            TextColumn("{task.fields[count_str]}", table_column=Column(no_wrap=True)),
+            TextColumn("["),
+            TimeElapsedColumn(),
+            TextColumn(","),
+            TextColumn("{task.fields[rate_str]}", table_column=Column(no_wrap=True)),
+            TextColumn("]"),
+            console=self._console,
+            transient=False,
+            expand=False,
+        )
 
     # Management
     def start(self):
@@ -416,15 +347,15 @@ class RichExecutionProgressManager:
                             pg.complete()
                         for tid, progress, _ in self._op_display.values():
                             completed = progress.tasks[tid].completed or 0
-                            completed, total, rate, count_str = _get_progress_metrics(
+                            metrics = _get_progress_metrics(
                                 self._start_time, completed, completed
                             )
                             progress.update(
                                 tid,
-                                completed=completed,
-                                total=total,
-                                rate=rate,
-                                count_str=count_str,
+                                completed=metrics.completed,
+                                total=metrics.total,
+                                rate_str=metrics.rate_str,
+                                count_str=metrics.count_str,
                             )
                     self._total.update(self._total_task_id, description=desc, **kwargs)
                     self._close_no_lock()
@@ -450,15 +381,15 @@ class RichExecutionProgressManager:
             self._start_time = time.time()
         if new_rows is not None:
             self._current_rows += new_rows
-        completed, total, rate, count_str = _get_progress_metrics(
+        metrics = _get_progress_metrics(
             self._start_time, self._current_rows, total_rows
         )
         self._total.update(
             self._total_task_id,
-            completed=completed,
-            total=total,
-            rate=rate,
-            count_str=count_str,
+            completed=metrics.completed,
+            total=metrics.total,
+            rate_str=metrics.rate_str,
+            count_str=metrics.count_str,
         )
 
     def update_resource_status(self, resource_status: str):
@@ -497,15 +428,13 @@ class RichExecutionProgressManager:
         # progress
         current_rows = op_state.output_row_count
         total_rows = op_state.op.num_output_rows_total()
-        completed, total, rate, count_str = _get_progress_metrics(
-            self._start_time, current_rows, total_rows
-        )
+        metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         progress.update(
             tid,
-            completed=completed,
-            total=total,
-            rate=rate,
-            count_str=count_str,
+            completed=metrics.completed,
+            total=metrics.total,
+            rate_str=metrics.rate_str,
+            count_str=metrics.count_str,
         )
         # stats
         stats_str = op_state.op_display_metrics.display_str()
@@ -531,37 +460,45 @@ def _format_row_count(completed: int, total: Optional[int]) -> str:
     return f"{cstr}/{tstr}"
 
 
+@dataclass
+class _ProgressMetrics:
+    completed: int
+    total: int
+    rate_str: str
+    count_str: str
+
+
 def _get_progress_metrics(
-    start_time: float, current_rows: int, total_rows: Optional[int]
-) -> Tuple[int, int, str, str]:
+    start_time: float, completed_rows: int, total_rows: Optional[int]
+) -> _ProgressMetrics:
     """
     Args:
         start_time: time when progress tracking started
-        current_rows: current rows outputted (cumulative)
+        completed_rows: cumulative rows outputted
         total_rows: total rows expected (can be unknown)
     Returns:
-        completed (int)
-        total (int)
-        rate (str)
-        count (str)
+        _ProgressMetrics instance containing the calculated data.
     """
     # Note, when total is unknown, we default the progress bar to 0.
     # Will properly have estimates for rate and count strings though.
     total = 1 if total_rows is None or total_rows < 1 else total_rows
-    current = 0 if total_rows is None else current_rows
+    completed = 0 if total_rows is None else completed_rows
 
     if total_rows is None:
         rate_str = "? row/s"
     else:
         elapsed = time.time() - start_time
-        rate_val = current_rows / elapsed if elapsed > 1 else 0
+        rate_val = completed_rows / elapsed if elapsed > 1 else 0
         rate_unit = "row/s"
         if rate_val >= 1000:
             rate_val /= 1000
             rate_unit = "k row/s"
         rate_str = f"{rate_val:.2f} {rate_unit}"
-    count_str = _format_row_count(current_rows, total_rows)
-    return current, total, rate_str, count_str
+    count_str = _format_row_count(completed_rows, total_rows)
+
+    return _ProgressMetrics(
+        completed=completed, total=total, rate_str=rate_str, count_str=count_str
+    )
 
 
 def _has_sub_progress_bars(op: PhysicalOperator) -> bool:
