@@ -833,10 +833,15 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
+        // TEMPORARY: Hardcode values to test if protobuf access is causing crashes
+        auto exit_type = rpc::WorkerExitType::SYSTEM_ERROR;
+        auto exit_detail = std::string("HARDCODED_TEST_VALUE");
+        auto end_time_ms = uint64_t(0);
         // Post to GcsTaskManager's dedicated io_context.
         io_context_provider_.GetIOContext<GcsTaskManager>().post(
-            [this, worker_id, worker_failure_data]() {
-              gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
+            [this, worker_id, exit_type, exit_detail, end_time_ms]() {
+              gcs_task_manager_->OnWorkerDead(
+                  worker_id, exit_type, exit_detail, end_time_ms);
             },
             "GcsServer.OnWorkerDead");
       });
