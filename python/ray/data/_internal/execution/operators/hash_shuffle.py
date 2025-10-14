@@ -730,7 +730,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 self.shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
 
                 # Update Shuffle progress bar
-                self.shuffle_bar.update(increment=input_block_metadata.num_rows)
+                self.shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
 
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
@@ -848,7 +848,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             # Update Finalize progress bar
             self.reduce_bar.update(
-                increment=bundle.num_rows(), total=self.num_output_rows_total()
+                increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
