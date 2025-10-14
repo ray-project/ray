@@ -357,7 +357,6 @@ py_library(
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
         bk_require("pyyaml"),
-        bk_require("typing-extensions"),
     ],
 )
 
