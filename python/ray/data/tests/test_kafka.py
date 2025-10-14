@@ -100,7 +100,9 @@ def test_read_kafka_basic(ray_start_regular_shared):
         with patch.dict("sys.modules", {"kafka": None}):
             with pytest.raises(ImportError, match="kafka-python is required"):
                 ray.data.read_kafka(
-                    topics=["test-topic"], bootstrap_servers="localhost:9092", trigger="once"
+                    topics=["test-topic"],
+                    bootstrap_servers="localhost:9092",
+                    trigger="once",
                 )
 
 
