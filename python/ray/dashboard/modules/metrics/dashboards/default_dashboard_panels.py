@@ -215,7 +215,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
         id=29,
         title="Object Store Memory by Location",
-        description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
+        description="Object store memory usage by location. The dotted line indicates the object store memory capacity. This metric can go over the max capacity incase of spillage to disk.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
         unit="bytes",
         targets=[
             Target(
@@ -278,7 +278,7 @@ RAY_RESOURCES_PANELS = [
     Panel(
         id=58,
         title="Object Store Memory Usage",
-        description="Object store memory usage by instance. This includes memory that has been spilled to disk. The dotted line indicates the object store memory capacity.",
+        description="Object store memory usage by instance, including memory that has been spilled to disk. The dotted line indicates the object store memory capacity. This metric can go over the max capacity incase of spillage to disk.",
         unit="bytes",
         targets=[
             Target(
@@ -294,7 +294,7 @@ RAY_RESOURCES_PANELS = [
     Panel(
         id=59,
         title="Object Store Memory Usage %",
-        description="Object store memory usage % by instance. This includes memory that has been spilled to disk.",
+        description="Object store memory usage % by instance, including memory that has been spilled to disk. This metric can go over 100% incase of spillage to disk.",
         unit="%",
         targets=[
             Target(
