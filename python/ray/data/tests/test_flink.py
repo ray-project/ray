@@ -98,29 +98,36 @@ def test_flink_datasource_config_validation(ray_start_regular_shared):
 
 def test_read_flink_basic(ray_start_regular_shared):
     """Test basic read_flink functionality."""
-    # Will raise ImportError if requests not installed
-    with pytest.raises(ImportError, match="requests is required"):
-        ray.data.read_flink(
-            source_type="rest_api",
-            rest_api_url="http://localhost:8081",
-            job_id="test-job",
-            trigger="once",
-        )
+    # Test that ImportError is raised when requests is not available
+    from unittest.mock import patch
+
+    with patch("ray.data._internal.datasource.flink_datasource.requests", None):
+        with patch.dict("sys.modules", {"requests": None}):
+            with pytest.raises(ImportError, match="requests is required"):
+                ray.data.read_flink(
+                    source_type="rest_api",
+                    rest_api_url="http://localhost:8081",
+                    job_id="test-job",
+                    trigger="once",
+                )
 
 
 def test_read_flink_trigger_formats(ray_start_regular_shared):
     """Test different trigger formats are parsed correctly."""
-    # Test that different trigger formats are accepted
-    # Will raise ImportError if requests not installed
+    # Test that ImportError is raised when requests is not available
+    from unittest.mock import patch
+
     trigger_formats = ["once", "continuous", "30s", "interval:1m"]
     for trigger in trigger_formats:
-        with pytest.raises(ImportError, match="requests is required"):
-            ray.data.read_flink(
-                source_type="rest_api",
-                rest_api_url="http://localhost:8081",
-                job_id="test-job",
-                trigger=trigger,
-            )
+        with patch("ray.data._internal.datasource.flink_datasource.requests", None):
+            with patch.dict("sys.modules", {"requests": None}):
+                with pytest.raises(ImportError, match="requests is required"):
+                    ray.data.read_flink(
+                        source_type="rest_api",
+                        rest_api_url="http://localhost:8081",
+                        job_id="test-job",
+                        trigger=trigger,
+                    )
 
 
 def test_flink_import_check():

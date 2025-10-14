@@ -93,26 +93,32 @@ def test_kafka_datasource_config_validation(ray_start_regular_shared):
 
 def test_read_kafka_basic(ray_start_regular_shared):
     """Test basic read_kafka functionality."""
-    # Test that the function exists and can be called with basic params
-    # Will raise ImportError if kafka-python not installed
-    with pytest.raises(ImportError, match="kafka-python is required"):
-        ray.data.read_kafka(
-            topics=["test-topic"], bootstrap_servers="localhost:9092", trigger="once"
-        )
+    # Test that ImportError is raised when kafka-python is not available
+    from unittest.mock import patch
+
+    with patch("ray.data._internal.datasource.kafka_datasource.kafka", None):
+        with patch.dict("sys.modules", {"kafka": None}):
+            with pytest.raises(ImportError, match="kafka-python is required"):
+                ray.data.read_kafka(
+                    topics=["test-topic"], bootstrap_servers="localhost:9092", trigger="once"
+                )
 
 
 def test_read_kafka_trigger_formats(ray_start_regular_shared):
     """Test different trigger formats are parsed correctly."""
-    # Test that different trigger formats are accepted
-    # Will raise ImportError if kafka-python not installed
+    # Test that ImportError is raised when kafka-python is not available
+    from unittest.mock import patch
+
     trigger_formats = ["once", "continuous", "30s", "interval:1m"]
     for trigger in trigger_formats:
-        with pytest.raises(ImportError, match="kafka-python is required"):
-            ray.data.read_kafka(
-                topics=["test-topic"],
-                bootstrap_servers="localhost:9092",
-                trigger=trigger,
-            )
+        with patch("ray.data._internal.datasource.kafka_datasource.kafka", None):
+            with patch.dict("sys.modules", {"kafka": None}):
+                with pytest.raises(ImportError, match="kafka-python is required"):
+                    ray.data.read_kafka(
+                        topics=["test-topic"],
+                        bootstrap_servers="localhost:9092",
+                        trigger=trigger,
+                    )
 
 
 def test_kafka_import_check():

@@ -24,7 +24,7 @@ import pyarrow as pa
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI
@@ -100,6 +100,7 @@ class UnboundMetrics:
         }
 
 
+@PublicAPI(stability="alpha")
 class UnboundDatasource(Datasource, ABC):
     """Abstract base class for unbounded online data sources.
 
@@ -112,13 +113,22 @@ class UnboundDatasource(Datasource, ABC):
         - `_get_read_tasks_for_partition`: Create read tasks for data partitions
 
     Example:
+        >>> from ray.data.block import BlockMetadata
         >>> class MyDatasource(UnboundDatasource):
         ...     def _get_read_tasks_for_partition(self, partition_info, parallelism):
-        ...         # Create and return ReadTask objects
-        ...         return [create_unbound_read_task(...)]
+        ...         # Create read task with proper metadata
+        ...         metadata = BlockMetadata(
+        ...             num_rows=None,
+        ...             size_bytes=None,
+        ...             input_files=None,
+        ...             exec_stats=None,
+        ...         )
+        ...         return [create_unbound_read_task(lambda: [], metadata)]
 
         >>> ds = MyDatasource("my_source")
         >>> tasks = ds.get_read_tasks(parallelism=2)
+        >>> len(tasks) == 1
+        True
     """
 
     def __init__(self, source_type: str):
@@ -202,6 +212,7 @@ class UnboundDatasource(Datasource, ABC):
         return True
 
 
+@PublicAPI(stability="alpha")
 def create_unbound_read_task(
     read_fn: Callable[[], Iterable[Block]],
     metadata: BlockMetadata,
@@ -220,6 +231,7 @@ def create_unbound_read_task(
     return ReadTask(read_fn, metadata, schema=schema)
 
 
+@PublicAPI(stability="alpha")
 def infer_schema_from_records(records: List[Dict[str, Any]]) -> Optional[pa.Schema]:
     """Infer PyArrow schema from record samples.
 
