@@ -130,23 +130,19 @@ def train_func(config):
     epochs = ...
     model = ...
     rank = ray.train.get_context().get_world_rank()
-    local_checkpoint_dir = tempfile.mkdtemp()
     for epoch in epochs:
         ...  # training step
         if rank == 0:
             training_metrics = {"loss": ..., "epoch": epoch}
-            iteration_checkpoint_dir = os.path.join(
-                local_checkpoint_dir, f"epoch_{epoch}_rank_{rank}"
-            )
-            os.makedirs(iteration_checkpoint_dir, exist_ok=True)
+            local_checkpoint_dir = tempfile.mkdtemp()
             torch.save(
                 model.module.state_dict(),
-                os.path.join(iteration_checkpoint_dir, "model.pt"),
+                os.path.join(local_checkpoint_dir, "model.pt"),
             )
             ray.train.report(
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(
-                    iteration_checkpoint_dir
+                    local_checkpoint_dir
                 ),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
                 validate_fn=validate_fn,
