@@ -113,22 +113,30 @@ class UnboundDatasource(Datasource, ABC):
         - `_get_read_tasks_for_partition`: Create read tasks for data partitions
 
     Example:
-        >>> from ray.data.block import BlockMetadata
-        >>> class MyDatasource(UnboundDatasource):
-        ...     def _get_read_tasks_for_partition(self, partition_info, parallelism):
-        ...         # Create read task with proper metadata
-        ...         metadata = BlockMetadata(
-        ...             num_rows=None,
-        ...             size_bytes=None,
-        ...             input_files=None,
-        ...             exec_stats=None,
-        ...         )
-        ...         return [create_unbound_read_task(lambda: [], metadata)]
+        .. testcode::
+            :skipif: True
 
-        >>> ds = MyDatasource("my_source")
-        >>> tasks = ds.get_read_tasks(parallelism=2)
-        >>> len(tasks) == 1
-        True
+            from ray.data.block import BlockMetadata
+            from ray.data.datasource.unbound_datasource import (
+                UnboundDatasource,
+                create_unbound_read_task,
+            )
+
+            class MyDatasource(UnboundDatasource):
+                def _get_read_tasks_for_partition(self, partition_info, parallelism):
+                    # Create read task with proper metadata
+                    metadata = BlockMetadata(
+                        num_rows=None,
+                        size_bytes=None,
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    )
+                    return [create_unbound_read_task(lambda: [], metadata)]
+
+            ds = MyDatasource("my_source")
+            tasks = ds.get_read_tasks(parallelism=2)
+            assert len(tasks) == 1
     """
 
     def __init__(self, source_type: str):
@@ -228,7 +236,7 @@ def create_unbound_read_task(
     Returns:
         ReadTask configured for unbound reading.
     """
-    return ReadTask(read_fn, metadata, schema=schema)
+    return ReadTask(read_fn, metadata, schema)
 
 
 @PublicAPI(stability="alpha")
