@@ -78,6 +78,7 @@ from ray.data.read_api import (  # noqa: F401
 _map_actor_context = None
 
 configure_logging()
+
 try:
     import pyarrow as pa
 
