@@ -230,8 +230,9 @@ class ApplicationState:
         external_scaler_enabled: bool = False,
     ):
         """
+        Initialize the ApplicationState object.
+
         Args:
-            self: ApplicationState object.
             name: Application name.
             deployment_state_manager: State manager for all deployments
                 in the cluster.
@@ -240,7 +241,6 @@ class ApplicationState:
             external_scaler_enabled: Whether external autoscaling is enabled for
                 this application.
         """
-
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
@@ -1314,7 +1314,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
