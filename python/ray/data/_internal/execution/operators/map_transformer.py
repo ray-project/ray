@@ -35,16 +35,19 @@ class MapTransformFn(ABC):
         *,
         is_udf: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        explain_fn: Optional[Callable[[str], str]] = None,
     ):
         """
         Args:
             input_type: Expected type of the input data.
             is_udf: Whether this transformation is UDF or not.
             output_block_size_option: (Optional) Output block size configuration.
+            explain_fn: (Optional) Function to explain the transformation.
         """
         self._input_type = input_type
-        self._output_block_size_option = output_block_size_option
         self._is_udf = is_udf
+        self._output_block_size_option = output_block_size_option
+        self._explain_fn = explain_fn
 
     @abstractmethod
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
@@ -127,6 +130,12 @@ class MapTransformFn(ABC):
             return None
         else:
             return self._output_block_size_option.target_num_rows_per_block
+
+    def explain(self, mode: str = "simple") -> str:
+        if self._explain_fn is not None:
+            return self._explain_fn(mode)
+        else:
+            return repr(self)
 
 
 class MapTransformer:
@@ -274,6 +283,12 @@ class MapTransformer:
     def udf_time(self) -> float:
         return self._udf_time
 
+    def explain(self, mode: str = "simple") -> str:
+        fn_strs = []
+        for i, fn in enumerate(self.get_transform_fns()):
+            fn_strs.append(f"Transformer {i}: {fn.explain(mode)}")
+        return "\n".join(fn_strs)
+
 
 # Below are subclasses of MapTransformFn.
 
@@ -287,11 +302,13 @@ class RowMapTransformFn(MapTransformFn):
         *,
         is_udf: bool = False,
         output_block_size_option: OutputBlockSizeOption,
+        explain_fn: Optional[Callable[[str], str]] = None,
     ):
         super().__init__(
             input_type=MapTransformFnDataType.Row,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
+            explain_fn=explain_fn,
         )
 
         self._row_fn = row_fn
@@ -329,11 +346,13 @@ class BatchMapTransformFn(MapTransformFn):
         batch_format: Optional[BatchFormat] = None,
         zero_copy_batch: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        explain_fn: Optional[Callable[[str], str]] = None,
     ):
         super().__init__(
             input_type=MapTransformFnDataType.Batch,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
+            explain_fn=explain_fn,
         )
 
         self._batch_size = batch_size
@@ -383,6 +402,7 @@ class BlockMapTransformFn(MapTransformFn):
         is_udf: bool = False,
         disable_block_shaping: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        explain_fn: Optional[Callable[[str], str]] = None,
     ):
         """
         Initializes the object with a transformation function, accompanying options, and
@@ -395,12 +415,14 @@ class BlockMapTransformFn(MapTransformFn):
             disable_block_shaping: Disables block-shaping, making transformer to
                 produce blocks as is.
             output_block_size_option: (Optional) Configure output block sizing.
+            explain_fn: (Optional) Function to explain the transformation.
         """
 
         super().__init__(
             input_type=MapTransformFnDataType.Block,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
+            explain_fn=explain_fn,
         )
 
         self._block_fn = block_fn

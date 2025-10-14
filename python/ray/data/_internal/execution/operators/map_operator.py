@@ -542,6 +542,11 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         #   to reflect the actual data processing tasks.
         return len(self._data_tasks)
 
+    def explain(self, mode: str = "simple") -> str:
+        op_str = repr(self)
+        fn_str = self._map_transformer.explain(mode)
+        return f"{op_str}\n{fn_str}"
+
 
 def _map_task(
     map_transformer: MapTransformer,

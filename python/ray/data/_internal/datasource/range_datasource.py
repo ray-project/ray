@@ -143,3 +143,21 @@ class RangeDatasource(Datasource):
         else:
             raise ValueError("Unsupported block type", self._block_format)
         return schema
+
+    def explain(self, mode: str = "simple") -> str:
+        if self._block_format == "arrow":
+            return "RangeDatasource(range(0..{}), column_name={})".format(
+                self._n, self._column_name
+            )
+        elif self._block_format == "tensor":
+            return (
+                "RangeDatasource(range(0..{}), tensor_shape={}, column_name={})".format(
+                    self._n, self._tensor_shape, self._column_name
+                )
+            )
+        elif self._block_format == "list":
+            return "RangeDatasource(list(0..{}), column_name={})".format(
+                self._n, self._column_name
+            )
+        else:
+            raise ValueError("Unsupported block type", self._block_format)
