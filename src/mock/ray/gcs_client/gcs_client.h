@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "accessors/actor_info_accessor.h"
 #include "mock/ray/gcs_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 
@@ -61,7 +62,7 @@ class MockGcsClient : public GcsClient {
     GcsClient::internal_kv_accessor_.reset(mock_internal_kv_accessor);
     GcsClient::task_accessor_.reset(mock_task_accessor);
   }
-  MockActorInfoAccessor *mock_actor_accessor;
+  gcs::MockActorInfoAccessor *mock_actor_accessor;
   MockJobInfoAccessor *mock_job_accessor;
   MockNodeInfoAccessor *mock_node_accessor;
   MockNodeResourceInfoAccessor *mock_node_resource_accessor;
