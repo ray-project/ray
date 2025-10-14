@@ -12,7 +12,8 @@ separate Ray task, which has following benefits:
 * Running validation on different hardware than training
 * Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
 * Letting training continue immediately after saving a checkpoint with partial metrics (e.g. loss)
-  and then receiving validation metrics (e.g. accuracy) as soon as they are available.
+  and then receiving validation metrics (e.g. accuracy) as soon as they are available. If the initial
+  and validated metrics share the same key, the latter will overwrite the former.
 
 .. _train-validate-fn:
 
