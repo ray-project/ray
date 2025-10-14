@@ -813,35 +813,30 @@ void GcsServer::InstallEventListeners() {
       io_context_provider_.GetDefaultIOContext());
 
   // Install worker event listener.
+  // Note: worker_failure_data is already a copy made in gcs_worker_manager.cc
   gcs_worker_manager_->AddWorkerDeadListener(
       [this](const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
-        // Make a copy FIRST to avoid any concurrent access to the protobuf.
-        // This must happen before any other access since WorkerTable().Put() in
-        // gcs_worker_manager.cc will access this protobuf concurrently.
-        auto worker_data_copy =
-            std::make_shared<rpc::WorkerTableData>(*worker_failure_data);
-
-        auto &worker_address = worker_data_copy->worker_address();
+        auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         worker_client_pool_.Disconnect(worker_id);
         auto node_id = NodeID::FromBinary(worker_address.node_id());
         auto worker_ip = worker_address.ip_address();
         const rpc::RayException *creation_task_exception = nullptr;
-        if (worker_data_copy->has_creation_task_exception()) {
-          creation_task_exception = &worker_data_copy->creation_task_exception();
+        if (worker_failure_data->has_creation_task_exception()) {
+          creation_task_exception = &worker_failure_data->creation_task_exception();
         }
         gcs_actor_manager_->OnWorkerDead(node_id,
                                          worker_id,
                                          worker_ip,
-                                         worker_data_copy->exit_type(),
-                                         worker_data_copy->exit_detail(),
+                                         worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         // Post to GcsTaskManager's dedicated io_context.
         io_context_provider_.GetIOContext<GcsTaskManager>().post(
-            [this, worker_id, worker_data_copy]() {
-              gcs_task_manager_->OnWorkerDead(worker_id, worker_data_copy);
+            [this, worker_id, worker_failure_data]() {
+              gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
             },
             "GcsServer.OnWorkerDead");
       });

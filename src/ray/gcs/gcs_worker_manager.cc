@@ -63,15 +63,22 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                   "are lots of this logs, that might indicate there are "
                   "unexpected failures in the cluster.";
          }
-         auto worker_failure_data =
-             result.has_value()
-                 ? std::make_shared<rpc::WorkerTableData>(std::move(*result))
-                 : std::make_shared<rpc::WorkerTableData>();
+         // Construct the worker failure data cleanly to avoid any arena sharing issues
+         auto worker_failure_data = std::make_shared<rpc::WorkerTableData>();
+         if (result.has_value()) {
+           worker_failure_data->CopyFrom(*result);
+         }
          worker_failure_data->MergeFrom(request.worker_failure());
          worker_failure_data->set_is_alive(false);
 
+         // Make a copy for listeners using CopyFrom for explicit deep copy.
+         // The listeners will use this copy while the original is passed to
+         // WorkerTable().Put().
+         auto worker_data_for_listeners = std::make_shared<rpc::WorkerTableData>();
+         worker_data_for_listeners->CopyFrom(*worker_failure_data);
+
          for (auto &listener : worker_dead_listeners_) {
-           listener(worker_failure_data);
+           listener(worker_data_for_listeners);
          }
 
          auto on_done = [this,
