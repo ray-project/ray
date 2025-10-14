@@ -311,11 +311,11 @@ TEST(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   EXPECT_EQ(entry.event_name(), "test_event");
 }
 
-TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEvent) {
   rpc::events::AddEventsRequest request;
   rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
-  event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
-  rpc::events::TaskExecutionEvent &exec_event = *event.mutable_task_execution_event();
+  event.set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  rpc::events::TaskLifecycleEvent &exec_event = *event.mutable_task_lifecycle_event();
 
   // Set basic fields
   exec_event.set_task_id("test_task_id");
@@ -331,7 +331,9 @@ TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   google::protobuf::Timestamp ts;
   ts.set_seconds(42);
   ts.set_nanos(123456789);
-  (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
+  auto *state_transition = exec_event.mutable_state_transitions()->Add();
+  state_transition->set_state(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  state_transition->mutable_timestamp()->CopyFrom(ts);
 
   // Call the converter
   auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
