@@ -84,7 +84,7 @@ def plan_download_op(
         #       lightweight internal operation that doesn't need custom resource
         #       requirements.
         #
-        # NOTE: We set `_generator_backpressure_num_objects`` to -1 to unblock
+        # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
         #       backpressure since partitioning is extremely fast. Without this, the
         #       partition actor gets bottlenecked by the Ray Data scheduler, which can
         #       prevent Ray Data from launching enough download tasks.
