@@ -43,7 +43,7 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 # TEMP_DIR="nixl_installer"
 # mkdir -p "${TEMP_DIR}"
 
-# sudo apt-get update
+sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 # # kmod needed by nvidia-installer, pkg-config needed by GDRCopy, librdmacm-dev needed by UCX
 # sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
