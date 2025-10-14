@@ -119,16 +119,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   }
 
   rpc::RayErrorInfo error_info;
-  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
-  std::stringstream error_message;
-  error_message << "Worker running the task (" << worker_id.Hex()
-                << ") died with exit_type: " << exit_type
-                << " with error_message: " << exit_detail;
-  error_info.set_error_message(error_message.str());
-
-  RAY_LOG(DEBUG) << "[DEBUG] Error message string: " << error_message.str()
-                 << " Worker ID: " << worker_id.Hex();
-  RAY_LOG(DEBUG) << "[DEBUG] Final error_info object: " << error_info.DebugString();
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(task_locator, end_time_ms * 1000 * 1000, error_info);
@@ -139,11 +129,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
     int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
-  RAY_LOG(DEBUG) << "[DEBUG] Within MarkTaskAttemptFailedIfNeeded";
+  RAY_LOG(INFO) << "[DEBUG] Within MarkTaskAttemptFailedIfNeeded";
 
   // Check if locator is invalid (null or pointing to freed memory)
   if (!locator) {
-    RAY_LOG(ERROR) << "[DEBUG] Invalid locator: locator is null";
+    RAY_LOG(INFO) << "[DEBUG] Invalid locator: locator is null";
     return;
   }
 
