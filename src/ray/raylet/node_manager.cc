@@ -3208,15 +3208,7 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   kill_actor_request.set_force_kill(request.force_kill());
   kill_actor_request.mutable_death_cause()->CopyFrom(request.death_cause());
 
-  worker->rpc_client()->KillActor(
-      kill_actor_request,
-      [actor_id = request.intended_actor_id()](const ray::Status &status,
-                                               const rpc::KillActorReply &) {
-        RAY_LOG(DEBUG) << "Killing status: " << status.ToString()
-                       << ", actor_id: " << actor_id;
-      });
-
-  execute_after(
+  auto timer = execute_after(
       io_service_,
       [this, send_reply_callback, worker_id]() {
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
@@ -3236,6 +3228,16 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
       },
       std::chrono::milliseconds(
           RayConfig::instance().kill_worker_timeout_milliseconds()));
+
+  worker->rpc_client()->KillActor(
+      kill_actor_request,
+      [actor_id = request.intended_actor_id(), timer](const ray::Status &status,
+                                                      const rpc::KillActorReply &) {
+        RAY_LOG(DEBUG) << "Failed to kill actor due to intended actor id and worker "
+                          "actor id mismatch: "
+                       << status.ToString() << ", actor_id: " << actor_id;
+        timer->cancel();
+      });
 }
 
 }  // namespace ray::raylet
