@@ -159,11 +159,8 @@ application to be less sensitive to drops in traffic and scale down more
 conservatively, you can decrease `downscaling_factor` to slow down the pace of
 downscaling.
 
-* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10] (DEPRECATED)**: This parameter is
-deprecated and will be removed in a future release. It's replaced by the
-following environment variables:
-  - `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` (default: 10.0s)
-  - `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` (default: 10.0s)
+* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10]**: In future this deployment level
+config will be removed in favor of cross-application level global config.
   
 This controls how often each replica and handle sends reports on current ongoing
 requests to the autoscaler. Note that the autoscaler can't make new decisions if
@@ -197,27 +194,27 @@ the parameters effectively. The metrics pipeline involves several stages, each
 with its own timing parameters:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Metrics Pipeline Overview                                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Replicas/Handles          Controller              Autoscaling Policy   │
-│  ┌──────────┐              ┌──────────┐            ┌──────────┐        │
-│  │ Record   │  Push        │ Receive  │  Decide    │ Policy   │        │
-│  │ Metrics  │─────────────>│ Metrics  │───────────>│ Runs     │        │
-│  │ (0.5s)   │  (10s)       │          │  (0.1s)    │          │        │
-│  └──────────┘              │ Aggregate│            └──────────┘        │
-│                            │ (30s)    │                                │
-│                            └──────────┘                                │
-│                                                                        │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Metrics Pipeline Overview                                               │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  Replicas/Handles         Controller             Autoscaling Policy      │
+│  ┌──────────┐             ┌──────────┐           ┌──────────┐            │
+│  │ Record   │   Push      │ Receive  │  Decide   │ Policy   │            │
+│  │ Metrics  │────────────>│ Metrics  │──────────>│ Runs     │            │
+│  │ (10s)    │   (10s)     │          │  (0.1s)   │          │            │
+│  └──────────┘             │ Aggregate│           └──────────┘            │
+│                           │ (30s)    │                                   │
+│                           └──────────┘                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 #### Stage 1: Metric recording
 
 Replicas and deployment handles continuously record autoscaling metrics:
 - **What**: Number of ongoing requests (queued + running)
-- **Frequency**: Every 0.5s (configurable via `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S` and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S`)
+- **Frequency**: Every 10s (configurable via [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst))
 - **Storage**: Metrics are stored locally as a timeseries
 
 #### Stage 2: Metric pushing
@@ -256,90 +253,20 @@ The long-term plan is to deprecate simple mode in favor of aggregate mode. Aggre
 
 #### Stage 4: Policy execution
 
-The autoscaling policy runs frequently to make scaling decisions:
+The autoscaling policy runs frequently to make scaling decisions, see [Custom policy for deployment](#custom-policy-for-deployment) for details on implementing custom scaling logic:
 - **Frequency**: Every 0.1s (configurable via `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`)
 - **Input**: [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)
 - **Output**: Tuple of `(target_replicas, updated_policy_state)`
-
-#### Metrics collection: Handle vs replica
-
-Ray Serve collects metrics at different locations depending on the configuration
-(controlled by `RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE`):
-
-:::{note}
-The long-term plan is to deprecate handle-based metrics collection in favor of replica-based collection. Replica-based collection will become the default in a future release. Consider testing replica-based collection (`RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE=0`) in your deployments to prepare for this transition.
-:::
-
-**Collection at handles (default):**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Handle-based metrics collection                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Client                Handle              Replicas             │
-│  ┌──────┐            ┌────────┐          ┌─────────┐           │
-│  │  App │───────────>│ Handle │─────────>│ Replica │           │
-│  │      │  Requests  │        │ Forwards │    1    │           │
-│  └──────┘            │ Tracks │          └─────────┘           │
-│                      │ Queued │                                │
-│                      │   +    │          ┌─────────┐           │
-│                      │Running │─────────>│ Replica │           │
-│                      │Requests│ Forwards │    2    │           │
-│                      └────────┘          └─────────┘           │
-│                          │                                      │
-│                          │ Push metrics                         │
-│                          └─────────────────> Controller         │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-
-**Collection at replicas:**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Replica-based metrics collection                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Client          Handle            Replicas                     │
-│  ┌──────┐      ┌────────┐                                       │
-│  │  App │─────>│ Handle │────┬───>┌─────────┐                  │
-│  │      │      │ Tracks │    │    │ Replica │                  │
-│  └──────┘      │ Queued │    │    │    1    │                  │
-│                │Requests│    │    │ Tracks  │                  │
-│                └────────┘    │    │ Running │                  │
-│                     │        │    └─────────┘                  │
-│                     │        │         │                       │
-│                     │        │         │                       │
-│                     │        │    ┌─────────┐                  │
-│                     │        └───>│ Replica │                  │
-│                     │             │    2    │                  │
-│                     │             │ Tracks  │                  │
-│                     │             │ Running │                  │
-│                     │             └─────────┘                  │
-│                     │                  │                        │
-│                     │                  │                        │
-│                     ▼                  ▼                        │
-│              ┌──────────────────────────────┐                  │
-│              │        Controller            │                  │
-│              │  • Queued metrics (handle)   │                  │
-│              │  • Running metrics (replica1)│                  │
-│              │  • Running metrics (replica2)│                  │
-│              └──────────────────────────────┘                  │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
-```
-
 
 #### Timing parameter interactions
 
 The timing parameters interact in important ways:
 
 **Recording vs pushing intervals:**
-- Recording interval (0.5s) determines granularity of data
+- Push interval ≥ Recording interval
+- Recording interval (10s) determines granularity of data
 - Push interval (10s) determines how fresh the controller's data is
-- With default values: Each push contains 20 data points (10s ÷ 0.5s)
+- With default values: Each push contains 1 data points (10s ÷ 10s)
 
 **Push interval vs look-back period:**
 - [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be ≥ push interval (10s)
@@ -364,23 +291,6 @@ need faster autoscaling, decrease push intervals first, then adjust delays.
 Several environment variables control autoscaling behavior at a lower level. These
 variables affect metrics collection and the control loop timing:
 
-#### Metrics collection intervals
-
-* **`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S`** (default: 0.5s):
-How often replicas record autoscaling metrics internally. Decreasing this value
-provides more granular metric data but increases overhead.
-
-* **`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S`** (default: 10.0s):
-How often replicas push metrics to the controller. This replaces the
-deprecated `metrics_interval_s` parameter.
-
-* **`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S`** (default: 0.5s):
-How often deployment handles record autoscaling metrics internally.
-
-* **`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`** (default: 10.0s):
-How often deployment handles push metrics to the controller. This replaces the
-deprecated `metrics_interval_s` parameter.
-
 #### Control loop and timeout settings
 
 * **`RAY_SERVE_CONTROL_LOOP_INTERVAL_S`** (default: 0.1s): How often the Ray
@@ -395,13 +305,9 @@ and a warning is logged.
 
 * **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`** (default: 10.0s): Minimum timeout
 for handle metrics collection. The system uses the maximum of this value and
-`2 * metrics_interval_s` to determine when to drop stale handle metrics.
+`2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to determine when to drop stale handle metrics.
 
 #### Advanced feature flags
-
-* **`RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE`** (default: true): Controls
-whether autoscaling metrics are collected at deployment handles or at replicas.
-When enabled (default), metrics are collected at handles.
 
 * **`RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`** (default: false): Enables an
 experimental metrics aggregation mode where the controller aggregates raw
@@ -602,7 +508,7 @@ Running the same Locust load test again generates the following results:
 | | |
 | ------------------------------------ | ------------------- |
 | HeavyLoad and LightLoad Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="heavy" width="600"/> |
-| Driver Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="600"/>
+| Driver Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="600"/> |
 
 With up to 6 `Driver` deployments to receive and distribute the incoming
 requests, the `HeavyLoad` deployment successfully scales up to 90+ replicas, and
@@ -656,7 +562,8 @@ autoscaler to react more quickly to changes, especially bursts, of traffic.
 autoscaler scales up more aggressively than normal. This setting can allow your
 deployment to be more sensitive to bursts of traffic.
 
-* Lower the `metric_interval_s`. Always set `metric_interval_s` to be less than
+* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst).
+Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to be less than
 or equal to `upscale_delay_s`, otherwise upscaling is delayed because the
 autoscaler doesn't receive fresh information often enough.
 
@@ -758,7 +665,7 @@ The `record_autoscaling_stats()` method can be either synchronous or asynchronou
 In your policy, access custom metrics via:
 
 * **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
-  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S` (the metric recording interval).
+  The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 > Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
