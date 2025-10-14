@@ -470,7 +470,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
-      task_by_state_gauge_,
+      *task_by_state_gauge_,
+      *total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
@@ -552,7 +553,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // OBJECT_STORE.
         return rpc::TensorTransport::OBJECT_STORE;
       },
-      boost::asio::steady_timer(io_service_));
+      boost::asio::steady_timer(io_service_),
+      *scheduler_placement_time_s_histogram_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -683,8 +685,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    task_execution_service_,
                                    std::move(task_event_buffer),
                                    pid,
-                                   task_by_state_gauge_,
-                                   actor_by_state_gauge_);
+                                   *task_by_state_gauge_,
+                                   *actor_by_state_gauge_);
   return core_worker;
 }
 
@@ -790,6 +792,14 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // We need init stats before using it/spawning threads.
   stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  task_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetTaskByStateGaugeMetric()));
+  actor_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetActorByStateGaugeMetric()));
+  total_lineage_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
+  scheduler_placement_time_s_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+      new ray::stats::Histogram(GetSchedulerPlacementTimeSHistogramMetric()));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

@@ -19,8 +19,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
-
 namespace ray {
 namespace gcs {
 

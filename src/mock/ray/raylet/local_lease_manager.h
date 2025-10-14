@@ -75,6 +75,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
   MOCK_METHOD(size_t, GetNumLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumWaitingLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumUnschedulableLeaseSpilled, (), (const, override));
+  MOCK_METHOD(SchedulerMetrics &, GetSchedulerMetrics, (), (const, override));
 };
 
 }  // namespace ray::raylet

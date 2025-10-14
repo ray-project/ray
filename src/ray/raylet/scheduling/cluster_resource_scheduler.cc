@@ -27,6 +27,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    ray::observability::MetricInterface &resource_usage_gauge,
     bool is_local_node_with_raylet)
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
@@ -35,7 +36,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr,
-       /*shutdown_raylet_gracefully=*/nullptr);
+       /*shutdown_raylet_gracefully=*/nullptr,
+       resource_usage_gauge);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -43,6 +45,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    ray::observability::MetricInterface &resource_usage_gauge,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
@@ -54,7 +57,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
        node_resources,
        get_used_object_store_memory,
        get_pull_manager_at_capacity,
-       shutdown_raylet_gracefully);
+       shutdown_raylet_gracefully,
+       resource_usage_gauge);
 }
 
 void ClusterResourceScheduler::Init(
@@ -62,7 +66,8 @@ void ClusterResourceScheduler::Init(
     const NodeResources &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully) {
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    ray::observability::MetricInterface &resource_usage_gauge) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
@@ -72,7 +77,8 @@ void ClusterResourceScheduler::Init(
       shutdown_raylet_gracefully,
       [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
+      },
+      resource_usage_gauge);
   RAY_CHECK(!local_node_id_.IsNil());
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =

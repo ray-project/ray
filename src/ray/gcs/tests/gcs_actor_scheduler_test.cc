@@ -111,6 +111,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
+        fake_resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
@@ -148,6 +149,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
+        fake_scheduler_placement_time_s_histogram_,
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
@@ -221,6 +223,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
   NodeID local_node_id_;
 };
 

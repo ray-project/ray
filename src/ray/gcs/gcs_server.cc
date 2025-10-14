@@ -21,6 +21,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -441,6 +442,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*is_local_node_with_raylet=*/false);
 }
 
@@ -516,6 +518,7 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
+      metrics_.scheduler_placement_time_s_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);

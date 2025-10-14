@@ -4,11 +4,9 @@ ray_cc_library(
     name = "stats_metric",
     srcs = [
         "metric.cc",
-        "metric_defs.cc",
     ],
     hdrs = [
         "metric.h",
-        "metric_defs.h",
     ],
     deps = [
         ":tag_defs",
