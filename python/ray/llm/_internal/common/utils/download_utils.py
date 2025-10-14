@@ -18,6 +18,8 @@ torch = try_import("torch")
 
 logger = get_logger(__name__)
 
+STREAMING_LOAD_FORMATS = ["runai_streamer", "tensorizer"]
+
 
 class NodeModelDownloadable(enum.Enum):
     """Defines which files to download from cloud storage."""
