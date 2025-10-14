@@ -1761,7 +1761,10 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
           .WithField(actor->GetNodeID())
       << "Send request to kill actor to worker at node";
   actor_raylet_client->KillLocalActor(
-      request, [](const ray::Status &status, rpc::KillLocalActorReply &&reply) {});
+      request, [](const ray::Status &status, rpc::KillLocalActorReply &&reply) {
+        RAY_LOG(DEBUG) << "Killing actor " << actor_id
+                       << " with return status: " << status.ToString();
+      });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {

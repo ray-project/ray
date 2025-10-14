@@ -3231,12 +3231,16 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
 
   worker->rpc_client()->KillActor(
       kill_actor_request,
-      [actor_id = request.intended_actor_id(), timer](const ray::Status &status,
-                                                      const rpc::KillActorReply &) {
-        RAY_LOG(DEBUG) << "Failed to kill actor due to intended actor id and worker "
-                          "actor id mismatch: "
-                       << status.ToString() << ", actor_id: " << actor_id;
+      [actor_id = request.intended_actor_id(), timer, send_reply_callback](
+          const ray::Status &status, const rpc::KillActorReply &) {
+        std::ostringstream stream;
+        stream << "Failed to kill actor due to intended actor id and worker "
+                  "actor id mismatch: "
+               << status.ToString() << ", actor_id: " << actor_id;
+        const auto &msg = stream.str();
+        RAY_LOG(DEBUG) << msg;
         timer->cancel();
+        send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
       });
 }
 
