@@ -60,8 +60,10 @@ void LagProbeLoop(instrumented_io_context &io_context,
         // for `interval_ms - duration`.
         auto delay = interval_ms - duration.count();
         if (delay <= 0) {
-          LagProbeLoop(io_context, interval_ms, context_name);
-        } else {
+          delay = 1;
+        }
+        // LagProbeLoop(io_context, interval_ms, context_name);
+        // } else {
           // Use the dedicated timer io_context for scheduling to avoid timer
           // overhead on the io_context being measured.
           auto timer = std::make_shared<boost::asio::deadline_timer>(
@@ -78,7 +80,7 @@ void LagProbeLoop(instrumented_io_context &io_context,
                   "event_loop_lag_probe");
             }
           });
-        }
+        // }
       },
       "event_loop_lag_probe");
 }
