@@ -411,9 +411,8 @@ After running the profiling examples, you'll have access to several types of pro
 
 After generating the `trace.json` files, you can use tensorboard, or simply drag the `trace.json` into Perfetto UI or `chrome://tracing` to visualize your profile.
 
-
-```bash
-%%bash
+Use the below script to start the tensorboard.
+```
 pip install torch_tb_profiler
 
 # Once run the above code, the profiling result will be saved under `/mnt/cluster_storage/logs/`
