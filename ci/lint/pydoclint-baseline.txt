@@ -1528,10 +1528,6 @@ python/ray/serve/_private/api.py
     DOC201: Function `serve_start` does not have a return section in docstring
 --------------------
 python/ray/serve/_private/application_state.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `ApplicationState.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ApplicationState.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [deployment_state_manager: DeploymentStateManager, endpoint_state: EndpointState, logging_config: LoggingConfig, name: str].
     DOC103: Method `ApplicationStateManager.deploy_app`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [deployment_args: List[Dict]]. Arguments in the docstring but not in the function signature: [deployment_args_list: ].
     DOC102: Function `override_deployment_info`: Docstring contains more arguments than in function signature.
     DOC103: Function `override_deployment_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [app_name: ].
