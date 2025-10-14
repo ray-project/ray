@@ -16,6 +16,7 @@ from ray_release.anyscale_util import (
     LAST_LOGS_LENGTH,
 )
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
+from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
@@ -52,7 +53,6 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
-from ray_release.cloud_util import archive_directory
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 
 type_str_to_command_runner = {
