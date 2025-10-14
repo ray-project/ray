@@ -147,7 +147,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor):
 
         left = self.visit(expr.left)
         right = self.visit(expr.right)
-        from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
@@ -155,7 +157,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor):
 
     def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
         operand = self.visit(expr.operand)
-        from ray.data._expression_evaluator import _ARROW_EXPR_OPS_MAP
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](operand)
