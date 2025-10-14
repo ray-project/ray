@@ -229,6 +229,18 @@ class ApplicationState:
         logging_config: LoggingConfig,
         external_scaler_enabled: bool = False,
     ):
+        """
+        Initialize the ApplicationState object.
+
+        Args:
+            name: Application name.
+            deployment_state_manager: State manager for all deployments
+                in the cluster.
+            endpoint_state: State manager for endpoints in the system.
+            logging_config: Logging configuration for the application.
+            external_scaler_enabled: Whether external autoscaling is enabled for
+                this application.
+        """
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
@@ -1008,7 +1020,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args_list: arguments for deploying a list of deployments.
+            deployment_args: arguments for deploying a list of deployments.
 
         Raises:
             RayServeException: If the list of deployments is trying to
@@ -1302,7 +1314,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
