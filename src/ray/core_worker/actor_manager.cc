@@ -131,6 +131,10 @@ void ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
     absl::MutexLock lock(&mutex_);
     RAY_CHECK(!actor_handles_.contains(actor_id))
         << "Actor handle already exists for actor id: " << actor_id;
+
+    // Else, place a sentinel value in the map to indicate that the
+    // actor handle is being created to prevent uncaught double creation.
+    actor_handles_.emplace(actor_id, nullptr);
   }
 
   // Detached actor doesn't need ref counting.
@@ -174,7 +178,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
-    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    // check if the actor handle is a sentinel value
+    auto it = actor_handles_.find(actor_id);
+    if (it != actor_handles_.end() && it->second == nullptr) {
+      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle));
+      inserted = true;
+    } else {
+      inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    }
   }
 
   if (is_self) {
