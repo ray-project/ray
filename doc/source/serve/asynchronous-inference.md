@@ -4,7 +4,7 @@
 This API is in alpha and may change before becoming stable.
 :::
 
-# Asynchronous inference in Ray Serve
+# Asynchronous Inference
 
 This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With asynchronous tasks, your HTTP APIs stay responsive while the system performs work in the background.
 
