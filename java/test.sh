@@ -123,9 +123,9 @@ echo "Running tests under local mode."
 run_testng java -Dray.run-mode="LOCAL" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running connecting existing cluster tests."
-RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="localhost"
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="127.0.0.1"
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_shaded.jar -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_shaded.jar" io.ray.test.MultiDriverTest
-RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_shaded.jar -Dray.address="localhost:6379"\
+RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_shaded.jar -Dray.address="127.0.0.1:6379"\
 ray stop
 
 echo "Running documentation demo code."
