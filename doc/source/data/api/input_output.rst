@@ -55,6 +55,15 @@ JSON
    read_json
    Dataset.write_json
 
+XML
+---
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_xml
+
 Text
 ----
 
