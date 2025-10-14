@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr, all as rd_all
+from ray.data.expressions import Expr, star as rd_star
 
 logger = logging.getLogger(__name__)
 
@@ -834,7 +834,7 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                exprs=[rd_all(), expr.alias(column_name)],
+                exprs=[rd_star(), expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1218,7 +1218,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=[rd_all()] + exprs,
+            exprs=[rd_star()] + exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )

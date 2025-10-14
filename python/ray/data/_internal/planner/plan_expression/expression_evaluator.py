@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 
 import numpy as np
 import pandas as pd
@@ -14,12 +14,12 @@ import pyarrow.dataset as ds
 from ray.data.block import Block, BlockAccessor, BlockColumn
 from ray.data.expressions import (
     AliasExpr,
-    AllColumnsExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
+    StarColumnsExpr,
     UDFExpr,
     UnaryExpr,
 )
@@ -579,10 +579,10 @@ class NativeExpressionEvaluator:
             return self.visit_udf(expr)
         elif isinstance(expr, AliasExpr):
             return self.visit_alias(expr)
-        elif isinstance(expr, AllColumnsExpr):
-            # all() should not be evaluated directly - it's handled at Project level
+        elif isinstance(expr, StarColumnsExpr):
+            # star() should not be evaluated directly - it's handled at Project level
             raise TypeError(
-                "AllColumnsExpr cannot be evaluated as a regular expression. "
+                "StarColumnsExpr cannot be evaluated as a regular expression. "
                 "It should only be used in Project operations."
             )
         else:
@@ -684,3 +684,94 @@ def eval_expr(expr: Expr, block: Block) -> BlockColumn:
     """
     evaluator = NativeExpressionEvaluator(block)
     return evaluator.visit(expr)
+
+
+def eval_projection(exprs: List[Expr], block: Block) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    Handles projection semantics including:
+    - Empty projections
+    - Star() expressions for preserving existing columns
+    - Rename detection
+    - Column ordering
+
+    Args:
+        exprs: List of expressions to evaluate (may include StarColumnsExpr)
+        block: The block to project
+
+    Returns:
+        A new block with the projected schema
+    """
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Skip projection only for schema-less empty blocks
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
+    has_star = any(isinstance(expr, StarColumnsExpr) for expr in exprs)
+    existing_cols = list(block_accessor.column_names())
+
+    # Empty projection
+    if len(exprs) == 0:
+        return block_accessor.select([])
+
+    # Identity projection: single star() with no other expressions
+    if len(exprs) == 1 and isinstance(exprs[0], StarColumnsExpr):
+        return block
+
+    # Phase 1: Compute non-star() expressions
+    new_output_cols: List[str] = []
+    seen_output_names = set()
+    rename_map: Dict[str, str] = {}
+    computed_outputs: Dict[str, Any] = {}
+
+    for expr in exprs:
+        if isinstance(expr, StarColumnsExpr):
+            continue
+
+        output_name = expr.name
+
+        # Detect simple renames
+        if (
+            isinstance(expr, AliasExpr)
+            and expr.expr.name != output_name
+            and expr.expr.name in existing_cols
+        ):
+            rename_map[expr.expr.name] = output_name
+
+        computed_outputs[output_name] = eval_expr(expr, block)
+        if output_name in seen_output_names:
+            raise ValueError(f"Column name '{output_name}' is a duplicate.")
+        new_output_cols.append(output_name)
+        seen_output_names.add(output_name)
+
+    # Phase 2: Upsert computed columns
+    cur_block = block
+    for output_name in new_output_cols:
+        cur_block = BlockAccessor.for_block(cur_block).fill_column(
+            output_name, computed_outputs[output_name]
+        )
+
+    # Phase 3: Finalize output schema based on star() position
+    if has_star:
+        final_cols: List[str] = []
+        final_seen = set()
+
+        # Preserve existing columns with renames
+        for col in existing_cols:
+            renamed_col = rename_map.get(col, col)
+            if renamed_col not in final_seen:
+                final_cols.append(renamed_col)
+                final_seen.add(renamed_col)
+
+        # Append new columns
+        for col in new_output_cols:
+            if col not in final_seen:
+                final_cols.append(col)
+                final_seen.add(col)
+    else:
+        # No star(): only requested outputs
+        final_cols = new_output_cols
+
+    return BlockAccessor.for_block(cur_block).select(final_cols)

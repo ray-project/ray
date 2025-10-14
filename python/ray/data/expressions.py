@@ -683,7 +683,7 @@ class AliasExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
-class AllColumnsExpr(Expr):
+class StarColumnsExpr(Expr):
     """Expression that represents all columns from the input.
 
     This is a special expression used in projections to indicate that
@@ -693,7 +693,7 @@ class AllColumnsExpr(Expr):
 
     Example:
         When with_column("new_col", expr) is called, it creates:
-        Project(exprs=[all(), expr.alias("new_col")])
+        Project(exprs=[star(), expr.alias("new_col")])
 
         This means: keep all existing columns, then add/overwrite "new_col"
     """
@@ -701,7 +701,7 @@ class AllColumnsExpr(Expr):
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, AllColumnsExpr)
+        return isinstance(other, StarColumnsExpr)
 
 
 @PublicAPI(stability="beta")
@@ -767,18 +767,18 @@ def lit(value: Any) -> LiteralExpr:
 
 
 @PublicAPI(stability="beta")
-def all() -> AllColumnsExpr:
+def star() -> StarColumnsExpr:
     """
-    Reference all existing columns from the input.
+    References all input columns from the input.
 
     This is a special expression used in projections to preserve all
     existing columns. It's typically used with operations that want to
     add or modify columns while keeping the rest.
 
     Returns:
-        An AllColumnsExpr that represents all input columns.
+        A StarColumnsExpr that represents all input columns.
     """
-    return AllColumnsExpr()
+    return StarColumnsExpr()
 
 
 @DeveloperAPI(stability="alpha")
@@ -826,10 +826,10 @@ __all__ = [
     "UDFExpr",
     "DownloadExpr",
     "AliasExpr",
-    "AllColumnsExpr",
+    "StarColumnsExpr",
     "udf",
     "col",
     "lit",
     "download",
-    "all",
+    "star",
 ]

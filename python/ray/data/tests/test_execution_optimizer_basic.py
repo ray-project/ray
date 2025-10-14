@@ -298,7 +298,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     Checks that the physical plan is properly generated for the Project operator from
     rename columns.
     """
-    from ray.data.expressions import all as rd_all
+    from ray.data.expressions import star as rd_star
 
     path = "example://iris.parquet"
     ds = ray.data.read_parquet(path)
@@ -310,7 +310,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.exprs == [
-        rd_all(),
+        rd_star(),
         col("sepal.length").alias("sepal_length"),
         col("petal.width").alias("pedal_width"),
     ]

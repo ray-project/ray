@@ -9,11 +9,11 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data.expressions import (
     AliasExpr,
-    AllColumnsExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
+    StarColumnsExpr,
     UDFExpr,
     UnaryExpr,
 )
@@ -28,8 +28,8 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
 
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
-    # If any expression is all(), we need all columns
-    if any(isinstance(expr, AllColumnsExpr) for expr in exprs):
+    # If any expression is star(), we need all columns
+    if any(isinstance(expr, StarColumnsExpr) for expr in exprs):
         return None
 
     referenced_columns: Set[str] = set()
@@ -157,11 +157,11 @@ def _try_fuse_consecutive_projects(
     """
     Attempt to merge two consecutive Project operations into one.
 
-    Updated to handle AllColumnsExpr instead of preserve_existing flag.
+    Updated to handle StarColumnsExpr instead of preserve_existing flag.
     """
-    from ray.data.expressions import AllColumnsExpr
+    from ray.data.expressions import StarColumnsExpr
 
-    # Check if projects have all()
+    # Check if projects have star()
     upstream_has_all = upstream_project.has_all_columns_expr()
     downstream_has_all = downstream_project.has_all_columns_expr()
 
@@ -169,12 +169,12 @@ def _try_fuse_consecutive_projects(
     upstream_output_columns = {
         expr.name
         for expr in upstream_project.exprs
-        if not isinstance(expr, AllColumnsExpr)
+        if not isinstance(expr, StarColumnsExpr)
     }
     upstream_column_definitions = {
         expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
-        if not isinstance(expr, AllColumnsExpr)
+        if not isinstance(expr, StarColumnsExpr)
     }
 
     # Step 2: Identify columns removed by upstream renames
@@ -182,7 +182,7 @@ def _try_fuse_consecutive_projects(
     # then "col1" is effectively removed and cannot be accessed downstream.
     columns_removed_by_renames: Set[str] = set()
     for expr in upstream_project.exprs:
-        if isinstance(expr, AllColumnsExpr):
+        if isinstance(expr, StarColumnsExpr):
             continue
         rename_pair = _extract_simple_rename(expr)
         if rename_pair is not None:
@@ -193,8 +193,8 @@ def _try_fuse_consecutive_projects(
     # Step 3: Validate and rewrite downstream expressions
     rewritten_downstream_exprs: List[Expr] = []
     for expr in downstream_project.exprs:
-        if isinstance(expr, AllColumnsExpr):
-            # all() passes through in fusion
+        if isinstance(expr, StarColumnsExpr):
+            # star() passes through in fusion
             rewritten_downstream_exprs.append(expr)
             continue
 
@@ -236,23 +236,23 @@ def _try_fuse_consecutive_projects(
             ray_remote_args=downstream_project._ray_remote_args,
         )
 
-    # Step 5: Downstream has all(): merge both projections
+    # Step 5: Downstream has star(): merge both projections
     downstream_output_columns = {
         expr.name
         for expr in downstream_project.exprs
-        if not isinstance(expr, AllColumnsExpr)
+        if not isinstance(expr, StarColumnsExpr)
     }
 
     # Start with upstream's column definitions and ordering
     column_definitions = {
         expr.name: _try_wrap_expression_with_alias(expr, expr.name)
         for expr in upstream_project.exprs
-        if not isinstance(expr, AllColumnsExpr)
+        if not isinstance(expr, StarColumnsExpr)
     }
     column_order = [
         expr.name
         for expr in upstream_project.exprs
-        if not isinstance(expr, AllColumnsExpr)
+        if not isinstance(expr, StarColumnsExpr)
     ]
 
     # Apply downstream's transformations
@@ -266,7 +266,7 @@ def _try_fuse_consecutive_projects(
     #   - "b" is overwritten with a new definition: (col("y") + 1) + 2
     #   - "c" passes through unchanged from upstream
     for expr in downstream_project.exprs:
-        if isinstance(expr, AllColumnsExpr):
+        if isinstance(expr, StarColumnsExpr):
             continue
 
         column_name = expr.name
@@ -314,10 +314,10 @@ def _try_fuse_consecutive_projects(
             column_order.append(column_name)
 
     # Build final fused project
-    # Only include all() if upstream also had it (preserving selection semantics)
+    # Only include star() if upstream also had it (preserving selection semantics)
     if upstream_has_all:
         # Upstream preserves existing: fused result should too
-        fused_exprs = [AllColumnsExpr()] + [
+        fused_exprs = [StarColumnsExpr()] + [
             column_definitions[name] for name in column_order
         ]
     else:
@@ -381,7 +381,7 @@ class ProjectionPushdown(Rule):
             and input_op.supports_projection_pushdown()
         ):
             required_columns = _collect_referenced_columns(list(current_project.exprs))
-            if required_columns is not None:  # None means all() was present
+            if required_columns is not None:  # None means star() was present
                 optimized_source = input_op.apply_projection(sorted(required_columns))
                 return optimized_source
 

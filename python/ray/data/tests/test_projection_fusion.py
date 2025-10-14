@@ -14,7 +14,7 @@ from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
 from ray.data.context import DataContext
-from ray.data.expressions import DataType, all, col, udf
+from ray.data.expressions import DataType, col, star, udf
 
 
 @dataclass
@@ -121,7 +121,7 @@ class TestProjectionFusion:
                 named_expr = expr.alias(name)
                 exprs.append(named_expr)
 
-            current_op = Project(current_op, exprs=[all()] + exprs, ray_remote_args={})
+            current_op = Project(current_op, exprs=[star()] + exprs, ray_remote_args={})
 
         return current_op
 

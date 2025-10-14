@@ -48,7 +48,6 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -59,7 +58,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import AliasExpr, ColumnExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -116,99 +114,22 @@ def plan_project_op(
 
     def _project_block(block: Block) -> Block:
         try:
-            block_accessor = BlockAccessor.for_block(block)
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
 
-            # Skip projection only for schema-less empty blocks.
-            if (
-                block_accessor.num_rows() == 0
-                and len(block_accessor.column_names()) == 0
-            ):
-                return block
-
-            # Check if there's an all() expression
-            from ray.data.expressions import AllColumnsExpr
-
-            has_all = any(isinstance(expr, AllColumnsExpr) for expr in op.exprs)
-
-            # Preserve original input column order
-            existing_cols = list(block_accessor.column_names())
-
-            if len(op.exprs) == 0:
-                # No expressions at all - return empty projection
-                if block_accessor.num_rows() > 0:
-                    from ray.data._internal.arrow_block import (
-                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME as _STUB,
-                    )
-
-                    return BlockAccessor.for_block(block).fill_column(_STUB, None)
-                return block_accessor.select([])
-
-            # Handle single all() with no other expressions
-            if len(op.exprs) == 1 and isinstance(op.exprs[0], AllColumnsExpr):
-                return block  # Identity projection
-
-            # Phase 1: Compute non-all() expressions
-            new_output_cols: List[str] = []
-            seen_output_names = set()
-            rename_map: Dict[str, str] = {}
-            computed_outputs: Dict[str, Any] = {}
-
-            for expr in op.exprs:
-                if isinstance(expr, AllColumnsExpr):
-                    continue  # Skip all() for now, handle in Phase 3
-
-                output_name = expr.name
-
-                # Detect simple rename sourced from the input schema
-                if (
-                    isinstance(expr, AliasExpr)
-                    and isinstance(expr.expr, ColumnExpr)
-                    and expr.expr.name != output_name
-                    and expr.expr.name in existing_cols
-                ):
-                    rename_map[expr.expr.name] = output_name
-
-                computed_outputs[output_name] = eval_expr(expr, block)
-                if output_name in seen_output_names:
-                    raise ValueError(f"Column name '{output_name}' is a duplicate.")
-                new_output_cols.append(output_name)
-                seen_output_names.add(output_name)
-
-            # Phase 2: Upsert computed columns onto the block
-            cur_block = block
-            for output_name in new_output_cols:
-                cur_block = BlockAccessor.for_block(cur_block).fill_column(
-                    output_name, computed_outputs[output_name]
-                )
-
-            # Phase 3: Finalize output schema based on all() position
-            if has_all:
-                # all() is present: preserve existing columns
-                # Start from input column order, applying renames, then append new columns
-                final_cols: List[str] = []
-                final_seen = set()
-
-                for col in existing_cols:
-                    renamed_col = rename_map.get(col, col)
-                    if renamed_col not in final_seen:
-                        final_cols.append(renamed_col)
-                        final_seen.add(renamed_col)
-
-                for col in new_output_cols:
-                    if col not in final_seen:
-                        final_cols.append(col)
-                        final_seen.add(col)
-            else:
-                # No all(): exact select - only requested outputs (in order)
-                final_cols = new_output_cols
-
-            return BlockAccessor.for_block(cur_block).select(final_cols)
+            return eval_projection(op.exprs, block)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
     map_transformer = MapTransformer(
-        [BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block))]
+        [
+            BlockMapTransformFn(
+                _generate_transform_fn_for_map_block(_project_block),
+                disable_block_shaping=(len(op.exprs) == 0),
+            )
+        ]
     )
     return MapOperator.create(
         map_transformer,

@@ -26,7 +26,7 @@ from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.expressions import all as rd_all
+from ray.data.expressions import star as rd_star
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -317,7 +317,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # Fusion
-            Project(InputData([]), exprs=[rd_all()]),
+            Project(InputData([]), exprs=[rd_star()]),
             True,
         ),
     ],
