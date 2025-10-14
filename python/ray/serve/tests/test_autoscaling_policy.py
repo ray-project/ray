@@ -1623,8 +1623,8 @@ class TestAppLevelAutoscalingPolicy:
         yield client, signal_a, signal_b
 
         # Delete signal actors so there is no conflict between tests
-        # ray.kill(signal_a)
-        # ray.kill(signal_b)
+        ray.kill(signal_a)
+        ray.kill(signal_b)
 
     def verify_scaling_decisions(self, signal_A, signal_B):
 
