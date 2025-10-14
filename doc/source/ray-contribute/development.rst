@@ -337,7 +337,7 @@ Requirement files for running Ray Data / ML library tests are under ``python/req
 Pre-commit Hooks
 ----------------
 
-Ray uses pre-commit hooks via `the pre-commit python package <https://pre-commit.com/>`_.
+Ray uses pre-commit hooks with `the pre-commit python package <https://pre-commit.com/>`_.
 The ``.pre-commit-config.yaml`` file configures all the linting and formatting checks.
 To start using ``pre-commit``:
 
