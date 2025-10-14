@@ -2,12 +2,15 @@ build_arg_sets:
   cpu:
     PYTHON_VERSION: py311
     CUDA_CODE: cpu
+    CUDA_TYPE: cpu
   cu121:
     PYTHON_VERSION: py311
     CUDA_CODE: cu121
+    CUDA_TYPE: cu128
   cu128:
     PYTHON_VERSION: py311
     CUDA_CODE: cu128
+    CUDA_TYPE: cu128
 
 
 .common_settings: &common_settings
@@ -15,7 +18,7 @@ build_arg_sets:
     - --python-version=3.11
     - --unsafe-package ray
     - --python-platform=linux
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_TYPE}
   build_arg_sets:
     - cpu
     - cu121
