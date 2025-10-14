@@ -55,10 +55,10 @@ class CoreWorkerClientPool {
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
   /// be open until it's no longer used, at which time it will disconnect.
-  void Disconnect(ray::WorkerID id);
+  void Disconnect(const WorkerID &id);
 
   /// Removes connections to all workers on a node.
-  void Disconnect(ray::NodeID node_id);
+  void Disconnect(const NodeID &node_id);
 
  private:
   friend void AssertID(WorkerID worker_id,

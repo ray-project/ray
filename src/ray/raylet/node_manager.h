@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
@@ -149,18 +150,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       LeaseDependencyManager &lease_dependency_manager,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
-      plasma::PlasmaClientInterface &store_client,
+      std::shared_ptr<plasma::PlasmaClientInterface> store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      AddProcessToCgroupHook add_process_to_system_cgroup_hook);
+      AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
   ///
   /// \param client The client whose connection the error occurred on.
   /// \param error The error details.
-  void HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
                                    const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for
@@ -750,7 +752,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClientInterface &store_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
   /// Mutable object provider for compiled graphs.
   std::unique_ptr<core::experimental::MutableObjectProviderInterface>
       mutable_object_provider_;
@@ -883,6 +885,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
+
+  // Controls the lifecycle of the CgroupManager.
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 };
 
 }  // namespace ray::raylet
