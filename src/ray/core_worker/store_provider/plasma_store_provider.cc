@@ -92,7 +92,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_->Disconnect());
+  store_client_->Disconnect();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -241,9 +241,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object = std::make_shared<RayObject>(
+      auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      (*results)[object_id] = result_object;
+      (*results)[object_id] = std::move(result_object);
     }
   }
   return Status::OK();
