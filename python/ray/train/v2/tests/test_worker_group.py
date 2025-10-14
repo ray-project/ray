@@ -223,6 +223,9 @@ def test_poll_status_finished():
 
 @pytest.mark.parametrize("actor_failure", [True, False])
 def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
+    """Tests that the worker group raises the correct errors when the
+    actor fails or the user code raises an error on any worker."""
+
     dummy_file = tmp_path / "dummy.txt"
 
     def train_fn():
