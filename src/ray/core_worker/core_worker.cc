@@ -262,7 +262,7 @@ void TaskCounter::SetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Increment({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Increment({func_name, is_retry});
-  } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
+  } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
     pending_getting_and_pinning_args_fetch_counter_.Increment({func_name, is_retry});
   } else {
     RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
@@ -280,7 +280,7 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Decrement({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Decrement({func_name, is_retry});
-  } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
+  } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
     pending_getting_and_pinning_args_fetch_counter_.Decrement({func_name, is_retry});
   } else {
     RAY_LOG(FATAL) << "Unexpected status " << rpc::TaskStatus_Name(status);
