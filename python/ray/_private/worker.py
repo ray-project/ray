@@ -1835,10 +1835,10 @@ def init(
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
-            "DeprecationWarning: local mode is an experimental feature that is no "
-            "longer maintained and will be removed in the future."
-            " For debugging consider using Ray Distributed Debugger. ",
-            DeprecationWarning,
+            "`local_mode` is an experimental feature that is no "
+            "longer maintained and will be removed in the near future. "
+            "For debugging consider using the Ray distributed debugger.",
+            FutureWarning,
             stacklevel=2,
         )
     else:
@@ -3774,8 +3774,6 @@ def remote(
             node id based affinity scheduling.
             See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
             for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
         _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.

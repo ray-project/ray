@@ -38,18 +38,38 @@ using namespace std::chrono;           // NOLINT
 
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
-  GcsClientReconnectionTest()
-      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>());
-  }
+  GcsClientReconnectionTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   ~GcsClientReconnectionTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void StartGCS() {
     RAY_CHECK(gcs_server_ == nullptr);
     server_io_service_ = std::make_unique<instrumented_io_context>();
+
+    // Create the metrics struct
+    ray::gcs::GcsServerMetrics gcs_server_metrics{
+        /*actor_by_state_gauge=*/actor_by_state_gauge_,
+        /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge_,
+        /*running_job_gauge=*/running_job_gauge_,
+        /*finished_job_counter=*/finished_job_counter_,
+        /*job_duration_in_seconds_gauge=*/job_duration_in_seconds_gauge_,
+        /*placement_group_gauge=*/placement_group_gauge_,
+        /*placement_group_creation_latency_in_ms_histogram=*/
+        placement_group_creation_latency_in_ms_histogram_,
+        /*placement_group_scheduling_latency_in_ms_histogram=*/
+        placement_group_scheduling_latency_in_ms_histogram_,
+        /*placement_group_count_gauge=*/placement_group_count_gauge_,
+        /*task_events_reported_gauge=*/task_events_reported_gauge_,
+        /*task_events_dropped_gauge=*/task_events_dropped_gauge_,
+        /*task_events_stored_gauge=*/task_events_stored_gauge_,
+        /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
+        /*storage_operation_latency_in_ms_histogram=*/
+        storage_operation_latency_in_ms_histogram_,
+        /*storage_operation_count_counter=*/storage_operation_count_counter_,
+    };
+
     gcs_server_ = std::make_unique<gcs::GcsServer>(
-        config_, *server_io_service_, *fake_dropped_events_counter_);
+        config_, gcs_server_metrics, *server_io_service_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -163,7 +183,22 @@ class GcsClientReconnectionTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
   std::unique_ptr<instrumented_io_context> server_io_service_;
-  std::unique_ptr<ray::observability::FakeCounter> fake_dropped_events_counter_;
+  // Fake metrics for testing
+  observability::FakeGauge actor_by_state_gauge_;
+  observability::FakeGauge gcs_actor_by_state_gauge_;
+  observability::FakeGauge running_job_gauge_;
+  observability::FakeCounter finished_job_counter_;
+  observability::FakeGauge job_duration_in_seconds_gauge_;
+  observability::FakeGauge placement_group_gauge_;
+  observability::FakeHistogram placement_group_creation_latency_in_ms_histogram_;
+  observability::FakeHistogram placement_group_scheduling_latency_in_ms_histogram_;
+  observability::FakeGauge placement_group_count_gauge_;
+  observability::FakeGauge task_events_reported_gauge_;
+  observability::FakeGauge task_events_dropped_gauge_;
+  observability::FakeGauge task_events_stored_gauge_;
+  observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
+  observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter fake_dropped_events_counter_;
 
   // GCS client.
   std::unique_ptr<std::thread> client_io_service_thread_;
@@ -178,7 +213,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis"
 }
   )");
@@ -230,7 +264,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_initial_reconnect_backoff_ms": 2000,
   "gcs_grpc_max_reconnect_backoff_ms": 2000
@@ -303,7 +336,6 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10
 }
@@ -363,7 +395,6 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10,
   "gcs_server_request_timeout_seconds": 10
