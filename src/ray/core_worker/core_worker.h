@@ -124,7 +124,7 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
-  CounterMap<std::pair<std::string, bool>> pending_args_fetch_counter_
+  CounterMap<std::pair<std::string, bool>> pending_getting_and_pinning_args_fetch_counter_
       ABSL_GUARDED_BY(mu_);
 
   std::string job_id_ ABSL_GUARDED_BY(mu_);

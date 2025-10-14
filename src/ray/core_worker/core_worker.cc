@@ -180,13 +180,13 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         const int64_t running_total = counter_.Get(key);
         const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
         const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
-        const int64_t num_pending_args_fetch =
-            pending_args_fetch_counter_.Get({func_name, is_retry});
+        const int64_t num_getting_pinning_args =
+            pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
         task_by_state_gauge_.Record(
-            running_total - num_in_get - num_in_wait - num_pending_args_fetch,
+            running_total - num_in_get - num_in_wait - num_getting_pinning_args,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name"sv, func_name},
              {"IsRetry"sv, is_retry_label},
@@ -218,7 +218,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
              {"Source"sv, "executor"}});
         // Record sub-state for pending args fetch.
         task_by_state_counter_.Record(
-            num_pending_args_fetch,
+            num_getting_pinning_args,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
              {"Name"sv, func_name},
              {"IsRetry"sv, is_retry_label},
@@ -263,7 +263,7 @@ void TaskCounter::SetMetricStatus(const std::string &func_name,
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Increment({func_name, is_retry});
   } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
-    pending_args_fetch_counter_.Increment({func_name, is_retry});
+    pending_getting_and_pinning_args_fetch_counter_.Increment({func_name, is_retry});
   } else {
     RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -281,7 +281,7 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Decrement({func_name, is_retry});
   } else if (status == rpc::TaskStatus::PENDING_ARGS_FETCH) {
-    pending_args_fetch_counter_.Decrement({func_name, is_retry});
+    pending_getting_and_pinning_args_fetch_counter_.Decrement({func_name, is_retry});
   } else {
     RAY_LOG(FATAL) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
