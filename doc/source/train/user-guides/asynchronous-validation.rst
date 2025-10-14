@@ -50,28 +50,13 @@ Writing a distributed validation function
 -----------------------------------------
 
 The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
-even more Ray tasks and/or actors. For example, here is a ``validate_fn`` that uses a :class:`ray.train.torch.TorchTrainer`
-to calculate average cross entropy loss on a validation set. Note the following about this example:
+even more Ray tasks and/or actors. We recommend doing this with one of the following approaches:
 
-* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
-* While the ``TorchTrainer`` is typically used for training, it can be used solely for validation like in this example.
-* Because training generally has a higher GPU memory requirement than inference, you can set different
-  resource requirements for training and validation e.g. A100 for training and A10G for validation.
+* Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
+* Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
 
-.. literalinclude:: ../doc_code/asynchronous_validation.py
-    :language: python
-    :start-after: __validate_fn_torch_trainer_start__
-    :end-before: __validate_fn_torch_trainer_end__
-
-Here is another example ``validate_fn`` that distributes validation across multiple Ray tasks/actors.
-This time, it uses :func:`ray.data.Dataset.map_batches` to
-calculate average accuracy on a validation set. To learn more about how to use
-``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
-
-.. literalinclude:: ../doc_code/asynchronous_validation.py
-    :language: python
-    :start-after: __validate_fn_map_batches_start__
-    :end-before: __validate_fn_map_batches_end__
+Choosing an approach
+~~~~~~~~~~~~~~~~~~~~
 
 You should use ``TorchTrainer`` if:
 
@@ -88,6 +73,34 @@ You should use ``map_batches`` if:
 * You prefer Ray Data’s native metric aggregation APIs over PyTorch, where you must implement
   aggregation manually using low-level collective operations or rely on third-party libraries
   such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
+
+Example: validation with Ray Train TorchTrainer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here is a ``validate_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
+loss on a validation set. Note the following about this example:
+
+* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
+* While the ``TorchTrainer`` is typically used for training, it can be used solely for validation like in this example.
+* Because training generally has a higher GPU memory requirement than inference, you can set different
+  resource requirements for training and validation e.g. A100 for training and A10G for validation.
+
+.. literalinclude:: ../doc_code/asynchronous_validation.py
+    :language: python
+    :start-after: __validate_fn_torch_trainer_start__
+    :end-before: __validate_fn_torch_trainer_end__
+
+Example: validation with Ray Data map_batches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here is ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
+calculate average accuracy on a validation set. To learn more about how to use
+``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
+
+.. literalinclude:: ../doc_code/asynchronous_validation.py
+    :language: python
+    :start-after: __validate_fn_map_batches_start__
+    :end-before: __validate_fn_map_batches_end__
 
 Checkpoint metrics lifecycle
 -----------------------------
