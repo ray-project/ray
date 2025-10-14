@@ -1711,7 +1711,7 @@ class Dataset:
             op = Repartition(
                 self._logical_plan.dag,
                 num_outputs=num_blocks,
-                shuffle=shuffle,
+                full_shuffle=shuffle,
                 keys=keys,
                 sort=sort,
             )
