@@ -39,3 +39,8 @@ Deploy models with reasoning capabilities designed for long-context tasks, codin
 
 **[Deploy a hybrid reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README.html)**  
 Deploy models that can switch between reasoning and non-reasoning modes for flexible usage, such as Qwen-3.
+
+---
+
+**[Deploy gpt-oss](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/gpt-oss/README.html)**  
+Deploy gpt-oss reasoning models for high-reasoning, production-scale workloads, for lower latency (`gpt-oss-20b`) and high-reasoning (`gpt-oss-120b`) use cases.

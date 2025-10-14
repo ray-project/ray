@@ -95,12 +95,12 @@ OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=44,
         title="Ray OOM Kills (Tasks and Actors)",
-        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html. Note: The RayNodeType filter does not work on this graph.",
         unit="failures",
         targets=[
             Target(
-                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (Name, instance, RayNodeType)',
-                legend="OOM Killed: {{Name}}, {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", {global_filters}}}) by (Name, instance)',
+                legend="OOM Killed: {{Name}}, {{instance}}",
             ),
         ],
     ),
@@ -569,6 +569,9 @@ ids = []
 for row in DEFAULT_GRAFANA_ROWS:
     ids.append(row.id)
     ids.extend(panel.id for panel in row.panels)
+
+ids.sort()
+
 assert len(ids) == len(
     set(ids)
 ), f"Duplicated id found. Use unique id for each panel. {ids}"
