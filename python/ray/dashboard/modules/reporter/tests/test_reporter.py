@@ -1201,7 +1201,10 @@ def test_reporter_raylet_agent(ray_start_with_dashboard):
     agent = ReporterAgent(dashboard_agent)
     pids = agent._get_worker_pids_from_raylet()
     assert len(pids) == 2
+    # check if worker is reported
     assert "ray::MyActor" in [psutil.Process(pid).cmdline()[0] for pid in pids]
+    # check if driver is reported
+    assert os.getpid() in pids
 
 
 if __name__ == "__main__":

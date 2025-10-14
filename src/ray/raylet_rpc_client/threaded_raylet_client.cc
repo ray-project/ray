@@ -31,16 +31,8 @@ ThreadedRayletClient::ThreadedRayletClient(const std::string &ip_address, int po
     : RayletClient(), ip_address_(ip_address), port_(port) {
   // Connect to the raylet on a singleton io service with a dedicated thread.
   // This is to avoid creating multiple threads for multiple clients in python.
-  ConnectOnSingletonIoContext();
-}
-
-void ThreadedRayletClient::ConnectOnSingletonIoContext() {
   static InstrumentedIOContextWithThread io_context("raylet_client_io_service");
   instrumented_io_context &io_service = io_context.GetIoService();
-  Connect(io_service);
-}
-
-void ThreadedRayletClient::Connect(instrumented_io_context &io_service) {
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service, /*record_stats=*/false, ip_address_);
   grpc_client_ = std::make_unique<rpc::GrpcClient<rpc::NodeManagerService>>(

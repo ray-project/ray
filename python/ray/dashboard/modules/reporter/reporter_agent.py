@@ -911,15 +911,16 @@ class ReporterAgent(
     def _get_worker_processes(self):
         pids = self._get_worker_pids_from_raylet()
         logger.debug(f"Worker PIDs from raylet: {pids}")
-        if pids:
-            workers = {}
-            for pid in pids:
-                try:
-                    proc = psutil.Process(pid)
-                    workers[self._generate_worker_key(proc)] = proc
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-            return workers
+        if not pids:
+            return []
+        workers = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                workers[self._generate_worker_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return workers
 
     def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
         workers = self._get_worker_processes()
