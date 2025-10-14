@@ -61,12 +61,12 @@ steps:
           - "3.9"
           - "3.10"
         cuda:
-          - "12.1.1-cudnn8"
+          - "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-      REQUIREMENTS_FILE: "requirements_ml_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_ml_cuda128_base_extra_testdeps_py{{matrix.python}}.lock"
     depends_on:
       - ray-mlcudabaseextra
 

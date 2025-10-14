@@ -76,7 +76,7 @@ depsets:
       - py39
       - py310
 
-  - name: ray_ml_cuda121_base_extra_testdeps_py${PYTHON_SHORT}
+  - name: ray_ml_cuda128_base_extra_testdeps_py${PYTHON_SHORT}
     operation: expand
     depsets:
       - ray_img_depset_py${PYTHON_SHORT}
@@ -86,12 +86,12 @@ depsets:
       - docker/base-extra/requirements.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
-    output: release/ray_release/byod/ray_ml_cuda121_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/ray_ml_cuda128_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
-      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
