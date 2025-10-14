@@ -41,7 +41,7 @@ For operator names longer than a threshold of 100 characters, Ray Data truncates
 * To change the threshold of truncating the name, update the constant `ray.data._internal.progress_bar.ProgressBar.MAX_NAME_LENGTH = 42`.
 
 .. tip::
-   There is a new experimental console UI to show progress bars. Set `DataContext.get_current().enable_rich_progress_bars = True` or set the `RAY_DATA_ENABLE_EXPERIMENTAL_RICH_PROGRESS=1` environment variable to enable.
+   There is a new experimental console UI to show progress bars. Set `DataContext.get_current().enable_rich_progress_bars = True` or set the `RAY_DATA_ENABLE_RICH_PROGRESS_BARS=1` environment variable to enable.
 
 .. _ray-data-dashboard:
 

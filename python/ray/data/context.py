@@ -147,7 +147,7 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
 # Globally enable or disable experimental rich progress bars. This is a new
 # interface to replace the old tqdm progress bar implementation.
 DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
-    env_integer("RAY_DATA_ENABLE_EXPERIMENTAL_RICH_PROGRESS", 0)
+    env_integer("RAY_DATA_ENABLE_RICH_PROGRESS_BARS", 0)
 )
 
 DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
