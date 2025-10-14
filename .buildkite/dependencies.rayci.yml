@@ -40,15 +40,6 @@ steps:
     job_env: manylinux
     depends_on: manylinux
 
-  - label: ":tapioca: build: raydepsets: compile ray ml image dependencies"
-    key: raydepsets_compile_rayml_image_dependencies
-    tags: always
-    instance_type: medium
-    commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/ray_ml_image.depsets.yaml --check
-    job_env: manylinux
-    depends_on: manylinux
-
   - label: ":tapioca: build: raydepsets: compile multimodal inference release test dependencies"
     key: raydepsets_compile_multimodal_inference_release_test_dependencies
     tags: always

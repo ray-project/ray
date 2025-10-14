@@ -18,15 +18,15 @@ build_arg_sets:
   cpu_py311:
     <<: *py311
     CUDA_CODE: cpu
-  cu121_py39:
+  cu128_py39:
     <<: *py39
-    CUDA_CODE: cu121
-  cu121_py310:
+    CUDA_CODE: cu128
+  cu128_py310:
     <<: *py310
-    CUDA_CODE: cu121
-  cu121_py311:
+    CUDA_CODE: cu128
+  cu128_py311:
     <<: *py311
-    CUDA_CODE: cu121
+    CUDA_CODE: cu128
 
 depsets:
   - name: ray_ml_image_${PYTHON_SHORT}_${CUDA_CODE}_depset
@@ -81,8 +81,8 @@ depsets:
       - --python-platform=linux
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
     build_arg_sets:
-      - cu121_py39
-      - cu121_py310
-      - cu121_py311
+      - cu128_py39
+      - cu128_py310
+      - cu128_py311
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
