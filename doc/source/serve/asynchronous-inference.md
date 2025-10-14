@@ -46,6 +46,10 @@ processor_config = TaskProcessorConfig(
 )
 ```
 
+:::{note}
+The filesystem broker is intended for local testing only and has limited functionality. For example, it doesn't support `cancel_tasks`. For production deployments, use a production-ready broker such as Redis or RabbitMQ. See the [Celery broker documentation](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/) for the full list of supported brokers.
+:::
+
 ### `@task_consumer`
 Decorator that turns a Serve deployment into a task consumer using the provided `TaskProcessorConfig`. The following code creates a task consumer:
 
