@@ -53,6 +53,14 @@ class XMLDatasource(FileBasedDatasource):
         library, which is always available but has limited XPath capabilities.
 
         To install lxml: ``pip install lxml``
+
+    Limitations:
+        When reading nested XML with repeated child elements (e.g., multiple <person>
+        elements within a <record>), the flattening logic merges child data into arrays.
+        For example, ``<record><person><name>A</name></person><person><name>B</name>
+        </person></record>`` becomes ``{'name': ['A', 'B']}``, which loses the grouping
+        information. For complex hierarchical structures, consider using XPath to select
+        specific element levels or preprocessing XML to a simpler format.
     """
 
     _FILE_EXTENSIONS = XML_FILE_EXTENSIONS
@@ -82,6 +90,12 @@ class XMLDatasource(FileBasedDatasource):
 
         This method reads an XML file, parses it, and converts the elements
         to a tabular format suitable for Ray Data processing.
+
+        Note:
+            This reads the entire file into memory, which is consistent with
+            other Ray Data datasources (JSON, CSV via PyArrow). For very large
+            XML files, Ray Data's distributed execution handles parallelization
+            by splitting files across multiple workers.
 
         Args:
             f: The PyArrow file object to read from.
@@ -263,7 +277,12 @@ class XMLDatasource(FileBasedDatasource):
                 else:
                     # ElementTree: limited XPath support
                     # Convert common XPath expressions to findall
-                    xpath_query = self._xpath.replace(".//", "")
+                    xpath_query = self._xpath
+                    # Strip leading .// or // to avoid duplication
+                    if xpath_query.startswith(".//"):
+                        xpath_query = xpath_query[3:]
+                    elif xpath_query.startswith("//"):
+                        xpath_query = xpath_query[2:]
                     # Remove namespace prefixes for simple compatibility
                     xpath_query = re.sub(r"\w+:", "", xpath_query)
                     elements = root.findall(f".//{xpath_query}")

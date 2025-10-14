@@ -52,7 +52,7 @@ def test_xml_read(ray_start_regular_shared, tmp_path):
     assert len(dsdf) == 6
     # Test metadata ops.
     for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})

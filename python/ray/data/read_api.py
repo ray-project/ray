@@ -1875,7 +1875,7 @@ def read_xml(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    file_extensions: Optional[List[str]] = XML_FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -1954,8 +1954,6 @@ def read_xml(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
-            By default, this filters out any file paths whose file extension doesn't
-            match "*.xml".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
@@ -1985,6 +1983,9 @@ def read_xml(
 
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
+
+    if file_extensions is None:
+        file_extensions = XML_FILE_EXTENSIONS
 
     datasource = XMLDatasource(
         paths,
