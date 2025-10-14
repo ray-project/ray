@@ -16,6 +16,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
@@ -28,6 +29,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
@@ -40,6 +42,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
@@ -52,6 +55,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
@@ -64,6 +68,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
       - py310
