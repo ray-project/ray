@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
-  std::unique_ptr<plasma::PlasmaClient> plasma_client;
+  std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -912,7 +912,7 @@ int main(int argc, char *argv[]) {
       return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
-    plasma_client = std::make_unique<plasma::PlasmaClient>();
+    plasma_client = std::make_shared<plasma::PlasmaClient>();
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -932,9 +932,9 @@ int main(int argc, char *argv[]) {
         *lease_dependency_manager,
         *worker_pool,
         leased_workers,
-        *plasma_client,
+        plasma_client,
         std::make_unique<ray::core::experimental::MutableObjectProvider>(
-            *plasma_client,
+            plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,

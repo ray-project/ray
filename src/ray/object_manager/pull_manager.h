@@ -36,7 +36,7 @@ namespace ray {
 // (empty string if unknown), and is_retry bool.
 using TaskMetricsKey = std::pair<std::string, bool>;
 
-enum BundlePriority {
+enum BundlePriority : uint8_t {
   /// Bundle requested by ray.get().
   GET_REQUEST,
   /// Bundle requested by ray.wait().
@@ -179,11 +179,7 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
     explicit ObjectPullRequest(double first_retry_time)
-        : client_locations(),
-          spilled_url(),
-          next_pull_time(first_retry_time),
-          num_retries(0),
-          bundle_request_ids() {}
+        : next_pull_time(first_retry_time) {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
@@ -194,7 +190,7 @@ class PullManager {
     double expiration_time_seconds = 0;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
-    uint8_t num_retries;
+    uint8_t num_retries = 0;
     bool object_size_set = false;
     size_t object_size = 0;
     // All bundle requests that haven't been canceled yet that require this
@@ -223,15 +219,14 @@ class PullManager {
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const TaskMetricsKey &task_key)
-        : objects_(std::move(requested_objects)), task_key_(task_key) {}
+    BundlePullRequest(std::vector<ObjectID> requested_objects, TaskMetricsKey task_key)
+        : objects_(std::move(requested_objects)), task_key_(std::move(task_key)) {}
     // All the objects that this bundle is trying to pull.
-    const std::vector<ObjectID> objects_;
+    std::vector<ObjectID> objects_;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects_;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const TaskMetricsKey task_key_;
+    TaskMetricsKey task_key_;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects_.emplace(object);

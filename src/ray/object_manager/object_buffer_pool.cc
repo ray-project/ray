@@ -27,7 +27,7 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(
     std::shared_ptr<plasma::PlasmaClientInterface> store_client, uint64_t chunk_size)
-    : store_client_(store_client), default_chunk_size_(chunk_size) {}
+    : store_client_(std::move(store_client)), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
   absl::MutexLock lock(&pool_mutex_);
@@ -59,7 +59,7 @@ ObjectBufferPool::~ObjectBufferPool() {
   }
 
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_CHECK_OK(store_client_->Disconnect());
+  store_client_->Disconnect();
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
@@ -73,13 +73,13 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index,
              : default_chunk_size_;
 }
 
-std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
+std::pair<std::shared_ptr<MemoryObjectReader>, Status>
 ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
                                      rpc::Address owner_address) {
   absl::MutexLock lock(&pool_mutex_);
 
   std::vector<ObjectID> object_ids{object_id};
-  std::vector<plasma::ObjectBuffer> object_buffers(1);
+  std::vector<plasma::ObjectBuffer> object_buffers;
   RAY_CHECK_OK(store_client_->Get(object_ids, 0, &object_buffers));
   if (object_buffers[0].data == nullptr) {
     RAY_LOG(INFO)
@@ -87,35 +87,34 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
         << ". This is most likely because the object was evicted or spilled before the "
            "pull request was received. The caller will retry the pull request after a "
            "timeout.";
-    return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
-        nullptr,
-        ray::Status::IOError("Unable to obtain object chunk, object not local."));
+    return std::pair<std::shared_ptr<MemoryObjectReader>, Status>(
+        nullptr, Status::IOError("Unable to obtain object chunk, object not local."));
   }
 
-  return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
+  return std::pair<std::shared_ptr<MemoryObjectReader>, Status>(
       std::make_shared<MemoryObjectReader>(std::move(object_buffers[0]),
                                            std::move(owner_address)),
-      ray::Status::OK());
+      Status::OK());
 }
 
-ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
-                                          const rpc::Address &owner_address,
-                                          uint64_t data_size,
-                                          uint64_t metadata_size,
-                                          uint64_t chunk_index) {
+Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
+                                     const rpc::Address &owner_address,
+                                     uint64_t data_size,
+                                     uint64_t metadata_size,
+                                     uint64_t chunk_index) {
   absl::MutexLock lock(&pool_mutex_);
   RAY_RETURN_NOT_OK(EnsureBufferExists(
       object_id, owner_address, data_size, metadata_size, chunk_index));
   auto &state = create_buffer_state_.at(object_id);
   if (chunk_index >= state.chunk_state_.size()) {
-    return ray::Status::IOError("Object size mismatch");
+    return Status::IOError("Object size mismatch");
   }
   if (state.chunk_state_[chunk_index] != CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
-    return ray::Status::IOError("Chunk already received by a different thread.");
+    return Status::IOError("Chunk already received by a different thread.");
   }
   state.chunk_state_[chunk_index] = CreateChunkState::REFERENCED;
-  return ray::Status::OK();
+  return Status::OK();
 }
 
 void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
@@ -208,7 +207,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
-  while (space_remaining) {
+  while (space_remaining > 0) {
     position = data_size - space_remaining;
     if (space_remaining < default_chunk_size_) {
       chunks.emplace_back(chunks.size(), data + position, space_remaining, buffer_ref);
@@ -222,18 +221,18 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
-ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
-                                                 const rpc::Address &owner_address,
-                                                 uint64_t data_size,
-                                                 uint64_t metadata_size,
-                                                 uint64_t chunk_index) {
+Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
+                                            const rpc::Address &owner_address,
+                                            uint64_t data_size,
+                                            uint64_t metadata_size,
+                                            uint64_t chunk_index) {
   while (true) {
     // Buffer for object_id already exists and the size matches ours.
     {
       auto it = create_buffer_state_.find(object_id);
       if (it != create_buffer_state_.end() && it->second.data_size_ == data_size &&
           it->second.metadata_size_ == metadata_size) {
-        return ray::Status::OK();
+        return Status::OK();
       }
     }
 
@@ -306,7 +305,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
     }
     // Create failed. Buffer creation will be tried by another chunk.
     // And this chunk will eventually make it here via retried pull requests.
-    return ray::Status::IOError(s.message());
+    return Status::IOError(s.message());
   }
 
   // Read object into store.
@@ -323,7 +322,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
                  << " in plasma store, number of chunks: " << num_chunks
                  << ", chunk index: " << chunk_index;
 
-  return ray::Status::OK();
+  return Status::OK();
 }
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
