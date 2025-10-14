@@ -15,11 +15,11 @@ When contributing, you work with several key components:
 
 .. vale off
 
-* **Core SQL Engine** - ``ray/python/ray/data/sql/core.py``: Main query execution logic
-* **SQL Parsing** - ``ray/python/ray/data/sql/parser.py``: Query parsing and optimization using SQLGlot
-* **Execution Handlers** - ``ray/python/ray/data/sql/execution/``: Query execution strategies
-* **Configuration** - ``ray/python/ray/data/sql/config.py``: Engine configuration and settings
-* **Testing Framework** - ``ray/python/ray/data/sql/testing.py``: Comprehensive test utilities
+* **Core SQL Engine** - ``ray/python/ray/data/experimental/sql/core.py``: Main query execution logic
+* **SQL Parsing** - ``ray/python/ray/data/experimental/sql/engines/sqlglot/parser.py``: Query parsing using SQLGlot
+* **Execution Handlers** - ``ray/python/ray/data/experimental/sql/execution/``: Query execution strategies
+* **Configuration** - ``ray/python/ray/data/experimental/sql/config.py``: Engine configuration and settings
+* **Public API** - ``ray/python/ray/data/sql.py``: Public SQL API interface
 
 .. vale on
 
@@ -42,7 +42,7 @@ Setting up your development environment
    .. code-block:: bash
 
        # Run SQL-specific tests
-       python -m pytest python/ray/data/sql/tests/ -v
+       python -m pytest python/ray/data/tests/test_sql*.py -v
        
        # Run a quick integration test
        python -c "
@@ -64,24 +64,33 @@ Directory Structure
 
 .. code-block::
 
-    ray/python/ray/data/sql/
-    ├── __init__.py              # Public API exports
-    ├── core.py                  # Main SQL engine
-    ├── parser.py                # SQL parsing and optimization
-    ├── config.py                # Configuration classes
-    ├── abstractions.py          # Core data structures
-    ├── utils.py                 # Utility functions
-    ├── testing.py               # Test framework
-    ├── execution/               # Query execution strategies
-    │   ├── __init__.py
-    │   ├── handlers.py          # Query execution handlers
-    │   ├── analyzers.py         # Query analysis
-    │   └── executor.py          # Main execution coordinator
-    └── tests/                   # Test suite
-        ├── __init__.py
-        ├── test_basic.py
-        ├── test_joins.py
-        └── test_performance.py
+    ray/python/ray/data/
+    ├── sql.py                            # Public SQL API
+    ├── experimental/
+    │   ├── sql_api.py                    # Internal SQL API implementation
+    │   └── sql/                          # SQL engine implementation
+    │       ├── __init__.py               # Internal module exports
+    │       ├── core.py                   # Main SQL engine (RaySQL class)
+    │       ├── config.py                 # Configuration classes
+    │       ├── exceptions.py             # Exception hierarchy
+    │       ├── utils.py                  # Utility functions
+    │       ├── engines/                  # Query engine backends
+    │       │   ├── sqlglot/              # SQLGlot-based engine
+    │       │   │   ├── parser.py         # SQL parsing
+    │       │   │   ├── optimizers.py     # Query optimization
+    │       │   │   └── sqlglot_backend.py
+    │       │   └── datafusion/           # DataFusion engine (experimental)
+    │       │       └── datafusion_backend.py
+    │       ├── execution/                # Query execution
+    │       │   ├── handlers.py           # Execution handlers
+    │       │   ├── analyzers.py          # Query analysis
+    │       │   └── executor.py           # Execution coordinator
+    │       ├── registry/                 # Table registry
+    │       ├── schema/                   # Schema management
+    │       └── validators/               # Query validation
+    └── tests/
+        ├── test_sql.py                   # Main SQL tests
+        └── test_sql_api.py               # API tests
 
 API Stability Guidelines
 ========================

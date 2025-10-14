@@ -5,7 +5,7 @@ SQL Quickstart
 =================
 
 .. warning::
-    Ray Data SQL is currently experimental and APIs are subject to change.
+    Ray Data SQL is experimental and APIs are subject to change.
 
 This quickstart guide shows you how to get started with Ray Data SQL. Learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
 
@@ -242,7 +242,7 @@ Before diving deeper, be aware of these current limitations:
 .. vale off
 
 SQL feature limitations
-  - **Window Functions**: Limited support for ROW_NUMBER(), RANK(), etc.
+  - **Window Functions**: Limited support for ROW_NUMBER(), RANK(), and similar functions
   - **User-Defined Functions**: Custom SQL functions aren't supported
   - **Recursive CTEs**: Recursive Common Table Expressions aren't available
   - **Materialized Views**: Only direct table queries, no view support
@@ -260,19 +260,19 @@ Most limitations can be worked around using Ray Data operations:
 .. testcode::
 
     # Instead of window functions, use Ray Data groupby
-    # ❌ Limited: SELECT name, ROW_NUMBER() OVER (...) FROM users
-    # ✅ Use: users.groupby("dept").map_groups(lambda group: ...)
+    # Limited: SELECT name, ROW_NUMBER() OVER (...) FROM users
+    # Use: users.groupby("dept").map_groups(lambda group: ...)
     
     # Instead of UDFs, use Ray Data map
-    # ❌ Not supported: SELECT custom_function(name) FROM users  
-    # ✅ Use: users.map(lambda row: {"result": custom_function(row["name"])})
+    # Not supported: SELECT custom_function(name) FROM users  
+    # Use: users.map(lambda row: {"result": custom_function(row["name"])})
 
 .. vale off
 
 SQL dialect support
   - **Primary**: DuckDB SQL dialect (recommended)
-  - **Supported**: PostgreSQL, MySQL, BigQuery syntax (with conversion)
-  - **Automatic Conversion**: SQLGlot handles dialect differences
+  - **Supported**: PostgreSQL, MySQL, Snowflake, BigQuery, Spark SQL, and more
+  - **Easy Migration**: Run existing queries from other databases with minimal changes
 
 .. vale on
 
@@ -280,6 +280,8 @@ What's next?
 ============
 
 Now that you've learned the basics, explore more advanced features:
+
+- **Migration Guide**: Migrating from another database? See the :ref:`SQL User Guide <data_sql_user_guide>` migration section to run your existing PostgreSQL, MySQL, or Snowflake queries.
 
 - **Advanced SQL Operations**: Check out the :ref:`SQL User Guide <data_sql_user_guide>` for complex queries, optimization tips, and best practices.
 

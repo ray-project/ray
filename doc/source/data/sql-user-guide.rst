@@ -159,7 +159,7 @@ Ray Data SQL automatically infers data types from your datasets:
 
 .. testcode::
 
-    import ray.data.sql get_schema
+    from ray.data.sql import get_schema
 
     # Check inferred schema
     schema = get_schema("employees")
@@ -204,7 +204,7 @@ Follow these best practices for optimal performance:
 
 .. testcode::
 
-    import ray.data.sql SQLConfig, LogLevel
+    from ray.data.sql import SQLConfig, LogLevel
 
     # Enable query optimization
     config = SQLConfig(
@@ -285,50 +285,40 @@ Ray Data SQL provides extensive configuration options for different environments
 
 .. testcode::
 
-    import ray.data.sql SQLConfig, LogLevel
+    from ray.data.sql import SQLConfig, LogLevel
     from ray.data import DataContext
 
     # Development configuration - verbose logging and strict checking
     dev_config = SQLConfig(
         # Logging and debugging
         log_level=LogLevel.DEBUG,
-        enable_query_timing=True,
-        enable_execution_stats=True,
         
         # Query behavior
         case_sensitive=True,            # Strict column name matching
-        strict_mode=True,              # Strict SQL compliance
+        strict_mode=True,               # Strict SQL compliance
         enable_optimization=True,
         enable_sqlglot_optimizer=True,
         
         # Development safety
-        max_join_partitions=50,        # Prevent expensive operations
-        enable_auto_registration=True, # Convenient for experimentation
-        warn_on_large_results=True     # Warn about large result sets
+        max_join_partitions=50          # Prevent expensive operations
     )
 
     # Production configuration - optimized for performance and reliability
     production_config = SQLConfig(
         # Performance optimizations
-        log_level=LogLevel.WARNING,    # Reduce logging overhead
+        log_level=LogLevel.WARNING,     # Reduce logging overhead
         enable_optimization=True,
         enable_sqlglot_optimizer=True,
         enable_predicate_pushdown=True,
-        enable_column_pruning=True,
+        enable_projection_pushdown=True,
         
         # Resource management
-        max_join_partitions=200,       # Higher limits for production
-        max_memory_usage_gb=32,        # Memory limit for operations
-        enable_streaming_execution=True, # Handle large datasets
+        max_join_partitions=200,        # Higher limits for production
+        query_timeout_seconds=3600,     # 1 hour timeout for long queries
         
         # Behavior settings
-        case_sensitive=False,          # More forgiving for user queries
-        strict_mode=False,            # Allow type coercion
-        enable_auto_registration=False, # Security: explicit registration only
-        
-        # Error handling
-        continue_on_error=False,       # Fail fast in production
-        max_retry_attempts=3          # Retry transient failures
+        case_sensitive=False,           # More forgiving for user queries
+        strict_mode=False               # Allow type coercion
     )
 
     # Apply configuration for a session
@@ -336,138 +326,114 @@ Ray Data SQL provides extensive configuration options for different environments
         ctx.sql_config = production_config
         result = ray.data.sql("SELECT * FROM employees")
 
-SQL dialect handling
---------------------
+Migrating from other SQL systems
+---------------------------------
 
-.. vale off
+Ray Data SQL supports multiple SQL dialects, making migration from other databases straightforward. Set the dialect to match your source system, and Ray Data automatically handles syntax differences.
 
-Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
+**Migrate from PostgreSQL**
 
-.. vale on
-
-.. testcode::
-
-    # Configure dialect handling
-    dialect_config = SQLConfig(
-        # Input dialect parsing
-        sqlglot_read_dialect="duckdb",     # Default: DuckDB dialect
-        # Alternative options: "mysql", "postgres", "sqlite", "bigquery", "snowflake"
-        
-        # Output dialect for optimization
-        sqlglot_write_dialect="duckdb",    # Keep as DuckDB for execution
-        
-        # Compatibility settings
-        enable_dialect_conversion=True,    # Auto-convert between dialects
-        strict_ansi_compliance=False,      # Allow dialect-specific features
-        
-        # MySQL compatibility
-        enable_mysql_compatibility=False,  # MySQL-specific functions
-        mysql_mode="ANSI",                 # MySQL SQL mode
-        
-        # PostgreSQL compatibility  
-        enable_postgres_compatibility=False, # PostgreSQL-specific features
-        postgres_array_syntax=True,       # Support PostgreSQL arrays
-        
-        # BigQuery compatibility
-        enable_bigquery_compatibility=False, # BigQuery-specific SQL
-        bigquery_legacy_sql=False         # Use standard SQL, not legacy
-    )
-
-**Example: Converting from PostgreSQL to DuckDB dialect**
+The following example shows how to run PostgreSQL queries without modification:
 
 .. testcode::
 
-    # PostgreSQL-style query with specific syntax
-    postgres_query = """
-        SELECT employee_id,
-               STRING_AGG(skill, ', ' ORDER BY skill) as skills
-        FROM employee_skills
-        GROUP BY employee_id
-    """
+    from ray.data.sql import SQLConfig, SQLDialect, register
+    from ray.data import DataContext
+    import ray.data
+
+    # Use PostgreSQL dialect
+    config = SQLConfig(dialect=SQLDialect.POSTGRES)
     
-    # Configure for PostgreSQL input, DuckDB execution
-    config = SQLConfig(
-        sqlglot_read_dialect="postgres",
-        sqlglot_write_dialect="duckdb",
-        enable_dialect_conversion=True
-    )
+    # Apply configuration
+    ctx = DataContext.get_current()
+    ctx.sql_dialect = config.dialect.value
     
-    with DataContext() as ctx:
-        ctx.sql_config = config
-        # Query is automatically converted to DuckDB-compatible syntax
-        result = ray.data.sql(postgres_query)
+    # Run PostgreSQL queries directly
+    employees = ray.data.from_items([
+        {"id": 1, "name": "Alice", "dept": "Engineering"},
+        {"id": 2, "name": "Bob", "dept": "Sales"}
+    ])
+    register("employees", employees)
+    
+    result = ray.data.sql("""
+        SELECT name, 
+               UPPER(dept) as department
+        FROM employees
+        WHERE id > 0
+    """)
 
-Advanced Configuration Options
-------------------------------
+**Migrate from MySQL**
 
-**Memory and Resource Management**
-
-.. testcode::
-
-    memory_config = SQLConfig(
-        # Memory limits
-        max_memory_usage_gb=16,           # Maximum memory per operation
-        enable_memory_monitoring=True,    # Track memory usage
-        memory_pressure_threshold=0.8,    # Threshold for memory warnings
-        
-        # Streaming and batching
-        enable_streaming_execution=True,  # Process data in streams
-        default_batch_size=10000,         # Default batch size for operations
-        adaptive_batch_sizing=True,       # Adjust batch size dynamically
-        
-        # Spill-to-disk settings
-        enable_disk_spill=True,          # Spill to disk when memory is full
-        spill_directory="/tmp/ray_sql",   # Directory for spill files
-        max_spill_size_gb=100            # Maximum disk usage for spill
-    )
-
-**Query Optimization and Execution**
+The following example demonstrates MySQL-specific syntax support:
 
 .. testcode::
 
-    optimization_config = SQLConfig(
-        # Query optimization
-        enable_optimization=True,
-        enable_sqlglot_optimizer=True,
-        enable_cost_based_optimization=True, # Cost-based query planning
-        
-        # Pushdown optimizations
-        enable_predicate_pushdown=True,     # Push filters to data sources
-        enable_projection_pushdown=True,    # Push column selection down
-        enable_limit_pushdown=True,         # Push LIMIT to data sources
-        
-        # Join optimization
-        enable_join_reordering=True,        # Reorder joins for efficiency
-        prefer_broadcast_joins=True,        # Use broadcast for small tables
-        broadcast_join_threshold_mb=100,    # Size threshold for broadcast
-        
-        # Aggregate optimization
-        enable_partial_aggregation=True,    # Pre-aggregate before shuffle
-        aggregation_batch_size=50000       # Batch size for aggregations
-    )
+    # Use MySQL dialect
+    config = SQLConfig(dialect=SQLDialect.MYSQL)
+    ctx = DataContext.get_current()
+    ctx.sql_dialect = config.dialect.value
+    
+    orders = ray.data.from_items([
+        {"order_id": 1, "amount": 100.50, "date": "2024-01-15"},
+        {"order_id": 2, "amount": 250.00, "date": "2024-01-16"}
+    ])
+    register("orders", orders)
+    
+    # MySQL-style query
+    result = ray.data.sql("""
+        SELECT order_id,
+               amount,
+               date
+        FROM orders
+        WHERE amount > 100
+    """)
 
-**Security and Access Control**
+**Migrate from Snowflake**
+
+The following example shows Snowflake query compatibility:
 
 .. testcode::
 
-    security_config = SQLConfig(
-        # Table access control
-        enable_auto_registration=False,     # Require explicit registration
-        allow_dynamic_tables=False,         # Prevent dynamic table creation
-        restricted_table_patterns=[],       # Patterns for restricted tables
-        
-        # Query restrictions
-        max_query_complexity=1000,          # Limit query complexity
-        allowed_functions=["COUNT", "SUM", "AVG"], # Whitelist functions
-        blocked_keywords=["DROP", "DELETE"], # Block dangerous keywords
-        
-        # Resource limits
-        max_execution_time_seconds=300,     # Query timeout
-        max_result_rows=1000000,           # Limit result size
-        enable_query_logging=True          # Log all queries for audit
-    )
+    # Use Snowflake dialect
+    config = SQLConfig(dialect=SQLDialect.SNOWFLAKE)
+    ctx = DataContext.get_current()
+    ctx.sql_dialect = config.dialect.value
+    
+    sales = ray.data.from_items([
+        {"product": "laptop", "revenue": 1500, "quarter": "Q1"},
+        {"product": "phone", "revenue": 800, "quarter": "Q1"}
+    ])
+    register("sales", sales)
+    
+    # Snowflake-style query
+    result = ray.data.sql("""
+        SELECT product,
+               revenue,
+               quarter
+        FROM sales
+        WHERE revenue > 1000
+    """)
 
-Memory Management
+**Supported Dialects**
+
+Ray Data SQL supports these dialects:
+
+- **DuckDB** (default): Most permissive, recommended for new projects
+- **PostgreSQL**: Full PostgreSQL syntax support
+- **MySQL**: MySQL-specific functions and syntax
+- **SQLite**: SQLite compatibility
+- **Snowflake**: Snowflake SQL syntax
+- **BigQuery**: Google BigQuery SQL
+- **Redshift**: Amazon Redshift SQL
+- **Spark**: Apache Spark SQL
+
+.. tip::
+   Start with your existing SQL queries unchanged. Ray Data SQL's dialect support handles most syntax differences automatically, minimizing migration effort
+
+.. note::
+   Advanced configuration for memory management, query optimization, and security is handled through Ray Data's native configuration system. Use `ray.data.DataContext.get_current()` to configure Ray Data-level settings that affect SQL query execution.
+
+Memory management
 -----------------
 
 Handle large datasets efficiently:
@@ -496,7 +462,7 @@ Understanding Current Limitations
 
 .. testcode::
 
-    # ❌ NOT SUPPORTED: Window functions (limited support)
+    # NOT SUPPORTED: Window functions (limited support)
     try:
         result = ray.data.sql("""
             SELECT name, salary,
@@ -506,22 +472,22 @@ Understanding Current Limitations
     except Exception as e:
         print(f"Window function error: {e}")
         
-        # ✅ WORKAROUND: Use Ray Data operations
+        # WORKAROUND: Use Ray Data operations
         employees_ds = sql("SELECT * FROM employees")
         ranked = employees_ds.groupby("dept_id").map_groups(
             lambda group: group.sort("salary", ascending=False)
                               .with_column("rank", range(1, len(group) + 1))
         )
 
-    # ❌ NOT SUPPORTED: User-defined functions
+    # NOT SUPPORTED: User-defined functions
     try:
         result = ray.data.sql("SELECT custom_function(name) FROM employees")
     except Exception:
-        # ✅ WORKAROUND: Use Ray Data map operations
+        # WORKAROUND: Use Ray Data map operations
         result = ray.data.sql("SELECT name FROM employees")
         transformed = result.map(lambda row: {"custom_result": custom_function(row["name"])})
 
-    # ❌ NOT SUPPORTED: Recursive CTEs
+    # NOT SUPPORTED: Recursive CTEs
     # .. vale off
     try:
         result = ray.data.sql("""
@@ -534,14 +500,14 @@ Understanding Current Limitations
             SELECT * FROM employee_hierarchy
         """)
     except Exception:
-        # ✅ WORKAROUND: Implement recursion with Ray Data
+        # WORKAROUND: Implement recursion with Ray Data
         print("Use iterative processing with Ray Data operations")
 
 **Performance Limitations and Solutions**
 
 .. testcode::
 
-    # ❌ ISSUE: Large cross-joins are expensive
+    # ISSUE: Large cross-joins are expensive
     # This can cause memory issues and poor performance
     expensive_query = sql("""
         SELECT a.id, b.id
@@ -549,7 +515,7 @@ Understanding Current Limitations
         CROSS JOIN large_table_b b
     """)
     
-    # ✅ SOLUTION: Add filters to reduce cardinality
+    # SOLUTION: Add filters to reduce cardinality
     optimized_query = sql("""
         SELECT a.id, b.id
         FROM large_table_a a
@@ -557,14 +523,14 @@ Understanding Current Limitations
         WHERE a.category = 'active' AND b.status = 'valid'
     """)
     
-    # ❌ ISSUE: Complex subqueries in SELECT clauses
+    # ISSUE: Complex subqueries in SELECT clauses
     slow_query = sql("""
         SELECT name,
                (SELECT AVG(salary) FROM employees e2 WHERE e2.dept_id = e1.dept_id) as dept_avg
         FROM employees e1
     """)
     
-    # ✅ SOLUTION: Use JOINs with aggregation
+    # SOLUTION: Use JOINs with aggregation
     fast_query = sql("""
         SELECT e.name, da.dept_avg
         FROM employees e
@@ -582,7 +548,7 @@ Data Type Limitations
 
 .. testcode::
 
-    # ✅ WELL SUPPORTED: Basic types
+    # WELL SUPPORTED: Basic types
     supported_data = ray.data.from_items([
         {
             "int_col": 42,
@@ -593,7 +559,7 @@ Data Type Limitations
         }
     ])
     
-    # ⚠️ LIMITED SUPPORT: Complex nested types
+    # LIMITED SUPPORT: Complex nested types
     nested_data = ray.data.from_items([
         {
             "id": 1,
@@ -605,14 +571,14 @@ Data Type Limitations
     
     register("nested_data", nested_data)
     
-    # ✅ WORKS: Simple field access
+    # WORKS: Simple field access
     result = ray.data.sql("SELECT id, nested_dict FROM nested_data")
     
-    # ❌ LIMITED: Complex nested operations
+    # LIMITED: Complex nested operations
     try:
         result = ray.data.sql("SELECT nested_dict.key FROM nested_data")
     except Exception:
-        # ✅ WORKAROUND: Use Ray Data for complex nested access
+        # WORKAROUND: Use Ray Data for complex nested access
         result = nested_data.map(lambda row: {"key": row["nested_dict"]["key"]})
 
 Dialect Compatibility Matrix
@@ -633,46 +599,46 @@ Dialect Compatibility Matrix
      - BigQuery
      - Notes
    * - Basic SELECT/WHERE
-     - ✅ Full
-     - ✅ Full
-     - ✅ Full
-     - ✅ Full
+     - Full
+     - Full
+     - Full
+     - Full
      - Core features
    * - JOINs
-     - ✅ Full
-     - ✅ Full
-     - ✅ Full
-     - ✅ Partial
+     - Full
+     - Full
+     - Full
+     - Partial
      - Some BigQuery syntax differs
    * - Window Functions
-     - ⚠️ Limited
-     - ⚠️ Limited
-     - ⚠️ Limited
-     - ⚠️ Limited
+     - Limited
+     - Limited
+     - Limited
+     - Limited
      - Basic support only
    * - CTEs
-     - ✅ Full
-     - ✅ Full
-     - ✅ Partial
-     - ✅ Full
+     - Full
+     - Full
+     - Partial
+     - Full
      - MySQL: Version dependent
    * - Array Operations
-     - ⚠️ Limited
-     - ✅ Good
-     - ❌ Minimal
-     - ✅ Good
+     - Limited
+     - Good
+     - Minimal
+     - Good
      - Use Ray Data for complex arrays
    * - JSON Functions
-     - ⚠️ Limited
-     - ✅ Good
-     - ✅ Good
-     - ✅ Good
+     - Limited
+     - Good
+     - Good
+     - Good
      - Basic JSON support
    * - String Functions
-     - ✅ Good
-     - ✅ Good
-     - ✅ Good
-     - ✅ Good
+     - Good
+     - Good
+     - Good
+     - Good
      - Most functions supported
 
 .. vale on
@@ -723,7 +689,7 @@ Common Error Patterns and Solutions
     except ValueError as e:
         print(f"Column error: {e}")
         # Fix: Check available columns
-        import ray.data.sql get_schema
+        from ray.data.sql import get_schema
         schema = get_schema("employees")
         print(f"Available columns: {schema.column_names}")
         result = ray.data.sql("SELECT employee_name FROM employees")
@@ -737,7 +703,7 @@ Common Error Patterns and Solutions
     except ValueError as e:
         print(f"Table error: {e}")
         # Check what tables are available
-        import ray.data.sql list_tables
+        from ray.data.sql import list_tables
         print(f"Available tables: {list_tables()}")
 
 **Memory and Performance Errors**
@@ -754,7 +720,7 @@ Common Error Patterns and Solutions
     except MemoryError as e:
         print(f"Memory error: {e}")
         # Use streaming or add filters
-        config = SQLConfig(enable_streaming_execution=True)
+        config = SQLConfig(enable_optimization=True)
         with DataContext() as ctx:
             ctx.sql_config = config
             result = ray.data.sql("""
@@ -771,15 +737,14 @@ Advanced Debugging Techniques
 
 .. testcode::
 
-    import ray.data.sql SQLConfig, LogLevel
+    from ray.data.sql import SQLConfig, LogLevel
     import time
 
     # Comprehensive debugging configuration
     debug_config = SQLConfig(
         log_level=LogLevel.DEBUG,
-        enable_query_timing=True,
-        enable_execution_stats=True,
-        enable_memory_monitoring=True
+        enable_optimization=True,
+        enable_sqlglot_optimizer=True
     )
 
     def debug_sql_query(query, description=""):
@@ -801,7 +766,7 @@ Advanced Debugging Techniques
                 execution_time = time.time() - start_time
                 row_count = result.count()
                 
-                print(f"✅ Query succeeded:")
+                print(f"Query succeeded:")
                 print(f"   - Execution time: {execution_time:.3f}s")
                 print(f"   - Rows returned: {row_count}")
                 print(f"   - Memory usage: {result.size_bytes() / 1024 / 1024:.1f} MB")
@@ -810,7 +775,7 @@ Advanced Debugging Techniques
                 
         except Exception as e:
             execution_time = time.time() - start_time
-            print(f"❌ Query failed after {execution_time:.3f}s:")
+            print(f"Query failed after {execution_time:.3f}s:")
             print(f"   - Error: {str(e)}")
             print(f"   - Error type: {type(e).__name__}")
             raise
@@ -931,7 +896,7 @@ Resource Management
 .. testcode::
 
     # Clean up tables when done
-    import ray.data.sql clear_tables, list_tables
+    from ray.data.sql import clear_tables, list_tables
 
     # Check current tables
     print(f"Active tables: {list_tables()}")
@@ -953,7 +918,7 @@ Monitor SQL query performance in production:
 .. testcode::
 
     import time
-    import ray.data.sql SQLConfig, LogLevel
+    from ray.data.sql import SQLConfig, LogLevel
 
     # Enable detailed logging for production monitoring
     config = SQLConfig(

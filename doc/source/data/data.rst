@@ -11,7 +11,6 @@ Ray Data: Scalable Datasets for ML
     key-concepts
     user-guide
     sql
-    sql-examples
     examples
     api/api
     comparisons

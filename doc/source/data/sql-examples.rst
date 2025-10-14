@@ -1,3 +1,5 @@
+.. _data_sql_examples:
+
 Ray Data SQL Examples
 =====================
 
@@ -218,7 +220,7 @@ Configure the SQL engine for specific requirements:
 
 .. testcode::
 
-    import ray.data.sql SQLConfig, LogLevel
+    from ray.data.sql import SQLConfig, LogLevel
     from ray.data import DataContext
 
     # Development configuration with verbose logging
@@ -260,7 +262,7 @@ Handle common SQL errors gracefully in your applications:
 
 .. testcode::
 
-    import ray.data.sql list_tables, get_schema
+    from ray.data.sql import list_tables, get_schema
 
     def safe_sql_query(query, description="query"):
         """Execute SQL with comprehensive error handling."""
@@ -361,7 +363,7 @@ Clean up resources when you're done:
 
 .. testcode::
 
-    import ray.data.sql clear_tables, list_tables
+    from ray.data.sql import clear_tables, list_tables
 
     # Check current tables
     print(f"Tables before cleanup: {list_tables()}")

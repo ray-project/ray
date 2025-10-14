@@ -5,13 +5,16 @@ Ray Data SQL: SQL for Data
 ============================
 
 .. warning::
-    Ray Data SQL is currently experimental and APIs are subject to change.
+    Ray Data SQL is experimental and APIs are subject to change.
 
 .. toctree::
     :hidden:
 
     sql-quickstart
     sql-user-guide
+    sql-examples
+    sql-validation
+    sql-contributing
     api/sql
 
 Ray Data SQL provides a comprehensive SQL interface for Ray Datasets, enabling familiar SQL operations on distributed data. Execute complex queries, joins, aggregations, and transformations using standard SQL syntax while leveraging Ray's scalable processing capabilities.
@@ -38,6 +41,7 @@ Ray Data SQL is ideal for:
 - **Data scientists** who need to combine SQL queries with machine learning workflows
 - **Data engineers** who want to process large datasets using standard SQL operations
 - **Teams** that need to bridge the gap between SQL-based tools and distributed computing
+- **Migrating users** who want to run existing PostgreSQL, MySQL, Snowflake, or BigQuery queries with minimal changes
 
 Common use cases:
 
@@ -45,6 +49,7 @@ Common use cases:
 - **Data transformation**: Transform and clean data using SQL before applying machine learning
 - **Analytics**: Perform complex aggregations and joins on distributed data
 - **ETL pipelines**: Build data pipelines that combine SQL operations with Ray Data transformations
+- **Database migration**: Move workloads from traditional databases to Ray Data with automatic dialect support
 
 Install Ray Data SQL
 ---------------------
@@ -58,7 +63,7 @@ Ray Data includes Ray Data SQL. To install:
 Quick start
 -----------
 
-Here's a simple example of using SQL with Ray Data:
+The following example demonstrates basic SQL querying with Ray Data:
 
 .. testcode::
 
@@ -233,19 +238,17 @@ Advanced configuration options
         enable_sqlglot_optimizer=True,
         max_join_partitions=200,
         enable_predicate_pushdown=True,
+        enable_projection_pushdown=True,
         
         # Behavior settings
         case_sensitive=False,
-        strict_mode=False,              # Allow flexible type handling
-        enable_auto_registration=False, # Disable for security
+        strict_mode=False,
         
         # Logging and debugging
-        log_level=LogLevel.WARNING,     # Reduce noise in production
-        enable_query_timing=True,       # Track performance metrics
+        log_level=LogLevel.WARNING,
         
-        # Memory management
-        enable_streaming_execution=True, # For large datasets
-        max_memory_usage_gb=16          # Memory limit for operations
+        # Query execution
+        query_timeout_seconds=300
     )
 
 SQL dialect configuration
@@ -253,17 +256,23 @@ SQL dialect configuration
 
 .. testcode::
 
-    # Configure SQL dialect handling
+    # Configure SQL dialect for different databases
     dialect_config = SQLConfig(
-        # SQLGlot dialect settings
-        sqlglot_read_dialect="duckdb",    # Input SQL dialect
-        sqlglot_write_dialect="duckdb",   # Output dialect for optimization
-        enable_dialect_conversion=True,   # Auto-convert between dialects
-        
-        # Compatibility settings
-        enable_mysql_compatibility=False, # MySQL-specific features
-        enable_postgres_compatibility=False, # PostgreSQL-specific features
-        strict_ansi_compliance=True       # Strict ANSI SQL compliance
+        dialect=SQLDialect.DUCKDB,
+        case_sensitive=False,
+        strict_mode=False
+    )
+    
+    # MySQL dialect example
+    mysql_config = SQLConfig(
+        dialect=SQLDialect.MYSQL,
+        enable_optimization=True
+    )
+    
+    # PostgreSQL dialect example
+    postgres_config = SQLConfig(
+        dialect=SQLDialect.POSTGRES,
+        enable_optimization=True
     )
 
 Integration with Ray Data
