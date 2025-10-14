@@ -108,7 +108,10 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
-    const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
+    const WorkerID &worker_id,
+    rpc::WorkerExitType exit_type,
+    const std::string &exit_detail,
+    uint64_t end_time_ms) {
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
     // No tasks by the worker.
@@ -119,13 +122,16 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
   std::stringstream error_message;
   error_message << "Worker running the task (" << worker_id.Hex()
-                << ") died with exit_type: " << worker_failure_data.exit_type()
-                << " with error_message: " << worker_failure_data.exit_detail();
+                << ") died with exit_type: " << exit_type
+                << " with error_message: " << exit_detail;
   error_info.set_error_message(error_message.str());
 
+  RAY_LOG(DEBUG) << "[DEBUG] Error message string: " << error_message.str()
+                 << " Worker ID: " << worker_id.Hex();
+  RAY_LOG(DEBUG) << "[DEBUG] Final error_info object: " << error_info.DebugString();
+
   for (const auto &task_locator : task_attempts_itr->second) {
-    MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
+    MarkTaskAttemptFailedIfNeeded(task_locator, end_time_ms * 1000 * 1000, error_info);
   }
 }
 
@@ -133,6 +139,14 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
     int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
+  RAY_LOG(DEBUG) << "[DEBUG] Within MarkTaskAttemptFailedIfNeeded";
+
+  // Check if locator is invalid (null or pointing to freed memory)
+  if (!locator) {
+    RAY_LOG(ERROR) << "[DEBUG] Invalid locator: locator is null";
+    return;
+  }
+
   auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
   if (IsTaskTerminated(task_events)) {
@@ -729,8 +743,10 @@ void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
   usage_stats_client_ = usage_stats_client;
 }
 
-void GcsTaskManager::OnWorkerDead(
-    const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
+void GcsTaskManager::OnWorkerDead(const WorkerID &worker_id,
+                                  rpc::WorkerExitType exit_type,
+                                  const std::string &exit_detail,
+                                  uint64_t end_time_ms) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
   auto timer = std::make_shared<boost::asio::deadline_timer>(
@@ -738,16 +754,17 @@ void GcsTaskManager::OnWorkerDead(
       boost::posix_time::milliseconds(
           RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
-  timer->async_wait(
-      [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
-        if (error == boost::asio::error::operation_aborted) {
-          // timer canceled or aborted.
-          return;
-        }
-        // If there are any non-terminated tasks from the worker, mark them failed since
-        // all workers associated with the worker will be failed.
-        task_event_storage_->MarkTasksFailedOnWorkerDead(worker_id, *worker_data);
-      });
+  timer->async_wait([this, timer, worker_id, exit_type, exit_detail, end_time_ms](
+                        const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // timer canceled or aborted.
+      return;
+    }
+    // If there are any non-terminated tasks from the worker, mark them failed since
+    // all workers associated with the worker will be failed.
+    task_event_storage_->MarkTasksFailedOnWorkerDead(
+        worker_id, exit_type, exit_detail, end_time_ms);
+  });
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
