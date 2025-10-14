@@ -32,7 +32,7 @@ from ray.data._internal.datasource.json_datasource import JSON_FILE_EXTENSIONS
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
-from ray.data._internal.datasource.tfrecords_datasource import TFRecordsDatasource
+from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 
@@ -176,7 +176,7 @@ def _build_extension_to_reader_map() -> Dict[str, str]:
     for ext in AvroDatasource._FILE_EXTENSIONS:
         extension_map[ext.lower()] = "avro"
 
-    for ext in TFRecordsDatasource._FILE_EXTENSIONS:
+    for ext in TFRecordDatasource._FILE_EXTENSIONS:
         extension_map[ext.lower()] = "tfrecords"
 
     # Special formats
