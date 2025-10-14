@@ -212,7 +212,6 @@ class DeploymentAutoscalingState:
         """
         if self._policy is None:
             raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
-
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
         if _skip_bound_check:
@@ -687,12 +686,16 @@ class ApplicationAutoscalingState:
         if dep_id in self._deployment_autoscaling_states:
             self._deployment_autoscaling_states[dep_id].on_replica_stopped(replica_id)
 
-    def get_total_num_requests(self, deployment_id: DeploymentID) -> float:
+    def get_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
         return self._deployment_autoscaling_states[
             deployment_id
         ].get_total_num_requests()
 
-    def get_replica_metrics(self, deployment_id: DeploymentID, agg_func="mean"):
+    def get_replica_metrics_by_deployment_id(
+        self, deployment_id: DeploymentID, agg_func="mean"
+    ):
         return self._deployment_autoscaling_states[deployment_id].get_replica_metrics(
             agg_func
         )
@@ -854,27 +857,27 @@ class AutoscalingStateManager:
                 f"{replica_id} because the application {replica_id.deployment_id.app_name} is not registered"
             )
 
-    def get_metrics(self) -> Dict[DeploymentID, float]:
-        return {
-            dep_id: app_state.get_total_num_requests(dep_id)
-            for app_state in self._app_autoscaling_states.values()
-            for dep_id in app_state.deployments
-        }
-
-    def get_all_metrics(
-        self, agg_func="mean"
-    ) -> Dict[DeploymentID, Dict[ReplicaID, List[Any]]]:
-        return {
-            dep_id: app_state.get_replica_metrics(dep_id, agg_func)
-            for app_state in self._app_autoscaling_states.values()
-            for dep_id in app_state.deployments
-        }
-
-    def get_total_num_requests(self, deployment_id: DeploymentID) -> float:
+    def get_metrics_for_deployment(
+        self, deployment_id: DeploymentID, agg_func="mean"
+    ) -> Dict[ReplicaID, List[Any]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name
-            ].get_total_num_requests(deployment_id)
+            ].get_replica_metrics_by_deployment_id(deployment_id, agg_func)
+        else:
+            logger.warning(
+                f"Cannot get metrics for deployment "
+                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
+            )
+            return {}
+
+    def get_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
+        if deployment_id.app_name in self._app_autoscaling_states:
+            return self._app_autoscaling_states[
+                deployment_id.app_name
+            ].get_total_num_requests_for_deployment(deployment_id)
         else:
             logger.warning(
                 f"Cannot get total number of requests for deployment "

@@ -447,7 +447,12 @@ class ApplicationState:
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
     def should_autoscale(self) -> bool:
-        """Determine if autoscaling should be enabled for the application."""
+        """Determine if autoscaling is enabled for the application.
+
+        Returns:
+            Autoscaling is enabled for the application if any of the deployments have autoscaling enabled.
+        """
+
         return self._autoscaling_state_manager.should_autoscale_application(self._name)
 
     def autoscale(self) -> bool:
@@ -485,7 +490,7 @@ class ApplicationState:
         target_state_changed = False
         for deployment_id, decision_num_replicas in decisions.items():
             target_state_changed = (
-                self._deployment_state_manager.scale(
+                self._deployment_state_manager.autoscale(
                     deployment_id, decision_num_replicas
                 )
                 or target_state_changed

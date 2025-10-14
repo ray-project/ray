@@ -176,7 +176,7 @@ class MockDeploymentStateManager:
         """Mock save checkpoint method."""
         pass
 
-    def scale(self, id: DeploymentID, target_num_replicas: int):
+    def autoscale(self, id: DeploymentID, target_num_replicas: int):
         self._scaling_decisions[id] = target_num_replicas
         return True
 

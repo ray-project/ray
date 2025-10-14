@@ -2156,16 +2156,13 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def scale(self, decision_num_replicas: Optional[int] = None) -> bool:
+    def autoscale(self, decision_num_replicas: int) -> bool:
         """
         Apply the given scaling decision by updating the target replica count.
-
         Skips if deleting, if `decision_num_replicas` is None, or matches the
         current target. Otherwise updates the state and logs an up/down scaling.
-
         Args:
             decision_num_replicas: Optional target replica count to apply.
-
         Returns:
             bool: True if the target state was updated, False if no change occurred.
         """
@@ -2173,10 +2170,7 @@ class DeploymentState:
         if self._target_state.deleting:
             return False
 
-        if (
-            decision_num_replicas is None
-            or decision_num_replicas == self._target_state.target_num_replicas
-        ):
+        if decision_num_replicas == self._target_state.target_num_replicas:
             return False
 
         new_info = copy(self._target_state.info)
@@ -2197,7 +2191,7 @@ class DeploymentState:
 
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -3428,11 +3422,18 @@ class DeploymentStateManager:
 
         return any_recovering
 
-    def scale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+        """Autoscale the deployment to the target number of replicas.
+        Args:
+            deployment_id: The deployment ID.
+            target_num_replicas: The target number of replicas.
+        Returns:
+            True if the deployment was autoscaled, False otherwise.
+        """
         if deployment_id not in self._deployment_states:
             return False
 
-        return self._deployment_states[deployment_id].scale(target_num_replicas)
+        return self._deployment_states[deployment_id].autoscale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,

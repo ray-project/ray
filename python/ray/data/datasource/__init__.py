@@ -1,3 +1,10 @@
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAPDatasource,
+    TimeRange,
+)
 from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
@@ -40,18 +47,18 @@ from ray.data.datasource.partitioning import (
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
-    "BlockBasedFileDatasink",
     "Connection",
     "Datasink",
     "Datasource",
-    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
+    "DeltaSharingDatasource",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
+    "MCAPDatasource",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",
@@ -60,7 +67,9 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
+    "TimeRange",
     "WriteResult",
     "WriteReturnType",
     "SaveMode",

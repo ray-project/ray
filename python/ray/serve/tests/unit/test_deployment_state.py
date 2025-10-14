@@ -2798,7 +2798,7 @@ class TestAutoscaling:
             app_name, deployment_to_target_num_replicas
         )
         for deployment_id, decision_num_replicas in decisions.items():
-            dsm.scale(deployment_id, decision_num_replicas)
+            dsm.autoscale(deployment_id, decision_num_replicas)
 
     @pytest.mark.parametrize("target_capacity_direction", ["up", "down"])
     def test_basic_autoscaling(
@@ -3610,13 +3610,13 @@ class TestAutoscaling:
                 (ReplicaState.STARTING, 1, None),
             ],
         )
-        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+        assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 2
         ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+        assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 2
 
         # Simulate handle was on an actor that died. 10 seconds later
         # the handle fails to push metrics
@@ -3625,7 +3625,7 @@ class TestAutoscaling:
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 2
+        assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 2
 
         # Another 10 seconds later handle still fails to push metrics. At
         # this point the data from the handle should be invalidated. As a
@@ -3647,7 +3647,7 @@ class TestAutoscaling:
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
-        assert asm.get_total_num_requests(TEST_DEPLOYMENT_ID) == 0
+        assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 0
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -3723,13 +3723,13 @@ class TestAutoscaling:
                 (ReplicaState.STARTING, 1, None),
             ],
         )
-        assert asm.get_total_num_requests(d_id1) == 2
+        assert asm.get_total_num_requests_for_deployment(d_id1) == 2
         ds1._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         self.scale(dsm, asm, [d_id1, d_id2])
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
-        assert asm.get_total_num_requests(d_id1) == 2
+        assert asm.get_total_num_requests_for_deployment(d_id1) == 2
 
         # d2 replica died
         ds2._replicas.get()[0]._actor.set_unhealthy()
