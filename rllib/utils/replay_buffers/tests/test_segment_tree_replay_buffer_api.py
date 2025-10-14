@@ -122,25 +122,28 @@ class TestSegmentTree(unittest.TestCase):
         for i in range(10):
             replay_buffer.add(self._get_episode(id_=str(i), episode_len=10))
 
-        assert sum_segment.capacity >= buffer_size
+        self.assertTrue(sum_segment.capacity >= buffer_size)
 
         # standard cases
         for sample in np.linspace(0, sum_segment.sum(), 50):
             prefixsum_idx = sum_segment.find_prefixsum_idx(sample)
-            assert (
-                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
-            ), f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}"
+            self.assertTrue(
+                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx,
+                f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}",
+            )
 
-        # edge cases
+        # Edge cases (at the boundary then the binary tree can "clip" into invalid regions)
+        #   Therefore, testing using values close to or above the max valid number
         for sample in [
             sum_segment.sum() - 0.00001,
             sum_segment.sum(),
             sum_segment.sum() + 0.00001,
         ]:
             prefixsum_idx = sum_segment.find_prefixsum_idx(sample)
-            assert (
-                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx
-            ), f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}"
+            self.assertTrue(
+                prefixsum_idx in replay_buffer._tree_idx_to_sample_idx,
+                f"{sum_segment.sum()=}, {sample=}, {prefixsum_idx=}",
+            )
 
 
 if __name__ == "__main__":
