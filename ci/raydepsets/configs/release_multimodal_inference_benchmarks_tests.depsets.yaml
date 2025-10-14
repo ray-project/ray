@@ -16,6 +16,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    override_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
@@ -29,6 +30,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    override_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
@@ -42,6 +44,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    override_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
@@ -55,6 +58,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    override_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
@@ -68,6 +72,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    override_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
     build_arg_sets:
       - py39
