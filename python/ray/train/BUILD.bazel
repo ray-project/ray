@@ -664,8 +664,7 @@ py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
-    # TODO: move over
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "minimal",

@@ -5,8 +5,8 @@ from ray import train
 from ray.train import ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
