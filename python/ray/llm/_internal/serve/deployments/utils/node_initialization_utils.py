@@ -1,19 +1,15 @@
 import asyncio
-import os
 
 import ray
+from ray.llm._internal.common.callbacks.base import (
+    CallbackCtx,
+)
 from ray.llm._internal.common.utils.download_utils import (
-    NodeModelDownloadable,
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.callbacks.custom_initialization import (
-    Callback,
-    CallbackCtx,
-)
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
-from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
 
 torch = try_import("torch")
@@ -22,19 +18,13 @@ transformers = try_import("transformers")
 logger = get_logger(__name__)
 
 
-async def initialize_worker_nodes(
-    llm_config: LLMConfig,
-    *,
-    download_extra_files: bool,
-    callback: Callback,
-):
-    """Runs the download tasks across all the nodes in the placement groups.
+async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
+    """Implements node initialization for LLM engines.
 
-    To this we obtain the nodes that the placement groups are spread across.
-    Then we create a node affinity scheduling strategy for each node and
-    run the download_model_files task for each node in a separate ray.remote call.
-    This ensures that we call download_model_files once per node all in parallel.
+    Downloads model, tokenizer, and extra files as necessary.
     """
+    # Get callback instance (if configured) with context information
+    callback = llm_config.get_or_create_callback()
     ctx = callback.ctx
     engine_config = VLLMEngineConfig.from_llm_config(llm_config)
     pg_table = ray.util.placement_group_table(ctx.placement_group)
@@ -63,7 +53,7 @@ async def initialize_worker_nodes(
                 engine_config.actual_hf_model_id,
                 engine_config.mirror_config,
                 download_model=ctx.worker_node_download_model,
-                download_extra_files=download_extra_files,
+                download_extra_files=True,
                 callback=callback,
             )
             for download_task in download_tasks
@@ -71,68 +61,10 @@ async def initialize_worker_nodes(
     )
 
     # assume that all paths are the same
+    assert paths, "No paths returned from download_model_files"
+    assert (
+        len(set(paths)) == 1
+    ), "Paths returned from download_model_files are not the same"
     llm_config.get_engine_config().hf_model_id = paths[0]
 
-
-async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
-    """Implements node initialization for LLM engines.
-
-    Downloads model, tokenizer, and extra files as necessary.
-
-    If the placement strategy is STRICT_PACK, all of the initialization will be run locally
-    (as all of the workers must be colocated with this process). Else, the initialization
-    will be run across the placement group bundles.
-    """
-    # Get callback instance (if configured) with context information
-    callback = llm_config.get_or_create_callback()
-
-    await callback.run_callback("on_before_node_init")
-
-    if callback.ctx.run_downloads:
-        await initialize_worker_nodes(
-            llm_config,
-            callback=callback,
-            download_extra_files=True,
-        )
-
-    await callback.run_callback("on_after_node_init")
-
     return callback.ctx
-
-
-@make_async
-def _initialize_local_node(
-    llm_config: LLMConfig,
-    *,
-    download_model: NodeModelDownloadable,
-    download_extra_files: bool,
-):
-    engine_config = llm_config.get_engine_config()
-    local_path = download_model_files(
-        model_id=engine_config.actual_hf_model_id,
-        mirror_config=engine_config.mirror_config,
-        download_model=download_model,
-        download_extra_files=download_extra_files,
-    )
-
-    # Validate that the binary exists
-    if local_path and local_path != engine_config.actual_hf_model_id:
-        engine_config.hf_model_id = local_path
-
-    # Download the tokenizer if it isn't a local file path
-    if not isinstance(local_path, str) or not os.path.exists(local_path):
-        logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
-
-    if llm_config.llm_engine == LLMEngine.vLLM:
-        from vllm.transformers_utils.tokenizer import get_tokenizer
-
-        _ = get_tokenizer(
-            engine_config.actual_hf_model_id,
-            tokenizer_mode=engine_config.engine_kwargs.get("tokenizer_mode", None),
-            trust_remote_code=engine_config.trust_remote_code,
-        )
-    else:
-        _ = transformers.AutoTokenizer.from_pretrained(
-            engine_config.actual_hf_model_id,
-            trust_remote_code=engine_config.trust_remote_code,
-        )

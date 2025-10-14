@@ -18,16 +18,16 @@ from pydantic import (
 
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.callbacks.base import (
+    CallbackBase,
+    CallbackConfig,
+)
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
-from ray.llm._internal.serve.callbacks.custom_initialization import (
-    Callback,
-    CallbackConfig,
-)
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -221,7 +221,7 @@ class LLMConfig(BaseModelExtended):
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
-    _callback_instance: Optional[Callback] = PrivateAttr(None)
+    _callback_instance: Optional[CallbackBase] = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -278,7 +278,7 @@ class LLMConfig(BaseModelExtended):
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
 
-    def get_or_create_callback(self) -> Optional[Callback]:
+    def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.
 
         This ensures one callback instance per process (singleton pattern).
@@ -311,8 +311,6 @@ class LLMConfig(BaseModelExtended):
             },
             **self.callback_config.callback_kwargs,
         )
-
-        logger.info(f"Created callback instance: {self._callback_instance}")
         return self._callback_instance
 
     @property

@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from filelock import FileLock
 
+from ray.llm._internal.common.callbacks.base import CallbackBase
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -13,7 +14,6 @@ from ray.llm._internal.common.utils.cloud_utils import (
     is_remote_path,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.callbacks.custom_initialization import Callback
 
 torch = try_import("torch")
 
@@ -233,7 +233,7 @@ def download_model_files(
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
     download_extra_files: bool = True,
-    callback: Optional[Callback] = None,
+    callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify

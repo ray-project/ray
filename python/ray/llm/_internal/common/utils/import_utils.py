@@ -2,7 +2,7 @@
 import importlib
 import logging
 from types import ModuleType
-from typing import Optional
+from typing import Any, Optional, Type
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,13 @@ def try_import(name: str, error: bool = False) -> Optional[ModuleType]:
         return importlib.import_module(name)
     except ImportError:
         if error:
-            logger.error("Could not import %s", name)
             raise ImportError(f"Could not import {name}")
         else:
             logger.warning("Could not import %s", name)
     return None
 
 
-def load_class(path: str):
+def load_class(path: str) -> Type[Any]:
     """Load class from string path."""
     if ":" in path:
         module_path, class_name = path.rsplit(":", 1)

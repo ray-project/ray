@@ -18,7 +18,6 @@ class CallbackCtx:
     Callbacks can read and modify fields as needed.
     """
 
-    """The LLM configuration object containing model settings and parameters."""
     worker_node_download_model: Optional["NodeModelDownloadable"] = None
     """Model download configuration for worker nodes. Used to specify how
     models should be downloaded and cached on worker nodes in distributed
@@ -32,15 +31,15 @@ class CallbackCtx:
     custom_data: Dict[str, Any] = field(default_factory=dict)
     """Flexible dictionary for callback-specific state and data. Allows
     callbacks to store and share custom information during initialization."""
-    run_downloads: bool = True
+    run_init_node: bool = True
     """Whether to run model downloads during initialization. Set to False
     to skip downloading models."""
 
 
-class Callback:
-    """Protocol for custom initialization implementations.
+class CallbackBase:
+    """Base class for custom initialization implementations.
 
-    This protocol defines the interface for custom initialization logic
+    This class defines the interface for custom initialization logic
     for LLMEngine to be called in node_initialization.
     """
 
@@ -137,7 +136,7 @@ class Callback:
 class CallbackConfig:
     """Configuration for the callback to be used in LLMConfig"""
 
-    callback_class: Union[str, Type[Callback]] = Callback
+    callback_class: Union[str, Type[CallbackBase]] = CallbackBase
     """Class to use for the callback. Can be custom user defined class"""
     callback_kwargs: Dict[str, Any] = field(default_factory=dict)
     """Keyword arguments to pass to the Callback class at construction."""
@@ -145,7 +144,7 @@ class CallbackConfig:
     """Whether to raise an error if a callback method fails."""
 
 
-class TestingCallback(Callback):
+class TestingCallback(CallbackBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         print("TestingCallback __init__ kwargs: ", kwargs)

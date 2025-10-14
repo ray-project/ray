@@ -1,19 +1,15 @@
 import asyncio
-from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.llm._internal.common.callbacks.base import (
+    CallbackBase,
+)
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
-from ray.llm._internal.serve.callbacks.custom_initialization import (
-    Callback,
-)
 from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    initialize_node,
-)
 
 
-class TestingCallback(Callback):
+class TestingCallback(CallbackBase):
     def __init__(self, llm_config, raise_error_on_callback: bool = True, **kwargs):
         super().__init__(llm_config, raise_error_on_callback, **kwargs)
         self.before_init_called = False
@@ -31,7 +27,7 @@ class TestingCallback(Callback):
 
         self.ctx.custom_data["ctx_test_key"] = "ctx_test_value"
         self.before_init_called = True
-        self.ctx.run_downloads = False
+        self.ctx.run_init_node = False
 
     async def on_after_node_init(self) -> None:
         assert self.ctx.worker_node_download_model == NodeModelDownloadable.NONE
@@ -40,43 +36,33 @@ class TestingCallback(Callback):
         assert self.ctx.custom_data["ctx_test_key"] == "ctx_test_value"
 
 
-class TestCustomInitialization:
+class TestCallbackBase:
     @pytest.fixture
     def llm_config(self):
         config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model"),
             llm_engine="vLLM",
             callback_config={
-                "callback_class": "test_custom_initialization.TestingCallback",
+                "callback_class": TestingCallback,
                 "callback_kwargs": {"kwargs_test_key": "kwargs_test_value"},
             },
         )
         return config
 
-    @patch(
-        "ray.llm._internal.serve.deployments.utils.node_initialization_utils.download_model_files"
-    )
-    @patch("vllm.transformers_utils.tokenizer.get_tokenizer")
-    @patch(
-        "ray.llm._internal.serve.deployments.utils.node_initialization_utils.transformers"
-    )
-    def test_callback_methods_called(
-        self,
-        mock_transformers,
-        mock_get_tokenizer,
-        mock_download_model_files,
-        llm_config,
-    ):
+    def test_callback_methods_called(self, llm_config):
         """Test that callback methods are called during initialization."""
-        # Setup mocks for external dependencies
-        mock_download_model_files.return_value = None
-        mock_get_tokenizer.return_value = MagicMock()
-        mock_transformers.AutoTokenizer.from_pretrained.return_value = MagicMock()
 
         # Run initialization
-        asyncio.run(initialize_node(llm_config))
+        async def run_initialization():
+            callback = llm_config.get_or_create_callback()
+            await callback.run_callback("on_before_node_init")
+            if callback.ctx.run_init_node:
+                raise Exception("run_init_node is True")
+            await callback.run_callback("on_after_node_init")
 
+        asyncio.run(run_initialization())
         # Verify callback was created and methods were called
+
         callback = llm_config.get_or_create_callback()
         assert callback is not None
         assert isinstance(callback, TestingCallback)

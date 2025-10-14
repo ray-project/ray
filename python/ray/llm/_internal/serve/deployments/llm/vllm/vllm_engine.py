@@ -9,8 +9,8 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
+from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.callbacks.custom_initialization import CallbackCtx
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -148,7 +148,11 @@ class VLLMEngine(LLMEngine):
 
         from vllm.entrypoints.openai.api_server import init_app_state
 
-        node_initialization = await initialize_node(self.llm_config)
+        callback = self.llm_config.get_or_create_callback()
+        await callback.run_callback("on_before_node_init")
+        if callback.ctx.run_init_node:
+            node_initialization = await initialize_node(self.llm_config)
+        await callback.run_callback("on_after_node_init")
 
         (
             vllm_engine_args,
@@ -180,7 +184,7 @@ class VLLMEngine(LLMEngine):
 
         await init_app_state(
             engine_client=self._engine_client,
-            # vllm_config=vllm_engine_config,
+            vllm_config=vllm_engine_config,
             state=state,
             args=args,
         )
@@ -233,12 +237,12 @@ class VLLMEngine(LLMEngine):
         ), "engine_client must have a check_health attribute"
 
     def _prepare_engine_config(
-        self, node_initialization: CallbackCtx
+        self, callback_ctx: CallbackCtx
     ) -> Tuple["AsyncEngineArgs", "FrontendArgs", "VllmConfig"]:
         """Prepare the engine config to start the engine.
 
         Args:
-            node_initialization: The node initialization context.
+            callback_ctx: The callback context.
 
         Returns:
             A tuple of:
@@ -259,9 +263,9 @@ class VLLMEngine(LLMEngine):
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(
-                    runtime_env=node_initialization.runtime_env,
+                    runtime_env=callback_ctx.runtime_env,
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=node_initialization.placement_group,
+                        placement_group=callback_ctx.placement_group,
                     ),
                 )
                 .remote(self.llm_config)
