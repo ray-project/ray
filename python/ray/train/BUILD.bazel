@@ -181,23 +181,6 @@ py_test(
     deps = [":train_lib"],
 )
 
-# TODO: Delete this together with the long running PBT release test.
-py_test(
-    name = "tune_cifar_torch_pbt_example",
-    size = "medium",
-    srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
-    args = ["--smoke-test"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
-    tags = [
-        "exclusive",
-        "pytorch",
-        "team:ml",
-        "tune",
-    ],
-    deps = [":train_lib"],
-)
-
 # Formerly AIR examples
 
 py_test(
