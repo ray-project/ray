@@ -358,36 +358,35 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
 /// \param event The TaskExecutionEvent to convert.
 /// \return The output TaskEvents to populate.
 rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
-  rpc::TaskEvents task_event;
+  // Build temp
+  rpc::TaskEvents temp;
+  temp.set_task_id(std::string(event.task_id()));
+  temp.set_attempt_number(event.task_attempt());
+  temp.set_job_id(std::string(event.job_id()));
 
-  // Simple approach: Set scalar fields directly
-  task_event.set_task_id(std::string(event.task_id()));
-  task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(std::string(event.job_id()));
-
-  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  task_state_update->set_node_id(std::string(event.node_id()));
-  task_state_update->set_worker_id(std::string(event.worker_id()));
-  task_state_update->set_worker_pid(event.worker_pid());
-
-  // Use CopyFrom() for complex nested message - protobuf SHOULD handle arena correctly
+  auto *state_update = temp.mutable_state_updates();
+  state_update->set_node_id(std::string(event.node_id()));
+  state_update->set_worker_id(std::string(event.worker_id()));
+  state_update->set_worker_pid(event.worker_pid());
   if (event.has_ray_error_info()) {
-    task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
+    state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
   }
 
-  // For the map, copy to intermediate storage first
   std::vector<std::pair<int32_t, int64_t>> state_timestamps;
   state_timestamps.reserve(event.task_state().size());
   for (const auto &[state, timestamp] : event.task_state()) {
     state_timestamps.emplace_back(state, ProtoTimestampToAbslTimeNanos(timestamp));
   }
-
-  auto *state_ts_map = task_state_update->mutable_state_ts_ns();
+  auto *dst_map = state_update->mutable_state_ts_ns();
   for (const auto &[state, ns] : state_timestamps) {
-    (*state_ts_map)[state] = ns;
+    (*dst_map)[state] = ns;
   }
 
-  return task_event;
+  // Rebuild via serialize/parse to drop any arena ties in map internals
+  std::string bytes = temp.SerializeAsString();
+  rpc::TaskEvents out;
+  out.ParseFromString(bytes);
+  return out;
 }
 
 /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
