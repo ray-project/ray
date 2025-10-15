@@ -72,31 +72,5 @@ def test_http_access_log_in_proxy_logs_file(serve_instance):
     )
 
 
-def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
-    serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
-    serve_log_dir = get_serve_logs_dir()
-    # Check controller log
-    actors = list_actors()
-    expected_log_regex = [".*logger with logging config.*"]
-    for actor in actors:
-        print(actor["name"])
-        if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
-            controller_pid = actor["pid"]
-    controller_log_file_name = get_component_file_name(
-        "controller", controller_pid, component_type=None, suffix=".log"
-    )
-    controller_log_path = os.path.join(serve_log_dir, controller_log_file_name)
-    check_log_file(controller_log_path, expected_log_regex)
-
-    # Check proxy log
-    nodes = list_nodes()
-    node_ip_address = nodes[0].node_ip
-    proxy_log_file_name = get_component_file_name(
-        "proxy", node_ip_address, component_type=None, suffix=".log"
-    )
-    proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
-    check_log_file(proxy_log_path, expected_log_regex)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
