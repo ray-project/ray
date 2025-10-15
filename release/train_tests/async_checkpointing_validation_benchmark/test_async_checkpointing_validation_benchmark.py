@@ -436,6 +436,8 @@ def main():
     )
 
     # TODO: consider correctness checks like validating that local checkpoints get deleted
+    # TODO: track validation startup metrics: schedule validation task, autoscale nodes,
+    # start TorchTrainer/map_batches, load checkpoint.
 
 
 if __name__ == "__main__":
