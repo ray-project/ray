@@ -896,9 +896,6 @@ class ReporterAgent(
         except TimeoutError as e:
             logger.debug(f"Failed to get worker pids from raylet: {e}")
             return []
-        except Exception as e:
-            logger.error(f"Unexpectedly failed to get worker pids from raylet: {e}")
-            raise
 
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
