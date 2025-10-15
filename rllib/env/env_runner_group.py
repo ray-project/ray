@@ -557,6 +557,8 @@ class EnvRunnerGroup:
                 env_runner_states.update(rl_module_state)
 
             # Broadcast updated states back to all workers.
+            # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+            # When these pile up, object store memory can spike.
             self.foreach_env_runner_async_fetch_ready(
                 func="set_state",
                 tag="set_state",
@@ -708,6 +710,8 @@ class EnvRunnerGroup:
                 rl_module_state_ref = ray.put(rl_module_state)
 
                 # Sync to specified remote workers in this EnvRunnerGroup.
+                # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+                # When these pile up, object store memory can spike.
                 self.foreach_env_runner_async_fetch_ready(
                     func="set_state",
                     tag="set_state",
