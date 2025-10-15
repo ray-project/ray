@@ -136,6 +136,7 @@ _common_options = {
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
+    "gpu_memory": _resource_option("gpu_memory"),
     "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,

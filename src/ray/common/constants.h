@@ -139,6 +139,9 @@ constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
 // A string representing the current TPU pod type, e.g. v6e-32.
 constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
 
+constexpr char kLabelKeyAcceleratorMemoryPerAccelerator[] =
+    RAY_LABEL_KEY_PREFIX "accelerator-memory-per-accelerator";
+
 #undef RAY_LABEL_KEY_PREFIX
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.

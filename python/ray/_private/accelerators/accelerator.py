@@ -50,6 +50,11 @@ class AcceleratorManager(ABC):
 
     @staticmethod
     @abstractmethod
+    def get_current_node_accelerator_memory_per_accelerator() -> Optional[int]:
+        return None
+
+    @staticmethod
+    @abstractmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         """Get the type of the accelerator of this family on the current node.
 

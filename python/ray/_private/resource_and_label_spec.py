@@ -297,6 +297,15 @@ class ResourceAndLabelSpec:
                 if tpu_labels:
                     default_labels.update(tpu_labels)
 
+            if (
+                accelerator_manager.get_current_node_accelerator_memory_per_accelerator()
+            ):
+                default_labels[
+                    ray._raylet.RAY_ACCELERATOR_MEMORY_PER_ACCELERATOR_KEY
+                ] = str(
+                    accelerator_manager.get_current_node_accelerator_memory_per_accelerator()
+                )
+
         return default_labels
 
     def _resolve_labels(

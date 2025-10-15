@@ -3535,6 +3535,7 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
+    gpu_memory: Union[int, float] = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -3714,6 +3715,8 @@ def remote(
             See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
+        gpu_memory: The gpu memory request in bytes for this task/actor
+            from a single gpu, rounded up to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
