@@ -319,11 +319,12 @@ You can tweak the build with the following environment variables (when running `
 Installing additional dependencies for development
 --------------------------------------------------
 
-Dependencies for the linter (``scripts/format.sh``) can be installed with:
+Dependencies for the linter (``pre-commit``) can be installed with:
 
 .. code-block:: shell
 
- pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
+  pip install -c python/requirements_compiled.txt pre-commit
+  pre-commit install
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
@@ -336,12 +337,9 @@ Requirement files for running Ray Data / ML library tests are under ``python/req
 Pre-commit Hooks
 ----------------
 
-Ray is planning to replace the pre-push hooks that are invoked from ``scripts/format.sh`` with
-pre-commit hooks using `the pre-commit python package <https://pre-commit.com/>`_ in the future. At
-the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the same checks done by
-``scripts/format.sh`` along with a few additional ones too. Currently this developer tooling is
-opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
-``pre-commit`` as well. To start using ``pre-commit``:
+Ray uses pre-commit hooks with `the pre-commit python package <https://pre-commit.com/>`_.
+The ``.pre-commit-config.yaml`` file configures all the linting and formatting checks.
+To start using ``pre-commit``:
 
 .. code-block:: shell
 
@@ -356,8 +354,7 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
 
    git commit -n
 
-If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please `report an issue here`_.
+If you encounter any issues with ``pre-commit``, please `report an issue here`_.
 
 .. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
 
