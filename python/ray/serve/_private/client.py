@@ -293,22 +293,24 @@ class ServeControllerClient:
     def wait_for_proxies_serving(self) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = ray.get(self._controller.get_proxies.remote())
-        proxy_states = {
-            handle: ray.util.state.get_actor(id=handle._actor_id.hex())
-            for handle in proxy_handles.values()
-        }
-        alive_proxy_handles = [
-            handle
-            for handle, state in proxy_states.items()
-            if state and state.state != "DEAD"
-        ]
-        if len(alive_proxy_handles) > 0:
+        serving_refs = [handle.serving.remote() for handle in proxy_handles.values()]
+
+        done, pending = ray.wait(
+            serving_refs,
+            timeout=HTTP_PROXY_TIMEOUT,
+            num_returns=len(serving_refs),
+        )
+
+        if len(pending) > 0:
+            raise TimeoutError(f"Proxies not available after {HTTP_PROXY_TIMEOUT}s.")
+
+        # Ensure the proxies are either serving or dead.
+        for ref in done:
             try:
-                ray.get(
-                    [handle.serving.remote() for handle in alive_proxy_handles],
-                    timeout=HTTP_PROXY_TIMEOUT,
-                )
-            except ray.exceptions.GetTimeoutError:
+                ray.get(ref, timeout=1)
+            except ray.exceptions.RayActorError:
+                pass
+            except Exception:
                 raise TimeoutError(
                     f"Proxies not available after {HTTP_PROXY_TIMEOUT}s."
                 )
