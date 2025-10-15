@@ -161,6 +161,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._actor_locality_enabled: Optional[bool] = None
 
         # Locality metrics
         self._locality_hits = 0
