@@ -104,6 +104,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    ray_version: 2.50.0
     byod:
       type: gpu
       post_build_script: byod_hello_world.sh

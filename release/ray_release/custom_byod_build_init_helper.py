@@ -93,7 +93,7 @@ def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith("rayproject/ray:"):
-        return None
+        return "[]"
     if image_name == "ray-ml":
         return config["release_image_step_ray_ml"]
     elif image_name == "ray-llm":
