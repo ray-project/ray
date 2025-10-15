@@ -30,9 +30,9 @@ depsets:
       - py310
       - py311
       - py312
-    # pre_hooks:
-    #   - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
-    #   - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
 
   - name: ray_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
