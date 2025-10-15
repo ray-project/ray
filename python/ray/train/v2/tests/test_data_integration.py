@@ -198,6 +198,37 @@ def test_configure_locality(enable_shard_locality):
     )
 
 
+@pytest.mark.parametrize("cache_random_preprocessing", [True, False])
+def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
+    """Random preprocessing should change per-epoch."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    ds = ray.data.range(NUM_ROWS, override_num_blocks=NUM_ROWS).random_shuffle()
+    if cache_random_preprocessing:
+        # Materialize the dataset to cache the random preprocessing.
+        # In this case, every epoch should use the same random preprocessing.
+        ds = ds.materialize()
+
+    def train_fn():
+        ds = ray.train.get_dataset_shard("train")
+        epoch_0 = [row["id"] for row in ds.iter_rows()]
+        epoch_1 = [row["id"] for row in ds.iter_rows()]
+
+        assert len(epoch_0) == len(epoch_1) == NUM_ROWS // NUM_WORKERS
+        if cache_random_preprocessing:
+            assert epoch_0 == epoch_1
+        else:
+            assert epoch_0 != epoch_1, (epoch_0, epoch_1)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": ds},
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
