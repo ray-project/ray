@@ -45,7 +45,7 @@ depsets:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
+      - python/requirements_compiled.txt
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
