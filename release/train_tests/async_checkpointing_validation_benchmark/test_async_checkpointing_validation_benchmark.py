@@ -38,14 +38,6 @@ def transform_cifar(row: dict):
     return row
 
 
-train_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/train").map(
-    transform_cifar
-)
-test_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
-    transform_cifar
-)
-
-
 def create_model():
     return VisionTransformer(
         image_size=32,  # CIFAR-10 image size is 32x32
@@ -215,7 +207,7 @@ def train_func(config):
                 ),
                 checkpoint_upload_mode=checkpoint_upload_mode,
                 validate_fn=validate_fn,
-                validate_config={"dataset": test_dataset} if validate_fn else None,
+                validate_config={"dataset": config["test"]} if validate_fn else None,
             )
             blocked_times.append(time.time() - start_time)
         else:
@@ -241,21 +233,26 @@ def run_training_with_validation(
     validate_fn: Optional[Callable],
     validate_within_trainer: bool,
     num_epochs: int,
+    train_dataset: ray.data.Dataset,
+    test_dataset: ray.data.Dataset,
 ):
     # Launch distributed training job.
     start_time = time.time()
     scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
     datasets = {"train": train_dataset}
+    train_loop_config = {
+        "validate_within_trainer": validate_within_trainer,
+        "num_epochs": num_epochs,
+        "checkpoint_upload_mode": checkpoint_upload_mode,
+        "validate_fn": validate_fn,
+    }
     if validate_within_trainer:
         datasets["test"] = test_dataset
+    else:
+        train_loop_config["test"] = test_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        train_loop_config={
-            "validate_within_trainer": validate_within_trainer,
-            "num_epochs": num_epochs,
-            "checkpoint_upload_mode": checkpoint_upload_mode,
-            "validate_fn": validate_fn,
-        },
+        train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,
         run_config=ray.train.RunConfig(
@@ -285,20 +282,36 @@ def run_training_with_validation(
 
 
 def main():
+    train_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/train").map(
+        transform_cifar
+    )
+    test_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
+        transform_cifar
+    )
     consolidated_metrics = {}
     num_epochs = 10
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
-        CheckpointUploadMode.SYNC, None, True, num_epochs
+        CheckpointUploadMode.SYNC, None, True, num_epochs, train_dataset, test_dataset
     )
     consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
     ] = run_training_with_validation(
-        CheckpointUploadMode.ASYNC, validate_with_torch_trainer, False, num_epochs
+        CheckpointUploadMode.ASYNC,
+        validate_with_torch_trainer,
+        False,
+        num_epochs,
+        train_dataset,
+        test_dataset,
     )
     consolidated_metrics[
         "async_cp_map_batches_val_metrics"
     ] = run_training_with_validation(
-        CheckpointUploadMode.ASYNC, validate_with_map_batches, False, num_epochs
+        CheckpointUploadMode.ASYNC,
+        validate_with_map_batches,
+        False,
+        num_epochs,
+        train_dataset,
+        test_dataset,
     )
     logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
