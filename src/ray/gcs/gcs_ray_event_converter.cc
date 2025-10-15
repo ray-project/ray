@@ -74,7 +74,7 @@ void DeepCopyRayErrorInfo(const rpc::RayErrorInfo &src, rpc::RayErrorInfo *dst) 
   // Copy scalar fields
   dst->set_error_type(src.error_type());
   dst->set_error_message(src.error_message());
-  
+
   // Deep copy the oneof error context fields
   if (src.has_actor_died_error()) {
     DeepCopyActorDeathCause(src.actor_died_error(), dst->mutable_actor_died_error());
@@ -96,7 +96,7 @@ void DeepCopyProfileEvents(const rpc::ProfileEvents &src, rpc::ProfileEvents *ds
   dst->set_component_type(src.component_type());
   dst->set_component_id(src.component_id());
   dst->set_node_ip_address(src.node_ip_address());
-  
+
   // Deep copy each ProfileEventEntry
   for (const auto &src_entry : src.events()) {
     auto *dst_entry = dst->add_events();
@@ -116,12 +116,12 @@ void DeepCopyTaskEvents(const rpc::TaskEvents &src, rpc::TaskEvents *dst) {
   dst->set_task_id(src.task_id());
   dst->set_job_id(src.job_id());
   dst->set_attempt_number(src.attempt_number());
-  
+
   // Deep copy task_info if present
   if (src.has_task_info()) {
     const auto &src_info = src.task_info();
     auto *dst_info = dst->mutable_task_info();
-    
+
     dst_info->set_type(src_info.type());
     dst_info->set_name(src_info.name());
     dst_info->set_language(src_info.language());
@@ -132,39 +132,39 @@ void DeepCopyTaskEvents(const rpc::TaskEvents &src, rpc::TaskEvents *dst) {
     dst_info->set_parent_task_id(src_info.parent_task_id());
     dst_info->set_actor_id(src_info.actor_id());
     dst_info->set_placement_group_id(src_info.placement_group_id());
-    
+
     // Deep copy required_resources map
     for (const auto &[key, value] : src_info.required_resources()) {
       (*dst_info->mutable_required_resources())[key] = value;
     }
-    
+
     // Deep copy runtime_env_info
     if (src_info.has_runtime_env_info()) {
       dst_info->mutable_runtime_env_info()->set_serialized_runtime_env(
           src_info.runtime_env_info().serialized_runtime_env());
     }
   }
-  
+
   // Deep copy state_updates if present
   if (src.has_state_updates()) {
     const auto &src_state = src.state_updates();
     auto *dst_state = dst->mutable_state_updates();
-    
+
     dst_state->set_node_id(src_state.node_id());
     dst_state->set_worker_id(src_state.worker_id());
     dst_state->set_worker_pid(src_state.worker_pid());
-    
+
     // Deep copy state_ts_ns map
     for (const auto &[state, ts] : src_state.state_ts_ns()) {
       (*dst_state->mutable_state_ts_ns())[state] = ts;
     }
-    
+
     // Deep copy error_info if present
     if (src_state.has_error_info()) {
       DeepCopyRayErrorInfo(src_state.error_info(), dst_state->mutable_error_info());
     }
   }
-  
+
   // Deep copy profile_events if present
   if (src.has_profile_events()) {
     DeepCopyProfileEvents(src.profile_events(), dst->mutable_profile_events());
@@ -294,7 +294,7 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
   task_state_update->set_worker_pid(event.worker_pid());
-  
+
   // Deep copy RayErrorInfo to avoid arena pointers
   DeepCopyRayErrorInfo(event.ray_error_info(), task_state_update->mutable_error_info());
 
