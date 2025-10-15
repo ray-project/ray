@@ -1058,7 +1058,7 @@ def test_async_flat_map(
 
     n = 10
     ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
-    ds = ds.flat_map(AsyncActor, max_concurrency=2)
+    ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
     output = ds.take_all()
     assert sorted(extract_values("id", output)) == list(range(n))
 
