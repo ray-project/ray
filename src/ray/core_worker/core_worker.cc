@@ -217,7 +217,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for pending args fetch.
-        task_by_state_counter_.Record(
+        task_by_state_gauge_.Record(
             num_getting_pinning_args,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
              {"Name"sv, func_name},
