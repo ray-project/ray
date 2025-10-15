@@ -24,10 +24,11 @@ option java_multiple_files = true;
 
 // Configuration options for Serve's autoscaling policy
 message AutoscalingPolicy {
-  // Name of the policy function or the import path of the policy if user passed a string.
-  // Will be the concatenation of the policy module and the policy name if user passed a
-  // callable.
-  string name = 1;
+  // Policy function needs to be a string import path.
+  string policy_function = 1;
+
+  // The cloudpickled policy definition.
+  bytes _serialized_policy_def = 2;
 }
 
 // Configuration options for Serve's replica autoscaler.
@@ -66,25 +67,25 @@ message AutoscalingConfig {
   // [DEPRECATED] Use `downscaling_factor` instead.
   optional double downscale_smoothing_factor = 10;
 
-  // The cloudpickled policy definition.
-  bytes _serialized_policy_def = 11;
-
   // The autoscaling policy definition.
-  AutoscalingPolicy policy = 12;
+  AutoscalingPolicy policy = 11;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
-  double target_ongoing_requests = 13;
+  double target_ongoing_requests = 12;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional double upscaling_factor = 14;
+  optional double upscaling_factor = 13;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional double downscaling_factor = 15;
+  optional double downscaling_factor = 14;
 
   // How long to wait before scaling down replicas from 1 to 0
-  optional double downscale_to_zero_delay_s = 16;
+  optional double downscale_to_zero_delay_s = 15;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 16;
 }
 
 //[Begin] LOGGING CONFIG
@@ -171,6 +172,9 @@ message DeploymentConfig {
 
   // The deployment's routing configuration.
   RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
 }
 
 // Deployment language.
