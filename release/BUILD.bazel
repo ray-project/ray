@@ -514,6 +514,8 @@ py_library(
         bk_require("aws-requests-auth"),
         bk_require("azure-storage-blob"),
         bk_require("azure-identity"),
+        bk_require("cffi"),
+        bk_require("cryptography"),
         bk_require("bazel-runfiles"),
         bk_require("aioboto3"),
         bk_require("boto3"),
