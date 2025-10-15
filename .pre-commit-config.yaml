@@ -238,3 +238,17 @@ repos:
       files: '^python/ray/train/.*\.py$'
       pass_filenames: false
       args: ["--patch_dir", "ray/train/v2"]
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.56.0
+    hooks:
+      - id: eslint
+        files: ^python/ray/dashboard/client/src/.*\.[jt]sx?$
+        types: [file]
+        additional_dependencies:
+          - eslint@8.56.0
+          - eslint-config-google@0.14.0
+          - eslint-plugin-react@7.34.2
+          - '@babel/eslint-parser@7.23.3'
+          - '@typescript-eslint/parser@6.9.0'
+          - '@typescript-eslint/eslint-plugin@6.9.0'

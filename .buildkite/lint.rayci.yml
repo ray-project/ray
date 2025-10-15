@@ -23,6 +23,7 @@ steps:
       - pytest_format
       - test_coverage
       - documentation_style
+      - eslint
 
   - label: ":lint-roller: pre-commit pydoclint"
     key: pydoclint-small
