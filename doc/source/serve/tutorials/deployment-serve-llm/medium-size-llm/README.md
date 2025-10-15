@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a medium-sized LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fmedium-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/medium-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
 This tutorial deploys a medium-sized LLM using Ray Serve LLM. For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
@@ -36,7 +41,7 @@ llm_config = LLMConfig(
         # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
@@ -85,8 +90,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_70b:app --non-blocking
 ```
@@ -102,8 +106,7 @@ Your endpoint is available locally at `http://localhost:8000` and you can use a 
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -121,7 +124,7 @@ from openai import OpenAI
 API_KEY = "FAKE_KEY"
 BASE_URL = "http://localhost:8000"
 
-client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-llama-3.1-70b",
@@ -143,8 +146,7 @@ for chunk in response:
 Shutdown your LLM service: 
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -178,8 +180,7 @@ applications:
 Deploy your service. Make sure you forward your Hugging Face token to the command.
 
 
-```bash
-%%bash
+```python
 anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
@@ -223,8 +224,7 @@ See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling
 Shutdown your Anyscale service:
 
 
-```bash
-%%bash
+```python
 anyscale service terminate -n deploy-llama-3-70b
 ```
 
@@ -260,9 +260,9 @@ applications:
 
 Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
-Example log:
+Example log for 8xL40S:
 ```console
-INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 13.02x
+INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 17.79x
 ```
 
 The following are a few ways to improve concurrency depending on your model and hardware:  
@@ -270,9 +270,9 @@ The following are a few ways to improve concurrency depending on your model and 
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-**Example:** Running Llama-3.1-70&nbsp;B on an A100-40G:
-* `max_model_len = 32,768` → concurrency ≈ 13
-* `max_model_len = 16,384` → concurrency ≈ 26
+**Example:** Running Llama-3.1-70&nbsp;B on 8xL40S:
+* `max_model_len = 32,768` → concurrency ≈ 18
+* `max_model_len = 16,384` → concurrency ≈ 36
 
 **Use Quantized models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
@@ -284,8 +284,8 @@ If a single node isn't enough to handle your workload, consider distributing the
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
 **Scale with more replicas**  
-In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
-Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
+In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
+Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
 deployment_config:
   autoscaling_config:

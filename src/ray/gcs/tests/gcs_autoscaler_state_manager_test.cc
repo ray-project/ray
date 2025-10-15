@@ -37,7 +37,7 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/rpc/raylet/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 
@@ -68,6 +68,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
+  ray::observability::FakeGauge fake_placement_group_gauge_;
+  ray::observability::FakeHistogram
+      fake_placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::FakeGauge fake_placement_group_count_gauge_;
 
   void SetUp() override {
     raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
@@ -95,8 +101,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                              *gcs_node_manager_,
                                              NodeID::FromRandom());
 
-    gcs_placement_group_manager_ =
-        std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
+    gcs_placement_group_manager_ = std::make_shared<MockGcsPlacementGroupManager>(
+        *gcs_resource_manager_,
+        fake_placement_group_gauge_,
+        fake_placement_group_creation_latency_in_ms_histogram_,
+        fake_placement_group_scheduling_latency_in_ms_histogram_,
+        fake_placement_group_count_gauge_);
     gcs_autoscaler_state_manager_.reset(
         new GcsAutoscalerStateManager("fake_cluster",
                                       *gcs_node_manager_,
@@ -110,11 +120,18 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
 
+  void AddNodeToNodeManagerOnly(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
+    gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
+  }
+
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->mutex_);
     const auto node_id = NodeID::FromBinary(node->node_id());
     node->set_state(rpc::GcsNodeInfo::DEAD);
     gcs_node_manager_->alive_nodes_.erase(node_id);
@@ -453,6 +470,27 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
     const auto &state = reply.autoscaling_state();
     ASSERT_EQ(state.autoscaler_state_version(), 1);
   }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestHandleGetClusterStatusWithOutOfOrderNodeAdd) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  AddNodeToNodeManagerOnly(node);
+
+  const auto reply = GetClusterStatusSync();
+
+  // Should have cluster resource state
+  ASSERT_TRUE(reply.has_cluster_resource_state());
+  const auto &state = reply.cluster_resource_state();
+  ASSERT_EQ(state.node_states_size(), 1);
+
+  // Should NOT have autoscaling state when none has been reported
+  ASSERT_FALSE(reply.has_autoscaling_state());
+
+  // Cluster resource state should still be valid
+  ASSERT_GT(state.cluster_resource_state_version(), 0);
+  ASSERT_EQ(state.cluster_session_name(), "fake_cluster");
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {

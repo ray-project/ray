@@ -208,7 +208,8 @@ class ParquetDatasource(Datasource):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
-
+        # Need this property for lineage tracking
+        self._source_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
@@ -329,7 +330,9 @@ class ParquetDatasource(Datasource):
 
         return self._estimate_in_mem_size(self._pq_fragments)
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -406,6 +409,7 @@ class ParquetDatasource(Datasource):
                     ),
                     meta,
                     schema=target_schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
 
@@ -782,18 +786,26 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 def _sample_fragments(
     fragments: List[_ParquetFragment],
 ) -> List[_ParquetFragment]:
-    num_files = len(fragments)
-    num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
-    min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
-    max_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files)
-    num_samples = max(min(num_samples, max_num_samples), min_num_samples)
+    if not fragments:
+        return []
+
+    target_num_samples = math.ceil(
+        len(fragments) * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO
+    )
+
+    target_num_samples = max(
+        min(target_num_samples, PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES),
+        PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES,
+    )
+
+    # Make sure number of samples doesn't exceed total # of files
+    target_num_samples = min(target_num_samples, len(fragments))
 
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
-    return [
-        fragments[idx]
-        for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
-    ]
+    pivots = np.linspace(0, len(fragments) - 1, target_num_samples).astype(int)
+
+    return [fragments[idx] for idx in pivots.tolist()]
 
 
 def _add_partitions_to_table(

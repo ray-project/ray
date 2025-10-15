@@ -27,6 +27,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -34,9 +36,8 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/worker/core_worker_client_interface.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -104,7 +105,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      rpc::CoreWorkerClientPool &worker_client_pool);
+      rpc::CoreWorkerClientPool &worker_client_pool,
+      observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name,
+      ray::observability::MetricInterface &actor_by_state_gauge,
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
   ~GcsActorManager() override = default;
 
@@ -203,10 +208,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// node being removed) will not be restarted. If any workers on this node
   /// owned an actor, those actors will be destroyed.
   ///
-  /// \param node_id The specified node id.
+  /// \param node The specified node id.
   /// \param node_ip_address The ip address of the dead node.
-  void OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
-                  const std::string node_ip_address);
+  void OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                  const std::string &node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -280,13 +285,12 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
 
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
+      const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client_(std::move(client)) {}
-    /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
+    explicit Owner(rpc::Address address) : address_(std::move(address)) {}
+    /// The address of the owner.
+    rpc::Address address_;
     /// The IDs of actors owned by this worker.
     absl::flat_hash_set<ActorID> children_actor_ids_;
   };
@@ -477,6 +481,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   pubsub::GcsPublisher *gcs_publisher_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
+  /// Event recorder for emitting actor events
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
@@ -495,6 +502,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;

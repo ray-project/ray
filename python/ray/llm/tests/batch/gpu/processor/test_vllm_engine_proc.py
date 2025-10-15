@@ -4,10 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.vllm_engine_proc import (
-    vLLMEngineProcessorConfig,
-)
 
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
@@ -66,7 +64,36 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
     }
 
 
-def test_generation_model(gpu_type, model_opt_125m):
+def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            max_model_len=8192,
+        ),
+        accelerator_type=gpu_type,
+        concurrency=4,
+        batch_size=64,
+        apply_chat_template=True,
+        tokenize=True,
+        placement_group_config=dict(bundles=[{"CPU": 1, "GPU": 1}]),
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    stage.map_batches_kwargs.pop("runtime_env")
+    stage.map_batches_kwargs.pop("compute")
+
+    assert stage.map_batches_kwargs == {
+        "zero_copy_batch": True,
+        "max_concurrency": 8,
+        "accelerator_type": gpu_type,
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+
+@pytest.mark.parametrize("backend", ["mp", "ray"])
+def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
     chat_template = """
@@ -99,6 +126,7 @@ def test_generation_model(gpu_type, model_opt_125m):
             max_model_len=2048,
             # Skip CUDA graph capturing to reduce startup time.
             enforce_eager=True,
+            distributed_executor_backend=backend,
         ),
         batch_size=16,
         accelerator_type=gpu_type,
@@ -109,7 +137,7 @@ def test_generation_model(gpu_type, model_opt_125m):
         detokenize=True,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -156,7 +184,7 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
         detokenize=False,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -191,11 +219,11 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
             dtype="half",
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        runtime_env=dict(
-            env_vars=dict(
-                VLLM_USE_V1="0",
-            ),
-        ),
+        # runtime_env=dict(
+        #     env_vars=dict(
+        #         VLLM_USE_V1="0",
+        #     ),
+        # ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,
@@ -205,7 +233,7 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
         concurrency=1,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[

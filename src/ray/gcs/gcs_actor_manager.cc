@@ -180,11 +180,11 @@ namespace gcs {
 bool is_uuid(const std::string &str) {
   static const boost::regex e(
       "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
-  return regex_match(str, e);  // note: case sensitive now
+  return regex_match(str, e);  // note: case-sensitive now
 }
 
 const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
-    const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
 
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -227,24 +227,33 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    rpc::CoreWorkerClientPool &worker_client_pool)
+    rpc::CoreWorkerClientPool &worker_client_pool,
+    observability::RayEventRecorderInterface &ray_event_recorder,
+    const std::string &session_name,
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    ray::observability::MetricInterface &gcs_actor_by_state_gauge)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
       worker_client_pool_(worker_client_pool),
+      ray_event_recorder_(ray_event_recorder),
+      session_name_(session_name),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
-      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
+      usage_stats_client_(nullptr),
+      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
+      actor_by_state_gauge_(actor_by_state_gauge),
+      gcs_actor_by_state_gauge_(gcs_actor_by_state_gauge) {
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
         int64_t num_actors = actor_state_counter_->Get(key);
-        ray::stats::STATS_actors.Record(
+        actor_by_state_gauge_.Record(
             num_actors,
             {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
              {"Name", key.second},
@@ -670,8 +679,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   RAY_CHECK(!ray_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(
-      request.task_spec(), ray_namespace, actor_state_counter_);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(),
+                                          ray_namespace,
+                                          actor_state_counter_,
+                                          ray_event_recorder_,
+                                          session_name_);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -731,7 +743,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
                 RAY_CHECK_OK(put_status);
-                actor->WriteActorExportEvent();
+                actor->WriteActorExportEvent(true);
                 auto registered_actor_it = registered_actors_.find(actor->GetActorID());
                 auto callback_iter =
                     actor_to_register_callbacks_.find(actor->GetActorID());
@@ -825,8 +837,11 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   const auto &actor_namespace = iter->second->GetRayNamespace();
   RAY_CHECK(!actor_namespace.empty())
       << "`ray_namespace` should be set when creating actor in core worker.";
-  auto actor = std::make_shared<GcsActor>(
-      request.task_spec(), actor_namespace, actor_state_counter_);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(),
+                                          actor_namespace,
+                                          actor_state_counter_,
+                                          ray_event_recorder_,
+                                          session_name_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
@@ -834,7 +849,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
-  actor->WriteActorExportEvent();
+  actor->WriteActorExportEvent(false);
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -916,16 +931,16 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
                    << ", job id = " << actor_id.JobId();
-    auto client = worker_client_pool_.GetOrConnect(actor->GetOwnerAddress());
-    it = workers.emplace(owner_id, Owner(std::move(client))).first;
+    it = workers.emplace(owner_id, Owner(actor->GetOwnerAddress())).first;
   }
   it->second.children_actor_ids_.insert(actor_id);
 
   rpc::WaitForActorRefDeletedRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
-  it->second.client_->WaitForActorRefDeleted(
-      wait_request,
+  auto client = worker_client_pool_.GetOrConnect(it->second.address_);
+  client->WaitForActorRefDeleted(
+      std::move(wait_request),
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorRefDeletedReply &reply) {
         if (!status.ok()) {
@@ -1059,7 +1074,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Destroy placement group owned by this actor.
          destroy_owned_placement_group_if_needed_(actor_id);
        },
@@ -1203,8 +1218,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
-void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
-                                 const std::string node_ip_address) {
+void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                                 const std::string &node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(DEBUG).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
@@ -1434,7 +1449,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);
@@ -1451,7 +1466,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
         *mutable_actor_table_data,
         {[this, actor, actor_id, mutable_actor_table_data, death_cause, done_callback](
              Status status) {
-           // If actor was an detached actor, make sure to destroy it.
+           // If actor was a detached actor, make sure to destroy it.
            // We need to do this because detached actors are not destroyed
            // when its owners are dead because it doesn't have owners.
            if (actor->IsDetached()) {
@@ -1464,7 +1479,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
-           actor->WriteActorExportEvent();
+           actor->WriteActorExportEvent(false);
          },
          io_context_});
     // The actor is dead, but we should not remove the entry from the
@@ -1578,7 +1593,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         actor,
         reply](Status status) mutable {
          gcs_publisher_->PublishActor(actor_id, std::move(actor_data_only_with_states));
-         actor->WriteActorExportEvent();
+         actor->WriteActorExportEvent(false);
          // Invoke all callbacks for all registration requests of this actor (duplicated
          // requests are included) and remove all of them from
          // actor_to_create_callbacks_.
@@ -1610,9 +1625,11 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     //   - Detached actors which lives even when their original owner is dead.
     if (OnInitializeActorShouldLoad(gcs_init_data, actor_id)) {
       const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
-      auto actor = std::make_shared<GcsActor>(
-          actor_table_data, actor_task_spec, actor_state_counter_);
-
+      auto actor = std::make_shared<GcsActor>(actor_table_data,
+                                              actor_task_spec,
+                                              actor_state_counter_,
+                                              ray_event_recorder_,
+                                              session_name_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1643,7 +1660,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
+      auto actor = std::make_shared<GcsActor>(
+          actor_table_data, actor_state_counter_, ray_event_recorder_, session_name_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(
           actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
@@ -1912,11 +1930,11 @@ std::string GcsActorManager::DebugString() const {
 }
 
 void GcsActorManager::RecordMetrics() const {
-  ray::stats::STATS_gcs_actors_count.Record(registered_actors_.size(), "Registered");
-  ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
-  ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
-  ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
-  ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
+  gcs_actor_by_state_gauge_.Record(registered_actors_.size(), {{"State", "Registered"}});
+  gcs_actor_by_state_gauge_.Record(created_actors_.size(), {{"State", "Created"}});
+  gcs_actor_by_state_gauge_.Record(destroyed_actors_.size(), {{"State", "Destroyed"}});
+  gcs_actor_by_state_gauge_.Record(unresolved_actors_.size(), {{"State", "Unresolved"}});
+  gcs_actor_by_state_gauge_.Record(GetPendingActorsCount(), {{"State", "Pending"}});
   if (usage_stats_client_ != nullptr) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  liftime_num_created_actors_);

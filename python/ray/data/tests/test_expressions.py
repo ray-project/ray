@@ -1,3 +1,5 @@
+import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 from ray.data.expressions import (
@@ -34,7 +36,62 @@ STRUCTURAL_EQUALITY_TEST_CASES = [
     # Commutative operations are not structurally equal
     (col("a") + col("b"), col("b") + col("a"), False),
     (lit(1) * col("c"), col("c") * lit(1), False),
+    # Alias expression tests
+    (col("a").alias("b"), col("a").alias("b"), True),
+    (col("a").alias("b"), col("a").alias("c"), False),  # Different alias
+    (col("a").alias("b"), col("b").alias("b"), False),  # Different column
+    ((col("a") + 1).alias("result"), (col("a") + 1).alias("result"), True),
+    (
+        (col("a") + 1).alias("result"),
+        (col("a") + 2).alias("result"),
+        False,
+    ),  # Different expr
+    (col("a").alias("b"), col("a"), False),  # Alias vs non-alias
 ]
+
+
+@pytest.mark.parametrize(
+    "expr, alias_name, expected_alias",
+    [
+        # (expression, alias_name, expected_alias)
+        (col("price"), "product_price", "product_price"),
+        (lit(42), "answer", "answer"),
+        (col("a") + col("b"), "sum", "sum"),
+        ((col("price") * col("qty")) + lit(5), "total_with_fee", "total_with_fee"),
+        (col("age") >= lit(18), "is_adult", "is_adult"),
+    ],
+    ids=["col_alias", "lit_alias", "binary_alias", "complex_alias", "comparison_alias"],
+)
+def test_alias_functionality(expr, alias_name, expected_alias):
+    """Test alias functionality with various expression types."""
+    import pandas as pd
+
+    from ray.data._expression_evaluator import eval_expr
+
+    # Test alias creation
+    aliased_expr = expr.alias(alias_name)
+    assert aliased_expr.name == expected_alias
+    assert aliased_expr.expr.structurally_equals(expr)
+
+    # Test data type preservation
+    assert aliased_expr.data_type == expr.data_type
+
+    # Test evaluation equivalence
+    test_data = pd.DataFrame(
+        {
+            "price": [10, 20],
+            "qty": [2, 3],
+            "a": [1, 2],
+            "b": [3, 4],
+            "age": [17, 25],
+        }
+    )
+    original_result = eval_expr(expr, test_data)
+    aliased_result = eval_expr(aliased_expr, test_data)
+    if hasattr(original_result, "equals"):  # For pandas Series
+        assert original_result.equals(aliased_result)
+    else:  # For scalars
+        assert original_result == aliased_result
 
 
 @pytest.mark.parametrize(
@@ -205,6 +262,160 @@ class TestBooleanExpressions:
         very_complex = ((col("age") > 21) | (col("status") == "VIP")) & ~col("banned")
         assert isinstance(very_complex, BinaryExpr)
         assert very_complex.op == Operation.AND
+
+
+class TestToPyArrow:
+    """Test conversion of Ray Data expressions to PyArrow compute expressions."""
+
+    @pytest.mark.parametrize(
+        "ray_expr, equivalent_pyarrow_expr, description",
+        [
+            # Basic expressions
+            (col("age"), lambda: pc.field("age"), "column reference"),
+            (lit(42), lambda: pc.scalar(42), "integer literal"),
+            (lit("hello"), lambda: pc.scalar("hello"), "string literal"),
+            # Arithmetic operations
+            (
+                col("x") + 5,
+                lambda: pc.add(pc.field("x"), pc.scalar(5)),
+                "addition",
+            ),
+            (
+                col("x") * 2,
+                lambda: pc.multiply(pc.field("x"), pc.scalar(2)),
+                "multiplication",
+            ),
+            # Comparison operations
+            (
+                col("age") > 18,
+                lambda: pc.greater(pc.field("age"), pc.scalar(18)),
+                "greater than",
+            ),
+            (
+                col("status") == "active",
+                lambda: pc.equal(pc.field("status"), pc.scalar("active")),
+                "equality",
+            ),
+            # Boolean operations
+            (
+                (col("age") > 18) & (col("age") < 65),
+                lambda: pc.and_kleene(
+                    pc.greater(pc.field("age"), pc.scalar(18)),
+                    pc.less(pc.field("age"), pc.scalar(65)),
+                ),
+                "logical AND",
+            ),
+            (
+                ~(col("active")),
+                lambda: pc.invert(pc.field("active")),
+                "logical NOT",
+            ),
+            # Unary operations
+            (
+                col("value").is_null(),
+                lambda: pc.is_null(pc.field("value")),
+                "is_null check",
+            ),
+            # In operations
+            (
+                col("status").is_in(["active", "pending"]),
+                lambda: pc.is_in(pc.field("status"), pa.array(["active", "pending"])),
+                "is_in with list",
+            ),
+            # Complex nested expressions
+            (
+                (col("price") * col("quantity")) + col("tax"),
+                lambda: pc.add(
+                    pc.multiply(pc.field("price"), pc.field("quantity")),
+                    pc.field("tax"),
+                ),
+                "nested arithmetic",
+            ),
+            # Alias expressions (should unwrap to inner expression)
+            (
+                (col("x") + 5).alias("result"),
+                lambda: pc.add(pc.field("x"), pc.scalar(5)),
+                "aliased expression",
+            ),
+        ],
+        ids=[
+            "col",
+            "int_lit",
+            "str_lit",
+            "add",
+            "mul",
+            "gt",
+            "eq",
+            "and",
+            "not",
+            "is_null",
+            "is_in",
+            "nested",
+            "alias",
+        ],
+    )
+    def test_to_pyarrow_equivalence(
+        self, ray_expr, equivalent_pyarrow_expr, description
+    ):
+        """Test that Ray Data expressions convert to equivalent PyArrow expressions.
+
+        This test documents the expected PyArrow expression for each Ray Data expression
+        and verifies correctness by comparing results on sample data.
+        """
+        import pyarrow.dataset as ds
+
+        # Convert Ray expression to PyArrow
+        converted = ray_expr.to_pyarrow()
+        expected = equivalent_pyarrow_expr()
+
+        # Both should be PyArrow expressions
+        assert isinstance(converted, pc.Expression)
+        assert isinstance(expected, pc.Expression)
+
+        # Verify they produce the same results on sample data
+        test_data = pa.table(
+            {
+                "age": [15, 25, 45, 70],
+                "x": [1, 2, 3, 4],
+                "price": [10.0, 20.0, 30.0, 40.0],
+                "quantity": [2, 3, 1, 5],
+                "tax": [1.0, 2.0, 3.0, 4.0],
+                "status": ["active", "pending", "inactive", "active"],
+                "value": [1, None, 3, None],
+                "active": [True, False, True, False],
+            }
+        )
+
+        dataset = ds.dataset(test_data)
+
+        try:
+            # For boolean expressions, compare filter results
+            result_converted = dataset.scanner(filter=converted).to_table()
+            result_expected = dataset.scanner(filter=expected).to_table()
+            assert result_converted.equals(
+                result_expected
+            ), f"Expressions produce different results for {description}"
+        except (TypeError, pa.lib.ArrowInvalid, pa.lib.ArrowNotImplementedError):
+            # For non-boolean expressions, just verify both are valid
+            pass
+
+    def test_to_pyarrow_unsupported_expressions(self):
+        """Test that unsupported expression types raise appropriate errors."""
+        from ray.data.datatype import DataType
+        from ray.data.expressions import UDFExpr
+
+        def dummy_fn(x):
+            return x
+
+        udf_expr = UDFExpr(
+            fn=dummy_fn,
+            args=[col("x")],
+            kwargs={},
+            data_type=DataType(int),
+        )
+
+        with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
+            udf_expr.to_pyarrow()
 
 
 if __name__ == "__main__":

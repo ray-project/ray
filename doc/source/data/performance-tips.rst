@@ -121,7 +121,7 @@ Here's an example where we manually specify ``override_num_blocks=1``, but the o
     MaterializedDataset(
        num_blocks=3,
        num_rows=5000,
-       schema={data: numpy.ndarray(shape=(10000,), dtype=int64)}
+       schema={data: ArrowTensorTypeV2(shape=(10000,), dtype=int64)}
     )
 
 

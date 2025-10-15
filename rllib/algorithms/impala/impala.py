@@ -644,9 +644,8 @@ class IMPALA(Algorithm):
 
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0,
                     return_obj_refs=True,
-                    tags="batches",
+                    tags="get_batches",
                 )
             )
             ma_batches_refs = []
@@ -668,7 +667,7 @@ class IMPALA(Algorithm):
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],
-                    tag="batches",
+                    tag="get_batches",
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
@@ -800,14 +799,11 @@ class IMPALA(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            async_results: List[
-                Tuple[int, ObjectRef]
-            ] = self.env_runner_group.fetch_ready_async_reqs(
+            async_results = self.env_runner_group.foreach_env_runner_async_fetch_ready(
+                func="sample_get_state_and_metrics",
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
-            )
-            self.env_runner_group.foreach_env_runner_async(
-                "sample_get_state_and_metrics"
+                return_actor_ids=True,
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.

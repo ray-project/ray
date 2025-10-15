@@ -15,7 +15,7 @@
 #pragma once
 
 #include "gmock/gmock.h"
-#include "ray/rpc/worker/core_worker_client_interface.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 
 namespace ray {
 namespace rpc {
@@ -53,7 +53,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               WaitForActorRefDeleted,
-              (const WaitForActorRefDeletedRequest &request,
+              (WaitForActorRefDeletedRequest && request,
                const ClientCallback<WaitForActorRefDeletedReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -149,11 +149,6 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               RayletNotifyGCSRestart,
               (const RayletNotifyGCSRestartRequest &request,
                const ClientCallback<RayletNotifyGCSRestartReply> &callback),
-              (override));
-  MOCK_METHOD(void,
-              FreeActorObject,
-              (const FreeActorObjectRequest &request,
-               const ClientCallback<FreeActorObjectReply> &callback),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };

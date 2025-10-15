@@ -27,6 +27,7 @@ build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
+build:windows --cxxopt="/utf-8"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"

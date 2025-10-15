@@ -53,6 +53,7 @@ from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequestStatus,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
@@ -1713,6 +1714,7 @@ class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
     FORCE_STOP_UNHEALTHY_REPLICAS = RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS
+    MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = False
 
     def __init__(
         self,
@@ -1776,7 +1778,7 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._id in self._autoscaling_state_manager._autoscaling_states
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1865,8 +1867,22 @@ class DeploymentState:
 
     @property
     def _failed_to_start_threshold(self) -> int:
+        # Use global override if set, otherwise use deployment config
+        value = MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT
+        if value is not None and not self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED:
+            logger.warning(
+                "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT is deprecated and will be removed in the future. "
+                "Please use 'max_constructor_retry_count' instead in configurations."
+            )
+            self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = True
+        base_retry_count = (
+            value
+            if value is not None
+            else self._target_state.info.deployment_config.max_constructor_retry_count
+        )
+
         return min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            base_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
@@ -2017,6 +2033,7 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
+        updated_via_api: bool = False,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -2025,6 +2042,7 @@ class DeploymentState:
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
+            updated_via_api: Whether the target state update was triggered via API.
         """
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
@@ -2037,6 +2055,8 @@ class DeploymentState:
                 != new_target_state.version.deployment_config.autoscaling_config
             ):
                 ServeUsageTag.AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
+            elif updated_via_api:
+                ServeUsageTag.NUM_REPLICAS_VIA_API_CALL_UPDATED.record("True")
             elif (
                 self._target_state.version.deployment_config.num_replicas
                 != new_target_state.version.deployment_config.num_replicas
@@ -2136,25 +2156,24 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics.
+    def autoscale(self, decision_num_replicas: int) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas: Optional target replica count to apply.
 
         Returns:
-            Whether the target state has changed.
+            bool: True if the target state was updated, False if no change occurred.
         """
 
         if self._target_state.deleting:
             return False
 
-        decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
-            deployment_id=self._id,
-            curr_target_num_replicas=self._target_state.target_num_replicas,
-        )
-
-        if (
-            decision_num_replicas is None
-            or decision_num_replicas == self._target_state.target_num_replicas
-        ):
+        if decision_num_replicas == self._target_state.target_num_replicas:
             return False
 
         new_info = copy(self._target_state.info)
@@ -2175,7 +2194,7 @@ class DeploymentState:
 
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -2206,6 +2225,15 @@ class DeploymentState:
             return True
 
         return False
+
+    def set_target_num_replicas(
+        self,
+        target_num_replicas: int,
+    ) -> None:
+        """Set the target state for the deployment to the provided info."""
+        self._set_target_state(
+            self._target_state.info, target_num_replicas, updated_via_api=True
+        )
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
@@ -3163,6 +3191,13 @@ class DeploymentStateManager:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
 
+    def get_deployment_target_num_replicas(
+        self, deployment_id: DeploymentID
+    ) -> Optional[int]:
+        if deployment_id not in self._deployment_states:
+            return None
+        return self._deployment_states[deployment_id].target_num_replicas
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
@@ -3251,6 +3286,37 @@ class DeploymentStateManager:
 
         return False
 
+    def _validate_deployment_state_for_num_replica_update(
+        self, deployment_id: DeploymentID
+    ):
+        """Validate the state of a deployment for num replica update."""
+        statuses = self.get_deployment_statuses([deployment_id])
+
+        if statuses is None or len(statuses) == 0:
+            raise ValueError(f"Deployment {deployment_id} not found")
+        elif statuses[0].status_trigger == DeploymentStatusTrigger.DELETING:
+            raise DeploymentIsBeingDeletedError(
+                f"Deployment {deployment_id} is being deleted. Scaling operations are not allowed."
+            )
+
+    def set_target_num_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ):
+        """Set target number of replicas for a deployment."""
+        self._validate_deployment_state_for_num_replica_update(deployment_id)
+
+        deployment_state = self._deployment_states[deployment_id]
+        if target_num_replicas != deployment_state.target_num_replicas:
+            logger.info(
+                f"Target number of replicas changed from {deployment_state.target_num_replicas} to {target_num_replicas} for deployment {deployment_id}"
+            )
+            deployment_state.set_target_num_replicas(target_num_replicas)
+            self.save_checkpoint()
+        else:
+            logger.info(
+                f"Skipping updating target number of replicas as it did not change for deployment {deployment_id}"
+            )
+
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
 
@@ -3265,11 +3331,6 @@ class DeploymentStateManager:
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
-            if deployment_state.should_autoscale():
-                target_state_changed = (
-                    deployment_state.autoscale() or target_state_changed
-                )
-
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
@@ -3363,6 +3424,21 @@ class DeploymentStateManager:
             self.save_checkpoint()
 
         return any_recovering
+
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+        """Autoscale the deployment to the target number of replicas.
+
+        Args:
+            deployment_id: The deployment ID.
+            target_num_replicas: The target number of replicas.
+
+        Returns:
+            True if the deployment was autoscaled, False otherwise.
+        """
+        if deployment_id not in self._deployment_states:
+            return False
+
+        return self._deployment_states[deployment_id].autoscale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,

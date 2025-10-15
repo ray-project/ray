@@ -27,13 +27,15 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/rpc/worker/fake_core_worker_client.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -86,7 +88,7 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
-      const rpc::WaitForActorRefDeletedRequest &request,
+      rpc::WaitForActorRefDeletedRequest &&request,
       const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
@@ -172,7 +174,11 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        *worker_client_pool_);
+        *worker_client_pool_,
+        /*ray_event_recorder=*/fake_ray_event_recorder_,
+        /*session_name=*/"",
+        actor_by_state_gauge_,
+        gcs_actor_by_state_gauge_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -270,6 +276,9 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  ray::observability::FakeGauge actor_by_state_gauge_;
+  ray::observability::FakeGauge gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

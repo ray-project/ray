@@ -1,0 +1,60 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "raylet_client_interface",
+    hdrs = [
+        "raylet_client_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_client_pool",
+    srcs = ["raylet_client_pool.cc"],
+    hdrs = [
+        "raylet_client_pool.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":raylet_client_interface",
+        "//src/ray/gcs_rpc_client:gcs_client",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_client_lib",
+    srcs = ["raylet_client.cc"],
+    hdrs = ["raylet_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":raylet_client_interface",
+        "//src/ray/common:bundle_spec",
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc:retryable_grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_raylet_client",
+    hdrs = [
+        "fake_raylet_client.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":raylet_client_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/time",
+    ],
+)

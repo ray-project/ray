@@ -173,7 +173,10 @@ def _build_python_executable_command_memory_profileable(
         output_file_path = profile_dir / f"{session_name}_memory_{component}.bin"
         options = os.getenv(RAY_MEMRAY_PROFILE_OPTIONS_ENV, None)
         options = options.split(",") if options else []
-        command.extend(["-m", "memray", "run", "-o", str(output_file_path), *options])
+        # If neither --live nor any output option (-o/--output) is specified, add the default output path
+        if not any(opt in options for opt in ("--live", "-o", "--output")):
+            options[0:0] = ["-o", str(output_file_path)]
+        command.extend(["-m", "memray", "run", *options])
 
     return command
 
@@ -1904,6 +1907,7 @@ def start_raylet(
         command.append(
             f"--system-reserved-memory-bytes={resource_isolation_config.system_reserved_memory}"
         )
+        command.append(f"--system-pids={resource_isolation_config.system_pids}")
 
     if raylet_stdout_filepath:
         command.append(f"--stdout_filepath={raylet_stdout_filepath}")
