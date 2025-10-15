@@ -505,7 +505,12 @@ class SharedHandleMetricsPusher:
 
     def push_metrics(self) -> None:
         logger.debug("Gathering handle metrics reports...")
-        reports = [m._get_metrics_report() for m in self._router_metrics_managers]
+        reports = []
+        for m in self._router_metrics_managers:
+            try:
+                reports.append(m._get_metrics_report())
+            except Exception as e:
+                logger.exception(f"Error getting handle metrics report: {e!r}")
         logger.debug("Pushing handle metrics to controller...")
         self._controller_handler.record_autoscaling_metrics_from_handles.remote(reports)
 
