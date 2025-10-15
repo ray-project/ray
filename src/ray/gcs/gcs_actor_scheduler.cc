@@ -542,8 +542,8 @@ bool GcsActorScheduler::CleanupWorkerForActor(const rpc::Address &raylet_address
 
   auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
   rpc::KillLocalActorRequest request;
-  // death_cause is not set because The worker was leased but is no longer needed.
-  // scheduling, not killing a live actor. The worker was leased but is no longer needed.
+  // death_cause is not set because the actor was already killed and we are just cleaning
+  // up the worker leased to the actor.
   request.set_intended_actor_id(actor_id.Binary());
   request.set_worker_id(worker_address.worker_id());
   request.set_force_kill(true);
