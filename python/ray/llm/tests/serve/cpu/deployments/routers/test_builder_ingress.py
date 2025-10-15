@@ -10,9 +10,6 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-)
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
@@ -85,7 +82,7 @@ class TestBuildOpenaiApp:
         """Test `build_openai_app` can build app and run it with Serve."""
 
         app = build_openai_app(
-            llm_serving_args=get_llm_serve_args,
+            get_llm_serve_args,
         )
         assert isinstance(app, serve.Application)
         serve.run(app)
@@ -159,7 +156,15 @@ class TestBuildOpenaiApp:
                     llm_config_no_autoscaling_configured,
                     llm_config_autoscaling_default,
                     llm_config_autoscaling_non_default,
-                ]
+                ],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": 8,
+                        "initial_replicas": 10,
+                        "max_replicas": 12,
+                        "target_ongoing_requests": 10,
+                    }
+                },
             )
         )
         router_autoscaling_config = (
@@ -168,10 +173,7 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.min_replicas == 8  # (1 + 1 + 2) * 2
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
-        assert (
-            router_autoscaling_config.target_ongoing_requests
-            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
-        )
+        assert router_autoscaling_config.target_ongoing_requests == 10
 
 
 def extract_applications_from_output(output: bytes) -> dict:

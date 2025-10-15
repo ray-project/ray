@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
     build_pd_openai_app,
 )
 from ray.serve.llm import LLMConfig
@@ -24,6 +24,10 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 
@@ -40,6 +44,10 @@ class TestServingArgsParsing:
             ),
             engine_kwargs=dict(
                 tensor_parallel_size=1,
+                kv_transfer_config=dict(
+                    kv_connector=kv_connector,
+                    kv_role="kv_both",
+                ),
             ),
         )
 

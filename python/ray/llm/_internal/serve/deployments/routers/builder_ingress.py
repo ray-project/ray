@@ -47,8 +47,9 @@ class IngressClsConfig(BaseModelExtended):
     )
 
     @field_validator("ingress_cls")
+    @classmethod
     def validate_class(
-        self, value: Union[str, Type[OpenAiIngress]]
+        cls, value: Union[str, Type[OpenAiIngress]]
     ) -> Type[OpenAiIngress]:
         if isinstance(value, str):
             return load_class(value)
@@ -60,6 +61,7 @@ class LLMServingArgs(BaseModelExtended):
         description="A list of LLMConfigs, or dicts representing LLMConfigs, or paths to yaml files defining LLMConfigs.",
     )
     ingress_cls_config: Union[dict, IngressClsConfig] = Field(
+        default_factory=IngressClsConfig,
         description="The configuration for the ingress class. It can be a dict representing the ingress class configuration, or an IngressClsConfig object.",
     )
     ingress_deployment_config: Dict[str, Any] = Field(
@@ -70,16 +72,18 @@ class LLMServingArgs(BaseModelExtended):
     )
 
     @field_validator("ingress_cls_config")
+    @classmethod
     def validate_ingress_cls_config(
-        self, value: Union[dict, IngressClsConfig]
+        cls, value: Union[dict, IngressClsConfig]
     ) -> IngressClsConfig:
         if isinstance(value, dict):
             return IngressClsConfig.model_validate(value)
         return value
 
     @field_validator("llm_configs")
+    @classmethod
     def validate_llm_configs(
-        self, value: List[Union[str, dict, LLMConfig]]
+        cls, value: List[Union[str, dict, LLMConfig]]
     ) -> List[LLMConfig]:
         llm_configs = []
         for config in value:
@@ -115,8 +119,8 @@ def build_openai_app(builder_config: dict) -> Application:
     the given builder configuration.
 
     Args:
-        builder_config: The configuration for the builder. It has to conform to
-        the LLMServingArgs pydantic model.
+        builder_config: The configuration for the builder.
+        It has to conform to the LLMServingArgs pydantic model.
 
     Returns:
         The configured Ray Serve Application router.

@@ -363,10 +363,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
         The configured Ray Serve Application router.
     """
     from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
-        build_pd_with_ingress,
+        build_pd_openai_app,
     )
 
-    return build_pd_with_ingress(pd_serving_args=pd_serving_args)
+    return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
 __all__ = [

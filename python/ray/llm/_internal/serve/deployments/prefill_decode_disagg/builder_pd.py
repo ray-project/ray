@@ -8,9 +8,11 @@ from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import PDProxyServer
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     IngressClsConfig,
     load_class,
+)
+from ray.llm._internal.serve.deployments.routers.router import (
     make_fastapi_ingress,
 )
 from ray.serve.deployment import Application
@@ -32,8 +34,9 @@ class ProxyClsConfig(BaseModelExtended):
     )
 
     @field_validator("proxy_cls")
+    @classmethod
     def validate_class(
-        self, value: Union[str, type[PDProxyServer]]
+        cls, value: Union[str, type[PDProxyServer]]
     ) -> type[PDProxyServer]:
         if isinstance(value, str):
             return load_class(value)
@@ -45,24 +48,25 @@ class PDServingArgs(BaseModelExtended):
 
     prefill_config: Union[str, dict, LLMConfig]
     decode_config: Union[str, dict, LLMConfig]
-    proxy_cls_config: dict = Field(
-        default_factory=Union[dict, ProxyClsConfig],
+    proxy_cls_config: Union[dict, ProxyClsConfig] = Field(
+        default_factory=ProxyClsConfig,
         description="The configuration for the proxy class.",
     )
-    proxy_deployment_config: Union[dict, ProxyClsConfig] = Field(
+    proxy_deployment_config: Optional[dict] = Field(
         default_factory=dict,
         description="The Ray @server.deployment options for the proxy server.",
     )
-    ingress_deployment_config: dict = Field(
+    ingress_cls_config: Union[dict, IngressClsConfig] = Field(
+        default_factory=IngressClsConfig,
+        description="The configuration for the ingress class.",
+    )
+    ingress_deployment_config: Optional[dict] = Field(
         default_factory=dict,
         description="The Ray @server.deployment options for the ingress.",
     )
-    ingress_cls_config: Union[dict, IngressClsConfig] = Field(
-        default_factory=dict,
-        description="The configuration for the ingress class.",
-    )
 
-    def _validate_llm_config(self, value: Any) -> LLMConfig:
+    @staticmethod
+    def _validate_llm_config(value: Any) -> LLMConfig:
         if isinstance(value, str):
             return LLMConfig.from_file(value)
         elif isinstance(value, dict):
@@ -72,13 +76,33 @@ class PDServingArgs(BaseModelExtended):
         else:
             raise ValueError(f"Invalid LLMConfig: {value}")
 
+    @field_validator("proxy_cls_config")
+    @classmethod
+    def validate_proxy_cls_config(
+        cls, value: Union[dict, ProxyClsConfig]
+    ) -> ProxyClsConfig:
+        if isinstance(value, dict):
+            return ProxyClsConfig.model_validate(value)
+        return value
+
+    @field_validator("ingress_cls_config")
+    @classmethod
+    def validate_ingress_cls_config(
+        cls, value: Union[dict, IngressClsConfig]
+    ) -> IngressClsConfig:
+        if isinstance(value, dict):
+            return IngressClsConfig.model_validate(value)
+        return value
+
     @field_validator("prefill_config")
-    def validate_prefill_config(self, value: Any) -> LLMConfig:
-        return self._validate_llm_config(value)
+    @classmethod
+    def validate_prefill_config(cls, value: Any) -> LLMConfig:
+        return cls._validate_llm_config(value)
 
     @field_validator("decode_config")
-    def validate_decode_config(self, value: Any) -> LLMConfig:
-        return self._validate_llm_config(value)
+    @classmethod
+    def validate_decode_config(cls, value: Any) -> LLMConfig:
+        return cls._validate_llm_config(value)
 
     @model_validator(mode="after")
     def validate_model_ids(self):
@@ -97,7 +121,7 @@ class PDServingArgs(BaseModelExtended):
         return self
 
 
-def build_pd_with_ingress(pd_serving_args: dict) -> Application:
+def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing prefill/decode disaggregation."""
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
