@@ -139,11 +139,66 @@ def validate_with_torch_trainer(checkpoint, config):
 # ==== End TorchTrainer approach ======
 
 
+def validate_and_report(
+    model,
+    test_dataloader,
+    validate_within_trainer,
+    checkpoint_upload_mode,
+    validate_fn,
+    epoch,
+    num_epochs,
+    rank,
+    blocked_times,
+    config,
+    loss,
+):
+    # Validate model within training loop
+    val_elapsed_time = None
+    if validate_within_trainer:
+        val_start_time = time.time()
+        mean_acc = torchmetrics.Accuracy(
+            task="multiclass", num_classes=10, top_k=1
+        ).cuda()
+        model.eval()
+        with torch.no_grad():
+            for batch in test_dataloader:
+                X, y = batch["image"], batch["label"]
+                outputs = model(X)
+                mean_acc(outputs.argmax(1), y)
+        val_elapsed_time = time.time() - val_start_time
+
+    # Report metrics + checkpoint + validate
+    metrics = {"loss": loss.item(), "epoch": epoch}
+    if validate_within_trainer and epoch == num_epochs - 1:
+        metrics["score"] = mean_acc.compute().item()
+    if rank == 0:
+        if val_elapsed_time:
+            metrics["validation_time"] = val_elapsed_time
+        iteration_checkpoint_dir = tempfile.mkdtemp()
+        torch.save(
+            model.module.state_dict(),
+            os.path.join(iteration_checkpoint_dir, "model.pt"),
+        )
+        start_time = time.time()
+        ray.train.report(
+            metrics,
+            checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
+            checkpoint_upload_mode=checkpoint_upload_mode,
+            validate_fn=validate_fn,
+            validate_config={"dataset": config["test"]} if validate_fn else None,
+        )
+        blocked_times.append(time.time() - start_time)
+    else:
+        ray.train.report({}, None)
+
+
 def train_func(config):
+    batch_size = 256
     validate_within_trainer = config["validate_within_trainer"]
     num_epochs = config["num_epochs"]
     checkpoint_upload_mode = config["checkpoint_upload_mode"]
     validate_fn = config["validate_fn"]
+    midpoint_batch = int(config["rows_per_worker"] / batch_size / 2)
 
     # Prepare model, dataloader, and possibly metrics
     model = create_model()
@@ -151,7 +206,7 @@ def train_func(config):
     criterion = CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=0.001)
     train_data_shard = ray.train.get_dataset_shard("train")
-    train_dataloader = train_data_shard.iter_torch_batches(batch_size=256)
+    train_dataloader = train_data_shard.iter_torch_batches(batch_size=batch_size)
     if validate_within_trainer:
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
             batch_size=128
@@ -162,56 +217,42 @@ def train_func(config):
     rank = ray.train.get_context().get_world_rank()
     for epoch in range(num_epochs):
 
-        # Train model
+        # Train model, then validate/report at midpoint and end of epoch
         model.train()
-        for batch in train_dataloader:
+        for i, batch in enumerate(train_dataloader):
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
-        # Validate model within training loop
-        val_elapsed_time = None
-        if validate_within_trainer:
-            val_start_time = time.time()
-            mean_acc = torchmetrics.Accuracy(
-                task="multiclass", num_classes=10, top_k=1
-            ).cuda()
-            model.eval()
-            with torch.no_grad():
-                for batch in test_dataloader:
-                    X, y = batch["image"], batch["label"]
-                    outputs = model(X)
-                    mean_acc(outputs.argmax(1), y)
-            val_elapsed_time = time.time() - val_start_time
-
-        # Report metrics + checkpoint + validate
-        metrics = {"loss": loss.item(), "epoch": epoch}
-        if validate_within_trainer and epoch == num_epochs - 1:
-            metrics["score"] = mean_acc.compute().item()
-        if rank == 0:
-            if val_elapsed_time:
-                metrics["validation_time"] = val_elapsed_time
-            iteration_checkpoint_dir = tempfile.mkdtemp()
-            torch.save(
-                model.module.state_dict(),
-                os.path.join(iteration_checkpoint_dir, "model.pt"),
-            )
-            start_time = time.time()
-            ray.train.report(
-                metrics,
-                checkpoint=ray.train.Checkpoint.from_directory(
-                    iteration_checkpoint_dir
-                ),
-                checkpoint_upload_mode=checkpoint_upload_mode,
-                validate_fn=validate_fn,
-                validate_config={"dataset": config["test"]} if validate_fn else None,
-            )
-            blocked_times.append(time.time() - start_time)
-        else:
-            ray.train.report({}, None)
+            if i == midpoint_batch:
+                validate_and_report(
+                    model,
+                    test_dataloader,
+                    validate_within_trainer,
+                    checkpoint_upload_mode,
+                    validate_fn,
+                    epoch,
+                    num_epochs,
+                    rank,
+                    blocked_times,
+                    config,
+                    loss,
+                )
+        validate_and_report(
+            model,
+            test_dataloader,
+            validate_within_trainer,
+            checkpoint_upload_mode,
+            validate_fn,
+            epoch,
+            num_epochs,
+            rank,
+            blocked_times,
+            config,
+            loss,
+        )
 
     # Report train_func metrics with dummy checkpoint since that is the only way to
     # return metrics
@@ -235,6 +276,7 @@ def run_training_with_validation(
     num_epochs: int,
     train_dataset: ray.data.Dataset,
     test_dataset: ray.data.Dataset,
+    training_rows: int,
 ):
     # Launch distributed training job.
     start_time = time.time()
@@ -245,6 +287,7 @@ def run_training_with_validation(
         "num_epochs": num_epochs,
         "checkpoint_upload_mode": checkpoint_upload_mode,
         "validate_fn": validate_fn,
+        "rows_per_worker": training_rows / 2,
     }
     if validate_within_trainer:
         datasets["test"] = test_dataset
@@ -285,13 +328,20 @@ def main():
     train_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/train").map(
         transform_cifar
     )
+    training_rows = train_dataset.count()
     test_dataset = ray.data.read_parquet(f"{STORAGE_PATH}/cifar10-parquet/test").map(
         transform_cifar
     )
     consolidated_metrics = {}
     num_epochs = 10
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
-        CheckpointUploadMode.SYNC, None, True, num_epochs, train_dataset, test_dataset
+        CheckpointUploadMode.SYNC,
+        None,
+        True,
+        num_epochs,
+        train_dataset,
+        test_dataset,
+        training_rows,
     )
     consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
@@ -302,6 +352,7 @@ def main():
         num_epochs,
         train_dataset,
         test_dataset,
+        training_rows,
     )
     consolidated_metrics[
         "async_cp_map_batches_val_metrics"
@@ -312,6 +363,7 @@ def main():
         num_epochs,
         train_dataset,
         test_dataset,
+        training_rows,
     )
     logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
