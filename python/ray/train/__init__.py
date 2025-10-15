@@ -25,7 +25,6 @@ from ray.train.backend import BackendConfig
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import TrainContext, get_context
-from ray.train.trainer import TrainingIterator
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -76,7 +75,6 @@ __all__ = [
     "SyncConfig",
     "TrainContext",
     "TrainingFailedError",
-    "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]
 
@@ -95,7 +93,6 @@ ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainContext.__module__ = "ray.train"
 TrainingFailedError.__module__ = "ray.train"
-TrainingIterator.__module__ = "ray.train"
 
 # TODO: consider implementing these in v1 and raising ImportError instead.
 if is_v2_enabled():
@@ -104,7 +101,6 @@ if is_v2_enabled():
             "CheckpointUploadMode",
             "ControllerError",
             "ReportedCheckpoint",
-            "TrainingFailedError",
             "UserCallback",
             "WorkerGroupError",
             "get_all_reported_checkpoints",
@@ -114,7 +110,6 @@ if is_v2_enabled():
     CheckpointUploadMode.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
-    TrainingFailedError.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"
     WorkerGroupError.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
