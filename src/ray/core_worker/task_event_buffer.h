@@ -513,6 +513,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param data The task event data to be sent.
   void SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data);
 
+  /// Send ray events to GCS.
+  ///
+  /// \param data The ray event data to be sent.
+  void SendRayEventsToGCS(std::unique_ptr<rpc::events::RayEventsData> data);
+
   /// Send ray events to the event aggregator.
   ///
   /// \param data The ray event data to be sent.
