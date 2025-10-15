@@ -103,8 +103,7 @@ config = (
 )
 
 
-# if __name__ == "__main__":
-def test_main():
+if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
     run_rllib_example_script_experiment(config, args)

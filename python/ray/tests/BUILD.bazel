@@ -10,7 +10,6 @@ py_library(
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
         "//python/ray/tests:__subpackages__",
-        "//rllib:__subpackages__",
     ],
 )
 

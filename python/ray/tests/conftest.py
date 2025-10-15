@@ -1367,9 +1367,7 @@ def create_ray_logs_for_failed_test(rep):
     archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
     if not archive_dir:
-        raise ValueError(
-            "++++ Expected environment variable 'RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR'"
-        )
+        return
 
     if not os.path.exists(archive_dir):
         os.makedirs(archive_dir)
