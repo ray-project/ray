@@ -368,7 +368,8 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.labels);
 
     auto get_node_info_func = [&](const NodeID &node_id) {
-      return mock_gcs_client_->Nodes().Get(node_id);
+      auto ptr = mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
 
     auto max_task_args_memory = static_cast<int64_t>(
@@ -450,7 +451,8 @@ class NodeManagerTest : public ::testing::Test {
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
@@ -479,7 +481,8 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
 }
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
@@ -578,10 +581,12 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
           });
 
   // Save the publish_node_change_callback for publishing a node failure event later.
-  std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>
+  std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
       publish_node_change_callback;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
@@ -622,7 +627,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // After RequestWorkerLease, a leased worker is ready in the NodeManager.
   // Then use publish_node_change_callback to say owner_node_id is dead.
   // The leased worker should not be killed by this because it is a detached actor.
-  GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_state(GcsNodeInfo::DEAD);
   publish_node_change_callback(owner_node_id, std::move(node_info));
   // The worker should still be alive because it should not be killed by
