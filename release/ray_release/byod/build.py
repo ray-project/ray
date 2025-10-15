@@ -32,6 +32,10 @@ def build_anyscale_custom_byod_image(
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
+    subprocess.check_call(
+        ["gcloud", "auth", "configure-docker", "us-west1-docker.pkg.dev"],
+        stdout=sys.stderr,
+    )
     docker_build_cmd = [
         "docker",
         "build",
