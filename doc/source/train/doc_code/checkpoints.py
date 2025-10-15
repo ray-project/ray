@@ -502,6 +502,11 @@ def train_fn(config):
 # __checkpoint_upload_function_start__
 
 from torch.distributed.checkpoint.state_dict_saver import async_save
+from s3torchconnector.dcp import S3StorageWriter
+from torch.distributed.checkpoint.state_dict import get_state_dict
+
+from ray import train
+from ray.train import Checkpoint
 
 
 def train_fn(config):
@@ -509,7 +514,7 @@ def train_fn(config):
     for epoch in config["num_epochs"]:
         # Start async checkpoint upload to s3 with Torch
         model, optimizer = ...
-        storage_context = ray.train.get_context().get_storage()
+        storage_context = train.get_context().get_storage()
         checkpoint_path = (
             f"s3://{storage_context.build_checkpoint_path_from_name(str(epoch))}"
         )
@@ -520,7 +525,8 @@ def train_fn(config):
             storage_writer=storage_writer,
         )
 
-        def wait_async_save(checkpoint, checkpoint_dir):
+        def wait_async_save(checkpoint, checkpoint_dir_name):
+            # This function waits for checkpoint to be finalized before returning it as is
             ckpt_ref.result()
             return checkpoint
 
@@ -528,7 +534,7 @@ def train_fn(config):
         # before reporting the checkpoint
         metrics = {...}
         checkpoint = Checkpoint(checkpoint_path)
-        ray.train.report(
+        train.report(
             metrics=metrics,
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,

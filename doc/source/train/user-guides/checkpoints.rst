@@ -302,7 +302,7 @@ and ``checkpoint_dir_name`` passed to ``ray.train.report`` and returns the persi
 
     In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
     lead to unexpected behavior. You should also avoid collective operations, such as
-    :func:`~ray.train.report` or ``get_state_dict``, which can easily lead to deadlocks.
+    :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
 
 .. _train-dl-configure-checkpoints:
 
