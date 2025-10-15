@@ -892,7 +892,10 @@ class ApplicationState:
                 )
                 # Handling the case where the user turns off/turns on app-level autoscaling policy,
                 # between app deployment.
-                if self._target_state.config.autoscaling_policy is not None:
+                if (
+                    self._target_state.config is not None
+                    and self._target_state.config.autoscaling_policy is not None
+                ):
                     self._autoscaling_state_manager.register_application(
                         self._name,
                         AutoscalingPolicy(

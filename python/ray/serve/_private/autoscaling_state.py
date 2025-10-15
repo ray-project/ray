@@ -62,6 +62,10 @@ class DeploymentAutoscalingState:
         """
 
         config = info.deployment_config.autoscaling_config
+        if config is None:
+            raise ValueError(
+                f"Autoscaling config is not set for deployment {self._deployment_id}"
+            )
         if (
             self._deployment_info is None or self._deployment_info.config_changed(info)
         ) and config.initial_replicas is not None:
@@ -610,6 +614,22 @@ class ApplicationAutoscalingState:
             self._deployment_autoscaling_states[
                 deployment_id
             ] = DeploymentAutoscalingState(deployment_id)
+
+        if info.deployment_config.autoscaling_config is None:
+            raise ValueError(
+                f"Autoscaling config is not set for deployment {deployment_id}"
+            )
+
+        # if the deployment-level policy is not the default policy, and the application has a policy,
+        # warn the user that the application-level policy will take precedence
+        if (
+            not info.deployment_config.autoscaling_config.policy.is_default_policy_function()
+            and self.has_policy()
+        ):
+            logger.warning(
+                f"User provided both a deployment-level and an application-level policy for deployment {deployment_id}. "
+                "The application-level policy will take precedence."
+            )
 
         return self._deployment_autoscaling_states[deployment_id].register(
             info,
