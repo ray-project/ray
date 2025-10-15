@@ -255,9 +255,11 @@ class UnboundedDataOperator(PhysicalOperator):
             return False
 
         # Check rate limits before creating new batches
-        estimated_records = self.datasource.max_records_per_task if hasattr(
-            self.datasource, "max_records_per_task"
-        ) else 1000
+        estimated_records = (
+            self.datasource.max_records_per_task
+            if hasattr(self.datasource, "max_records_per_task")
+            else 1000
+        )
         estimated_bytes = estimated_records * 1024  # Rough estimate: 1KB per record
         if not self._check_rate_limit(estimated_records, estimated_bytes):
             logger.debug("Rate limit exceeded, delaying new batch creation")
@@ -386,7 +388,9 @@ class UnboundedDataOperator(PhysicalOperator):
 
         # Calculate utilization based on lag and capacity
         if lag_metrics.capacity > 0:
-            utilization = lag_metrics.total_lag / (lag_metrics.capacity * 60)  # 1 min worth
+            utilization = lag_metrics.total_lag / (
+                lag_metrics.capacity * 60
+            )  # 1 min worth
         else:
             utilization = 0.0
 
@@ -444,7 +448,9 @@ class UnboundedDataOperator(PhysicalOperator):
             except Exception as e:
                 logger.debug(f"Could not cancel task during autoscaling: {e}")
 
-        logger.debug(f"Cancelled {cancelled_count}/{len(self._current_read_tasks)} tasks for autoscaling")
+        logger.debug(
+            f"Cancelled {cancelled_count}/{len(self._current_read_tasks)} tasks for autoscaling"
+        )
         self._current_read_tasks.clear()
 
     def _check_rate_limit(self, estimated_records: int, estimated_bytes: int) -> bool:
@@ -457,7 +463,10 @@ class UnboundedDataOperator(PhysicalOperator):
         Returns:
             True if can proceed, False if rate limit exceeded
         """
-        if not self.trigger.max_records_per_second and not self.trigger.max_bytes_per_second:
+        if (
+            not self.trigger.max_records_per_second
+            and not self.trigger.max_bytes_per_second
+        ):
             return True  # No rate limiting configured
 
         now = datetime.now()
