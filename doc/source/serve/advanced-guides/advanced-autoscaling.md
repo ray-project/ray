@@ -702,7 +702,7 @@ Then specify the application-level policy in your application config:
 
 ```{literalinclude} ../doc_code/application_level_autoscaling.yaml
 :language: yaml
-emphasize-lines: 4-5
+:emphasize-lines: 4-5
 ```
 
 :::{note}
