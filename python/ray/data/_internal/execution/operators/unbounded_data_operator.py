@@ -404,8 +404,8 @@ class UnboundedDataOperator(PhysicalOperator):
                 )
                 self.parallelism = new_parallelism
                 self._last_scaling_time = now
-                # Cancel and recreate tasks with new parallelism
-                self._cancel_current_tasks()
+                # Cancel current tasks so new ones will be created with updated parallelism
+                self._cancel_all_read_tasks()
 
         # Scale down if low utilization and many consecutive empty batches
         elif (
@@ -424,8 +424,28 @@ class UnboundedDataOperator(PhysicalOperator):
                 )
                 self.parallelism = new_parallelism
                 self._last_scaling_time = now
-                # Cancel and recreate tasks with new parallelism
-                self._cancel_current_tasks()
+                # Cancel current tasks so new ones will be created with updated parallelism
+                self._cancel_all_read_tasks()
+
+    def _cancel_all_read_tasks(self) -> None:
+        """Cancel all current read tasks.
+
+        Used during autoscaling to stop current tasks so they can be recreated
+        with new parallelism settings.
+        """
+        if not self._current_read_tasks:
+            return
+
+        cancelled_count = 0
+        for task_ref in self._current_read_tasks:
+            try:
+                ray.cancel(task_ref, force=False)  # Graceful cancellation
+                cancelled_count += 1
+            except Exception as e:
+                logger.debug(f"Could not cancel task during autoscaling: {e}")
+
+        logger.debug(f"Cancelled {cancelled_count}/{len(self._current_read_tasks)} tasks for autoscaling")
+        self._current_read_tasks.clear()
 
     def _check_rate_limit(self, estimated_records: int, estimated_bytes: int) -> bool:
         """Check if rate limit allows proceeding with new batch.
