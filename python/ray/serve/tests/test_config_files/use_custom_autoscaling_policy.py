@@ -3,6 +3,7 @@ from ray.serve._private.autoscaling_state import AutoscalingContext
 
 
 def custom_autoscaling_policy(ctx: AutoscalingContext):
+    print("custom_autoscaling_policy")
     return 2, {}
 
 

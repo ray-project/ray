@@ -48,7 +48,7 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
@@ -1447,10 +1447,11 @@ def override_deployment_info(
             ):
                 # By setting the serialized policy def, AutoscalingConfig constructor will not
                 # try to import the policy from the string import path
-                new_config[
-                    "_serialized_policy_def"
-                ] = deployment_to_serialized_autoscaling_policy_def[deployment_name]
-
+                policy_obj = AutoscalingPolicy.from_serialized_policy_def(
+                    new_config["policy"],
+                    deployment_to_serialized_autoscaling_policy_def[deployment_name],
+                )
+                new_config["policy"] = policy_obj
             options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
@@ -1509,12 +1510,16 @@ def override_deployment_info(
                 ):
                     # By setting the serialized request router cls, RequestRouterConfig constructor will not
                     # try to import the request router cls from the string import path
-                    request_router_config[
-                        "_serialized_request_router_cls"
-                    ] = deployment_to_serialized_request_router_cls[deployment_name]
-                options["request_router_config"] = RequestRouterConfig(
-                    **request_router_config
-                )
+                    options[
+                        "request_router_config"
+                    ] = RequestRouterConfig.from_serialized_request_router_cls(
+                        request_router_config,
+                        deployment_to_serialized_request_router_cls[deployment_name],
+                    )
+                else:
+                    options["request_router_config"] = RequestRouterConfig(
+                        **request_router_config
+                    )
 
         # Override deployment config options
         options.pop("name", None)

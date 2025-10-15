@@ -201,6 +201,24 @@ class RequestRouterConfig(BaseModel):
         else:
             self._serialize_request_router_cls()
 
+    def set_serialized_request_router_cls(
+        self, serialized_request_router_cls: bytes
+    ) -> None:
+        self._serialized_request_router_cls = serialized_request_router_cls
+
+    @classmethod
+    def from_serialized_request_router_cls(
+        cls, request_router_config: dict, serialized_request_router_cls: bytes
+    ) -> "RequestRouterConfig":
+        request_router_config[
+            "_serialized_request_router_cls"
+        ] = serialized_request_router_cls
+        request_router_config = cls(**request_router_config)
+        return request_router_config
+
+    def get_serialized_request_router_cls(self) -> Optional[bytes]:
+        return self._serialized_request_router_cls
+
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
 
@@ -217,7 +235,7 @@ class RequestRouterConfig(BaseModel):
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
         request_router_class = import_attr(request_router_path)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
+        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
@@ -255,6 +273,19 @@ class AutoscalingPolicy(BaseModel):
         else:
             self.serialize_policy()
 
+    def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
+        self._serialized_policy_def = serialized_policy_def
+
+    @classmethod
+    def from_serialized_policy_def(
+        cls, policy_config: dict, serialized_policy_def: bytes
+    ) -> "AutoscalingPolicy":
+        policy_config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**policy_config)
+
+    def get_serialized_policy_def(self) -> Optional[bytes]:
+        return self._serialized_policy_def
+
     def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
 
@@ -267,7 +298,7 @@ class AutoscalingPolicy(BaseModel):
             policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
 
         if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
+            self.set_serialized_policy_def(cloudpickle.dumps(import_attr(policy_path)))
 
         self.policy_function = policy_path
 
