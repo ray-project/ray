@@ -96,6 +96,7 @@ Single-node multi-GPU training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example shows how to use torchrun with local mode for multi-GPU training on a single node.
+This example uses standard PyTorch DataLoader for data loading, making it easy to adapt existing PyTorch training code.
 
 First, create your training script (``train_script.py``):
 
@@ -104,36 +105,86 @@ First, create your training script (``train_script.py``):
     import os
     import tempfile
     import torch
+    import torch.distributed as dist
     from torch import nn
+    from torch.utils.data import DataLoader
+    from torchvision.datasets import FashionMNIST
+    from torchvision.transforms import ToTensor, Normalize, Compose
+    from filelock import FileLock
     import ray
-    from ray.train import Checkpoint, ScalingConfig
+    from ray.train import Checkpoint, ScalingConfig, get_context
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
+        # Load dataset with file locking to avoid multiple downloads
+        transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+        data_dir = "./data"
+        
+        # Only local rank 0 downloads the dataset
+        local_rank = get_context().get_local_rank()
+        if local_rank == 0:
+            with FileLock(os.path.join(data_dir, "fashionmnist.lock")):
+                train_dataset = FashionMNIST(
+                    root=data_dir, train=True, download=True, transform=transform
+                )
+        
+        # Wait for rank 0 to finish downloading
+        dist.barrier()
+        
+        # Now all ranks can safely load the dataset
+        train_dataset = FashionMNIST(
+            root=data_dir, train=True, download=False, transform=transform
+        )
+        train_loader = DataLoader(
+            train_dataset, batch_size=config["batch_size"], shuffle=True
+        )
+        
+        # Prepare dataloader for distributed training
+        train_loader = ray.train.torch.prepare_data_loader(train_loader)
+
         # Prepare model for distributed training
-        model = nn.Linear(10, 1)
+        model = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(28 * 28, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10)
+        )
         model = ray.train.torch.prepare_model(model)
 
-        optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"])
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
+        # Training loop
         for epoch in range(config["epochs"]):
-            # Training loop
-            loss = model(torch.randn(32, 10)).sum()
-            loss.backward()
-            optimizer.step()
+            # Set epoch for distributed sampler
+            if ray.train.get_context().get_world_size() > 1:
+                train_loader.sampler.set_epoch(epoch)
+
+            epoch_loss = 0.0
+            for batch_idx, (images, labels) in enumerate(train_loader):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+                
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                epoch_loss += loss.item()
+
+            avg_loss = epoch_loss / len(train_loader)
 
             # Report metrics and checkpoint
             with tempfile.TemporaryDirectory() as temp_dir:
                 torch.save(model.state_dict(), os.path.join(temp_dir, "model.pt"))
                 ray.train.report(
-                    {"loss": loss.item()},
+                    {"loss": avg_loss, "epoch": epoch},
                     checkpoint=Checkpoint.from_directory(temp_dir)
                 )
 
     # Configure trainer for local mode
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
-        train_loop_config={"lr": 0.01, "epochs": 10},
+        train_loop_config={"lr": 0.001, "epochs": 10, "batch_size": 32},
         scaling_config=ScalingConfig(num_workers=0, use_gpu=True),
     )
     result = trainer.fit()
