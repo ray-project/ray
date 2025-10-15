@@ -41,7 +41,7 @@ class ResourceManager:
     """A class that manages the resource usage of a streaming executor."""
 
     # The interval in seconds at which the global resource limits are refreshed.
-    GLOBAL_LIMITS_UPDATE_INTERVAL_S = 10
+    GLOBAL_LIMITS_UPDATE_INTERVAL_S = 1
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
