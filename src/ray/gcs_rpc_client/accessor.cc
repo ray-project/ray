@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
 
@@ -1547,6 +1548,7 @@ AutoscalerStateAccessor::AutoscalerStateAccessor(GcsClient *client_impl)
 Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     int64_t timeout_ms,
     const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<std::unordered_map<std::string, std::string>> &label_selectors,
     const std::vector<int64_t> &count_array) {
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
@@ -1561,6 +1563,14 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
         bundle.begin(), bundle.end());
     new_resource_requests_by_count->set_count(count);
+
+    if (i < label_selectors.size() && !label_selectors[i].empty()) {
+      RAY_CHECK_EQ(label_selectors.size(), count_array.size());
+      auto *ls = new_resource_requests_by_count->mutable_request()->add_label_selectors();
+      // Parse label_selector map to proto format.
+      ray::LabelSelector label_selector(label_selectors[i]);
+      *ls = label_selector.ToProto();
+    }
   }
 
   return client_impl_->GetGcsRpcClient().SyncRequestClusterResourceConstraint(
