@@ -14,9 +14,10 @@ def get_autoscaling_metrics_from_controller(
     client, deployment_id: DeploymentID
 ) -> Dict[str, float]:
     """Get autoscaling metrics from the controller for testing."""
-    ref = client._controller._dump_all_autoscaling_metrics_for_testing.remote()
-    metrics = ray.get(ref)
-    return metrics.get(deployment_id, {})
+    ref = client._controller._get_metrics_for_deployment_for_testing.remote(
+        deployment_id
+    )
+    return ray.get(ref)
 
 
 class TestCustomServeMetrics:
@@ -53,16 +54,15 @@ class TestCustomServeMetrics:
         # Call deployment 3 times
         [handle.remote() for _ in range(3)]
 
-        # Wait for controller to receive new metrics
-        wait_for_condition(
-            lambda: "counter"
-            in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
-            timeout=15,
-        )
-        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+        def check_counter_value():
+            metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+            return "counter" in metrics and metrics["counter"][-1][0].value == 3
 
         # The final counter value recorded by the controller should be 3
-        assert metrics["counter"][-1][0].value == 3
+        wait_for_condition(
+            check_counter_value,
+            timeout=15,
+        )
 
     def test_custom_serve_timeout(self, serve_instance):
         @serve.deployment(

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -134,7 +135,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       instrumented_io_context &io_context,
       uint64_t max_pending_requests_bytes,
       uint64_t check_channel_status_interval_milliseconds,
-      uint64_t server_unavailable_timeout_seconds,
+      uint32_t server_unavailable_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name) {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
@@ -162,8 +163,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
 
-  // Return the number of pending requests waiting for retry.
-  size_t NumPendingRequests() const { return pending_requests_.size(); }
+  // Return the number of active (pending or inflight) requests.
+  size_t NumActiveRequests() const { return num_active_requests_; }
 
   ~RetryableGrpcClient();
 
@@ -172,7 +173,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       instrumented_io_context &io_context,
                       uint64_t max_pending_requests_bytes,
                       uint64_t check_channel_status_interval_milliseconds,
-                      uint64_t server_unavailable_timeout_seconds,
+                      uint32_t server_unavailable_timeout_seconds,
                       std::function<void()> server_unavailable_timeout_callback,
                       std::string server_name)
       : io_context_(io_context),
@@ -189,7 +190,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Set up the timer to run CheckChannelStatus.
   void SetupCheckTimer();
 
-  void CheckChannelStatus(bool reset_timer = true);
+  void CheckChannelStatus(bool reset_timer);
 
   instrumented_io_context &io_context_;
   boost::asio::deadline_timer timer_;
@@ -201,7 +202,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // to prevent OOM.
   const uint64_t max_pending_requests_bytes_;
   const uint64_t check_channel_status_interval_milliseconds_;
-  const uint64_t server_unavailable_timeout_seconds_;
+  const uint32_t server_unavailable_timeout_seconds_;
   // After the server is unavailable for server_unavailable_timeout_seconds_,
   // this callback will be called.
   std::function<void()> server_unavailable_timeout_callback_;
@@ -222,6 +223,9 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       pending_requests_;
   // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
+  // TODO(57156): this is messy to leave in the retryable grpc client, refactor this
+  // Total number of inflight requests.
+  std::atomic<size_t> num_active_requests_ = 0;
 };
 
 template <typename Service, typename Request, typename Reply>
@@ -232,6 +236,7 @@ void RetryableGrpcClient::CallMethod(
     Request request,
     ClientCallback<Reply> callback,
     int64_t timeout_ms) {
+  num_active_requests_++;
   RetryableGrpcRequest::Create(weak_from_this(),
                                std::move(prepare_async_function),
                                std::move(grpc_client),
@@ -272,17 +277,24 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
           auto retryable_grpc_client = weak_retryable_grpc_client.lock();
           if (status.ok() || !IsGrpcRetryableStatus(status) || !retryable_grpc_client) {
             callback(status, std::move(reply));
+            if (retryable_grpc_client) {
+              retryable_grpc_client->num_active_requests_--;
+            }
             return;
           }
-
           retryable_grpc_client->Retry(retryable_grpc_request);
         },
         call_name,
         retryable_grpc_request->GetTimeoutMs());
   };
 
-  auto failure_callback = [callback](const ray::Status &status) {
+  auto failure_callback = [weak_retryable_grpc_client,
+                           callback](const ray::Status &status) {
     callback(status, Reply{});
+    auto retryable_grpc_client = weak_retryable_grpc_client.lock();
+    if (retryable_grpc_client) {
+      retryable_grpc_client->num_active_requests_--;
+    }
   };
 
   return std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>(

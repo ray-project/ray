@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <csignal>
 #include <cstddef>
 #include <fstream>
@@ -31,6 +32,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -90,6 +92,34 @@ std::vector<ObjectID> FlatbufferToObjectIds(
   return ids;
 }
 
+#if !defined(_WIN32)
+// Send a signal to the worker's saved process group with safety guards and logging.
+static void CleanupProcessGroupSend(pid_t saved_pgid,
+                                    const WorkerID &wid,
+                                    const std::string &ctx,
+                                    int sig) {
+  // Guard against targeting the raylet's own process group if isolation failed.
+  pid_t raylet_pgid = getpgid(0);
+  if (raylet_pgid == saved_pgid) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx
+        << ": skipping PG cleanup: worker pgid equals raylet pgid (isolation failed): "
+        << saved_pgid;
+    return;
+  }
+  RAY_LOG(INFO).WithField(wid) << ctx << ": sending "
+                               << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+                               << " to pgid=" << saved_pgid;
+  auto err = KillProcessGroup(saved_pgid, sig);
+  if (err && *err) {
+    RAY_LOG(WARNING).WithField(wid)
+        << ctx << ": failed to send " << (sig == SIGKILL ? "SIGKILL" : "SIGTERM")
+        << " to process group " << saved_pgid << ": " << err->message()
+        << ", errno=" << err->value();
+  }
+}
+#endif
+
 }  // namespace
 
 NodeManager::NodeManager(
@@ -111,11 +141,12 @@ NodeManager::NodeManager(
     LeaseDependencyManager &lease_dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    plasma::PlasmaClientInterface &store_client,
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -128,7 +159,7 @@ NodeManager::NodeManager(
       core_worker_subscriber_(core_worker_subscriber),
       object_directory_(object_directory),
       object_manager_(object_manager),
-      store_client_(store_client),
+      store_client_(std::move(store_client)),
       mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -167,7 +198,8 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -183,7 +215,7 @@ NodeManager::NodeManager(
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
@@ -808,6 +840,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
+  raylet_client_pool_.Disconnect(node_id);
+  worker_rpc_pool_.Disconnect(node_id);
+
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
@@ -952,8 +987,9 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
-                                              const boost::system::error_code &error) {
+void NodeManager::HandleClientConnectionError(
+    const std::shared_ptr<ClientConnection> &client,
+    const boost::system::error_code &error) {
   const std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
       error.value(),
@@ -1013,11 +1049,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AsyncGetObjectsRequest: {
     HandleAsyncGetObjectsRequest(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    HandleDirectCallTaskBlocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerBlocked: {
+    HandleNotifyWorkerBlocked(registered_worker);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    HandleDirectCallTaskUnblocked(registered_worker);
+  case protocol::MessageType::NotifyWorkerUnblocked: {
+    HandleNotifyWorkerUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
     CancelGetRequest(client);
@@ -1373,6 +1409,41 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
       }
     }
+
+    // Attempt per-worker process-group cleanup before removing the worker.
+#if !defined(_WIN32)
+    const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
+    const bool subreaper_enabled =
+        RayConfig::instance().kill_child_processes_on_worker_exit_with_raylet_subreaper();
+    if (pg_enabled && subreaper_enabled) {
+      RAY_LOG_EVERY_MS(WARNING, 60000)
+          << "Both per-worker process groups and subreaper are enabled; "
+          << "using PGs for worker cleanup. "
+          << "Subreaper is deprecated and will be removed in a future release.";
+    }
+    if (pg_enabled) {
+      auto saved = worker->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
+        auto timer = std::make_shared<boost::asio::deadline_timer>(
+            io_service_, boost::posix_time::milliseconds(200));
+        auto wid = worker->WorkerId();
+        auto pgid = *saved;
+        timer->async_wait(
+            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+              if (!ec) {
+                // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                auto probe = KillProcessGroup(pgid, 0);
+                const bool group_absent = (probe && probe->value() == ESRCH);
+                if (!group_absent) {
+                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                }
+              }
+            });
+      }
+    }
+#endif
 
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
@@ -1954,7 +2025,7 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
     if (worker->IsBlocked()) {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
-      HandleDirectCallTaskUnblocked(worker);
+      HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
     // If the worker is exiting, don't add it to our pool. The worker will cleanup
@@ -2092,7 +2163,7 @@ void NodeManager::MarkObjectsAsFailed(
         << "Mark the object as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_.TryCreateImmediately(
+    status = store_client_->TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -2101,7 +2172,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_.Seal(object_id);
+      status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
@@ -2120,7 +2191,7 @@ void NodeManager::MarkObjectsAsFailed(
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(
+void NodeManager::HandleNotifyWorkerBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -2130,7 +2201,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(
+void NodeManager::HandleNotifyWorkerUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->GetGrantedLeaseId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
@@ -2393,7 +2464,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+  if (!store_client_->Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
     return false;
   }
 
@@ -2508,7 +2579,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
 }
 
 namespace {
-
 rpc::ObjectStoreStats AccumulateStoreStats(
     const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;
@@ -2663,7 +2733,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
     raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
@@ -2724,8 +2794,26 @@ void NodeManager::TriggerGlobalGC() {
 }
 
 void NodeManager::Stop() {
-  // This never fails.
-  RAY_CHECK_OK(store_client_.Disconnect());
+  store_client_->Disconnect();
+#if !defined(_WIN32)
+  // Best-effort process-group cleanup for any remaining workers before shutdown.
+  if (RayConfig::instance().process_group_cleanup_enabled()) {
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                        /* filter_io_workers */ false);
+    for (const auto &w : workers) {
+      auto saved = w->GetSavedProcessGroupId();
+      if (saved.has_value()) {
+        // During shutdown, escalate immediately to avoid relying on timers.
+        CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGTERM);
+        auto probe = KillProcessGroup(*saved, 0);
+        const bool group_absent = (probe && probe->value() == ESRCH);
+        if (!group_absent) {
+          CleanupProcessGroupSend(*saved, w->WorkerId(), "Stop", SIGKILL);
+        }
+      }
+    }
+  }
+#endif
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

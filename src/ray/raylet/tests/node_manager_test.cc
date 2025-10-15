@@ -293,12 +293,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 class NodeManagerTest : public ::testing::Test {
  public:
   NodeManagerTest()
-      : client_call_manager_(io_service_, /*record_stats=*/false),
+      : client_call_manager_(io_service_, /*record_stats=*/false, /*local_address=*/""),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }),
+        fake_task_by_state_counter_() {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -310,7 +311,6 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -414,11 +414,12 @@ class NodeManagerTest : public ::testing::Test {
         *lease_dependency_manager_,
         mock_worker_pool_,
         leased_workers_,
-        *mock_store_client_,
+        mock_store_client_,
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        [](const std::string &) {});
+        [](const std::string &) {},
+        nullptr);
   }
 
   instrumented_io_context io_service_;
