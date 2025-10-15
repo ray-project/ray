@@ -165,7 +165,7 @@ class VLLMEngine(LLMEngine):
         # (e.g. supports vision, etc.) on the llm_config.
         config = self.llm_config.get_engine_config()
         self.llm_config.apply_checkpoint_info(
-            config.actual_hf_model_id,
+            vllm_engine_config.model_config.model,
             trust_remote_code=config.trust_remote_code,
         )
 

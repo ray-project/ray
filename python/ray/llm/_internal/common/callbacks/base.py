@@ -142,15 +142,3 @@ class CallbackConfig:
     """Keyword arguments to pass to the Callback class at construction."""
     raise_error_on_callback: bool = True
     """Whether to raise an error if a callback method fails."""
-
-
-class TestingCallback(CallbackBase):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        print("TestingCallback __init__ kwargs: ", kwargs)
-
-    def on_before_node_init(self):
-        print("TestingCallback on_before_node_init")
-
-    def on_after_node_init(self):
-        print("TestingCallback on_after_node_init")
