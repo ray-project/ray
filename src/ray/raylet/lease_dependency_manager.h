@@ -30,8 +30,6 @@ namespace ray {
 
 namespace raylet {
 
-using std::literals::operator""sv;
-
 /// Used for unit-testing the ClusterLeaseManager, which requests dependencies
 /// for queued leases.
 class LeaseDependencyManagerInterface {
@@ -72,24 +70,23 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
           // Offset the metric values recorded from the owner process.
           task_by_state_counter_.Record(
               -num_total,
-              {{"State"sv,
-                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
           task_by_state_counter_.Record(
               num_total - num_inactive,
-              {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
           task_by_state_counter_.Record(
               num_inactive,
-              {{"State"sv,
+              {{"State",
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name"sv, key.first},
-               {"IsRetry"sv, key.second ? "1" : "0"},
-               {"Source"sv, "dependency_manager"}});
+               {"Name", key.first},
+               {"IsRetry", key.second ? "1" : "0"},
+               {"Source", "dependency_manager"}});
         });
   }
 
