@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import ray
@@ -84,8 +86,9 @@ def test_get_best_checkpoint():
 
 
 @pytest.mark.parametrize("storage", ["local", "remote"])
+@pytest.mark.parametrize("path_type", ["str", "PathLike"])
 def test_result_restore(
-    ray_start_4_cpus, monkeypatch, tmp_path, storage, mock_s3_bucket_uri
+    ray_start_4_cpus, monkeypatch, tmp_path, storage, mock_s3_bucket_uri, path_type
 ):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
     NUM_ITERATIONS = 5
@@ -118,7 +121,10 @@ def test_result_restore(
     trial_dir = storage_context.experiment_fs_path
     file_system = storage_context.storage_filesystem
 
-    result = Result.from_path(trial_dir, storage_filesystem=file_system)
+    result = Result.from_path(
+        trial_dir if path_type == "str" else Path(trial_dir),
+        storage_filesystem=file_system,
+    )
 
     assert result.checkpoint
     assert len(result.best_checkpoints) == NUM_CHECKPOINTS
