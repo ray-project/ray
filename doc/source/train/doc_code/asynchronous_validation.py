@@ -157,7 +157,7 @@ def train_func(config: dict) -> None:
             ray.train.report({}, None)
 
 
-def run_trainer() -> ray.result.Result:
+def run_trainer() -> ray.train.Result:
     train_dataset = ray.data.read_parquet(...)
     validation_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
