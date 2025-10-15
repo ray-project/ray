@@ -57,6 +57,7 @@ class BuiltApplication:
     # Dict[name, DeploymentHandle] mapping deployment names to the handles that replaced
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
+    external_scaler_enabled: bool
 
 
 def _make_deployment_handle_default(
@@ -78,6 +79,7 @@ def build_app(
     make_deployment_handle: Optional[
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
+    external_scaler_enabled: bool = False,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -111,6 +113,7 @@ def build_app(
         deployment_handles={
             deployment_names[app]: handle for app, handle in handles.items()
         },
+        external_scaler_enabled=external_scaler_enabled,
     )
 
 

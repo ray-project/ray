@@ -311,6 +311,7 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
+                    external_scaler_enabled=app.external_scaler_enabled,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -329,6 +330,9 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
+                deployment_args_proto.external_scaler_enabled = deployment_args[
+                    "external_scaler_enabled"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 

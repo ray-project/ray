@@ -536,6 +536,7 @@ class RunTarget:
     name: str = SERVE_DEFAULT_APP_NAME
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
+    external_scaler_enabled: bool = False
 
 
 @DeveloperAPI
@@ -583,6 +584,7 @@ def _run_many(
                 default_runtime_env=ray.get_runtime_context().runtime_env
                 if not _local_testing_mode
                 else None,
+                external_scaler_enabled=t.external_scaler_enabled,
             )
         )
 
@@ -624,6 +626,7 @@ def _run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -637,6 +640,7 @@ def _run(
                 name=name,
                 route_prefix=route_prefix,
                 logging_config=logging_config,
+                external_scaler_enabled=external_scaler_enabled,
             )
         ],
         wait_for_applications_running=_blocking,
@@ -693,6 +697,7 @@ def run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -716,6 +721,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -726,6 +733,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
+        external_scaler_enabled=external_scaler_enabled,
     )
 
     if blocking:

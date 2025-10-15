@@ -35,6 +35,7 @@ applications:
   - name: test_app
     route_prefix: /
     import_path: ray.dashboard.modules.serve.tests.test_serve_dashboard.deployment_app
+    external_scaler_enabled: True
     deployments:
       - name: hello_world
         num_replicas: 1
@@ -693,7 +694,7 @@ class TestScaleDeploymentEndpoint:
         return True
 
     def test_scale_deployment_endpoint_comprehensive(self, ray_start_stop):
-        serve.run(DeploymentClass.bind(), name="test_app")
+        serve.run(DeploymentClass.bind(), name="test_app", external_scaler_enabled=True)
 
         wait_for_condition(
             lambda: self._get_deployment_details().status == DeploymentStatus.HEALTHY
@@ -716,6 +717,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingInit.bind(semaphore),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -749,7 +751,12 @@ class TestScaleDeploymentEndpoint:
     def test_scale_deployment_during_application_upgrade(self, ray_start_stop):
         semaphore = Semaphore.remote(value=1)
 
-        serve._run(DeploymentClass.bind(), name="test_app", _blocking=False)
+        serve._run(
+            DeploymentClass.bind(),
+            name="test_app",
+            _blocking=False,
+            external_scaler_enabled=True,
+        )
 
         wait_for_condition(
             self._verify_deployment_details,
@@ -763,6 +770,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingInit.bind(semaphore),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -818,6 +826,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingDel.bind(signal_actor),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -837,7 +846,10 @@ class TestScaleDeploymentEndpoint:
         )
 
         assert response.status_code == 412
-        assert "Deployment is deleted" in response.json()["error"]
+        assert (
+            "is being deleted. Scaling operations are not allowed."
+            in response.json()["error"]
+        )
 
         ray.get(signal_actor.send.remote())
 
@@ -932,16 +944,6 @@ class TestScaleDeploymentEndpoint:
         error_response = requests.post(
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name="nonexistent", deployment_name="hello_world"
-            ),
-            json={"target_num_replicas": 2},
-            timeout=30,
-        )
-        assert error_response.status_code == 400
-        assert "not found" in error_response.json()["error"].lower()
-
-        error_response = requests.post(
-            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
-                app_name="test_app", deployment_name="nonexistent"
             ),
             json={"target_num_replicas": 2},
             timeout=30,

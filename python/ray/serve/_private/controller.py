@@ -47,6 +47,7 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.exceptions import ExternalScalerNotEnabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
@@ -794,6 +795,7 @@ class ServeController:
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
+                        "external_scaler_enabled": args.external_scaler_enabled,
                     }
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
@@ -945,7 +947,27 @@ class ServeController:
         Args:
             deployment_id: The deployment to update.
             target_num_replicas: The new target number of replicas.
+
+        Raises:
+            ExternalScalerNotEnabledError: If external_scaler_enabled is not set to True
+                                          for the application.
         """
+
+        # Check if external scaler is enabled for this application
+        app_name = deployment_id.app_name
+        if not self.application_state_manager.does_app_exist(app_name):
+            raise ValueError(f"Application '{app_name}' not found")
+
+        if not self.application_state_manager.is_external_scaler_enabled(app_name):
+            raise ExternalScalerNotEnabledError(
+                f"Cannot update replicas for deployment '{deployment_id.name}' in "
+                f"application '{app_name}'. The external scaling API can only be used "
+                f"when 'external_scaler_enabled' is set to true in the application "
+                f"configuration. Current value: external_scaler_enabled=false. "
+                f"To use this API, redeploy your application with "
+                f"'external_scaler_enabled: true' in the config."
+            )
+
         self.deployment_state_manager.set_target_num_replicas(
             deployment_id, target_num_replicas
         )
