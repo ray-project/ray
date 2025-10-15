@@ -42,8 +42,6 @@
 namespace ray {
 namespace core {
 
-using std::literals::operator""sv;
-
 class ActorManager;
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
@@ -207,10 +205,10 @@ class TaskManager : public TaskManagerInterface {
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               task_by_state_counter_.Record(
                   task_counter_.Get(key),
-                  {{"State"sv, rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name"sv, std::get<0>(key)},
-                   {"IsRetry"sv, std::get<2>(key) ? "1" : "0"},
-                   {"Source"sv, "owner"}});
+                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name", std::get<0>(key)},
+                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                   {"Source", "owner"}});
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
