@@ -202,7 +202,8 @@ Then, launch the training with torchrun:
 Ray Train automatically detects the torchrun environment variables and configures the distributed
 training accordingly. You can access distributed training information through :func:`ray.train.get_context()`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train import get_context
 
