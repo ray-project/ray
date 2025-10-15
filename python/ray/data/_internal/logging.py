@@ -1,7 +1,7 @@
 import logging
 import logging.config
 import os
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -180,7 +180,77 @@ def _get_logger_names() -> List[str]:
     return list(logger_config.keys())
 
 
-_configured_logger_handlers = {}
+def _get_loggers_to_configure(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Return subset of loggers from config that need configuration.
+
+    Loggers that already have handlers attached are skipped to preserve existing setup.
+    """
+    loggers_to_configure: Dict[str, Dict[str, Any]] = {}
+    for logger_name, logger_config in config.get("loggers", {}).items():
+        logger = logging.getLogger(logger_name)
+        if not logger.handlers:
+            loggers_to_configure[logger_name] = logger_config
+    return loggers_to_configure
+
+
+def _preserve_and_detach_child_handlers(
+    prefixes: List[str],
+) -> Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]]:
+    """Collect and detach handlers from child loggers of given prefixes.
+
+    We temporarily detach to prevent dictConfig from closing or mutating them.
+    Returns a mapping: logger_name -> list of (handler, preserved_attrs).
+    """
+    preserved: Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]] = {}
+    for logger_name, existing in logging.root.manager.loggerDict.items():
+        if not isinstance(existing, logging.Logger):
+            continue
+        for prefix in prefixes:
+            if logger_name != prefix and logger_name.startswith(prefix + "."):
+                child_logger = logging.getLogger(logger_name)
+                if child_logger.handlers:
+                    handlers_info: List[Tuple[logging.Handler, Dict[str, Any]]] = []
+                    for handler in list(child_logger.handlers):
+                        preserved_attrs: Dict[str, Any] = {}
+                        if hasattr(handler, "target"):
+                            preserved_attrs["target"] = handler.target
+                        handlers_info.append((handler, preserved_attrs))
+                        child_logger.removeHandler(handler)
+                    preserved[logger_name] = handlers_info
+                break
+    return preserved
+
+
+def _restore_child_handlers(
+    preserved: Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]]
+) -> None:
+    """Reattach preserved child handlers and restore minimal attributes if needed."""
+    for logger_name, handlers_info in preserved.items():
+        child_logger = logging.getLogger(logger_name)
+        for handler, attrs in handlers_info:
+            if handler not in child_logger.handlers:
+                child_logger.addHandler(handler)
+            if "target" in attrs and (
+                not hasattr(handler, "target") or handler.target is None
+            ):
+                target_value = attrs["target"]
+                if hasattr(handler, "setTarget"):
+                    try:
+                        handler.setTarget(target_value)
+                    except Exception:
+                        if hasattr(handler, "target"):
+                            try:
+                                handler.target = target_value
+                            except Exception:
+                                pass
+                else:
+                    if hasattr(handler, "target"):
+                        try:
+                            handler.target = target_value
+                        except Exception:
+                            pass
+
+
 _logging_configured = False
 
 
@@ -197,32 +267,39 @@ def configure_logging() -> None:
     Note: This function is idempotent after initial configuration when handlers have been
     added to ray.data loggers, as reconfiguration would close and invalidate those handlers.
     """
-    global _configured_logger_handlers
     global _logging_configured
+
+    # If already configured, don't reconfigure
+    if _logging_configured:
+        return
 
     # Dynamically load env vars and get config
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
-    # Check if any managed loggers already have handlers before configuring
-    # If so, skip configuration to preserve them since dictConfig() would close them
-    configured_logger_names = set(config.get("loggers", {}).keys())
-    for name, logger_obj in logging.root.manager.loggerDict.items():
-        if isinstance(logger_obj, logging.Logger):
-            is_managed = any(
-                name == cfg_name or name.startswith(cfg_name + ".")
-                for cfg_name in configured_logger_names
-            )
-            if is_managed and logger_obj.handlers:
-                # Skip configuration to preserve existing handlers
-                _logging_configured = True
-                return
+    # Determine which Ray Data loggers actually need configuration (preserve existing handlers)
+    loggers_to_configure = _get_loggers_to_configure(config)
 
-    # Configure logging
+    # If no loggers need configuration, mark configured and return
+    if not loggers_to_configure:
+        _logging_configured = True
+        return
+
+    # Preserve and detach handlers from child loggers (e.g., "ray.data.*") to avoid closure by dictConfig
+    prefixes_to_configure = list(loggers_to_configure.keys())
+    preserved_child_handlers = _preserve_and_detach_child_handlers(
+        prefixes_to_configure
+    )
+
+    # Configure only the necessary loggers
+    config = dict(config)
+    config["loggers"] = loggers_to_configure
     logging.config.dictConfig(config)
-
     _logging_configured = True
+
+    # Restore preserved child logger handlers and any relevant attributes
+    _restore_child_handlers(preserved_child_handlers)
 
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
@@ -241,7 +318,6 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
-    global _configured_logger_handlers
     global _logging_configured
 
     def _clear_logger_handlers(handler_names: List[str]):
@@ -250,15 +326,11 @@ def reset_logging() -> None:
             logger.handlers.clear()
             logger.setLevel(logging.NOTSET)
 
-    # Clear handlers from all loggers we track
-    _clear_logger_handlers(list(_configured_logger_handlers.keys()))
-
     # Also clear all loggers managed by Ray Data logging config
     _clear_logger_handlers(_get_logger_names())
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
-    _configured_logger_handlers = {}
     _logging_configured = False
 
 
