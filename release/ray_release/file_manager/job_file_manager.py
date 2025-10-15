@@ -3,8 +3,6 @@ import shutil
 import sys
 import tempfile
 from typing import Optional
-from azure.storage.blob import BlobServiceClient
-from azure.identity import DefaultAzureCredential
 
 import boto3
 from google.cloud import storage
@@ -69,6 +67,15 @@ class JobFileManager(FileManager):
     def download_from_cloud(
         self, key: str, target: str, delete_after_download: bool = False
     ):
+        try:
+            from azure.storage.blob import BlobServiceClient
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise ImportError(
+                "You must `pip install azure-storage-blob azure-identity` "
+                "to download from Azure Blob Storage."
+            )
+
         if self.cloud_storage_provider == S3_CLOUD_STORAGE:
             self._run_with_retry(
                 lambda: self.s3_client.download_file(
