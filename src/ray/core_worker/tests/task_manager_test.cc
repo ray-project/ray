@@ -28,6 +28,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
@@ -220,7 +221,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
@@ -2873,11 +2874,12 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
 
   // Mock the GCS client to return the preempted node info
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(node_id, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(node_id, false))
       .WillOnce(::testing::Return(&node_info));
 
   // Task should be retried because the node was preempted, even with 0 retries left
