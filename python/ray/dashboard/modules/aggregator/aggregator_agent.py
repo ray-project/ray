@@ -201,18 +201,6 @@ class AggregatorAgent(
                 self, server
             )
 
-        # def record_event_loop_lag(lag_s):
-        #     self._max_event_loop_lag_s = max(self._max_event_loop_lag_s or 0, lag_s)
-        #     self._counter += 1
-        #     if self._counter % 100 == 0:
-        #         logger.info(
-        #             f"AggregatorAgent: Event loop lag: {self._max_event_loop_lag_s} seconds"
-        #         )
-
-        # self._max_event_loop_lag_s = 0
-        # self._counter = 0
-        # enable_monitor_loop_lag(record_event_loop_lag)
-
         try:
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),

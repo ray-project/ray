@@ -1,3 +1,4 @@
+import json
 import logging
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
@@ -5,10 +6,9 @@ from dataclasses import dataclass
 from typing import Callable
 
 import aiohttp
-import orjson
 
 from ray._common.utils import get_or_create_event_loop
-from ray._private.protobuf_compat import message_to_dict
+from ray._private.protobuf_compat import message_to_json
 from ray.core.generated import events_base_event_pb2
 from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
 
@@ -85,19 +85,19 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             return PublishStats(True, 0, num_filtered_out)
 
         # Convert protobuf objects to python dictionaries for HTTP POST. Run in executor to avoid blocking the event loop.
-        filtered_dicts = await get_or_create_event_loop().run_in_executor(
+        filtered_json = await get_or_create_event_loop().run_in_executor(
             self._executor,
             lambda: [
-                message_to_dict(
-                    e,
-                    always_print_fields_with_no_presence=True,
-                    preserving_proto_field_name=False,
-                    use_integers_for_enums=True,
+                json.loads(
+                    message_to_json(
+                        e,
+                        always_print_fields_with_no_presence=True,
+                        preserving_proto_field_name=True,
+                    )
                 )
                 for e in filtered
             ],
         )
-        filtered_json = orjson.dumps(filtered_dicts)
 
         try:
             # Create session on first use (lazy initialization)
@@ -112,8 +112,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
     async def _send_http_request(self, json_data, num_filtered_out) -> PublishStats:
         async with self._session.post(
             self._endpoint,
-            data=json_data,
-            headers={"Content-Type": "application/json"},
+            json=json_data,
         ) as resp:
             resp.raise_for_status()
             return PublishStats(True, len(json_data), num_filtered_out)
