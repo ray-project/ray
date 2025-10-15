@@ -352,8 +352,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = _get_depset(self.config.depsets, depset_name)
-            depset_req_list.extend(depset.requirements)
+            depset_req_list.extend(self.get_nested_depsets(depset_name, []))
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
@@ -380,6 +379,16 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+    def get_nested_depsets(
+        self, depset_name: str, requirements_list: List[str]
+    ) -> List[str]:
+        depset = _get_depset(self.config.depsets, depset_name)
+        requirements_list.extend(depset.requirements)
+        if depset.operation == "expand":
+            for dep in depset.depsets:
+                self.get_nested_depsets(dep, requirements_list)
+        return list(set(requirements_list))
 
     def cleanup(self):
         if self.temp_dir:
