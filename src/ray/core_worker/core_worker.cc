@@ -51,8 +51,6 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
-using std::literals::operator""sv;
-
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
@@ -185,35 +183,35 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         // them out to avoid double-counting.
         task_by_state_gauge_.Record(
             running_total - num_in_get - num_in_wait,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
         task_by_state_gauge_.Record(
             -running_total,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Record sub-state for get.
         task_by_state_gauge_.Record(
             num_in_get,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Record sub-state for wait.
         task_by_state_gauge_.Record(
             num_in_wait,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
       });
 }
 
@@ -229,15 +227,15 @@ void TaskCounter::RecordMetrics() {
       running_tasks = 1.0;
     }
     actor_by_state_gauge_.Record(idle,
-                                 {{"State"sv, "ALIVE_IDLE"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
+                                 {{"State", "ALIVE_IDLE"},
+                                  {"Name", actor_name_},
+                                  {"Source", "executor"},
+                                  {"JobId", job_id_}});
     actor_by_state_gauge_.Record(running_tasks,
-                                 {{"State"sv, "ALIVE_RUNNING_TASKS"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
+                                 {{"State", "ALIVE_RUNNING_TASKS"},
+                                  {"Name", actor_name_},
+                                  {"Source", "executor"},
+                                  {"JobId", job_id_}});
   }
 }
 
@@ -714,16 +712,23 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 void CoreWorker::SubscribeToNodeChanges() {
   std::call_once(subscribe_to_node_changes_flag_, [this]() {
     // Register a callback to monitor add/removed nodes.
-    // Note we capture a shared ownership of reference_counter and rate_limiter
-    // here to avoid destruction order fiasco between gcs_client and reference_counter_.
+    // Note we capture a shared ownership of reference_counter, rate_limiter,
+    // raylet_client_pool, and core_worker_client_pool here to avoid destruction order
+    // fiasco between gcs_client, reference_counter_, raylet_client_pool_, and
+    // core_worker_client_pool_.
     auto on_node_change = [reference_counter = reference_counter_,
-                           rate_limiter = lease_request_rate_limiter_](
-                              const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+                           rate_limiter = lease_request_rate_limiter_,
+                           raylet_client_pool = raylet_client_pool_,
+                           core_worker_client_pool = core_worker_client_pool_](
+                              const NodeID &node_id,
+                              const rpc::GcsNodeAddressAndLiveness &data) {
       if (data.state() == rpc::GcsNodeInfo::DEAD) {
         RAY_LOG(INFO).WithField(node_id)
             << "Node failure. All objects pinned on that node will be lost if object "
                "reconstruction is not enabled.";
         reference_counter->ResetObjectsOnRemovedNode(node_id);
+        raylet_client_pool->Disconnect(node_id);
+        core_worker_client_pool->Disconnect(node_id);
       }
       auto cluster_size_based_rate_limiter =
           dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());
@@ -732,7 +737,7 @@ void CoreWorker::SubscribeToNodeChanges() {
       }
     };
 
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         std::move(on_node_change), [this](const Status &) {
           {
             std::scoped_lock<std::mutex> lock(gcs_client_node_cache_populated_mutex_);

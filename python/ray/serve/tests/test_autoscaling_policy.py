@@ -14,7 +14,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -36,7 +35,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
@@ -112,10 +111,10 @@ def test_assert_no_replicas_deprovisioned():
 
 
 def get_num_requests(client, dep_id: DeploymentID):
-    ref = client._controller._dump_autoscaling_metrics_for_testing.remote()
-    total_num_requests = ray.get(ref)[dep_id]
-    print("total num requests", total_num_requests)
-    return total_num_requests
+    ref = client._controller._get_total_num_requests_for_deployment_for_testing.remote(
+        dep_id
+    )
+    return ray.get(ref)
 
 
 def check_num_requests_eq(client, id: DeploymentID, expected: int):
@@ -1540,11 +1539,13 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
 @pytest.mark.parametrize(
     "policy",
     [
-        {"name": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"},
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        },
         AutoscalingPolicy(
-            name="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
         ),
-        AutoscalingPolicy(name=custom_autoscaling_policy),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy),
     ],
 )
 def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):

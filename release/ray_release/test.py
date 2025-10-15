@@ -567,6 +567,7 @@ class Test(dict):
             return self.get_byod_base_image_tag(build_id)
         custom_info = {
             "post_build_script": self.get_byod_post_build_script(),
+            "python_depset": self.get_byod_python_depset(),
         }
         return f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
 
