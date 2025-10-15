@@ -41,9 +41,9 @@ RayletClient::RayletClient(const rpc::Address &address,
           /*check_channel_status_interval_milliseconds=*/
           ::RayConfig::instance()
               .grpc_client_check_connection_status_interval_milliseconds(),
-          /*client_reconnect_timeout_base_seconds=*/
+          /*server_reconnect_timeout_base_seconds=*/
           ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_base_s(),
-          /*client_reconnect_timeout_max_seconds=*/
+          /*server_reconnect_timeout_max_seconds=*/
           ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_max_s(),
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
