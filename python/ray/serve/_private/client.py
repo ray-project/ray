@@ -20,7 +20,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
-    HTTP_PROXY_TIMEOUT,
     MAX_CACHED_HANDLES,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
@@ -288,30 +287,6 @@ class ServeControllerClient:
             raise TimeoutError(
                 f"Application {name} did not become RUNNING after {timeout_s}s."
             )
-
-    @_ensure_connected
-    def wait_for_proxies_serving(self) -> None:
-        """Wait for the proxies to be ready to serve requests."""
-        proxy_handles = ray.get(self._controller.get_proxies.remote())
-        proxy_states = {
-            handle: ray.util.state.get_actor(id=handle._actor_id.hex())
-            for handle in proxy_handles.values()
-        }
-        alive_proxy_handles = [
-            handle
-            for handle, state in proxy_states.items()
-            if state and state.state != "DEAD"
-        ]
-        if len(alive_proxy_handles) > 0:
-            try:
-                ray.get(
-                    [handle.serving.remote() for handle in alive_proxy_handles],
-                    timeout=HTTP_PROXY_TIMEOUT,
-                )
-            except ray.exceptions.GetTimeoutError:
-                raise TimeoutError(
-                    f"Proxies not available after {HTTP_PROXY_TIMEOUT}s."
-                )
 
     @_ensure_connected
     def deploy_applications(
