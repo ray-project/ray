@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray.data
@@ -20,43 +22,59 @@ from ray.train.v2.tests.util import (
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 
 
-def test_e2e_single_dataset(ray_start_4_cpus, restore_data_context):  # noqa: F811
-    """
-    Test passing a Ray Dataset to the trainer and check the automatic dataset sharding.
-    """
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
+    """Tests that the dataset shards properly across a variety of num_workers."""
     NUM_ROWS = 1000
-    NUM_TRAIN_WORKERS = 2
-
-    # Test propagating DataContext to the Train workers.
-    data_context = DataContext.get_current()
-    data_context.set_config("foo", "bar")
 
     train_ds = ray.data.range(NUM_ROWS)
 
     def train_fn():
-        data_context = DataContext.get_current()
-        assert data_context.get_config("foo") == "bar"
-
-        try:
+        with pytest.raises(KeyError):
             ray.train.get_dataset_shard("val")
-            assert False, "Should raise an error if the dataset is not found"
-        except KeyError:
-            pass
 
         train_ds = ray.train.get_dataset_shard("train")
         num_rows = 0
         for batch in train_ds.iter_batches():
             num_rows += len(batch["id"])
-        assert num_rows == NUM_ROWS // NUM_TRAIN_WORKERS
+        assert num_rows == NUM_ROWS // num_workers
 
     trainer = DataParallelTrainer(
         train_fn,
         datasets={"train": train_ds},
-        scaling_config=ray.train.ScalingConfig(num_workers=NUM_TRAIN_WORKERS),
+        scaling_config=ray.train.ScalingConfig(num_workers=num_workers),
     )
     trainer.fit()
-    result = trainer.fit()
-    assert not result.error
+
+
+@pytest.mark.parametrize("datasets_to_split", ["all", ["train"]])
+def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
+    """Tests that the dataset is sharded across a variety of num_workers."""
+    NUM_ROWS = 1000
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+
+    def train_fn():
+        for dataset_name in ["train", "val"]:
+            ds = ray.train.get_dataset_shard(dataset_name)
+            num_rows = 0
+            for batch in ds.iter_batches():
+                num_rows += len(batch["id"])
+
+            if datasets_to_split == "all" or dataset_name in datasets_to_split:
+                assert num_rows == NUM_ROWS // NUM_WORKERS
+            else:
+                assert num_rows == NUM_ROWS
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds, "val": val_ds},
+        dataset_config=ray.train.DataConfig(datasets_to_split=datasets_to_split),
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
 
 
 def test_dataset_setup_callback(ray_start_4_cpus):
@@ -114,6 +132,62 @@ def test_dataset_setup_callback(ray_start_4_cpus):
     assert (
         processed_valid_ds._base_dataset.context.execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+    )
+
+
+def test_data_context_propagation(ray_start_4_cpus, restore_data_context):  # noqa: F811
+    """Tests that the DataContext from the driver is propagated to the Train workers."""
+    data_context = DataContext.get_current()
+    data_context.set_config("foo", "bar")
+    train_ds = ray.data.range(2)
+
+    def train_fn():
+        assert DataContext.get_current().get_config("foo") == "bar"
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds},
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+
+def test_configure_execution_options_carryover_context():
+    """Tests that execution options in DataContext
+    carry over to DataConfig automatically."""
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    ctx.execution_options.verbose_progress = True
+
+    data_config = ray.train.DataConfig()
+
+    ingest_options = data_config.default_ingest_options()
+    assert ingest_options.preserve_order is True
+    assert ingest_options.verbose_progress is True
+
+
+@pytest.mark.parametrize("enable_shard_locality", [True, False])
+def test_configure_locality(enable_shard_locality):
+    data_config = ray.train.DataConfig(enable_shard_locality=enable_shard_locality)
+
+    mock_ds = MagicMock()
+    mock_ds.streaming_split = MagicMock()
+    mock_ds.copy = MagicMock(return_value=mock_ds)
+    world_size = 2
+    worker_handles = [MagicMock() for _ in range(world_size)]
+    worker_node_ids = ["node" + str(i) for i in range(world_size)]
+    data_config.configure(
+        datasets={"train": mock_ds},
+        world_size=world_size,
+        worker_handles=worker_handles,
+        worker_node_ids=worker_node_ids,
+    )
+    mock_ds.streaming_split.assert_called_once()
+    mock_ds.streaming_split.assert_called_with(
+        world_size,
+        equal=True,
+        locality_hints=worker_node_ids if enable_shard_locality else None,
     )
 
 
