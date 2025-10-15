@@ -655,7 +655,7 @@ class AliasExpr(Expr):
     expr: Expr
     _name: str
 
-    data_type: DataType = field(default_factory=lambda: DataType(object))
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     @property
     def name(self) -> str:

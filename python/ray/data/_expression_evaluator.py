@@ -169,6 +169,9 @@ def _eval_unary_null_operation(operand: Any, op: "Operation", batch: DataBatch) 
 def _eval_case_expr_pandas(conditions: list, choices: list, default: Any) -> Any:
     """Evaluate case expression for pandas DataFrames using numpy.select.
 
+    Uses numpy.select for vectorized conditional selection:
+    https://numpy.org/doc/stable/reference/generated/numpy.select.html
+
     Args:
         conditions: List of boolean condition arrays
         choices: List of value arrays corresponding to conditions
@@ -182,6 +185,9 @@ def _eval_case_expr_pandas(conditions: list, choices: list, default: Any) -> Any
 
 def _eval_case_expr_arrow(conditions: list, choices: list, default: Any) -> Any:
     """Evaluate case expression for PyArrow Tables using case_when.
+
+    Uses PyArrow's case_when for vectorized conditional selection:
+    https://arrow.apache.org/docs/python/generated/pyarrow.compute.case_when.html
 
     Args:
         conditions: List of boolean condition arrays
