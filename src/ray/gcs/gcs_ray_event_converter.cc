@@ -68,6 +68,28 @@ void DeepCopyActorDeathCause(const rpc::ActorDeathCause &src, rpc::ActorDeathCau
   }
 }
 
+/// Deep copy TaskLogInfo to ensure no arena pointers leak through.
+void DeepCopyTaskLogInfo(const rpc::TaskLogInfo &src, rpc::TaskLogInfo *dst) {
+  if (src.has_stdout_file()) {
+    dst->set_stdout_file(src.stdout_file());
+  }
+  if (src.has_stderr_file()) {
+    dst->set_stderr_file(src.stderr_file());
+  }
+  if (src.has_stdout_start()) {
+    dst->set_stdout_start(src.stdout_start());
+  }
+  if (src.has_stdout_end()) {
+    dst->set_stdout_end(src.stdout_end());
+  }
+  if (src.has_stderr_start()) {
+    dst->set_stderr_start(src.stderr_start());
+  }
+  if (src.has_stderr_end()) {
+    dst->set_stderr_end(src.stderr_end());
+  }
+}
+
 /// Deep copy RayErrorInfo to ensure no arena pointers leak through.
 /// This manually copies all fields to force heap allocation.
 void DeepCopyRayErrorInfo(const rpc::RayErrorInfo &src, rpc::RayErrorInfo *dst) {
@@ -130,12 +152,29 @@ void DeepCopyTaskEvents(const rpc::TaskEvents &src, rpc::TaskEvents *dst) {
     dst_info->set_job_id(src_info.job_id());
     dst_info->set_task_id(src_info.task_id());
     dst_info->set_parent_task_id(src_info.parent_task_id());
-    dst_info->set_actor_id(src_info.actor_id());
-    dst_info->set_placement_group_id(src_info.placement_group_id());
+
+    // Copy optional fields
+    if (src_info.has_node_id()) {
+      dst_info->set_node_id(src_info.node_id());
+    }
+    if (src_info.has_actor_id()) {
+      dst_info->set_actor_id(src_info.actor_id());
+    }
+    if (src_info.has_placement_group_id()) {
+      dst_info->set_placement_group_id(src_info.placement_group_id());
+    }
+    if (src_info.has_call_site()) {
+      dst_info->set_call_site(src_info.call_site());
+    }
 
     // Deep copy required_resources map
     for (const auto &[key, value] : src_info.required_resources()) {
       (*dst_info->mutable_required_resources())[key] = value;
+    }
+
+    // Deep copy label_selector map
+    for (const auto &[key, value] : src_info.label_selector()) {
+      (*dst_info->mutable_label_selector())[key] = value;
     }
 
     // Deep copy runtime_env_info
@@ -150,13 +189,35 @@ void DeepCopyTaskEvents(const rpc::TaskEvents &src, rpc::TaskEvents *dst) {
     const auto &src_state = src.state_updates();
     auto *dst_state = dst->mutable_state_updates();
 
-    dst_state->set_node_id(src_state.node_id());
-    dst_state->set_worker_id(src_state.worker_id());
-    dst_state->set_worker_pid(src_state.worker_pid());
+    // Copy optional bytes fields
+    if (src_state.has_node_id()) {
+      dst_state->set_node_id(src_state.node_id());
+    }
+    if (src_state.has_worker_id()) {
+      dst_state->set_worker_id(src_state.worker_id());
+    }
+    if (src_state.has_worker_pid()) {
+      dst_state->set_worker_pid(src_state.worker_pid());
+    }
+
+    // Copy optional string field
+    if (src_state.has_actor_repr_name()) {
+      dst_state->set_actor_repr_name(src_state.actor_repr_name());
+    }
+
+    // Copy optional bool field
+    if (src_state.has_is_debugger_paused()) {
+      dst_state->set_is_debugger_paused(src_state.is_debugger_paused());
+    }
 
     // Deep copy state_ts_ns map
     for (const auto &[state, ts] : src_state.state_ts_ns()) {
       (*dst_state->mutable_state_ts_ns())[state] = ts;
+    }
+
+    // Deep copy task_log_info if present
+    if (src_state.has_task_log_info()) {
+      DeepCopyTaskLogInfo(src_state.task_log_info(), dst_state->mutable_task_log_info());
     }
 
     // Deep copy error_info if present
@@ -298,9 +359,21 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   // Deep copy RayErrorInfo to avoid arena pointers
   DeepCopyRayErrorInfo(event.ray_error_info(), task_state_update->mutable_error_info());
 
+  // First, extract all state timestamps from the arena-allocated source into local
+  // storage to completely disconnect from the source arena before populating the
+  // destination map. This prevents any arena context from leaking into the destination
+  // map's internal state.
+  std::vector<std::pair<int32_t, int64_t>> state_timestamps;
+  state_timestamps.reserve(event.task_state().size());
   for (const auto &[state, timestamp] : event.task_state()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
-    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+    state_timestamps.emplace_back(state, ns);
+  }
+
+  // Now populate the destination map with no reference to the source arena
+  auto *state_ts_map = task_state_update->mutable_state_ts_ns();
+  for (const auto &[state, ns] : state_timestamps) {
+    (*state_ts_map)[state] = ns;
   }
   return task_event;
 }
