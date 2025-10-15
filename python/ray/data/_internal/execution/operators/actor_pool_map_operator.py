@@ -486,10 +486,6 @@ class ActorPoolMapOperator(MapOperator):
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
 
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
-        return max_concurrency * self._actor_pool.max_size()
-
     def min_scheduling_resources(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
@@ -516,6 +512,9 @@ class ActorPoolMapOperator(MapOperator):
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
+
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        return self._actor_pool.max_size() * self._actor_pool.max_actor_concurrency()
 
 
 class _MapWorker:

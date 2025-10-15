@@ -730,6 +730,11 @@ class PhysicalOperator(Operator):
         )
         return upstream_op_num_outputs
 
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        """Max value of how many tasks this operator could run
+        concurrently (if limited)"""
+        return None
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
