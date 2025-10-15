@@ -339,13 +339,7 @@ class RichExecutionProgressManager:
                         metrics = _get_progress_metrics(
                             self._start_time, completed, completed
                         )
-                        progress.update(
-                            tid,
-                            completed=metrics.completed,
-                            total=metrics.total,
-                            rate_str=metrics.rate_str,
-                            count_str=metrics.count_str,
-                        )
+                        _update_with_conditional_rate(progress, tid, metrics)
                 self._total.update(self._total_task_id, description=desc, **kwargs)
                 self.refresh()
                 time.sleep(0.02)
@@ -371,13 +365,7 @@ class RichExecutionProgressManager:
             metrics = _get_progress_metrics(
                 self._start_time, self._current_rows, total_rows
             )
-            self._total.update(
-                self._total_task_id,
-                completed=metrics.completed,
-                total=metrics.total,
-                rate_str=metrics.rate_str,
-                count_str=metrics.count_str,
-            )
+            _update_with_conditional_rate(self._total, self._total_task_id, metrics)
 
     def update_resource_status(self, resource_status: str):
         if not self._can_update_total():
@@ -408,13 +396,7 @@ class RichExecutionProgressManager:
         current_rows = op_state.output_row_count
         total_rows = op_state.op.num_output_rows_total()
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
-        progress.update(
-            tid,
-            completed=metrics.completed,
-            total=metrics.total,
-            rate_str=metrics.rate_str,
-            count_str=metrics.count_str,
-        )
+        _update_with_conditional_rate(progress, tid, metrics)
         # stats
         stats_str = op_state.op_display_metrics.display_str()
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
@@ -492,3 +474,22 @@ def _has_sub_progress_bars(op: PhysicalOperator) -> bool:
     from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 
     return isinstance(op, SubProgressBarMixin)
+
+
+def _update_with_conditional_rate(progress, tid, metrics):
+    # not doing type checking because rich is imported conditionally.
+    # progress: rich.Progress
+    # tid: rich.TaskId
+    # metrics: _ProgressMetrics
+    task = progress.tasks[tid]
+    kwargs = {
+        "completed": metrics.completed,
+        "total": metrics.total,
+        "count_str": metrics.count_str,
+    }
+    if task.completed != metrics.completed:
+        # update rate string only if there are new rows.
+        # this allows updates to other metric data while
+        # preserving the right rate notation.
+        kwargs["rate_str"] = metrics.rate_str
+    progress.update(tid, **kwargs)
