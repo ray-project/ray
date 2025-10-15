@@ -23,7 +23,7 @@ from ray.train._internal.session import get_checkpoint, get_dataset_shard, repor
 from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.context import get_context
+from ray.train.context import TrainContext, get_context
 from ray.train.trainer import TrainingIterator
 from ray.train.v2._internal.constants import is_v2_enabled
 
@@ -41,6 +41,7 @@ if is_v2_enabled():
         RunConfig,
         ScalingConfig,
     )
+    from ray.train.v2.api.context import TrainContext  # noqa: F811
     from ray.train.v2.api.report_config import CheckpointUploadMode  # noqa: F811
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
@@ -84,6 +85,7 @@ Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
+TrainContext.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
 
 # TODO: consider implementing these in v1 and raising ImportError instead.
