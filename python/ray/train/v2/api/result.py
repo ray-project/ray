@@ -60,6 +60,19 @@ class Result(ResultV1):
             checkpoint_config=CheckpointConfig(),
         )
 
+        return cls.from_checkpoint_manager(
+            checkpoint_manager=checkpoint_manager,
+            storage_context=storage_context,
+        )
+
+    @classmethod
+    def from_checkpoint_manager(
+        cls,
+        checkpoint_manager: CheckpointManager,
+        storage_context: StorageContext,
+        error: Optional[TrainingFailedError] = None,
+    ) -> "Result":
+        """Create a Result object from a CheckpointManager."""
         latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
         if latest_checkpoint_result:
             latest_metrics = latest_checkpoint_result.metrics
@@ -80,8 +93,7 @@ class Result(ResultV1):
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            # Error is not saved into checkpoint
-            error=None,
+            error=error,
             path=storage_context.experiment_fs_path,
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,

@@ -11,14 +11,18 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
 
-_PARAM_SPACE = {"a": 1, "b": 2}
 
-
-def build_dummy_trainer(configs):
+def build_dummy_trainer(
+    exp_name: str,
+    storage_path: str,
+    num_iterations: int,
+    num_checkpoints: int,
+    train_loop_config: dict,
+):
     """Build a dummy TorchTrainer for testing purposes."""
 
     def worker_loop(_config):
-        for i in range(configs["NUM_ITERATIONS"]):
+        for i in range(num_iterations):
             # Do some random reports in between checkpoints.
             train.report({"metric_a": -100, "metric_b": -100})
 
@@ -34,13 +38,13 @@ def build_dummy_trainer(configs):
 
     trainer = TorchTrainer(
         train_loop_per_worker=worker_loop,
-        train_loop_config=_PARAM_SPACE,
+        train_loop_config=train_loop_config,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
         run_config=RunConfig(
-            name=configs["EXP_NAME"],
-            storage_path=configs["STORAGE_PATH"],
+            name=exp_name,
+            storage_path=storage_path,
             checkpoint_config=CheckpointConfig(
-                num_to_keep=configs["NUM_CHECKPOINTS"],
+                num_to_keep=num_checkpoints,
                 checkpoint_score_attribute="metric_a",
                 checkpoint_score_order="max",
             ),
@@ -91,8 +95,8 @@ def test_result_restore(
     ray_start_4_cpus, monkeypatch, tmp_path, storage, mock_s3_bucket_uri, path_type
 ):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
-    NUM_ITERATIONS = 5
-    NUM_CHECKPOINTS = 3
+    num_iterations = 5
+    num_checkpoints = 3
 
     if storage == "local":
         storage_path = str(tmp_path)
@@ -101,14 +105,13 @@ def test_result_restore(
 
     exp_name = "test_result_restore_v2"
 
-    configs = {
-        "EXP_NAME": exp_name,
-        "STORAGE_PATH": storage_path,
-        "NUM_ITERATIONS": NUM_ITERATIONS,
-        "NUM_CHECKPOINTS": NUM_CHECKPOINTS,
-    }
-
-    trainer = build_dummy_trainer(configs)
+    trainer = build_dummy_trainer(
+        exp_name,
+        storage_path,
+        num_iterations,
+        num_checkpoints,
+        train_loop_config={"a": 1, "b": 2},
+    )
     with pytest.raises(WorkerGroupError):
         trainer.fit()
 
@@ -127,7 +130,7 @@ def test_result_restore(
     )
 
     assert result.checkpoint
-    assert len(result.best_checkpoints) == NUM_CHECKPOINTS
+    assert len(result.best_checkpoints) == num_checkpoints
 
     """
     Top-3 checkpoints with metrics:
@@ -139,10 +142,10 @@ def test_result_restore(
     """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
-    assert load_dict_checkpoint(best_ckpt_a)["iter"] == NUM_ITERATIONS - 1
+    assert load_dict_checkpoint(best_ckpt_a)["iter"] == num_iterations - 1
 
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
-    assert load_dict_checkpoint(best_ckpt_b)["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
+    assert load_dict_checkpoint(best_ckpt_b)["iter"] == num_iterations - num_checkpoints
 
     with pytest.raises(RuntimeError, match="Invalid metric name.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
