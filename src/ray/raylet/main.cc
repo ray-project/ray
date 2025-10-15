@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -387,27 +388,27 @@ int main(int argc, char *argv[]) {
 #endif
   };
 
-  std::atomic<ray::raylet::RayletShutdownState> shutdown_state =
-      ray::raylet::RayletShutdownState::ALIVE;
+  ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
+  std::atomic_bool shutting_down = false;
   // Shut down raylet gracefully, in a synchronous fashion.
   // This can be run by the signal handler or on the main io service.
-  auto shutdown_raylet_gracefully_internal =
-      [&raylet,
+  auto shutdown_raylet_gracefully =
+      [raylet_node_id,
+       &shutting_down,
+       &raylet,
        &main_service,
        &raylet_socket_name,
        &gcs_client,
-       &object_manager_rpc_threads,
-       &shutdown_state](const ray::rpc::NodeDeathInfo &node_death_info) {
+       &object_manager_rpc_threads](const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make sure shutdown is only triggered once.
-        if (shutdown_state.exchange(ray::raylet::RayletShutdownState::SHUTTING_DOWN) ==
-            ray::raylet::RayletShutdownState::SHUTTING_DOWN) {
-          RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
+        if (shutting_down.exchange(true)) {
+          RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring death info: "
+                        << node_death_info.DebugString();
           return;
         }
-        RAY_LOG(INFO) << "Raylet graceful shutdown triggered, reason = "
-                      << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
-                      << "reason message = " << node_death_info.reason_message();
+        RAY_LOG(INFO) << "Raylet graceful shutdown triggered with death info: "
+                      << node_death_info.DebugString();
 
         auto unregister_done_callback = [&main_service,
                                          &raylet_socket_name,
@@ -428,27 +429,9 @@ int main(int argc, char *argv[]) {
           remove(raylet_socket_name.c_str());
         };
 
-        raylet->UnregisterSelf(node_death_info, unregister_done_callback);
+        gcs_client->Nodes().UnregisterSelf(
+            raylet_node_id, node_death_info, std::move(unregister_done_callback));
       };
-
-  auto shutdown_raylet_gracefully =
-      [&main_service, &shutdown_state, shutdown_raylet_gracefully_internal](
-          const ray::rpc::NodeDeathInfo &node_death_info) {
-        auto expected = ray::raylet::RayletShutdownState::ALIVE;
-        if (!shutdown_state.compare_exchange_strong(
-                expected, ray::raylet::RayletShutdownState::SHUTDOWN_QUEUED)) {
-          RAY_LOG(INFO) << "Raylet is already shutting down. Ignoring death info: "
-                        << node_death_info.DebugString();
-          return;
-        }
-        main_service.post(
-            [shutdown_raylet_gracefully_internal, node_death_info]() {
-              shutdown_raylet_gracefully_internal(node_death_info);
-            },
-            "shutdown_raylet_gracefully_internal");
-      };
-
-  ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
   gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
                                                       const std::optional<std::string>
@@ -956,7 +939,7 @@ int main(int argc, char *argv[]) {
         shutdown_raylet_gracefully,
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
-        shutdown_state);
+        shutting_down);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,
@@ -1003,7 +986,7 @@ int main(int argc, char *argv[]) {
     raylet->Start();
   });
 
-  auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
+  auto signal_handler = [&raylet, shutdown_raylet_gracefully](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     std::optional<ray::rpc::DrainRayletRequest> drain_request =
@@ -1022,7 +1005,7 @@ int main(int argc, char *argv[]) {
       node_death_info.set_reason_message("received SIGTERM");
     }
 
-    shutdown_raylet_gracefully_internal(node_death_info);
+    shutdown_raylet_gracefully(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

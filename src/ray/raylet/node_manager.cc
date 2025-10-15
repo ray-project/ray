@@ -147,7 +147,7 @@ NodeManager::NodeManager(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
     std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-    std::atomic<RayletShutdownState> &shutdown_state)
+    std::atomic_bool &shutting_down)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -201,7 +201,7 @@ NodeManager::NodeManager(
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
-      shutdown_state_(shutdown_state) {
+      shutting_down_(shutting_down) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -383,9 +383,13 @@ void NodeManager::RegisterGcs() {
           return;
         }
         checking = true;
-        gcs_client_.Nodes().AsyncCheckSelfAlive(
+        gcs_client_.Nodes().AsyncCheckAlive(
+            {self_node_id_},
+            /* timeout_ms = */ 30000,
             // capture checking ptr here because vs17 fail to compile
-            [this, checking_ptr = &checking](auto status, auto alive) mutable {
+            [this, checking_ptr = &checking](const auto &status,
+                                             const auto &alive_vec) mutable {
+              bool alive = alive_vec[0];
               if ((status.ok() && !alive)) {
                 // GCS think this raylet is dead. Fail the node
                 RAY_LOG(FATAL)
@@ -399,8 +403,7 @@ void NodeManager::RegisterGcs() {
                     << "in the DB. Local cluster ID: " << gcs_client_.GetClusterId();
               }
               *checking_ptr = false;
-            },
-            /* timeout_ms = */ 30000);
+            });
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
@@ -814,7 +817,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
-    if (shutdown_state_ == RayletShutdownState::ALIVE) {
+    if (!shutting_down_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked "
@@ -825,10 +828,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
           << error_message.str();
       RAY_LOG(FATAL) << error_message.str();
     } else {
-      // No-op since this node already starts to be drained, and GCS already knows about
-      // it.
+      // No-op since this node is already shutting down, and GCS already knows.
       RAY_LOG(INFO).WithField(node_id)
-          << "Node is marked as dead by GCS because the node is drained.";
+          << "Node is marked as dead by GCS as it's already shutting down.";
       return;
     }
   }
@@ -2090,7 +2092,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     std::_Exit(EXIT_SUCCESS);
   }
 
-  if (shutdown_state_ != RayletShutdownState::ALIVE) {
+  if (shutting_down_) {
     RAY_LOG(INFO)
         << "Node is already shutting down. Ignoring the ShutdownRaylet request.";
     return;

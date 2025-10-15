@@ -108,19 +108,11 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
 }
 
-Raylet::~Raylet() {}
-
 void Raylet::Start() {
   RegisterGcs();
 
   // Start listening for clients.
   DoAccept();
-}
-
-void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
-                            std::function<void()> unregister_done_callback) {
-  gcs_client_.Nodes().UnregisterSelf(node_death_info,
-                                     std::move(unregister_done_callback));
 }
 
 void Raylet::Stop() {
@@ -143,7 +135,7 @@ void Raylet::RegisterGcs() {
     node_manager_.RegisterGcs();
   };
 
-  RAY_CHECK_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
+  gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback);
 }
 
 void Raylet::DoAccept() {

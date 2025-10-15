@@ -14,6 +14,7 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -421,7 +422,7 @@ class NodeManagerTest : public ::testing::Test {
         [](const auto &) {},
         [](const std::string &) {},
         nullptr,
-        shutdown_state_);
+        shutting_down_);
   }
 
   instrumented_io_context io_service_;
@@ -450,7 +451,7 @@ class NodeManagerTest : public ::testing::Test {
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
 
-  std::atomic<RayletShutdownState> shutdown_state_ = RayletShutdownState::ALIVE;
+  std::atomic_bool shutting_down_ = RayletShutdownState::ALIVE;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -469,8 +470,9 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
+      .WillOnce(
+          [&promise](const auto &, const auto &, const auto &) { promise.set_value(); });
   node_manager_->RegisterGcs();
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
@@ -1224,42 +1226,43 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          testing::Bool());
 
 class NodeManagerDeathTest : public NodeManagerTest,
-                             public ::testing::WithParamInterface<RayletShutdownState> {};
+                             public ::testing::WithParamInterface<bool> {};
 
 TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
   // When the GCS publishes the node's death,
-  // 1. The raylet should kill itself immediately if it's ALIVE
+  // 1. The raylet should kill itself immediately if it's not shutting down.
   // 2. The raylet should ignore the death publish if the shutdown process has already
   //    started
-  const RayletShutdownState shutdown_state_during_death_publish = GetParam();
+  const bool shutting_down_during_death_publish = GetParam();
 
-  gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> publish_node_change_callback;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
+  gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+      publish_node_change_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
   node_manager_->RegisterGcs();
 
-  shutdown_state_ = shutdown_state_during_death_publish;
+  shutting_down_ = shutting_down_during_death_publish;
 
-  auto dead_node_info = rpc::GcsNodeInfo();
+  rpc::GcsNodeAddressAndLiveness dead_node_info;
   dead_node_info.set_node_id(raylet_node_id_.Binary());
   dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
 
-  if (shutdown_state_during_death_publish == RayletShutdownState::ALIVE) {
+  if (shutting_down_during_death_publish) {
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+  } else {
     ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
                  ".*Exiting because this node manager has.*");
-  } else {
-    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
-                         testing::Values(RayletShutdownState::ALIVE,
-                                         RayletShutdownState::SHUTDOWN_QUEUED,
-                                         RayletShutdownState::SHUTTING_DOWN));
+                         testing::Bool());
 
 }  // namespace ray::raylet
 

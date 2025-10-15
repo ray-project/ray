@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <utility>
@@ -162,7 +163,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-      std::atomic<RayletShutdownState> &shutdown_state);
+      std::atomic_bool &shutting_down);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -892,7 +893,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Controls the lifecycle of the CgroupManager.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
-  std::atomic<RayletShutdownState> &shutdown_state_;
+  std::atomic_bool &shutting_down_;
 };
 
 }  // namespace ray::raylet
