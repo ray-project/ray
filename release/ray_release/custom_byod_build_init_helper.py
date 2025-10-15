@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import yaml
 import os
 from ray_release.configs.global_config import get_global_config
@@ -87,13 +87,13 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
-def get_prerequisite_step(image: str, base_image: str) -> str:
+def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     """Get the base image build step for a job that depends on it."""
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith("rayproject/ray:"):
-        return "~"
+        return None
     if image_name == "ray-ml":
         return config["release_image_step_ray_ml"]
     elif image_name == "ray-llm":
