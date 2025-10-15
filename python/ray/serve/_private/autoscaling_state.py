@@ -227,7 +227,7 @@ class DeploymentAutoscalingState:
         # NOTE: for non additive aggregation functions, total_running_requests is not
         # accurate, consider this is a approximation.
         total_running_requests = total_num_requests - total_queued_requests
-        
+
         autoscaling_context: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -754,12 +754,8 @@ class ApplicationAutoscalingState:
             deployment_id
         ].get_total_num_requests()
 
-    def get_replica_metrics_by_deployment_id(
-        self, deployment_id: DeploymentID, agg_func="mean"
-    ):
-        return self._deployment_autoscaling_states[deployment_id].get_replica_metrics(
-            agg_func
-        )
+    def get_replica_metrics_by_deployment_id(self, deployment_id: DeploymentID):
+        return self._deployment_autoscaling_states[deployment_id].get_replica_metrics()
 
     def is_within_bounds(
         self, deployment_id: DeploymentID, num_replicas_running_at_target_version: int
@@ -889,12 +885,12 @@ class AutoscalingStateManager:
             )
 
     def get_metrics_for_deployment(
-        self, deployment_id: DeploymentID, agg_func="mean"
+        self, deployment_id: DeploymentID
     ) -> Dict[ReplicaID, List[Any]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name
-            ].get_replica_metrics_by_deployment_id(deployment_id, agg_func)
+            ].get_replica_metrics_by_deployment_id(deployment_id)
         else:
             logger.warning(
                 f"Cannot get metrics for deployment "
