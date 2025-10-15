@@ -534,3 +534,6 @@ def train_fn(config):
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
             checkpoint_upload_function=wait_async_save,
         )
+
+
+# __checkpoint_upload_function_end__
