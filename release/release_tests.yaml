@@ -86,6 +86,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    ray_version: 2.50.0
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
 

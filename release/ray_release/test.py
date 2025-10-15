@@ -470,6 +470,14 @@ class Test(dict):
         """
         return self["cluster"]["byod"].get("pip", [])
 
+    def get_ray_version(self) -> Optional[str]:
+        """
+        Returns the Ray version to use from DockerHub if specified in cluster config.
+        If set, this will use released Ray images like rayproject/ray:2.50.0-py39-cpu
+        instead of building custom BYOD images.
+        """
+        return self["cluster"].get("ray_version", None)
+
     def get_name(self) -> str:
         """
         Returns the name of the test.
@@ -622,6 +630,11 @@ class Test(dict):
         """
         Returns the anyscale byod image to use for this test.
         """
+        ray_version = self.get_ray_version()
+        if ray_version:
+            python_version = "py" + self.get_python_version().replace(".", "")
+            tag_suffix = self.get_tag_suffix()
+            return f"rayproject/ray:{ray_version}-{python_version}-{tag_suffix}"
         return (
             f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
@@ -639,7 +652,15 @@ class Test(dict):
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
+        If ray_version is specified in cluster config, returns a DockerHub image.
         """
+        ray_version = self.get_ray_version()
+        if ray_version and not self.require_custom_byod_image():
+            # Use released Ray image from DockerHub
+            python_version = "py" + self.get_python_version().replace(".", "")
+            tag_suffix = self.get_tag_suffix()
+            return f"rayproject/ray:{ray_version}-{python_version}-{tag_suffix}"
+
         return (
             f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
