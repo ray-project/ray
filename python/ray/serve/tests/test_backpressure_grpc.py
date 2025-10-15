@@ -1,6 +1,8 @@
+import sys
 from typing import Tuple
 
 import grpc
+import pytest
 
 import ray
 from ray import serve
@@ -60,3 +62,7 @@ def test_grpc_backpressure(serve_instance):
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

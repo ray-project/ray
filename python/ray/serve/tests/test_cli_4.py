@@ -152,3 +152,7 @@ def test_grpc_proxy_model_composition(ray_start_stop):
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

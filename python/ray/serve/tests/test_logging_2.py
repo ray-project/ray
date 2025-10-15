@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import uuid
 
 import httpx
@@ -95,3 +96,7 @@ def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
     )
     proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
     check_log_file(proxy_log_path, expected_log_regex)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
