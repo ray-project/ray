@@ -280,10 +280,6 @@ class OpState:
         """Check if the operator has a valid bundle in its input queue."""
         return any(queue.has_valid_next() for queue in self.input_queues)
 
-    def has_valid_input_bundle(self) -> bool:
-        """Check if the operator has a valid bundle in its input queue."""
-        return any(queue.has_valid_next() for queue in self.input_queues)
-
     def has_pending_bundles(self) -> bool:
         return self._pending_dispatch_input_bundles_count() > 0
 
