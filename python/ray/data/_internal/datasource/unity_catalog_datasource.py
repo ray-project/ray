@@ -10,6 +10,7 @@ import requests  # HTTP library: https://requests.readthedocs.io/
 
 import ray
 from ray.data.datasource import Datasource
+from ray.util.annotations import DeveloperAPI
 
 # Unity Catalog REST API Documentation:
 # https://docs.databricks.com/api/workspace/unity-catalog
@@ -306,6 +307,7 @@ class CredentialsResponse:
             )
 
 
+@DeveloperAPI
 class UnityCatalogConnector:
     """
     Connector for reading Unity Catalog tables and volumes into Ray Datasets.
