@@ -8,12 +8,14 @@ build_arg_sets:
 
 depsets:
   - name: audio_transcription_py${PYTHON_SHORT}
-    operation: compile
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     requirements:
-      - release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
       - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
     output: release/ray_release/byod/audio_transcription_py${PYTHON_VERSION}.lock
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
