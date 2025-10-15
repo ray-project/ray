@@ -136,7 +136,7 @@ Ray Train Utilities
 
     ~train.Checkpoint
     ~train.CheckpointUploadMode
-    ~train.v2.api.context.TrainContext
+    ~train.TrainContext
 
 **Functions**
 
