@@ -153,6 +153,132 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[Set[str]]:
     return collector.referenced_columns
 
 
+class _ColumnRewriter(_ExprVisitor):
+    """Visitor that rewrites column references in expression trees.
+
+    This visitor traverses expression trees and substitutes column references
+    according to a provided substitution map, preserving the structure of the tree.
+    """
+
+    def __init__(self, column_substitutions: dict[str, Expr]):
+        """Initialize with a column substitution map.
+
+        Args:
+            column_substitutions: Mapping from column names to replacement expressions.
+        """
+        self.column_substitutions = column_substitutions
+
+    def visit(self, expr: Expr) -> Expr:
+        """Visit an expression node and return the rewritten expression.
+
+        Extends the base visitor to handle StarColumnsExpr which is not
+        part of the base _ExprVisitor interface.
+
+        Args:
+            expr: The expression to visit.
+
+        Returns:
+            The rewritten expression.
+        """
+        if isinstance(expr, StarColumnsExpr):
+            # StarColumnsExpr is not rewritten
+            return expr
+        return super().visit(expr)
+
+    def visit_column(self, expr: ColumnExpr) -> Expr:
+        """Visit a column expression and potentially substitute it.
+
+        Args:
+            expr: The column expression.
+
+        Returns:
+            The substituted expression or the original if no substitution exists.
+        """
+        substitution = self.column_substitutions.get(expr.name)
+        if substitution is not None:
+            # Unwrap aliases to get the actual expression
+            return (
+                substitution.expr
+                if isinstance(substitution, AliasExpr)
+                else substitution
+            )
+        return expr
+
+    def visit_literal(self, expr: LiteralExpr) -> Expr:
+        """Visit a literal expression (no rewriting needed).
+
+        Args:
+            expr: The literal expression.
+
+        Returns:
+            The original literal expression.
+        """
+        return expr
+
+    def visit_binary(self, expr: BinaryExpr) -> Expr:
+        """Visit a binary expression and rewrite its operands.
+
+        Args:
+            expr: The binary expression.
+
+        Returns:
+            A new binary expression with rewritten operands.
+        """
+        return type(expr)(
+            expr.op,
+            self.visit(expr.left),
+            self.visit(expr.right),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Expr:
+        """Visit a unary expression and rewrite its operand.
+
+        Args:
+            expr: The unary expression.
+
+        Returns:
+            A new unary expression with rewritten operand.
+        """
+        return type(expr)(expr.op, self.visit(expr.operand))
+
+    def visit_udf(self, expr: UDFExpr) -> Expr:
+        """Visit a UDF expression and rewrite its arguments.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            A new UDF expression with rewritten arguments.
+        """
+        new_args = [self.visit(arg) for arg in expr.args]
+        new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
+        return type(expr)(
+            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Expr:
+        """Visit an alias expression and rewrite its inner expression.
+
+        Args:
+            expr: The alias expression.
+
+        Returns:
+            A new alias expression with rewritten inner expression and preserved name.
+        """
+        return self.visit(expr.expr).alias(expr.name)
+
+    def visit_download(self, expr: "Expr") -> Expr:
+        """Visit a download expression (no rewriting needed).
+
+        Args:
+            expr: The download expression.
+
+        Returns:
+            The original download expression.
+        """
+        return expr
+
+
 def _rewrite_column_references(
     expr: Expr, column_substitutions: dict[str, Expr]
 ) -> Expr:
@@ -164,51 +290,16 @@ def _rewrite_column_references(
 
     Example: If column_substitutions = {"col1": col2_expr}, then
              "col1 + 10" becomes "col2 + 10"
+
+    Args:
+        expr: The expression to rewrite.
+        column_substitutions: Mapping from column names to replacement expressions.
+
+    Returns:
+        The rewritten expression.
     """
-    if isinstance(expr, ColumnExpr):
-        # Check if this column should be substituted
-        substitution = column_substitutions.get(expr.name)
-        if substitution is not None:
-            # Unwrap aliases to get the actual expression
-            return (
-                substitution.expr
-                if isinstance(substitution, AliasExpr)
-                else substitution
-            )
-        return expr
-
-    if isinstance(expr, AliasExpr):
-        # Rewrite the inner expression but preserve the alias name
-        return _rewrite_column_references(expr.expr, column_substitutions).alias(
-            expr.name
-        )
-
-    if isinstance(expr, BinaryExpr):
-        return type(expr)(
-            expr.op,
-            _rewrite_column_references(expr.left, column_substitutions),
-            _rewrite_column_references(expr.right, column_substitutions),
-        )
-
-    if isinstance(expr, UnaryExpr):
-        return type(expr)(
-            expr.op, _rewrite_column_references(expr.operand, column_substitutions)
-        )
-
-    if isinstance(expr, UDFExpr):
-        new_args = [
-            _rewrite_column_references(arg, column_substitutions) for arg in expr.args
-        ]
-        new_kwargs = {
-            key: _rewrite_column_references(value, column_substitutions)
-            for key, value in expr.kwargs.items()
-        }
-        return type(expr)(
-            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
-        )
-
-    # For other expression types (e.g., LiteralExpr), return as-is
-    return expr
+    rewriter = _ColumnRewriter(column_substitutions)
+    return rewriter.visit(expr)
 
 
 def _try_wrap_expression_with_alias(expr: Expr, target_name: str) -> Expr:
