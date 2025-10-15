@@ -1,9 +1,6 @@
 import asyncio
 
 import ray
-from ray.llm._internal.common.callbacks.base import (
-    CallbackCtx,
-)
 from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
@@ -18,7 +15,7 @@ transformers = try_import("transformers")
 logger = get_logger(__name__)
 
 
-async def initialize_node(llm_config: LLMConfig) -> CallbackCtx:
+async def initialize_node(llm_config: LLMConfig):
     """Implements node initialization for LLM engines.
 
     Downloads model, tokenizer, and extra files as necessary.
