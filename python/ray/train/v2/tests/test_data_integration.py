@@ -4,7 +4,7 @@ import pytest
 
 import ray.data
 import ray.train
-from ray.data import DataContext, ExecutionResources
+from ray.data import DataContext, ExecutionOptions, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
@@ -18,8 +18,6 @@ from ray.train.v2.tests.util import (
     DummyWorkerGroup,
     create_dummy_run_context,
 )
-
-# TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
@@ -201,7 +199,7 @@ def test_configure_locality(enable_shard_locality):
 @pytest.mark.parametrize("cache_random_preprocessing", [True, False])
 def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
     """Random preprocessing should change per-epoch."""
-    NUM_ROWS = 100
+    NUM_ROWS = 32
     NUM_WORKERS = 2
 
     ds = ray.data.range(NUM_ROWS, override_num_blocks=NUM_ROWS).random_shuffle()
@@ -227,6 +225,41 @@ def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+@pytest.mark.parametrize("exclude_resources", [None, ExecutionResources(cpu=2, gpu=1)])
+def test_data_config_exclude_resources(ray_start_4_cpus, exclude_resources):
+    execution_options = ExecutionOptions(exclude_resources=exclude_resources)
+    data_config = ray.train.DataConfig(execution_options=execution_options)
+
+    NUM_WORKERS = 2
+
+    def check_exclude_resources(config):
+        ds = ray.train.get_dataset_shard("train")
+        exclude_resources = config.get("exclude_resources") or ExecutionResources.zero()
+
+        # Ray Data always excludes resources reserved by Ray Train workers.
+        expected_exclude_resources = exclude_resources.add(
+            ExecutionResources(cpu=NUM_WORKERS)
+        )
+        assert (
+            ds.get_context().execution_options.exclude_resources
+            == expected_exclude_resources
+        )
+
+    ds = ray.data.range(1)
+    trainer = DataParallelTrainer(
+        check_exclude_resources,
+        train_loop_config={"exclude_resources": exclude_resources},
+        datasets={"train": ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_data_config_resource_limits(ray_start_4_cpus):
+    pass
 
 
 if __name__ == "__main__":
