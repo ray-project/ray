@@ -592,6 +592,7 @@ py_test(
         "exclusive",
         "ptl_v2",
         "team:ml",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -666,7 +667,9 @@ py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    # TODO: [V2] The minimal test needs to install pydantic,
+    # which is a Train V2 dependency.
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
         "minimal",
