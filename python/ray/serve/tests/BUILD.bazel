@@ -89,6 +89,7 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_backpressure.py",
+        "test_backpressure_grpc.py",
         "test_batching.py",
         "test_callback.py",
         "test_cluster.py",
