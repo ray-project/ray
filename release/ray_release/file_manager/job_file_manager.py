@@ -3,10 +3,13 @@ import shutil
 import sys
 import tempfile
 from typing import Optional
+from azure.storage.blob import BlobServiceClient
+from azure.identity import DefaultAzureCredential
 
 import boto3
 from google.cloud import storage
 from ray_release.aws import RELEASE_AWS_BUCKET
+from ray_release.cloud_util import generate_tmp_cloud_storage_path
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import FileDownloadError, FileUploadError
 from ray_release.file_manager.file_manager import FileManager
@@ -14,10 +17,12 @@ from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import (
     exponential_backoff_retry,
-    generate_tmp_cloud_storage_path,
     S3_CLOUD_STORAGE,
     GS_CLOUD_STORAGE,
     GS_BUCKET,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_ACCOUNT,
+    AZURE_STORAGE_CONTAINER,
 )
 
 
@@ -37,6 +42,8 @@ class JobFileManager(FileManager):
         elif self.cloud_storage_provider == GS_CLOUD_STORAGE:
             self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
+        elif self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            self.bucket = AZURE_STORAGE_ACCOUNT
         else:
             raise RuntimeError(
                 f"Non supported anyscale service provider: "
@@ -57,8 +64,7 @@ class JobFileManager(FileManager):
         )
 
     def _generate_tmp_cloud_storage_path(self):
-        location = f"tmp/{generate_tmp_cloud_storage_path()}"
-        return location
+        return f"tmp/{generate_tmp_cloud_storage_path()}"
 
     def download_from_cloud(
         self, key: str, target: str, delete_after_download: bool = False
@@ -75,7 +81,17 @@ class JobFileManager(FileManager):
             bucket = self.gs_client.bucket(self.bucket)
             blob = bucket.blob(key)
             self._run_with_retry(lambda: blob.download_to_filename(target))
-
+        if self.cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            account_url = f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"
+            credential = DefaultAzureCredential(
+                exclude_managed_identity_credential=True
+            )
+            blob_service_client = BlobServiceClient(account_url, credential)
+            blob_client = blob_service_client.get_blob_client(
+                container=AZURE_STORAGE_CONTAINER, blob=key
+            )
+            with open(target, "wb") as f:
+                blob_client.download_blob().readinto(f)
         if delete_after_download:
             self.delete(key)
 

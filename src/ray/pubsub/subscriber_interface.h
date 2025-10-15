@@ -66,7 +66,7 @@ class SubscriberInterface {
                          SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   /// Unsubscribe the entity if the entity has been subscribed with Subscribe().
-  /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
+  /// NOTE: This method is expected to be idempotent and can handle retries
   ///
   /// \param channel_type The channel to unsubscribe from.
   /// \param publisher_address The publisher address that it will unsubscribe from.

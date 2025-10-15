@@ -28,6 +28,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/status.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 namespace gcs {
@@ -46,7 +47,10 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   virtual void SetUp() {
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsTaskManagerTest");
-    task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService());
+    task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService(),
+                                                    fake_task_events_reported_gauge_,
+                                                    fake_task_events_dropped_gauge_,
+                                                    fake_task_events_stored_gauge_);
   }
 
   virtual void TearDown() {
@@ -387,6 +391,9 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<GcsTaskManager> task_manager = nullptr;
+  observability::FakeGauge fake_task_events_reported_gauge_;
+  observability::FakeGauge fake_task_events_dropped_gauge_;
+  observability::FakeGauge fake_task_events_stored_gauge_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_ = nullptr;
 };
 

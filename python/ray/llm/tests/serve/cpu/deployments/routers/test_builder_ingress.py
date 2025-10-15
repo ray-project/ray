@@ -61,8 +61,10 @@ def serve_config_separate_model_config_files():
             # Explicitly set accelerator_type to None to avoid GPU placement groups
             llm_config_yaml["accelerator_type"] = None
 
-            # Explicitly set resources_per_bundle to use CPU instead of GPU
-            llm_config_yaml["resources_per_bundle"] = {"CPU": 1}
+            # Use placement_group_config to specify CPU-only bundles
+            llm_config_yaml["placement_group_config"] = {
+                "bundles": [{"CPU": 1, "GPU": 0}]
+            }
 
             os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
             with open(llm_config_dst, "w") as f:
