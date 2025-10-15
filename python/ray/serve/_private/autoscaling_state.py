@@ -836,7 +836,9 @@ class AutoscalingStateManager:
     ) -> None:
         """Update request metric for a specific handle."""
         try:
-            app_state = self._app_autoscaling_states[handle_metric_report.deployment_id.app_name]
+            app_state = self._app_autoscaling_states[
+                handle_metric_report.deployment_id.app_name
+            ]
         except KeyError:
             logger.warning(
                 f"Cannot record request metrics for handle "
