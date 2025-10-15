@@ -193,6 +193,51 @@ def _get_loggers_to_configure(config: Dict[str, Any]) -> Dict[str, Dict[str, Any
     return loggers_to_configure
 
 
+def _snapshot_handler_attrs(handler: logging.Handler) -> Dict[str, Any]:
+    """Capture a safe, minimal set of handler attributes to restore later."""
+    attrs: Dict[str, Any] = {
+        "level": handler.level,
+        "formatter": getattr(handler, "formatter", None),
+        "filters": list(getattr(handler, "filters", []) or []),
+    }
+    if hasattr(handler, "target"):
+        attrs["target"] = getattr(handler, "target", None)
+    return attrs
+
+
+def _apply_handler_attrs(handler: logging.Handler, attrs: Dict[str, Any]) -> None:
+    """Restore the captured handler attributes (best-effort, safe only)."""
+    try:
+        if "level" in attrs:
+            handler.setLevel(attrs["level"])
+    except Exception:
+        pass
+
+    try:
+        fmt = attrs.get("formatter")
+        if fmt is not None:
+            handler.setFormatter(fmt)
+    except Exception:
+        pass
+
+    try:
+        current_filters = list(getattr(handler, "filters", []) or [])
+        for f in attrs.get("filters", []) or []:
+            if f not in current_filters:
+                handler.addFilter(f)
+    except Exception:
+        pass
+
+    if "target" in attrs:
+        try:
+            if hasattr(handler, "setTarget"):
+                handler.setTarget(attrs["target"])
+            elif hasattr(handler, "target"):
+                handler.target = attrs["target"]
+        except Exception:
+            pass
+
+
 def _preserve_and_detach_child_handlers(
     prefixes: List[str],
 ) -> Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]]:
@@ -205,19 +250,19 @@ def _preserve_and_detach_child_handlers(
     for logger_name, existing in logging.root.manager.loggerDict.items():
         if not isinstance(existing, logging.Logger):
             continue
-        for prefix in prefixes:
-            if logger_name != prefix and logger_name.startswith(prefix + "."):
-                child_logger = logging.getLogger(logger_name)
-                if child_logger.handlers:
-                    handlers_info: List[Tuple[logging.Handler, Dict[str, Any]]] = []
-                    for handler in list(child_logger.handlers):
-                        preserved_attrs: Dict[str, Any] = {}
-                        if hasattr(handler, "target"):
-                            preserved_attrs["target"] = handler.target
-                        handlers_info.append((handler, preserved_attrs))
-                        child_logger.removeHandler(handler)
-                    preserved[logger_name] = handlers_info
-                break
+
+        if any(logger_name.startswith(prefix) for prefix in prefixes):
+            child_logger = logging.getLogger(logger_name)
+            if not child_logger.handlers:
+                continue
+
+            handlers_info: List[Tuple[logging.Handler, Dict[str, Any]]] = []
+            for handler in list(child_logger.handlers):
+                handlers_info.append((handler, _snapshot_handler_attrs(handler)))
+                child_logger.removeHandler(handler)
+
+            preserved[logger_name] = handlers_info
+
     return preserved
 
 
@@ -228,27 +273,8 @@ def _restore_child_handlers(
     for logger_name, handlers_info in preserved.items():
         child_logger = logging.getLogger(logger_name)
         for handler, attrs in handlers_info:
-            if handler not in child_logger.handlers:
-                child_logger.addHandler(handler)
-            if "target" in attrs and (
-                not hasattr(handler, "target") or handler.target is None
-            ):
-                target_value = attrs["target"]
-                if hasattr(handler, "setTarget"):
-                    try:
-                        handler.setTarget(target_value)
-                    except Exception:
-                        if hasattr(handler, "target"):
-                            try:
-                                handler.target = target_value
-                            except Exception:
-                                pass
-                else:
-                    if hasattr(handler, "target"):
-                        try:
-                            handler.target = target_value
-                        except Exception:
-                            pass
+            child_logger.addHandler(handler)
+            _apply_handler_attrs(handler, attrs)
 
 
 _logging_configured = False
@@ -293,7 +319,6 @@ def configure_logging() -> None:
     )
 
     # Configure only the necessary loggers
-    config = dict(config)
     config["loggers"] = loggers_to_configure
     logging.config.dictConfig(config)
     _logging_configured = True
