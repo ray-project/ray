@@ -86,7 +86,6 @@ def run_one(total_actors, cpus_per_actor, no_wait):
         "actor_ready_time": actor_ready_time,
         "total_time": actor_launch_time + actor_ready_time,
         "num_actors": total_actors,
-        "success": "1",
         "throughput": throughput,
     }
 

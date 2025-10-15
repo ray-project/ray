@@ -223,7 +223,6 @@ def main():
         f.write(
             json.dumps(
                 {
-                    "success": 1,
                     "_peak_memory": round(used_gb, 2),
                     "_peak_process_memory": usage,
                 }
