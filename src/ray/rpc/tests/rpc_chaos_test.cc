@@ -60,4 +60,48 @@ TEST(RpcChaosTest, WildcardRpcFailure) {
   }
 }
 
+TEST(RpcChaosTest, LowerBoundWithWildcard) {
+  // Test lower bound failures with wildcard configuration
+  // Format: *=num_failures:req_prob:resp_prob:lower_bound_req:lower_bound_resp
+  // Config: unlimited failures, 100% req prob after lower bound, 0% resp prob,
+  //         3 guaranteed req failures, 5 guaranteed resp failures
+  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0:3:5";
+  Init();
+
+  // First 3 calls should be guaranteed Request failures (lower bound)
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
+
+  // Next 5 calls should be guaranteed Response failures (lower bound)
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Response);
+
+  // After lower bounds exhausted, should revert to probabilistic (100% request failures)
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(GetRpcFailure("method1"), RpcFailure::Request);
+  }
+
+  // Test that wildcard applies to any method - method2 should have same behavior
+  // First 3 calls should be guaranteed Request failures
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
+
+  // Next 5 calls should be guaranteed Response failures
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
+  ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Response);
+
+  // After lower bounds exhausted, revert to probabilistic (100% request failures)
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(GetRpcFailure("method2"), RpcFailure::Request);
+  }
+}
+
 }  // namespace ray::rpc::testing
