@@ -11,8 +11,6 @@ Ray Serve LLM APIs allow users to deploy multiple LLM models together with a fam
 - 🔌 OpenAI compatible
 - 🔄 Multi-LoRA support with shared base models
 - 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
-- 🔗 Cross-node tensor and pipeline parallelism
-- ⚙️ Custom :ref:`placement group strategies <pgroup-strategy>` for fine-grained resource control
 
 ## Requirements
 
@@ -50,10 +48,9 @@ The LLMConfig class specifies model details such as:
 
 - Model loading sources (HuggingFace or cloud storage)
 - Hardware requirements (accelerator type)
-- Engine arguments (e.g. vLLM engine kwargs, tensor/pipeline parallelism)
+- Engine arguments (e.g. vLLM engine kwargs)
 - LoRA multiplexing configuration
 - Serve auto-scaling parameters
-- Placement group configuration for multi-node deployments
 
 ```{toctree}
 :hidden:

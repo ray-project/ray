@@ -124,7 +124,7 @@ llm_config = LLMConfig(
         max_model_len=8192,
     ),
     placement_group_config=dict(
-        bundles=[{"GPU": 1, "CPU": 2}] * 2,
+        bundles=[{"GPU": 1}] * 2,
         strategy="PACK",
     ),
 )
@@ -158,7 +158,7 @@ llm_config = LLMConfig(
         max_model_len=8192,
     ),
     placement_group_config=dict(
-        bundles=[{"GPU": 1, "CPU": 2}] * 4,
+        bundles=[{"GPU": 1}] * 4,
         strategy="SPREAD",
     ),
 )
@@ -192,7 +192,7 @@ llm_config = LLMConfig(
         max_model_len=8192,
     ),
     placement_group_config=dict(
-        bundles=[{"GPU": 1, "CPU": 2}] * 2,
+        bundles=[{"GPU": 1}] * 2,
         strategy="STRICT_PACK",
     ),
 )
@@ -201,61 +201,3 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 # __custom_placement_group_strict_pack_example_end__
-
-# __yaml_cross_node_tp_pp_example_start__
-# config.yaml
-# applications:
-# - args:
-#     llm_configs:
-#       - model_loading_config:
-#           model_id: llama-3.1-8b
-#           model_source: meta-llama/Llama-3.1-8B-Instruct
-#         accelerator_type: L4
-#         deployment_config:
-#           autoscaling_config:
-#             min_replicas: 1
-#             max_replicas: 1
-#         engine_kwargs:
-#           tensor_parallel_size: 2
-#           pipeline_parallel_size: 2
-#           distributed_executor_backend: ray
-#           max_model_len: 8192
-#           enable_chunked_prefill: true
-#           max_num_batched_tokens: 4096
-#   import_path: ray.serve.llm:build_openai_app
-#   name: llm_app
-#   route_prefix: "/"
-# __yaml_cross_node_tp_pp_example_end__
-
-# __yaml_custom_placement_group_example_start__
-# config.yaml
-# applications:
-# - args:
-#     llm_configs:
-#       - model_loading_config:
-#           model_id: llama-3.1-8b
-#           model_source: meta-llama/Llama-3.1-8B-Instruct
-#         accelerator_type: L4
-#         deployment_config:
-#           autoscaling_config:
-#             min_replicas: 1
-#             max_replicas: 1
-#         engine_kwargs:
-#           tensor_parallel_size: 4
-#           distributed_executor_backend: ray
-#           max_model_len: 8192
-#         placement_group_config:
-#           bundles:
-#             - GPU: 1
-#               CPU: 2
-#             - GPU: 1
-#               CPU: 2
-#             - GPU: 1
-#               CPU: 2
-#             - GPU: 1
-#               CPU: 2
-#           strategy: SPREAD
-#   import_path: ray.serve.llm:build_openai_app
-#   name: llm_app
-#   route_prefix: "/"
-# __yaml_custom_placement_group_example_end__
