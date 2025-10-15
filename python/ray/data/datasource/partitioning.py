@@ -1,8 +1,8 @@
 import posixpath
+import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
-import urllib.parse
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
