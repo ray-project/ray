@@ -169,6 +169,15 @@ class TestLLMServingArgs:
 
 
 class TestBuildOpenaiApp:
+    @pytest.fixture
+    def llm_config(self):
+        """Basic LLMConfig for testing."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
     def test_build_openai_app(
         self, get_llm_serve_args, shutdown_ray_and_serve, disable_placement_bundles
     ):
@@ -267,6 +276,36 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert router_autoscaling_config.target_ongoing_requests == 10
+
+    def test_ingress_deployment_config_merging(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that ingress_deployment_config is properly merged with default options.
+
+        This test ensures that deep_merge_dicts return value is properly assigned
+        and that nested dictionaries are properly deep-merged without losing default values.
+        """
+        # Build app with custom ingress deployment config including nested options
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "num_replicas": 3,
+                    "ray_actor_options": {
+                        "num_cpus": 4,
+                        "memory": 1024,
+                    },
+                    "max_ongoing_requests": 200,  # Override default
+                },
+            )
+        )
+
+        # Verify the custom config was applied
+        deployment = app._bound_deployment
+        assert deployment._deployment_config.num_replicas == 3
+        assert deployment.ray_actor_options["num_cpus"] == 4
+        assert deployment.ray_actor_options["memory"] == 1024
+        assert deployment._deployment_config.max_ongoing_requests == 200
 
 
 def extract_applications_from_output(output: bytes) -> dict:

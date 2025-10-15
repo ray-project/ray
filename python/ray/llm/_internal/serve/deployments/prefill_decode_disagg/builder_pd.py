@@ -142,7 +142,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
 
     # Override if the proxy deployment config is provided.
     if pd_config.proxy_deployment_config:
-        deep_merge_dicts(pd_proxy_server_options, pd_config.proxy_deployment_config)
+        pd_proxy_server_options = deep_merge_dicts(
+            pd_proxy_server_options, pd_config.proxy_deployment_config
+        )
 
     proxy_server_deployment = (
         serve.deployment(proxy_cls_config.proxy_cls)
@@ -160,7 +162,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     if pd_config.ingress_deployment_config:
-        deep_merge_dicts(ingress_options, pd_config.ingress_deployment_config)
+        ingress_options = deep_merge_dicts(
+            ingress_options, pd_config.ingress_deployment_config
+        )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
     return serve.deployment(ingress_cls, **ingress_options).bind(

@@ -231,5 +231,79 @@ class TestServingArgsParsing:
         assert app is not None
 
 
+class TestBuildPDOpenaiApp:
+    """Test suite for build_pd_openai_app function."""
+
+    @pytest.fixture
+    def pd_configs(self):
+        """Prefill and decode configs with required kv_transfer_config."""
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def test_deployment_config_merging(self, pd_configs):
+        """Test that deployment configs are properly merged with default options.
+
+        This test ensures that deep_merge_dicts return value is properly assigned
+        for both proxy and ingress deployments, and that nested dictionaries are
+        properly deep-merged without losing default values.
+        """
+        prefill, decode = pd_configs
+
+        # Build app with custom configs for both proxy and ingress including nested options
+        app = build_pd_openai_app(
+            {
+                "prefill_config": prefill,
+                "decode_config": decode,
+                "proxy_deployment_config": {
+                    "num_replicas": 2,
+                    "ray_actor_options": {
+                        "num_cpus": 4,
+                        "memory": 2048,
+                    },
+                    "max_ongoing_requests": 150,  # Override default
+                },
+                "ingress_deployment_config": {
+                    "num_replicas": 5,
+                    "ray_actor_options": {
+                        "num_cpus": 8,
+                        "memory": 4096,
+                    },
+                    "max_ongoing_requests": 300,  # Override default
+                },
+            }
+        )
+
+        # The app should have an ingress deployment bound to a proxy deployment
+        # The proxy is passed as an Application via llm_deployments in init_kwargs
+        ingress_deployment = app._bound_deployment
+        proxy_app = ingress_deployment.init_kwargs["llm_deployments"][0]
+        proxy_deployment = proxy_app._bound_deployment
+
+        # Verify proxy config was applied with deep merge
+        assert proxy_deployment._deployment_config.num_replicas == 2
+        assert proxy_deployment.ray_actor_options["num_cpus"] == 4
+        assert proxy_deployment.ray_actor_options["memory"] == 2048
+        assert proxy_deployment._deployment_config.max_ongoing_requests == 150
+
+        # Verify ingress config was applied with deep merge
+        assert ingress_deployment._deployment_config.num_replicas == 5
+        assert ingress_deployment.ray_actor_options["num_cpus"] == 8
+        assert ingress_deployment.ray_actor_options["memory"] == 4096
+        assert ingress_deployment._deployment_config.max_ongoing_requests == 300
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
