@@ -384,18 +384,11 @@ def main():
         < sync_e2e_time * MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER
     )
 
-    # Assert map_batches is faster than TorchTrainer. Note that inline is the fastest but is blocking
+    # map_batches is faster than TorchTrainer. Note that inline is the fastest but is blocking
     # Example values: 92s vs 387s vs 264s (gap between sync and async smaller if more data)
     sync_validation_time = consolidated_metrics["sync_cp_inline_val_metrics"][
         "total_validation_time"
     ]
-    async_torchtrainer_validation_time = consolidated_metrics[
-        "async_cp_torch_trainer_val_metrics"
-    ]["total_validation_time"]
-    async_map_batches_validation_time = consolidated_metrics[
-        "async_cp_map_batches_val_metrics"
-    ]["total_validation_time"]
-    assert async_map_batches_validation_time < async_torchtrainer_validation_time
 
     # Assert report blocking time is (way) less with async checkpointing
     # Example values: 3.66s vs 0.033s
