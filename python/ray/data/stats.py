@@ -604,41 +604,16 @@ class DatasetSummary:
         df_matching = safe_convert_table(self.schema_matching_stats)
         df_changing = safe_convert_table(self.schema_changing_stats)
 
-        # Merge data from both tables
-        # Get all unique statistics
-        all_stats = sorted(
-            set(df_matching["statistic"].tolist() + df_changing["statistic"].tolist())
-        )
+        # Set 'statistic' as index for easier merging
+        df_matching = df_matching.set_index("statistic")
+        df_changing = df_changing.set_index("statistic")
 
-        # Get all column names (excluding 'statistic')
-        all_columns = [
-            col for col in self.schema_matching_stats.schema.names if col != "statistic"
-        ]
+        # Combine: prefer schema_matching values, fill with schema_changing where needed
+        # combine_first() takes non-null values from df_matching first, then df_changing
+        result = df_matching.combine_first(df_changing)
 
-        # Build combined DataFrame
-        combined_rows = []
-        for stat in all_stats:
-            row = {"statistic": stat}
-
-            for col in all_columns:
-                value = None
-
-                # Try schema-matching table first
-                stat_row = df_matching[df_matching["statistic"] == stat]
-                if not stat_row.empty and col in df_matching.columns:
-                    value = stat_row[col].iloc[0]
-
-                # If not found or null, try schema-changing table
-                if value is None or pd.isna(value):
-                    stat_row = df_changing[df_changing["statistic"] == stat]
-                    if not stat_row.empty and col in df_changing.columns:
-                        value = stat_row[col].iloc[0]
-
-                row[col] = value
-
-            combined_rows.append(row)
-
-        return pd.DataFrame(combined_rows)
+        # Reset index to make 'statistic' a column again and sort
+        return result.reset_index().sort_values("statistic").reset_index(drop=True)
 
     def get_column_stats(self, column: str) -> pd.DataFrame:
         """Get all statistics for a specific column, merging from both tables.
