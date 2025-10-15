@@ -57,12 +57,13 @@ import {
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
-//adding comment
+
 dayjs.extend(duration);
 
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
+
 // a global map for relations
 export type GlobalContextType = {
   nodeMap: { [key: string]: string };
