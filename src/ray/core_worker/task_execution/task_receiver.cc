@@ -171,16 +171,9 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     if (canceled_task_spec.IsActorTask()) {
       // If task cancelation is due to worker shutdown, propagate that information
       // to the submitter.
-      bool is_worker_exiting = false;
-      {
-        absl::MutexLock lock(&stop_mu_);
-        is_worker_exiting = stopping_;
-        if (stopping_) {
-          reply->set_worker_exiting(true);
-          reply->set_was_cancelled_before_running(true);
-        }
-      }
-      if (is_worker_exiting) {
+      if (stopping_) {
+        reply->set_worker_exiting(true);
+        reply->set_was_cancelled_before_running(true);
         canceled_send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
         canceled_send_reply_callback(status, nullptr, nullptr);
@@ -191,17 +184,14 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
   };
 
-  {
-    absl::MutexLock lock(&stop_mu_);
-    task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
-    if (stopping_) {
-      reply->set_was_cancelled_before_running(true);
-      if (task_spec.IsActorTask()) {
-        reply->set_worker_exiting(true);
-      }
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
+  task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
+  if (stopping_) {
+    reply->set_was_cancelled_before_running(true);
+    if (task_spec.IsActorTask()) {
+      reply->set_worker_exiting(true);
     }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
   }
 
   if (task_spec.IsActorCreationTask()) {
@@ -315,12 +305,8 @@ void TaskReceiver::SetupActor(bool is_asyncio,
 }
 
 void TaskReceiver::Stop() {
-  {
-    absl::MutexLock lock(&stop_mu_);
-    if (stopping_) {
-      return;
-    }
-    stopping_ = true;
+  if (stopping_.exchange(true)) {
+    return;
   }
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();

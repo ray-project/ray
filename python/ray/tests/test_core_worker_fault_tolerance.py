@@ -14,7 +14,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
     [True, False],
 )
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_transient_error_retry(
+def test_push_actor_task_failure(
     monkeypatch,
     ray_start_cluster,
     allow_out_of_order_execution: bool,
