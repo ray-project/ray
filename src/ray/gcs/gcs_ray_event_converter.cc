@@ -25,6 +25,152 @@ namespace gcs {
 
 namespace {
 
+/// Deep copy ActorDeathCause to ensure no arena pointers leak through.
+void DeepCopyActorDeathCause(const rpc::ActorDeathCause &src, rpc::ActorDeathCause *dst) {
+  if (src.has_creation_task_failure_context()) {
+    const auto &src_exc = src.creation_task_failure_context();
+    auto *dst_exc = dst->mutable_creation_task_failure_context();
+    dst_exc->set_language(src_exc.language());
+    dst_exc->set_serialized_exception(src_exc.serialized_exception());
+    dst_exc->set_formatted_exception_string(src_exc.formatted_exception_string());
+  } else if (src.has_runtime_env_failed_context()) {
+    const auto &src_ctx = src.runtime_env_failed_context();
+    auto *dst_ctx = dst->mutable_runtime_env_failed_context();
+    dst_ctx->set_error_message(src_ctx.error_message());
+  } else if (src.has_actor_died_error_context()) {
+    const auto &src_ctx = src.actor_died_error_context();
+    auto *dst_ctx = dst->mutable_actor_died_error_context();
+    dst_ctx->set_error_message(src_ctx.error_message());
+    dst_ctx->set_owner_id(src_ctx.owner_id());
+    dst_ctx->set_owner_ip_address(src_ctx.owner_ip_address());
+    dst_ctx->set_node_ip_address(src_ctx.node_ip_address());
+    dst_ctx->set_pid(src_ctx.pid());
+    dst_ctx->set_name(src_ctx.name());
+    dst_ctx->set_ray_namespace(src_ctx.ray_namespace());
+    dst_ctx->set_class_name(src_ctx.class_name());
+    dst_ctx->set_actor_id(src_ctx.actor_id());
+    dst_ctx->set_never_started(src_ctx.never_started());
+    dst_ctx->set_reason(src_ctx.reason());
+    if (src_ctx.has_node_death_info()) {
+      auto *dst_node_death = dst_ctx->mutable_node_death_info();
+      dst_node_death->set_reason(src_ctx.node_death_info().reason());
+      dst_node_death->set_reason_message(src_ctx.node_death_info().reason_message());
+    }
+  } else if (src.has_actor_unschedulable_context()) {
+    const auto &src_ctx = src.actor_unschedulable_context();
+    auto *dst_ctx = dst->mutable_actor_unschedulable_context();
+    dst_ctx->set_error_message(src_ctx.error_message());
+  } else if (src.has_oom_context()) {
+    const auto &src_ctx = src.oom_context();
+    auto *dst_ctx = dst->mutable_oom_context();
+    dst_ctx->set_error_message(src_ctx.error_message());
+    dst_ctx->set_fail_immediately(src_ctx.fail_immediately());
+  }
+}
+
+/// Deep copy RayErrorInfo to ensure no arena pointers leak through.
+/// This manually copies all fields to force heap allocation.
+void DeepCopyRayErrorInfo(const rpc::RayErrorInfo &src, rpc::RayErrorInfo *dst) {
+  // Copy scalar fields
+  dst->set_error_type(src.error_type());
+  dst->set_error_message(src.error_message());
+  
+  // Deep copy the oneof error context fields
+  if (src.has_actor_died_error()) {
+    DeepCopyActorDeathCause(src.actor_died_error(), dst->mutable_actor_died_error());
+  } else if (src.has_runtime_env_setup_failed_error()) {
+    const auto &src_ctx = src.runtime_env_setup_failed_error();
+    auto *dst_ctx = dst->mutable_runtime_env_setup_failed_error();
+    dst_ctx->set_error_message(src_ctx.error_message());
+  } else if (src.has_actor_unavailable_error()) {
+    const auto &src_ctx = src.actor_unavailable_error();
+    auto *dst_ctx = dst->mutable_actor_unavailable_error();
+    if (src_ctx.has_actor_id()) {
+      dst_ctx->set_actor_id(src_ctx.actor_id());
+    }
+  }
+}
+
+/// Deep copy ProfileEvents to ensure no arena pointers leak through.
+void DeepCopyProfileEvents(const rpc::ProfileEvents &src, rpc::ProfileEvents *dst) {
+  dst->set_component_type(src.component_type());
+  dst->set_component_id(src.component_id());
+  dst->set_node_ip_address(src.node_ip_address());
+  
+  // Deep copy each ProfileEventEntry
+  for (const auto &src_entry : src.events()) {
+    auto *dst_entry = dst->add_events();
+    dst_entry->set_start_time(src_entry.start_time());
+    dst_entry->set_end_time(src_entry.end_time());
+    if (src_entry.has_extra_data()) {
+      dst_entry->set_extra_data(src_entry.extra_data());
+    }
+    dst_entry->set_event_name(src_entry.event_name());
+  }
+}
+
+/// Deep copy TaskEvents to ensure no arena pointers leak through.
+/// This ensures the entire TaskEvents object is heap-allocated.
+void DeepCopyTaskEvents(const rpc::TaskEvents &src, rpc::TaskEvents *dst) {
+  // Copy scalar fields
+  dst->set_task_id(src.task_id());
+  dst->set_job_id(src.job_id());
+  dst->set_attempt_number(src.attempt_number());
+  
+  // Deep copy task_info if present
+  if (src.has_task_info()) {
+    const auto &src_info = src.task_info();
+    auto *dst_info = dst->mutable_task_info();
+    
+    dst_info->set_type(src_info.type());
+    dst_info->set_name(src_info.name());
+    dst_info->set_language(src_info.language());
+    dst_info->set_func_or_class_name(src_info.func_or_class_name());
+    dst_info->set_scheduling_state(src_info.scheduling_state());
+    dst_info->set_job_id(src_info.job_id());
+    dst_info->set_task_id(src_info.task_id());
+    dst_info->set_parent_task_id(src_info.parent_task_id());
+    dst_info->set_actor_id(src_info.actor_id());
+    dst_info->set_placement_group_id(src_info.placement_group_id());
+    
+    // Deep copy required_resources map
+    for (const auto &[key, value] : src_info.required_resources()) {
+      (*dst_info->mutable_required_resources())[key] = value;
+    }
+    
+    // Deep copy runtime_env_info
+    if (src_info.has_runtime_env_info()) {
+      dst_info->mutable_runtime_env_info()->set_serialized_runtime_env(
+          src_info.runtime_env_info().serialized_runtime_env());
+    }
+  }
+  
+  // Deep copy state_updates if present
+  if (src.has_state_updates()) {
+    const auto &src_state = src.state_updates();
+    auto *dst_state = dst->mutable_state_updates();
+    
+    dst_state->set_node_id(src_state.node_id());
+    dst_state->set_worker_id(src_state.worker_id());
+    dst_state->set_worker_pid(src_state.worker_pid());
+    
+    // Deep copy state_ts_ns map
+    for (const auto &[state, ts] : src_state.state_ts_ns()) {
+      (*dst_state->mutable_state_ts_ns())[state] = ts;
+    }
+    
+    // Deep copy error_info if present
+    if (src_state.has_error_info()) {
+      DeepCopyRayErrorInfo(src_state.error_info(), dst_state->mutable_error_info());
+    }
+  }
+  
+  // Deep copy profile_events if present
+  if (src.has_profile_events()) {
+    DeepCopyProfileEvents(src.profile_events(), dst->mutable_profile_events());
+  }
+}
+
 /// Add dropped task attempts to the appropriate job-grouped request.
 ///
 /// \param metadata The task events metadata containing dropped task attempts.
@@ -97,8 +243,12 @@ void PopulateTaskRuntimeAndFunctionInfo(
   default:
     RAY_CHECK(false) << "Unsupported language: " << language;
   }
-  // Copy the required resources instead of swap
-  *task_info->mutable_required_resources() = required_resources;
+  // Deep copy the required resources map to avoid arena pointers
+  // Manually iterate and insert each key-value pair
+  auto *dst_resources = task_info->mutable_required_resources();
+  for (const auto &[key, value] : required_resources) {
+    (*dst_resources)[key] = value;
+  }
 }
 
 /// Convert a TaskDefinitionEvent to a TaskEvents.
@@ -144,8 +294,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   task_state_update->set_node_id(event.node_id());
   task_state_update->set_worker_id(event.worker_id());
   task_state_update->set_worker_pid(event.worker_pid());
-  // Use CopyFrom instead of move to avoid dangling arena pointers
-  task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
+  
+  // Deep copy RayErrorInfo to avoid arena pointers
+  DeepCopyRayErrorInfo(event.ray_error_info(), task_state_update->mutable_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
@@ -195,8 +346,8 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  // Use CopyFrom instead of move to avoid dangling arena pointers
-  task_event.mutable_profile_events()->CopyFrom(event.profile_events());
+  // Deep copy ProfileEvents to avoid arena pointers
+  DeepCopyProfileEvents(event.profile_events(), task_event.mutable_profile_events());
   return task_event;
 }
 
@@ -242,14 +393,14 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
         requests_per_job_id.emplace_back();
         auto *data = requests_per_job_id.back().mutable_data();
         data->set_job_id(job_id_key);
-        // Use CopyFrom instead of move to avoid dangling arena pointers
-        data->add_events_by_task()->CopyFrom(*task_event);
+        // Deep copy to ensure no arena pointers leak into the outgoing request
+        DeepCopyTaskEvents(*task_event, data->add_events_by_task());
         job_id_to_index.emplace(job_id_key, idx);
       } else {
         // add taskEvent to existing AddTaskEventDataRequest with same job id
         auto *data = requests_per_job_id[it->second].mutable_data();
-        // Use CopyFrom instead of move to avoid dangling arena pointers
-        data->add_events_by_task()->CopyFrom(*task_event);
+        // Deep copy to ensure no arena pointers leak into the outgoing request
+        DeepCopyTaskEvents(*task_event, data->add_events_by_task());
       }
     }
   }
