@@ -3,9 +3,183 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
+    PDServingArgs,
+    ProxyClsConfig,
     build_pd_openai_app,
 )
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import PDProxyServer
+from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    IngressClsConfig,
+)
+from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
+from ray.llm._internal.serve.configs.server_models import ModelLoadingConfig
 from ray.serve.llm import LLMConfig
+
+
+class TestPDServingArgs:
+    """Test suite for PDServingArgs data model."""
+
+    @pytest.fixture
+    def pd_configs(self):
+        """Prefill and decode configs with required kv_transfer_config."""
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def test_basic_creation_and_defaults(self, pd_configs):
+        """Test creation with minimal config and verify defaults."""
+        prefill, decode = pd_configs
+        args = PDServingArgs(prefill_config=prefill, decode_config=decode)
+        
+        # Verify configs
+        assert isinstance(args.prefill_config, LLMConfig)
+        assert isinstance(args.decode_config, LLMConfig)
+        
+        # Verify defaults
+        assert isinstance(args.proxy_cls_config, ProxyClsConfig)
+        assert args.proxy_cls_config.proxy_cls == PDProxyServer
+        assert isinstance(args.ingress_cls_config, IngressClsConfig)
+        assert args.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args.proxy_deployment_config == {}
+        assert args.ingress_deployment_config == {}
+
+    def test_flexible_input_types(self):
+        """Test accepts dicts for prefill and decode configs."""
+        config_dict = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        args = PDServingArgs(prefill_config=config_dict, decode_config=config_dict)
+        assert isinstance(args.prefill_config, LLMConfig)
+        assert isinstance(args.decode_config, LLMConfig)
+
+    def test_proxy_config_flexibility(self, pd_configs):
+        """Test proxy_cls_config: defaults, dict input, object input, and class loading."""
+        prefill, decode = pd_configs
+        
+        # Test defaults
+        args_default = PDServingArgs(prefill_config=prefill, decode_config=decode)
+        assert isinstance(args_default.proxy_cls_config, ProxyClsConfig)
+        assert args_default.proxy_cls_config.proxy_cls == PDProxyServer
+        assert args_default.proxy_cls_config.proxy_extra_kwargs == {}
+        
+        # Test as dict with custom kwargs
+        args_dict = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config={"proxy_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.proxy_cls_config, ProxyClsConfig)
+        assert args_dict.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
+        
+        # Test as object
+        args_obj = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config=ProxyClsConfig(proxy_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.proxy_cls_config, ProxyClsConfig)
+        assert args_obj.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
+        
+        # Test class loading from string
+        args_str = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            proxy_cls_config={
+                "proxy_cls": "ray.llm._internal.serve.deployments.prefill_decode_disagg.pd:PDProxyServer"
+            },
+        )
+        assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
+
+    def test_ingress_config_flexibility(self, pd_configs):
+        """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
+        prefill, decode = pd_configs
+        
+        # Test defaults
+        args_default = PDServingArgs(prefill_config=prefill, decode_config=decode)
+        assert isinstance(args_default.ingress_cls_config, IngressClsConfig)
+        assert args_default.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args_default.ingress_cls_config.ingress_extra_kwargs == {}
+        
+        # Test as dict with custom kwargs
+        args_dict = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config={"ingress_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.ingress_cls_config, IngressClsConfig)
+        assert args_dict.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+        
+        # Test as object
+        args_obj = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config=IngressClsConfig(ingress_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.ingress_cls_config, IngressClsConfig)
+        assert args_obj.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+        
+        # Test class loading from string
+        args_str = PDServingArgs(
+            prefill_config=prefill,
+            decode_config=decode,
+            ingress_cls_config={
+                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+            },
+        )
+        assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress
+
+    def test_validation_rules(self):
+        """Test validation: matching model IDs and required kv_transfer_config."""
+        # Mismatched model IDs
+        prefill = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="model-1", model_source="source"
+            ),
+            engine_kwargs={"kv_transfer_config": {"kv_connector": "NixlConnector"}},
+        )
+        decode = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="model-2", model_source="source"
+            ),
+            engine_kwargs={"kv_transfer_config": {"kv_connector": "NixlConnector"}},
+        )
+        with pytest.raises(ValueError, match="P/D model id mismatch"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
+        
+        # Missing kv_transfer_config
+        prefill_no_kv = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+        decode_no_kv = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+        with pytest.raises(ValueError, match="kv_transfer_config is required"):
+            PDServingArgs(prefill_config=prefill_no_kv, decode_config=decode_no_kv)
 
 
 class TestServingArgsParsing:

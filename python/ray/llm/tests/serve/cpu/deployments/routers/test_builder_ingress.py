@@ -15,9 +15,11 @@ from ray.llm._internal.serve.configs.server_models import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
 )
+from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
 from ray.serve.config import AutoscalingConfig
 
 
@@ -73,6 +75,97 @@ def serve_config_separate_model_config_files():
         yaml.dump(serve_config_yaml, f)
 
     yield serve_config_dst
+
+
+class TestLLMServingArgs:
+    """Test suite for LLMServingArgs data model."""
+
+    @pytest.fixture
+    def llm_config(self):
+        """Basic LLMConfig for testing."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
+    def test_basic_creation_and_defaults(self, llm_config):
+        """Test creation with minimal config and verify defaults."""
+        args = LLMServingArgs(llm_configs=[llm_config])
+        
+        # Verify llm_configs
+        assert len(args.llm_configs) == 1
+        assert isinstance(args.llm_configs[0], LLMConfig)
+        
+        # Verify defaults
+        assert isinstance(args.ingress_cls_config, IngressClsConfig)
+        assert args.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args.ingress_deployment_config == {}
+
+    def test_flexible_input_types(self, llm_config):
+        """Test accepts dicts, objects, and mixed types for llm_configs."""
+        config_dict = {
+            "model_loading_config": {
+                "model_id": "test-model-2",
+                "model_source": "test-source-2",
+            }
+        }
+        args = LLMServingArgs(llm_configs=[llm_config, config_dict])
+        assert len(args.llm_configs) == 2
+        assert all(isinstance(c, LLMConfig) for c in args.llm_configs)
+
+    def test_ingress_config_flexibility(self, llm_config):
+        """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
+        # Test defaults
+        args_default = LLMServingArgs(llm_configs=[llm_config])
+        assert isinstance(args_default.ingress_cls_config, IngressClsConfig)
+        assert args_default.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args_default.ingress_cls_config.ingress_extra_kwargs == {}
+        
+        # Test as dict with custom kwargs
+        args_dict = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config={"ingress_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.ingress_cls_config, IngressClsConfig)
+        assert args_dict.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+        
+        # Test as object
+        args_obj = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config=IngressClsConfig(ingress_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.ingress_cls_config, IngressClsConfig)
+        assert args_obj.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+        
+        # Test class loading from string
+        args_str = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config={
+                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+            },
+        )
+        assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress
+
+    def test_validation_rules(self):
+        """Test validation: unique model IDs and non-empty list."""
+        # Duplicate model IDs
+        config1 = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="same-id", model_source="source1"
+            )
+        )
+        config2 = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="same-id", model_source="source2"
+            )
+        )
+        with pytest.raises(ValueError, match="Duplicate models found"):
+            LLMServingArgs(llm_configs=[config1, config2])
+        
+        # Empty list
+        with pytest.raises(ValueError, match="List of models is empty"):
+            LLMServingArgs(llm_configs=[])
 
 
 class TestBuildOpenaiApp:
