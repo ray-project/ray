@@ -92,9 +92,9 @@ class LogFileInfo:
                 # from the existing file position.
                 if new_statinfo.st_size < self.file_position:
                     self.file_position = 0
-                    self.size_when_last_opened = new_statinfo.st_size
 
                 self.file_handle.seek(self.file_position)
+                self.size_when_last_opened = new_statinfo.st_size
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 
