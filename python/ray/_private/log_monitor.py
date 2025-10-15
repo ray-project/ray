@@ -79,18 +79,18 @@ class LogFileInfo:
             if self.file_handle and not self.file_handle.closed:
                 open_inode = os.fstat(self.file_handle.fileno()).st_ino
 
-            new_inode = os.stat(self.filename).st_ino
-            if open_inode != new_inode:
+            new_statinfo = os.stat(self.filename)
+            if new_statinfo.st_ino != open_inode:
                 self.file_handle = open(self.filename, "rb")
-                new_size = os.path.getsize(self.filename)
 
-                # If the new file is smaller than our last read position,
-                # we should read from the beginning. Otherwise, we
-                # should continue from our last read position.
-                if new_size < self.file_position:
+                # If the new file is smaller than the last read position, assume that
+                # the file has been rotated and read from the beginning. Else, continue
+                # from the existing file position.
+                if new_statinfo.st_size < self.file_position:
                     self.file_position = 0
-                else:
-                    self.file_handle.seek(self.file_position)
+                    self.size_when_last_opened = new_statinfo.st_size
+
+                self.file_handle.seek(self.file_position)
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 
