@@ -51,8 +51,6 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
-using std::literals::operator""sv;
-
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
@@ -185,35 +183,35 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         // them out to avoid double-counting.
         task_by_state_gauge_.Record(
             running_total - num_in_get - num_in_wait,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
         task_by_state_gauge_.Record(
             -running_total,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Record sub-state for get.
         task_by_state_gauge_.Record(
             num_in_get,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
         // Record sub-state for wait.
         task_by_state_gauge_.Record(
             num_in_wait,
-            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name"sv, func_name},
-             {"IsRetry"sv, is_retry_label},
-             {"JobId"sv, job_id_},
-             {"Source"sv, "executor"}});
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
       });
 }
 
@@ -229,15 +227,15 @@ void TaskCounter::RecordMetrics() {
       running_tasks = 1.0;
     }
     actor_by_state_gauge_.Record(idle,
-                                 {{"State"sv, "ALIVE_IDLE"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
+                                 {{"State", "ALIVE_IDLE"},
+                                  {"Name", actor_name_},
+                                  {"Source", "executor"},
+                                  {"JobId", job_id_}});
     actor_by_state_gauge_.Record(running_tasks,
-                                 {{"State"sv, "ALIVE_RUNNING_TASKS"},
-                                  {"Name"sv, actor_name_},
-                                  {"Source"sv, "executor"},
-                                  {"JobId"sv, job_id_}});
+                                 {{"State", "ALIVE_RUNNING_TASKS"},
+                                  {"Name", actor_name_},
+                                  {"Source", "executor"},
+                                  {"JobId", job_id_}});
   }
 }
 
