@@ -8,7 +8,7 @@ from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import
     ProxyClsConfig,
     build_pd_openai_app,
 )
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import PDProxyServer
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import PDProxyServer
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     IngressClsConfig,
 )
