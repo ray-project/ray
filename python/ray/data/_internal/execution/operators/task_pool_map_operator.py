@@ -135,21 +135,18 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
+        return self.per_task_resource_allocation().copy(
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            ),
+        )
+
+    def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
             memory=self._ray_remote_args.get("memory", 0),
-            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
-            or 0,
         )
-
-    def per_task_resource_allocation(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
-        return self.incremental_resource_usage()
-
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        return self._concurrency
 
     def min_scheduling_resources(
         self: "PhysicalOperator",
