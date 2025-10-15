@@ -1691,8 +1691,8 @@ class ActorClass(Generic[T]):
         if use_placement_group and detached:
             logger.warning(
                 "Scheduling a detached actor with a placement group is not recommended, "
-                "Raylet will kill the actor when the placement group is removed. "
-                "The actor will be stuck in the RESTARTING state forever if it's restartable until users explicitly kill it."
+                "Ray will kill the actor when the placement group is removed. "
+                "If the actor is restartable, it will be stuck in the RESTARTING state forever until explicitly killed."
             )
 
         if scheduling_strategy is None or isinstance(
