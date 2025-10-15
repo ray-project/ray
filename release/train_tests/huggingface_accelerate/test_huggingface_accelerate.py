@@ -26,7 +26,9 @@ def train_func():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True)
+        outputs = tokenizer(examples["text"], padding="max_length", truncation=True)
+        outputs["labels"] = examples["label"]
+        return outputs
 
     small_train_dataset = (
         dataset["train"].select(range(100)).map(tokenize_function, batched=True)

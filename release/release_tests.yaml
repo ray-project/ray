@@ -1888,6 +1888,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_pytorch_lightning_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
