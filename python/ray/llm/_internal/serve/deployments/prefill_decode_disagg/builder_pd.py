@@ -78,7 +78,7 @@ class PDServingArgs(BaseModelExtended):
 
     @field_validator("proxy_cls_config")
     @classmethod
-    def validate_proxy_cls_config(
+    def _validate_proxy_cls_config(
         cls, value: Union[dict, ProxyClsConfig]
     ) -> ProxyClsConfig:
         if isinstance(value, dict):
@@ -87,7 +87,7 @@ class PDServingArgs(BaseModelExtended):
 
     @field_validator("ingress_cls_config")
     @classmethod
-    def validate_ingress_cls_config(
+    def _validate_ingress_cls_config(
         cls, value: Union[dict, IngressClsConfig]
     ) -> IngressClsConfig:
         if isinstance(value, dict):
@@ -96,23 +96,24 @@ class PDServingArgs(BaseModelExtended):
 
     @field_validator("prefill_config")
     @classmethod
-    def validate_prefill_config(cls, value: Any) -> LLMConfig:
+    def _validate_prefill_config(cls, value: Any) -> LLMConfig:
         return cls._validate_llm_config(value)
 
     @field_validator("decode_config")
     @classmethod
-    def validate_decode_config(cls, value: Any) -> LLMConfig:
+    def _validate_decode_config(cls, value: Any) -> LLMConfig:
         return cls._validate_llm_config(value)
 
     @model_validator(mode="after")
-    def validate_model_ids(self):
+    def _validate_model_ids(self):
+        """Validate that prefill and decode configs use the same model ID."""
         if self.prefill_config.model_id != self.decode_config.model_id:
             raise ValueError("P/D model id mismatch")
         return self
 
-    # validate that kv_transfer_config is set for both prefill and decode configs
     @model_validator(mode="after")
-    def validate_kv_transfer_config(self):
+    def _validate_kv_transfer_config(self):
+        """Validate that kv_transfer_config is set for both prefill and decode configs."""
         for config in [self.prefill_config, self.decode_config]:
             if config.engine_kwargs.get("kv_transfer_config") is None:
                 raise ValueError(

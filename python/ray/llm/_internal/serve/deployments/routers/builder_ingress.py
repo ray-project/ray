@@ -73,7 +73,7 @@ class LLMServingArgs(BaseModelExtended):
 
     @field_validator("ingress_cls_config")
     @classmethod
-    def validate_ingress_cls_config(
+    def _validate_ingress_cls_config(
         cls, value: Union[dict, IngressClsConfig]
     ) -> IngressClsConfig:
         if isinstance(value, dict):
@@ -82,7 +82,7 @@ class LLMServingArgs(BaseModelExtended):
 
     @field_validator("llm_configs")
     @classmethod
-    def validate_llm_configs(
+    def _validate_llm_configs(
         cls, value: List[Union[str, dict, LLMConfig]]
     ) -> List[LLMConfig]:
         llm_configs = []
@@ -101,9 +101,9 @@ class LLMServingArgs(BaseModelExtended):
                 raise ValueError(f"Invalid LLMConfig: {config}")
         return llm_configs
 
-    # Validate that the model_ids that are passed in are unique.
     @model_validator(mode="after")
-    def validate_model_ids(self):
+    def _validate_model_ids(self):
+        """Validate that model IDs are unique and at least one model is configured."""
         if len({m.model_id for m in self.llm_configs}) != len(self.llm_configs):
             raise ValueError("Duplicate models found. Make sure model ids are unique.")
 
@@ -119,8 +119,8 @@ def build_openai_app(builder_config: dict) -> Application:
     the given builder configuration.
 
     Args:
-        builder_config: The configuration for the builder.
-        It has to conform to the LLMServingArgs pydantic model.
+        builder_config: The configuration for the builder. It has to conform
+            to the LLMServingArgs pydantic model.
 
     Returns:
         The configured Ray Serve Application router.
