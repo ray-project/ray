@@ -277,9 +277,6 @@ def _restore_child_handlers(
             _apply_handler_attrs(handler, attrs)
 
 
-_logging_configured = False
-
-
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
@@ -293,11 +290,6 @@ def configure_logging() -> None:
     Note: This function is idempotent after initial configuration when handlers have been
     added to ray.data loggers, as reconfiguration would close and invalidate those handlers.
     """
-    global _logging_configured
-
-    # If already configured, don't reconfigure
-    if _logging_configured:
-        return
 
     # Dynamically load env vars and get config
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
@@ -307,9 +299,8 @@ def configure_logging() -> None:
     # Determine which Ray Data loggers actually need configuration (preserve existing handlers)
     loggers_to_configure = _get_loggers_to_configure(config)
 
-    # If no loggers need configuration, mark configured and return
+    # If no loggers need configuration, return early
     if not loggers_to_configure:
-        _logging_configured = True
         return
 
     # Preserve and detach handlers from child loggers (e.g., "ray.data.*") to avoid closure by dictConfig
@@ -321,7 +312,6 @@ def configure_logging() -> None:
     # Configure only the necessary loggers
     config["loggers"] = loggers_to_configure
     logging.config.dictConfig(config)
-    _logging_configured = True
 
     # Restore preserved child logger handlers and any relevant attributes
     _restore_child_handlers(preserved_child_handlers)
@@ -343,7 +333,6 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
-    global _logging_configured
 
     def _clear_logger_handlers(handler_names: List[str]):
         for name in handler_names:
@@ -356,7 +345,6 @@ def reset_logging() -> None:
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
-    _logging_configured = False
 
 
 def get_log_directory() -> Optional[str]:
