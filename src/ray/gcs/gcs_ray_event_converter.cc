@@ -318,22 +318,34 @@ void PopulateTaskRuntimeAndFunctionInfo(
 /// \return The output TaskEvents to populate.
 rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   rpc::TaskEvents task_event;
-  task_event.set_task_id(event.task_id());
+
+  // Force deep copy by copying arena strings to std::string first
+  std::string task_id(event.task_id());
+  std::string job_id(event.job_id());
+  std::string parent_task_id(event.parent_task_id());
+
+  task_event.set_task_id(task_id);
   task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(event.job_id());
+  task_event.set_job_id(job_id);
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_type(event.task_type());
-  task_info->set_name(event.task_name());
-  task_info->set_task_id(event.task_id());
-  task_info->set_job_id(event.job_id());
-  task_info->set_parent_task_id(event.parent_task_id());
+
+  // Force deep copy of strings
+  std::string task_name(event.task_name());
+  task_info->set_name(task_name);
+  task_info->set_task_id(task_id);
+  task_info->set_job_id(job_id);
+  task_info->set_parent_task_id(parent_task_id);
+
   if (!event.placement_group_id().empty()) {
-    task_info->set_placement_group_id(event.placement_group_id());
+    std::string placement_group_id(event.placement_group_id());
+    task_info->set_placement_group_id(placement_group_id);
   }
 
-  // Pass by const reference to avoid dangling arena pointers
-  PopulateTaskRuntimeAndFunctionInfo(event.serialized_runtime_env(),
+  // Force deep copy of strings in PopulateTaskRuntimeAndFunctionInfo
+  std::string serialized_runtime_env(event.serialized_runtime_env());
+  PopulateTaskRuntimeAndFunctionInfo(serialized_runtime_env,
                                      event.task_func(),
                                      event.required_resources(),
                                      event.language(),
@@ -347,34 +359,34 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
 /// \return The output TaskEvents to populate.
 rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   rpc::TaskEvents task_event;
-  task_event.set_task_id(event.task_id());
+
+  // Simple approach: Set scalar fields directly
+  task_event.set_task_id(std::string(event.task_id()));
   task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(event.job_id());
+  task_event.set_job_id(std::string(event.job_id()));
 
   rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  task_state_update->set_node_id(event.node_id());
-  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->set_node_id(std::string(event.node_id()));
+  task_state_update->set_worker_id(std::string(event.worker_id()));
   task_state_update->set_worker_pid(event.worker_pid());
 
-  // Deep copy RayErrorInfo to avoid arena pointers
-  DeepCopyRayErrorInfo(event.ray_error_info(), task_state_update->mutable_error_info());
+  // Use CopyFrom() for complex nested message - protobuf SHOULD handle arena correctly
+  if (event.has_ray_error_info()) {
+    task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
+  }
 
-  // First, extract all state timestamps from the arena-allocated source into local
-  // storage to completely disconnect from the source arena before populating the
-  // destination map. This prevents any arena context from leaking into the destination
-  // map's internal state.
+  // For the map, copy to intermediate storage first
   std::vector<std::pair<int32_t, int64_t>> state_timestamps;
   state_timestamps.reserve(event.task_state().size());
   for (const auto &[state, timestamp] : event.task_state()) {
-    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
-    state_timestamps.emplace_back(state, ns);
+    state_timestamps.emplace_back(state, ProtoTimestampToAbslTimeNanos(timestamp));
   }
 
-  // Now populate the destination map with no reference to the source arena
   auto *state_ts_map = task_state_update->mutable_state_ts_ns();
   for (const auto &[state, ns] : state_timestamps) {
     (*state_ts_map)[state] = ns;
   }
+
   return task_event;
 }
 
@@ -384,24 +396,38 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
 /// \return The output TaskEvents to populate.
 rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event) {
   rpc::TaskEvents task_event;
-  task_event.set_task_id(event.task_id());
+
+  // Force deep copy by copying arena strings to std::string first
+  std::string task_id(event.task_id());
+  std::string job_id(event.job_id());
+  std::string parent_task_id(event.parent_task_id());
+
+  task_event.set_task_id(task_id);
   task_event.set_attempt_number(event.task_attempt());
-  task_event.set_job_id(event.job_id());
+  task_event.set_job_id(job_id);
 
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_type(rpc::TaskType::ACTOR_TASK);
-  task_info->set_name(event.actor_task_name());
-  task_info->set_task_id(event.task_id());
-  task_info->set_job_id(event.job_id());
-  task_info->set_parent_task_id(event.parent_task_id());
+
+  // Force deep copy of strings
+  std::string actor_task_name(event.actor_task_name());
+  task_info->set_name(actor_task_name);
+  task_info->set_task_id(task_id);
+  task_info->set_job_id(job_id);
+  task_info->set_parent_task_id(parent_task_id);
+
   if (!event.placement_group_id().empty()) {
-    task_info->set_placement_group_id(event.placement_group_id());
+    std::string placement_group_id(event.placement_group_id());
+    task_info->set_placement_group_id(placement_group_id);
   }
   if (!event.actor_id().empty()) {
-    task_info->set_actor_id(event.actor_id());
+    std::string actor_id(event.actor_id());
+    task_info->set_actor_id(actor_id);
   }
-  // Pass by const reference to avoid dangling arena pointers
-  PopulateTaskRuntimeAndFunctionInfo(event.serialized_runtime_env(),
+
+  // Force deep copy of strings in PopulateTaskRuntimeAndFunctionInfo
+  std::string serialized_runtime_env(event.serialized_runtime_env());
+  PopulateTaskRuntimeAndFunctionInfo(serialized_runtime_env,
                                      event.actor_func(),
                                      event.required_resources(),
                                      event.language(),
@@ -415,12 +441,18 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
 /// \return The output TaskEvents to populate.
 rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   rpc::TaskEvents task_event;
-  task_event.set_task_id(event.task_id());
+
+  // Force deep copy by copying arena strings to std::string first
+  std::string task_id(event.task_id());
+  std::string job_id(event.job_id());
+
+  task_event.set_task_id(task_id);
   task_event.set_attempt_number(event.attempt_number());
-  task_event.set_job_id(event.job_id());
+  task_event.set_job_id(job_id);
 
   // Deep copy ProfileEvents to avoid arena pointers
   DeepCopyProfileEvents(event.profile_events(), task_event.mutable_profile_events());
+
   return task_event;
 }
 
