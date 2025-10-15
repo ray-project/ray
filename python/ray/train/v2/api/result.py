@@ -46,10 +46,12 @@ class Result(ResultV1):
         Returns:
             Result object with restored checkpoints and metrics
         """
+        # Normalize the path to handle trailing slashes and other edge cases
+        normalized_path = os.path.normpath(str(path))
 
         storage_context = StorageContext(
-            storage_path=os.path.dirname(path),
-            experiment_dir_name=os.path.basename(path),
+            storage_path=os.path.dirname(normalized_path),
+            experiment_dir_name=os.path.basename(normalized_path),
             storage_filesystem=storage_filesystem,
         )
 
