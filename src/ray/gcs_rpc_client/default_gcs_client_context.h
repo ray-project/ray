@@ -34,11 +34,11 @@ class DefaultGcsClientContext : public GcsClientContext {
   rpc::GcsRpcClient &GetGcsRpcClient() override;
 
   /// Check if the RPC client has been initialized
-  bool isInitialized() const override;
+  bool IsInitialized() const override;
 
   /// Setters
-  void setGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override;
-  void setGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override;
+  void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override;
+  void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override;
 
   void Disconnect() override;
 

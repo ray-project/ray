@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs_rpc_client/utils/client_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -378,8 +377,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status =
-      gcs_client_->InternalKV().Get(ns, key, ClientUtils::GetGcsTimeoutMs(), value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, gcs::GetGcsTimeoutMs(), value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 

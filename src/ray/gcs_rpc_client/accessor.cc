@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/gcs_rpc_client/utils/client_utils.h"
 #include "ray/util/container_util.h"
 
 namespace ray {
@@ -725,7 +724,7 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   rpc::CreatePlacementGroupReply reply;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncCreatePlacementGroup(
-      std::move(request), &reply, ClientUtils::GetGcsTimeoutMs());
+      std::move(request), &reply, gcs::GetGcsTimeoutMs());
   if (status.ok()) {
     RAY_LOG(DEBUG).WithField(placement_group_spec.PlacementGroupId())
         << "Finished registering placement group.";
@@ -742,7 +741,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
   rpc::RemovePlacementGroupReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncRemovePlacementGroup(
-      std::move(request), &reply, ClientUtils::GetGcsTimeoutMs());
+      std::move(request), &reply, gcs::GetGcsTimeoutMs());
   return status;
 }
 

@@ -133,7 +133,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
                                                                   options_.cluster_id_);
 
   // Only initialize the RPC client and subscriber if needed
-  if (!client_context_->isInitialized()) {
+  if (!client_context_->IsInitialized()) {
     auto gcs_rpc_client = std::make_shared<rpc::GcsRpcClient>(
         options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -158,9 +158,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
         /*callback_service*/ &io_service);
 
     // Init GCS subscriber instance.
-    client_context_->setGcsSubscriber(
+    client_context_->SetGcsSubscriber(
         std::make_unique<pubsub::GcsSubscriber>(gcs_address, std::move(subscriber)));
-    client_context_->setGcsRpcClient(gcs_rpc_client);
+    client_context_->SetGcsRpcClient(gcs_rpc_client);
   }
 
   actor_accessor_ = accessor_factory_->CreateActorInfoAccessor(client_context_.get());

@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
-#include "ray/gcs_rpc_client/utils/client_utils.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
@@ -406,7 +405,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::ClientUtils::GetGcsTimeoutMs());
+        gcs::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }

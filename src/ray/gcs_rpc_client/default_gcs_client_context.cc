@@ -25,12 +25,12 @@ pubsub::GcsSubscriber &DefaultGcsClientContext::GetGcsSubscriber() {
 
 rpc::GcsRpcClient &DefaultGcsClientContext::GetGcsRpcClient() { return *client_; }
 
-bool DefaultGcsClientContext::isInitialized() const { return client_ != nullptr; }
+bool DefaultGcsClientContext::IsInitialized() const { return client_ != nullptr; }
 
-void DefaultGcsClientContext::setGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) {
+void DefaultGcsClientContext::SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) {
   client_ = client;
 }
-void DefaultGcsClientContext::setGcsSubscriber(
+void DefaultGcsClientContext::SetGcsSubscriber(
     std::unique_ptr<pubsub::GcsSubscriber> subscriber) {
   subscriber_ = std::move(subscriber);
 }

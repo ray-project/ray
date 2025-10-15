@@ -61,13 +61,13 @@ class TestGcsClientContext : public GcsClientContext {
     return *reinterpret_cast<rpc::GcsRpcClient *>(rpc_client_.get());
   }
 
-  bool isInitialized() const override { return true; }
+  bool IsInitialized() const override { return true; }
 
   void Disconnect() override {}
 
-  void setGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override {}
+  void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override {}
 
-  void setGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override {}
+  void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override {}
 
  private:
   std::shared_ptr<TestGcsRpcClient> rpc_client_;

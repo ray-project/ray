@@ -41,11 +41,11 @@ class GcsClientContext {
   virtual rpc::GcsRpcClient &GetGcsRpcClient() = 0;
 
   /// Check if the RPC client has been initialized
-  virtual bool isInitialized() const = 0;
+  virtual bool IsInitialized() const = 0;
 
   /// Setters
-  virtual void setGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) = 0;
-  virtual void setGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) = 0;
+  virtual void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) = 0;
+  virtual void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) = 0;
 
   virtual void Disconnect() = 0;
 };
