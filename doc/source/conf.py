@@ -720,7 +720,7 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", "inventory/scipy.inv"),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
