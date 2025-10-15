@@ -1207,14 +1207,14 @@ class ApproximateQuantile(AggregateFnV2):
         self,
         on: str,
         quantiles: List[float],
-        k: int = 800,
+        quantile_precision: int = 800,
         alias_name: Optional[str] = None,
     ):
         """
         Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
         https://datasketches.apache.org/docs/KLL/KLLSketch.html
 
-        The accuracy of the KLL quantile sketch is a function of the configured K, which also affects
+        The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
         the overall size of the sketch.
         The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
         median (rank = 0.50) means that the true quantile (if you could extract it from the set)
@@ -1222,11 +1222,11 @@ class ApproximateQuantile(AggregateFnV2):
         rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
         In other words, the error is a fixed +/- epsilon for the entire range of ranks.
 
-        Typical single-sided rank error by k (use for getQuantile/getRank):
-            - k=100 → ~2.61%
-            - k=200 → ~1.33%
-            - k=400 → ~0.68%
-            - k=800 → ~0.35%
+        Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
+            - quantile_precision=100 → ~2.61%
+            - quantile_precision=200 → ~1.33%
+            - quantile_precision=400 → ~0.68%
+            - quantile_precision=800 → ~0.35%
 
         See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
 
@@ -1252,28 +1252,28 @@ class ApproximateQuantile(AggregateFnV2):
         Args:
             on: The name of the column to calculate the quantile on. Must be a numeric column.
             quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
-            k: Controls the accuracy and memory footprint of the sketch; higher k yields lower error but uses more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+            quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
             alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
         """
         self._require_datasketches()
         self._quantiles = quantiles
-        self._k = k
+        self._quantile_precision = quantile_precision
         super().__init__(
             alias_name if alias_name else f"approx_quantile({str(on)})",
             on=on,
             ignore_nulls=True,
-            zero_factory=lambda: self.zero(k).serialize(),
+            zero_factory=lambda: self.zero(quantile_precision).serialize(),
         )
 
-    def zero(self, k: int):
+    def zero(self, quantile_precision: int):
         sketch_cls = self._require_datasketches()
-        return sketch_cls(k=k)
+        return sketch_cls(k=quantile_precision)
 
     def aggregate_block(self, block: Block) -> bytes:
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
-        sketch = self.zero(self._k)
+        sketch = self.zero(self._quantile_precision)
         for value in column:
             # we ignore nulls here
             if value.as_py() is not None:
@@ -1281,7 +1281,7 @@ class ApproximateQuantile(AggregateFnV2):
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
-        combined = self.zero(self._k)
+        combined = self.zero(self._quantile_precision)
         sketch_cls = self._require_datasketches()
         combined.merge(sketch_cls.deserialize(current_accumulator))
         combined.merge(sketch_cls.deserialize(new))
