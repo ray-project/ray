@@ -345,8 +345,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
-  bool should_notify_raylet =
-      (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+  bool should_notify_raylet = ctx.NotifyRayletWhenBlocked();
+  // bool should_notify_raylet =
+  //     (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerBlocked());

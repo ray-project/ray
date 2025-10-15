@@ -257,17 +257,10 @@ Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
 Status UnblockIfNeeded(
     const std::shared_ptr<ipc::RayletIpcClientInterface> &raylet_client,
     const WorkerContext &ctx) {
-  if (ctx.CurrentTaskIsDirectCall()) {
-    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
-    // get subscriptions, even if the worker isn't blocked.
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return raylet_client->NotifyWorkerUnblocked();
-    } else {
-      return Status::OK();  // We don't need to release resources.
-    }
-  } else {
-    return raylet_client->CancelGetRequest();
+  if (ctx.NotifyRayletWhenBlocked()) {
+    return raylet_client->NotifyWorkerUnblocked();
   }
+  return raylet_client->CancelGetRequest();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
@@ -402,7 +395,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
   for (const auto &entry : ready_in_plasma) {
     ready->insert(entry);
   }
-  if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+  if (ctx.NotifyRayletWhenBlocked()) {
     RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
