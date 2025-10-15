@@ -202,71 +202,71 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
+  }
 
-    if (task_spec.IsActorCreationTask()) {
-      SetupActor(task_spec.IsAsyncioActor(),
-                 task_spec.MaxActorConcurrency(),
-                 task_spec.AllowOutOfOrderExecution());
-    }
+  if (task_spec.IsActorCreationTask()) {
+    SetupActor(task_spec.IsAsyncioActor(),
+               task_spec.MaxActorConcurrency(),
+               task_spec.AllowOutOfOrderExecution());
+  }
 
-    if (!task_spec.IsActorTask()) {
-      resource_ids = ResourceMappingType{};
-      for (const auto &mapping : request.resource_mapping()) {
-        std::vector<std::pair<int64_t, double>> rids;
-        rids.reserve(mapping.resource_ids().size());
-        for (const auto &ids : mapping.resource_ids()) {
-          rids.emplace_back(ids.index(), ids.quantity());
-        }
-        (*resource_ids)[mapping.name()] = std::move(rids);
+  if (!task_spec.IsActorTask()) {
+    resource_ids = ResourceMappingType{};
+    for (const auto &mapping : request.resource_mapping()) {
+      std::vector<std::pair<int64_t, double>> rids;
+      rids.reserve(mapping.resource_ids().size());
+      for (const auto &ids : mapping.resource_ids()) {
+        rids.emplace_back(ids.index(), ids.quantity());
       }
+      (*resource_ids)[mapping.name()] = std::move(rids);
+    }
+  }
+
+  if (task_spec.IsActorTask()) {
+    auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
+    if (it == actor_scheduling_queues_.end()) {
+      it = actor_scheduling_queues_
+               .emplace(
+                   task_spec.CallerWorkerId(),
+                   allow_out_of_order_execution_
+                       ? std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<OutOfOrderActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 fiber_state_manager_,
+                                 is_asyncio_,
+                                 fiber_max_concurrency_,
+                                 concurrency_groups_))
+                       : std::unique_ptr<SchedulingQueue>(
+                             std::make_unique<ActorSchedulingQueue>(
+                                 task_execution_service_,
+                                 waiter_,
+                                 task_event_buffer_,
+                                 pool_manager_,
+                                 RayConfig::instance()
+                                     .actor_scheduling_queue_max_reorder_wait_seconds())))
+               .first;
     }
 
-    if (task_spec.IsActorTask()) {
-      auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
-      if (it == actor_scheduling_queues_.end()) {
-        it = actor_scheduling_queues_
-                 .emplace(
-                     task_spec.CallerWorkerId(),
-                     allow_out_of_order_execution_
-                         ? std::unique_ptr<SchedulingQueue>(
-                               std::make_unique<OutOfOrderActorSchedulingQueue>(
-                                   task_execution_service_,
-                                   waiter_,
-                                   task_event_buffer_,
-                                   pool_manager_,
-                                   fiber_state_manager_,
-                                   is_asyncio_,
-                                   fiber_max_concurrency_,
-                                   concurrency_groups_))
-                         : std::unique_ptr<
-                               SchedulingQueue>(std::make_unique<ActorSchedulingQueue>(
-                               task_execution_service_,
-                               waiter_,
-                               task_event_buffer_,
-                               pool_manager_,
-                               RayConfig::instance()
-                                   .actor_scheduling_queue_max_reorder_wait_seconds())))
-                 .first;
-      }
-
-      auto accept_callback = make_accept_callback();
-      it->second->Add(request.sequence_number(),
-                      request.client_processed_up_to(),
-                      std::move(accept_callback),
-                      std::move(cancel_callback),
-                      std::move(send_reply_callback),
-                      std::move(task_spec));
-    } else {
-      RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
-                     << " to normal scheduling task queue.";
-      auto accept_callback = make_accept_callback();
-      normal_scheduling_queue_->Add(request.sequence_number(),
-                                    request.client_processed_up_to(),
-                                    std::move(accept_callback),
-                                    std::move(cancel_callback),
-                                    std::move(send_reply_callback),
-                                    std::move(task_spec));
-    }
+    auto accept_callback = make_accept_callback();
+    it->second->Add(request.sequence_number(),
+                    request.client_processed_up_to(),
+                    std::move(accept_callback),
+                    std::move(cancel_callback),
+                    std::move(send_reply_callback),
+                    std::move(task_spec));
+  } else {
+    RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
+                   << " to normal scheduling task queue.";
+    auto accept_callback = make_accept_callback();
+    normal_scheduling_queue_->Add(request.sequence_number(),
+                                  request.client_processed_up_to(),
+                                  std::move(accept_callback),
+                                  std::move(cancel_callback),
+                                  std::move(send_reply_callback),
+                                  std::move(task_spec));
   }
 }
 

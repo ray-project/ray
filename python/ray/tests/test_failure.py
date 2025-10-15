@@ -689,9 +689,8 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
 
 
 @pytest.mark.parametrize(
-    # TODO(dayshah): add `False` variant once in-order is fixed.
     "allow_out_of_order_execution",
-    [True],
+    [True, False],
 )
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
 def test_transient_error_retry(
@@ -701,7 +700,6 @@ def test_transient_error_retry(
     deterministic_failure: str,
 ):
     with monkeypatch.context() as m:
-        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
         m.setenv(
             "RAY_testing_rpc_failure",
             "CoreWorkerService.grpc_client.PushTask=2:"
