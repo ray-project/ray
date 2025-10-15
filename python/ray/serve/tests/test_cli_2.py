@@ -13,9 +13,7 @@ import yaml
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import (
-    get_application_url,
-)
+from ray.serve._private.test_utils import get_application_url
 from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"

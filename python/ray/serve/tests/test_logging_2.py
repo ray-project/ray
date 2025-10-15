@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import uuid
 
@@ -7,7 +6,6 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.logging_utils import (
@@ -15,23 +13,6 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.utils import get_component_file_name
 from ray.util.state import list_nodes
-
-
-@pytest.fixture
-def serve_and_ray_shutdown():
-    serve.shutdown()
-    ray.shutdown()
-    yield
-
-
-def check_log_file(log_file: str, expected_regex: list, check_contains: bool = True):
-    with open(log_file, "r") as f:
-        s = f.read()
-        for regex in expected_regex:
-            if check_contains:
-                assert re.findall(regex, s) != []
-            else:
-                assert re.findall(regex, s) == []
 
 
 def test_http_access_log_in_proxy_logs_file(serve_instance):
