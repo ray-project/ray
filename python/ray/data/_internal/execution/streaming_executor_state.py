@@ -102,6 +102,11 @@ class OpBufferQueue:
             with self._lock:
                 return self._num_per_split[output_split_idx] > 0
 
+    def has_valid_next(self) -> bool:
+        """Whether next RefBundle is available and valid."""
+        with self._lock:
+            return self._queue.has_next()
+
     def append(self, ref: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
@@ -270,6 +275,10 @@ class OpState:
         """Return the number of input bundles that are pending dispatching to the
         operator across (external) input queues"""
         return sum(len(q) for q in self.input_queues)
+
+    def has_valid_input_bundle(self) -> bool:
+        """Check if the operator has a valid bundle in its input queue."""
+        return any(queue.has_valid_next() for queue in self.input_queues)
 
     def has_pending_bundles(self) -> bool:
         return self._pending_dispatch_input_bundles_count() > 0
@@ -708,7 +717,7 @@ def select_operator_to_run(
     if not eligible_ops:
         return None
 
-    ranks = _rank_operators(eligible_ops, resource_manager)
+    ranks = _rank_operators(eligible_ops, topology, resource_manager)
 
     assert len(eligible_ops) == len(ranks), (eligible_ops, ranks)
 
@@ -718,7 +727,7 @@ def select_operator_to_run(
 
 
 def _rank_operators(
-    ops: List[PhysicalOperator], resource_manager: ResourceManager
+    ops: List[PhysicalOperator], topology: Topology, resource_manager: ResourceManager
 ) -> List[Tuple]:
     """Picks operator to run according to the following semantic:
 
@@ -751,8 +760,10 @@ def _rank_operators(
         # Rank composition:
         #   1. Whether throttling is enabled
         #   2. Estimated Object Store usage
+        state: OpState = topology[op]
         return (
             not op.throttling_disabled(),
+            not state.has_valid_next(),
             resource_manager.get_op_usage(op).object_store_memory,
         )
 
