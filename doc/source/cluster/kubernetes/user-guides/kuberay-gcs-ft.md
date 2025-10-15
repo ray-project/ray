@@ -8,7 +8,7 @@ This way, in the event of a GCS restart, it retrieves all the data from the Redi
 
 ```{admonition} Fate-sharing without GCS fault tolerance
 Without GCS fault tolerance, the Ray cluster, the GCS process, and the Ray head Pod are fate-sharing.
-If the GCS process dies, the Ray head Pod dies as well after `RAY_gcs_rpc_client_reconnect_timeout_s` seconds.
+If the GCS process dies, the Ray head Pod dies as well after `RAY_gcs_rpc_server_reconnect_timeout_s` seconds.
 If the Ray head Pod is restarted according to the Pod's `restartPolicy`, worker Pods attempt to reconnect to the new head Pod.
 The worker Pods are terminated by the new head Pod; without GCS fault tolerance enabled, the cluster state is lost, and the worker Pods are perceived as "unknown workers" by the new head Pod.
 This is adequate for most Ray applications; however, it is not ideal for Ray Serve, especially if high availability is crucial for your use cases.
@@ -175,18 +175,18 @@ See [this section](kuberay-external-storage-namespace) to learn more about the o
 ### Step 7: Kill the GCS process in the head Pod
 
 ```sh
-# Step 7.1: Check the `RAY_gcs_rpc_client_reconnect_timeout_s` environment variable in both the head Pod and worker Pod.
+# Step 7.1: Check the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable in both the head Pod and worker Pod.
 kubectl get pods $HEAD_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
-# No `RAY_gcs_rpc_client_reconnect_timeout_s` environment variable is set. Hence, the Ray head uses its default value of `60`.
+# No `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable is set. Hence, the Ray head uses its default value of `60`.
 
 export YOUR_WORKER_POD=$(kubectl get pods -l ray.io/group=small-group -o jsonpath='{.items[0].metadata.name}')
 kubectl get pods $YOUR_WORKER_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
-# KubeRay injects the `RAY_gcs_rpc_client_reconnect_timeout_s` environment variable with the value `600` to the worker Pod.
+# KubeRay injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value `600` to the worker Pod.
 # [
 #   {
-#     "name": "RAY_gcs_rpc_client_reconnect_timeout_s",
+#     "name": "RAY_gcs_rpc_server_reconnect_timeout_s",
 #     "value": "600"
 #   },
 #   ...
@@ -195,7 +195,7 @@ kubectl get pods $YOUR_WORKER_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # Step 7.2: Kill the GCS process in the head Pod.
 kubectl exec -it $HEAD_POD -- pkill gcs_server
 
-# Step 7.3: The head Pod fails and restarts after `RAY_gcs_rpc_client_reconnect_timeout_s` (60) seconds.
+# Step 7.3: The head Pod fails and restarts after `RAY_gcs_rpc_server_reconnect_timeout_s` (60) seconds.
 # In addition, the worker Pod isn't terminated by the new head after reconnecting because GCS fault
 # tolerance is enabled.
 kubectl get pods -l=ray.io/is-ray-node=yes
@@ -205,8 +205,8 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # raycluster-external-redis-worker-small-group-yyyyy   1/1     Running   0             xxm
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_client_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster.
-Therefore, KubeRay automatically injects the `RAY_gcs_rpc_client_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod.
+In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster.
+Therefore, KubeRay automatically injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod.
 The timeout value for worker Pods must be longer than the timeout value for the head Pod so that the worker Pods don't terminate before the head Pod restarts from a failure.
 
 ### Step 8: Access the detached actor again

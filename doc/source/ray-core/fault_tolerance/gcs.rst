@@ -52,7 +52,7 @@ Setting up Redis
 After you back the GCS with Redis, it recovers its state from Redis when it restarts.
 While the GCS recovers, each raylet tries to reconnect to it.
 If a raylet can't reconnect for more than 60 seconds, that raylet exits and the corresponding node fails.
-Set this timeout threshold with the OS environment variable ``RAY_gcs_rpc_client_reconnect_timeout_s``.
+Set this timeout threshold with the OS environment variable ``RAY_gcs_rpc_server_reconnect_timeout_s``.
 
 If the GCS IP address might change after restarts, use a qualified domain name
 and pass it to all raylets at start time. Each raylet resolves the domain name and connects to

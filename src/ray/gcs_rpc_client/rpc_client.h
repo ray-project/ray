@@ -195,13 +195,13 @@ class GcsRpcClient {
         ::RayConfig::instance()
             .grpc_client_check_connection_status_interval_milliseconds(),
         /*client_reconnect_timeout_base_seconds=*/
-        ::RayConfig::instance().gcs_rpc_client_reconnect_timeout_s(),
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
         /*client_reconnect_timeout_max_seconds=*/
-        ::RayConfig::instance().gcs_rpc_client_reconnect_timeout_s(),
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
         /*server_unavailable_timeout_callback=*/
         []() {
           RAY_LOG(ERROR) << "Failed to connect to GCS within "
-                         << ::RayConfig::instance().gcs_rpc_client_reconnect_timeout_s()
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
                          << " seconds. "
                          << "GCS may have been killed. It's either GCS is terminated by "
                             "`ray stop` or "

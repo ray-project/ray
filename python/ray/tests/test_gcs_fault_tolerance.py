@@ -397,7 +397,7 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     [
         {
             **generate_system_config_map(
-                gcs_rpc_client_reconnect_timeout_s=3600,
+                gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
         }
@@ -460,7 +460,7 @@ assert ray.get(detached_counter.noop.remote("detached")) == "detached"
     [
         {
             **generate_system_config_map(
-                gcs_rpc_client_reconnect_timeout_s=3600,
+                gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
         }
@@ -952,7 +952,7 @@ def test_redis_logs(external_redis):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_client_reconnect_timeout_s=2,
+            gcs_rpc_server_reconnect_timeout_s=2,
         )
     ],
     indirect=True,

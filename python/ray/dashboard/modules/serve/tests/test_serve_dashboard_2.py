@@ -223,7 +223,7 @@ def short_serve_kv_timeout(monkeypatch):
     [
         {
             **generate_system_config_map(
-                gcs_rpc_client_reconnect_timeout_s=3600,
+                gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=3,
             ),
         }
