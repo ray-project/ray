@@ -746,6 +746,7 @@ void GcsNodeManager::UpdateAliveNode(
   }
 
   auto new_node_info = *maybe_node_info.value();
+  auto current_snapshot_state = new_node_info.state_snapshot().state();
   auto *snapshot = new_node_info.mutable_state_snapshot();
 
   if (resource_view_sync_message.idle_duration_ms() > 0) {
@@ -757,7 +758,13 @@ void GcsNodeManager::UpdateAliveNode(
         resource_view_sync_message.node_activity());
   }
   if (resource_view_sync_message.is_draining()) {
+    bool first_time_draining = current_snapshot_state != rpc::NodeSnapshot::DRAINING;
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    // Write the export event for the draining state once. Note that we explicitly do
+    // not write IDLE and ACTIVE events as they have very high cardinality.
+    if (first_time_draining) {
+      WriteNodeExportEvent(new_node_info, /*is_register_event*/ false);
+    }
   }
 
   // N.B. For thread safety, all updates to alive_nodes_ need to follow a
