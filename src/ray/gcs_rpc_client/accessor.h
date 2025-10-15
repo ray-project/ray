@@ -966,6 +966,7 @@ class AutoscalerStateAccessor {
   virtual Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::unordered_map<std::string, std::string>> &label_selectors,
       const std::vector<int64_t> &count_array);
 
   virtual Status GetClusterResourceState(int64_t timeout_ms,
