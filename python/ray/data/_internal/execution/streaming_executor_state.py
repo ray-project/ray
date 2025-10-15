@@ -280,6 +280,10 @@ class OpState:
         """Check if the operator has a valid bundle in its input queue."""
         return any(queue.has_valid_next() for queue in self.input_queues)
 
+    def has_valid_input_bundle(self) -> bool:
+        """Check if the operator has a valid bundle in its input queue."""
+        return any(queue.has_valid_next() for queue in self.input_queues)
+
     def has_pending_bundles(self) -> bool:
         return self._pending_dispatch_input_bundles_count() > 0
 
@@ -763,7 +767,7 @@ def _rank_operators(
         state: OpState = topology[op]
         return (
             not op.throttling_disabled(),
-            not state.has_valid_next(),
+            not state.has_valid_input_bundle(),
             resource_manager.get_op_usage(op).object_store_memory,
         )
 
