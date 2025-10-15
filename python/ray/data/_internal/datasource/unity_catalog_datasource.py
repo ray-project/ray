@@ -469,17 +469,20 @@ class UnityCatalogConnector:
 
         # Handle /Volumes/ prefix
         if path.startswith("/Volumes/"):
-            # Remove /Volumes/ prefix
             path = path[9:]  # len("/Volumes/") = 9
+            parts = path.split("/")
+            if len(parts) < 3:
+                raise ValueError(f"Invalid /Volumes/ path: {self.path}")
+            volume_full_name = ".".join(parts[:3])
+            sub_path = "/".join(parts[3:])
+            return volume_full_name, sub_path
 
         if "/" in path:
             parts = path.split("/", 1)
-            volume_full_name = parts[0].replace("/", ".")
             sub_path = parts[1] if len(parts) > 1 else ""
-            return volume_full_name, sub_path
-        else:
-            # No subdirectory specified
-            return path, ""
+            return parts[0], sub_path
+
+        return path, ""
 
     def _get_table_info(self) -> Optional[TableInfo]:
         """
@@ -766,8 +769,8 @@ class UnityCatalogConnector:
                 env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
                 self._gcp_temp_file = temp_file.name
 
-                # Register cleanup on exit
-                atexit.register(lambda: self._cleanup_gcp_temp_file())
+                # Register cleanup on exit without capturing self to allow garbage collection
+                atexit.register(self._cleanup_gcp_temp_file_static, temp_file.name)
             else:
                 raise ValueError("GCP credentials not found in response")
 
@@ -849,11 +852,12 @@ class UnityCatalogConnector:
             f"Supported formats: {', '.join(sorted(_FILE_FORMAT_TO_RAY_READER.keys()))}"
         )
 
-    def _cleanup_gcp_temp_file(self):
+    @staticmethod
+    def _cleanup_gcp_temp_file_static(temp_file_path: str):
         """Clean up temporary GCP service account file if it exists."""
-        if self._gcp_temp_file and os.path.exists(self._gcp_temp_file):
+        if temp_file_path and os.path.exists(temp_file_path):
             try:
-                os.unlink(self._gcp_temp_file)
+                os.unlink(temp_file_path)
             except OSError:
                 # File already deleted or inaccessible, ignore
                 pass
