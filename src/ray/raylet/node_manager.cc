@@ -3201,7 +3201,7 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   auto worker =
       worker_pool_.GetRegisteredWorker(WorkerID::FromBinary(request.worker_id()));
   // If the worker is not registered, then it must have already been killed
-  if (!worker) {
+  if (!worker || worker->IsDead()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
@@ -3238,14 +3238,17 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
       kill_actor_request,
       [actor_id = request.intended_actor_id(), timer, send_reply_callback](
           const ray::Status &status, const rpc::KillActorReply &) {
-        std::ostringstream stream;
-        stream << "Failed to kill actor due to intended actor id and worker "
-                  "actor id mismatch: "
-               << status.ToString() << ", actor_id: " << actor_id;
-        const auto &msg = stream.str();
-        RAY_LOG(DEBUG) << msg;
-        timer->cancel();
-        send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+        if (!status.ok()) {
+          std::ostringstream stream;
+          stream << "KillActor RPC failed for actor " << actor_id << ": "
+                 << status.ToString();
+          const auto &msg = stream.str();
+          RAY_LOG(DEBUG) << msg;
+          timer->cancel();
+          send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+        } else {
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        }
       });
 }
 

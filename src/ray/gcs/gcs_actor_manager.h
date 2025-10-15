@@ -354,14 +354,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   void KillActor(const ActorID &actor_id, bool force_kill);
 
-  /// Notify CoreWorker to kill the specified actor.
+  /// Notify Raylet to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true);
+  void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
+                               const rpc::ActorDeathCause &death_cause,
+                               bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

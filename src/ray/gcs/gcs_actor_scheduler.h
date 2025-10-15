@@ -334,13 +334,13 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void DoRetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
-  /// Kill the actor on a worker
-  /// \param raylet_address The address of the local raylet of the worker where the actor
-  /// is running \param worker_address The address of the worker where the actor is
-  /// running \param actor_id ID of the actor to kill
-  bool KillActorOnWorker(const rpc::Address &raylet_address,
-                         const rpc::Address &worker_address,
-                         ActorID actor_id);
+  /// Cleanup the worker for an actor
+  /// \param raylet_address The address of the local raylet of the worker
+  /// \param worker_address The address of the worker to clean up
+  /// \param actor_id ID of the actor (may be Nil if actor setup failed)
+  bool CleanupWorkerForActor(const rpc::Address &raylet_address,
+                             const rpc::Address &worker_address,
+                             ActorID actor_id);
 
   /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
   /// default.
