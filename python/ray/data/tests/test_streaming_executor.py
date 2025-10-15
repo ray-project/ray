@@ -379,9 +379,22 @@ def test_rank_operators():
 
     resource_manager.get_op_usage.side_effect = _get_op_usage_mocked
 
-    ranks = _rank_operators([o1, o2, o3, o4], resource_manager)
+    # Mock topology - maps each operator to its OpState
+    topology = {}
+    for op in [o1, o2, o3, o4]:
+        state = MagicMock()
+        state.has_valid_input_bundle.return_value = True
+        topology[op] = state
 
-    assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
+    ranks = _rank_operators([o1, o2, o3, o4], topology, resource_manager)
+
+    # Expected ranks: (throttling_enabled, not_has_valid_input, memory_usage)
+    assert [
+        (True, False, 1024),  # o1
+        (True, False, 2048),  # o2
+        (True, False, 4096),  # o3
+        (False, False, 8092),  # o4 (LimitOperator has throttling disabled)
+    ] == ranks
 
 
 def test_select_ops_to_run():
