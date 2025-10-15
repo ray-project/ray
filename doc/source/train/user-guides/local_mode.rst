@@ -30,7 +30,8 @@ Enabling local mode
 
 To enable local mode, set ``num_workers=0`` in your :class:`~ray.train.ScalingConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
@@ -52,7 +53,8 @@ Single-process local mode
 
 The following example demonstrates single-process local mode with PyTorch:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import torch
     from torch import nn
@@ -100,7 +102,8 @@ This example uses standard PyTorch DataLoader for data loading, making it easy t
 
 First, create your training script (``train_script.py``):
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import os
     import tempfile
@@ -252,7 +255,8 @@ The data is processed and provided to your training function without distributed
 
 The following example shows how to use Ray Data with single-process local mode:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
     from ray.train import ScalingConfig
@@ -286,7 +290,8 @@ Testing with local mode
 Local mode is excellent for unit testing your training logic. The following example shows how to write
 a unit test with local mode:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import unittest
     import ray
