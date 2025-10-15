@@ -258,8 +258,39 @@ def test_data_config_exclude_resources(ray_start_4_cpus, exclude_resources):
     trainer.fit()
 
 
-def test_data_config_resource_limits(ray_start_4_cpus):
-    pass
+@pytest.mark.parametrize(
+    "resource_limits", [None, ExecutionResources.for_limits(cpu=2, gpu=1)]
+)
+def test_data_config_resource_limits(ray_start_4_cpus, resource_limits):
+    execution_options = ExecutionOptions(resource_limits=resource_limits)
+    data_config = ray.train.DataConfig(execution_options=execution_options)
+
+    NUM_WORKERS = 2
+
+    def check_resource_limits(config):
+        ds = ray.train.get_dataset_shard("train")
+        resource_limits = (
+            config.get("resource_limits") or ExecutionResources.for_limits()
+        )
+        assert ds.get_context().execution_options.resource_limits == resource_limits
+
+        if not ds.get_context().execution_options.is_resource_limits_default():
+            # Don't exclude train worker resources if the user already
+            # set the resource_limits.
+            assert (
+                ds.get_context().execution_options.exclude_resources
+                == ExecutionResources.zero()
+            )
+
+    ds = ray.data.range(1)
+    trainer = DataParallelTrainer(
+        check_resource_limits,
+        train_loop_config={"resource_limits": resource_limits},
+        datasets={"train": ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":
