@@ -345,7 +345,9 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
-    # TODO: should port over
+    # NOTE: Relevant tests have been migrated to
+    # test_torch_trainer.py and test_worker_group.py
+    # TODO: [V2] There are still some accelerator integration tests left.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
