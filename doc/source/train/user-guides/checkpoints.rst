@@ -287,6 +287,23 @@ the ``storage_path`` and then report a reference to the uploaded checkpoint with
     :start-after: __checkpoint_upload_mode_no_upload_start__
     :end-before: __checkpoint_upload_mode_no_upload_end__
 
+If you want to upload the checkpoint manually or with a third-party library like above,
+but still want Ray Train to manage checkpoint upload threads for you, you can pass a
+``checkpoint_upload_fn`` to ``ray.train.report``. This function takes the ``Checkpoint``
+and ``checkpoint_dir_name`` passed to ``ray.train.report`` and returns the persisted
+``Checkpoint``.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_function_start__
+    :end-before: __checkpoint_upload_function_end__
+
+.. note::
+
+    In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
+    lead to unexpected behavior. You should also avoid collective operations, such as
+    :func:`~ray.train.report` or ``get_state_dict``, which can easily lead to deadlocks.
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing

@@ -497,3 +497,40 @@ def train_fn(config):
 
 
 # __checkpoint_upload_mode_no_upload_end__
+
+
+# __checkpoint_upload_function_start__
+
+from torch.distributed.checkpoint.state_dict_saver import async_save
+
+
+def train_fn(config):
+    ...
+    for epoch in config["num_epochs"]:
+        # Start async checkpoint upload to s3 with Torch
+        model, optimizer = ...
+        storage_context = ray.train.get_context().get_storage()
+        checkpoint_path = (
+            f"s3://{storage_context.build_checkpoint_path_from_name(str(epoch))}"
+        )
+        storage_writer = S3StorageWriter(region="us-west-2", path=checkpoint_path)
+        model_dict, opt_dict = get_state_dict(model=model, optimizers=optimizer)
+        ckpt_ref = async_save(
+            {"model": model_dict, "opt": opt_dict},
+            storage_writer=storage_writer,
+        )
+
+        def wait_async_save(checkpoint, checkpoint_dir):
+            ckpt_ref.result()
+            return checkpoint
+
+        # Ray Train kicks off a thread that waits for the async checkpoint upload to complete
+        # before reporting the checkpoint
+        metrics = {...}
+        checkpoint = Checkpoint(checkpoint_path)
+        ray.train.report(
+            metrics=metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
+            checkpoint_upload_function=wait_async_save,
+        )
