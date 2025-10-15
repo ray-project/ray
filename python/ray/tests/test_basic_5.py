@@ -23,12 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(
-        # TODO (Alex): We need to fix
-        # https://github.com/ray-project/ray/issues/20203 to remove this flag.
-        num_cpus=2,
-        _system_config={"worker_cap_initial_backoff_delay_ms": 0},
-    )
+    ray.init(num_cpus=2)
 
     num_tasks = 3 if sys.platform == "win32" else 10
 
