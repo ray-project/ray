@@ -227,6 +227,7 @@ def train_func(config):
 
         # Train model, then validate/report at midpoint and end of epoch
         model.train()
+        i = 0
         for i, batch in enumerate(train_dataloader):
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
