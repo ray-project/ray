@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
+import psutil
 
 import pytest
 import requests
@@ -742,11 +743,15 @@ for i in range(100):
             print(lines, end="")
             i += 1
 
-            # Run ray stop to terminate Ray after receiving a few log lines
+            # Kill the dashboard after receiving a few log lines
             if i == 3:
-                print("\nStopping Ray cluster forcefully...")
-                ray.shutdown()
-                # subprocess.check_output(["ray", "stop", "--force"])
+                from ray._private import ray_constants
+
+                print("\nKilling the dashboard to close websocket abnormally...")
+                dash_info = ray._private.worker._global_node.all_processes[
+                    ray_constants.PROCESS_TYPE_DASHBOARD
+                ][0]
+                psutil.Process(dash_info.process.pid).kill()
 
 
 def _hook(env):
