@@ -1,4 +1,4 @@
-from typing import List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -16,10 +16,123 @@ from ray.data.expressions import (
     StarColumnsExpr,
     UDFExpr,
     UnaryExpr,
+    _ExprVisitor,
 )
 
 
-def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
+class _ColumnReferenceCollector(_ExprVisitor):
+    """Visitor that collects all column references from expression trees.
+
+    This visitor traverses expression trees and accumulates column names
+    referenced in ColumnExpr nodes.
+    """
+
+    def __init__(self):
+        """Initialize with an empty set of referenced columns."""
+        self.referenced_columns: Set[str] = set()
+
+    def visit(self, expr: Expr) -> Any:
+        """Visit an expression node and dispatch to the appropriate method.
+
+        Extends the base visitor to handle StarColumnsExpr which is not
+        part of the base _ExprVisitor interface.
+
+        Args:
+            expr: The expression to visit.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        if isinstance(expr, StarColumnsExpr):
+            # StarColumnsExpr doesn't reference specific columns
+            return None
+        return super().visit(expr)
+
+    def visit_column(self, expr: ColumnExpr) -> Any:
+        """Visit a column expression and collect its name.
+
+        Args:
+            expr: The column expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.referenced_columns.add(expr.name)
+
+    def visit_literal(self, expr: LiteralExpr) -> Any:
+        """Visit a literal expression (no columns to collect).
+
+        Args:
+            expr: The literal expression.
+
+        Returns:
+            None.
+        """
+        # Literals don't reference any columns
+        pass
+
+    def visit_binary(self, expr: BinaryExpr) -> Any:
+        """Visit a binary expression and collect from both operands.
+
+        Args:
+            expr: The binary expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.visit(expr.left)
+        self.visit(expr.right)
+
+    def visit_unary(self, expr: UnaryExpr) -> Any:
+        """Visit a unary expression and collect from its operand.
+
+        Args:
+            expr: The unary expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.visit(expr.operand)
+
+    def visit_udf(self, expr: UDFExpr) -> Any:
+        """Visit a UDF expression and collect from all arguments.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        for arg in expr.args:
+            self.visit(arg)
+        for value in expr.kwargs.values():
+            self.visit(value)
+
+    def visit_alias(self, expr: AliasExpr) -> Any:
+        """Visit an alias expression and collect from its inner expression.
+
+        Args:
+            expr: The alias expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.visit(expr.expr)
+
+    def visit_download(self, expr: "Expr") -> Any:
+        """Visit a download expression (no columns to collect).
+
+        Args:
+            expr: The download expression.
+
+        Returns:
+            None.
+        """
+        # DownloadExpr doesn't reference any columns in the projection pushdown context
+        pass
+
+
+def _collect_referenced_columns(exprs: List[Expr]) -> Optional[Set[str]]:
     """
     Extract all column names referenced by the given expressions.
 
@@ -30,34 +143,14 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Set[str]:
     """
     # If any expression is star(), we need all columns
     if any(isinstance(expr, StarColumnsExpr) for expr in exprs):
+        # TODO (goutam): Instead of using None to refer to All columns, resolve the AST against the schema.
+        # https://github.com/ray-project/ray/issues/57720
         return None
 
-    referenced_columns: Set[str] = set()
-    # TODO: Make this compatible with visitor pattern.
-    def visit_expr(expr: Expr) -> None:
-        """Recursively visit expression nodes to collect column references."""
-        if isinstance(expr, ColumnExpr):
-            # Base case: found a column reference
-            referenced_columns.add(expr.name)
-        elif isinstance(expr, AliasExpr):
-            visit_expr(expr.expr)
-        elif isinstance(expr, BinaryExpr):
-            visit_expr(expr.left)
-            visit_expr(expr.right)
-        elif isinstance(expr, UnaryExpr):
-            visit_expr(expr.operand)
-        elif isinstance(expr, UDFExpr):
-            for arg in expr.args:
-                visit_expr(arg)
-            for value in expr.kwargs.values():
-                visit_expr(value)
-        elif isinstance(expr, LiteralExpr):
-            # Literals don't reference any columns
-            pass
-
+    collector = _ColumnReferenceCollector()
     for expr in exprs or []:
-        visit_expr(expr)
-    return referenced_columns
+        collector.visit(expr)
+    return collector.referenced_columns
 
 
 def _rewrite_column_references(
