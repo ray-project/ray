@@ -45,12 +45,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
-      std::function<void(std::shared_ptr<MergedRaySyncMessage>)> message_processor)
+      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)) {}
 
-  bool PushToSendingQueue(std::shared_ptr<MergedRaySyncMessage> message) override {
+  bool PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) override {
     if (*IsDisconnected()) {
       return false;
     }
@@ -60,7 +60,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // target node or it's sent from the target node.
 
     // Create a copy of the message for this reactor to avoid affecting other reactors
-    auto sending_message = std::make_shared<MergedRaySyncMessage>();
+    auto sending_message = std::make_shared<RaySyncMessage>();
     sending_message->CopyFrom(*message);
 
     RAY_LOG(DEBUG) << "Push merged message to sending queue to "
@@ -119,7 +119,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   virtual ~RaySyncerBidiReactorBase() = default;
 
   void StartPull() {
-    receiving_message_ = std::make_shared<MergedRaySyncMessage>();
+    receiving_message_ = std::make_shared<RaySyncMessage>();
     RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
     StartRead(receiving_message_.get());
   }
@@ -132,7 +132,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   /// Handle the updates sent from the remote node.
   ///
   /// \param messages The message received.
-  void ReceiveUpdate(std::shared_ptr<MergedRaySyncMessage> message) {
+  void ReceiveUpdate(std::shared_ptr<RaySyncMessage> message) {
     RAY_CHECK(message->batched_messages_size() > 0);
 
     RAY_LOG(DEBUG) << "Receive merged message with batched_messages_size="
@@ -202,7 +202,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   ///
   /// \param message The message to be sent
   /// \param flush Whether to flush the sending queue in gRPC.
-  void Send(std::shared_ptr<MergedRaySyncMessage> message, bool flush) {
+  void Send(std::shared_ptr<RaySyncMessage> message, bool flush) {
     sending_message_ = std::move(message);
     grpc::WriteOptions opts;
     if (flush) {
@@ -266,8 +266,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   /// grpc requests for sending and receiving
-  std::shared_ptr<MergedRaySyncMessage> sending_message_;
-  std::shared_ptr<MergedRaySyncMessage> receiving_message_;
+  std::shared_ptr<RaySyncMessage> sending_message_;
+  std::shared_ptr<RaySyncMessage> receiving_message_;
 
   // For testing
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
@@ -286,11 +286,11 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   /// Handler of a message update.
-  const std::function<void(std::shared_ptr<MergedRaySyncMessage>)> message_processor_;
+  const std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
 
  private:
   /// Buffering all the updates. Sending will be done in an async way.
-  std::deque<std::shared_ptr<MergedRaySyncMessage>> sending_buffer_;
+  std::deque<std::shared_ptr<RaySyncMessage>> sending_buffer_;
 
   /// Keep track of the versions of components in the remote node.
   /// This field will be updated when messages are received or sent.

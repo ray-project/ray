@@ -930,7 +930,7 @@ void GcsServer::TryGlobalGC() {
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     inner_msg->set_sync_message(std::move(serialized_msg));
 
-    auto msg = std::make_shared<syncer::MergedRaySyncMessage>();
+    auto msg = std::make_shared<syncer::RaySyncMessage>();
     auto batched_msg = msg->mutable_batched_messages();
     (*batched_msg)[NodeID::FromBinary(kGCSNodeID.Binary()).Hex()] = std::move(*inner_msg);
 

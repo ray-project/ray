@@ -60,12 +60,12 @@ message InnerRaySyncMessage {
   bytes node_id = 4;
 }
 
-message MergedRaySyncMessage {
+message RaySyncMessage {
   // For batched messages: list of individual messages
   // Key is the node_id_hex of the sender, value is the message from that node
   map<string, InnerRaySyncMessage> batched_messages = 1;
 }
 
 service RaySyncer {
-  rpc StartSync(stream MergedRaySyncMessage) returns (stream MergedRaySyncMessage);
+  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
 }

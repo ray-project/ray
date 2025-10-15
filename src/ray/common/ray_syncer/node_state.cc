@@ -39,8 +39,7 @@ bool NodeState::SetComponent(MessageType message_type,
   return false;
 }
 
-std::optional<MergedRaySyncMessage> NodeState::CreateMergedSyncMessage(
-    MessageType message_type) {
+std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
   if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
@@ -51,7 +50,7 @@ std::optional<MergedRaySyncMessage> NodeState::CreateMergedSyncMessage(
     RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
                    << ", version:" << inner_message->version()
                    << ", node:" << NodeID::FromBinary(inner_message->node_id());
-    MergedRaySyncMessage message;
+    RaySyncMessage message;
     auto batched_message = message.mutable_batched_messages();
     (*batched_message)[NodeID::FromBinary(inner_message->node_id()).Hex()] =
         std::move(*inner_message);
@@ -65,7 +64,7 @@ bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeMergedSyncMessage(std::shared_ptr<MergedRaySyncMessage> message) {
+bool NodeState::ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message) {
   auto *mutable_batched_messages = message->mutable_batched_messages();
 
   int64_t consumed_messages = 0;

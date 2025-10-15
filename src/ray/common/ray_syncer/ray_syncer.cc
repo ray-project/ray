@@ -167,7 +167,7 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
         }
 
         if (!batched_inner_messages.empty()) {
-          std::shared_ptr<MergedRaySyncMessage> merged_message =
+          std::shared_ptr<RaySyncMessage> merged_message =
               MergeInnerSyncMessages(batched_inner_messages);
           reactor->PushToSendingQueue(merged_message);
         }
@@ -221,21 +221,21 @@ void RaySyncer::Register(MessageType message_type,
 }
 
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
-  auto msg = node_state_->CreateMergedSyncMessage(message_type);
+  auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->batched_messages_size() == 1);
     RAY_CHECK(msg->batched_messages().begin()->second.node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<MergedRaySyncMessage>(std::move(*msg)));
+    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
     return true;
   }
   return false;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<MergedRaySyncMessage> message) {
+void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   io_context_.dispatch(
       [this, message] {
         RAY_CHECK(message->batched_messages_size() > 0);
-        if (!node_state_->ConsumeMergedSyncMessage(message)) {
+        if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
         BufferOrFlushSyncMessage(message);
@@ -243,7 +243,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<MergedRaySyncMessage> message) 
       "RaySyncer.BroadcastMessage");
 }
 
-void RaySyncer::BufferOrFlushSyncMessage(std::shared_ptr<MergedRaySyncMessage> message) {
+void RaySyncer::BufferOrFlushSyncMessage(std::shared_ptr<RaySyncMessage> message) {
   // Add message to batch buffer
   RAY_CHECK(message->batched_messages_size() > 0);
 
@@ -305,7 +305,7 @@ void RaySyncer::MergeAndFlushSyncMessage() {
 
   RAY_LOG(DEBUG) << "Merging and flushing " << sync_message_batch_buffer_.size()
                  << " sync messages internally.";
-  std::shared_ptr<MergedRaySyncMessage> sending_message =
+  std::shared_ptr<RaySyncMessage> sending_message =
       MergeInnerSyncMessages(sync_message_batch_buffer_);
   RAY_CHECK(sending_message != nullptr);
   for (auto &reactor : sync_reactors_) {
@@ -316,13 +316,13 @@ void RaySyncer::MergeAndFlushSyncMessage() {
   sync_message_batch_buffer_.clear();
 }
 
-std::shared_ptr<MergedRaySyncMessage> RaySyncer::MergeInnerSyncMessages(
+std::shared_ptr<RaySyncMessage> RaySyncer::MergeInnerSyncMessages(
     absl::flat_hash_map<std::string, std::shared_ptr<const InnerRaySyncMessage>>
         &inner_messages) const {
   RAY_CHECK(!inner_messages.empty());
 
   // Create a new batched message
-  auto merged_message = std::make_shared<MergedRaySyncMessage>();
+  auto merged_message = std::make_shared<RaySyncMessage>();
 
   // Add all individual messages to the batch
   for (const auto &[node_id_hex, inner_message] : inner_messages) {

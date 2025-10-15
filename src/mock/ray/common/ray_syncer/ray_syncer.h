@@ -55,10 +55,7 @@ class MockRaySyncerBidiReactor : public RaySyncerBidiReactor {
 
   MOCK_METHOD(void, DoDisconnect, (), (override));
 
-  MOCK_METHOD(bool,
-              PushToSendingQueue,
-              (std::shared_ptr<MergedRaySyncMessage>),
-              (override));
+  MOCK_METHOD(bool, PushToSendingQueue, (std::shared_ptr<RaySyncMessage>), (override));
 };
 
 template <typename T>
