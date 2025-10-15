@@ -136,20 +136,19 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             max_actor_concurrency: The maximum concurrency per actor.
             max_tasks_in_flight_per_actor: The maximum tasks in flight per actor.
         """
+        max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
+        max_concurrency = actor_pool.max_actor_concurrency()
 
-    max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
-    max_concurrency = actor_pool.max_actor_concurrency()
-
-    if (
-        max_tasks_in_flight_per_actor / max_concurrency < self._actor_pool_scaling_up_threshold
-    ):
-        logger.warning(
-            f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
-            f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
-            f"couldn't be reached with configured max_concurrency={max_concurrency} "
-            f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
-            f"(max utilization will be max_tasks_in_flight_per_actor / max_actor_concurrency = {(max_tasks_in_flight_per_actor / max_actor_concurrency) * 100:0f}%)"
-        )
+        if (
+            max_tasks_in_flight_per_actor / max_concurrency < self._actor_pool_scaling_up_threshold
+        ):
+            logger.warning(
+                f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
+                f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
+                f"couldn't be reached with configured max_concurrency={max_concurrency} "
+                f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
+                f"(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = {(max_tasks_in_flight_per_actor / max_concurrency) * 100:0f}%)"
+            )
 
 
 def _get_max_scale_up(
