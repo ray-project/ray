@@ -1,4 +1,5 @@
 import difflib
+import os
 import platform
 import shlex
 import shutil
@@ -90,20 +91,22 @@ class DependencySetManager:
         check: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
-        self.config = self.workspace.load_config(config_path)
-        if check:
-            self.temp_dir = tempfile.mkdtemp()
-            self.output_paths = self.get_output_paths()
-            self.copy_to_temp_dir()
+        self.config = self.workspace.load_configs(config_path)
+        self.config_name = os.path.basename(config_path)
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
+        if check:
+            self.temp_dir = tempfile.mkdtemp()
+            self.output_paths = self.get_output_paths()
+            self.copy_to_temp_dir()
 
     def get_output_paths(self) -> List[Path]:
         output_paths = []
-        for depset in self.config.depsets:
-            output_paths.append(Path(depset.output))
+        for node in topological_sort(self.build_graph):
+            if self.build_graph.nodes[node]["node_type"] == "depset":
+                output_paths.append(Path(self.build_graph.nodes[node]["depset"].output))
         return output_paths
 
     def copy_to_temp_dir(self):
@@ -148,16 +151,28 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="compile",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
             elif depset.operation == "subset":
                 self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="subset",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
                 self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="expand",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
@@ -171,12 +186,32 @@ class DependencySetManager:
                         operation="pre_hook",
                         pre_hook=hook,
                         node_type="pre_hook",
+                        config_name=depset.config_name,
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
+        self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
+
+    def subgraph_config_nodes(self):
+        # Get all nodes that have the target config name
+        config_nodes = [
+            node
+            for node in self.build_graph.nodes
+            if self.build_graph.nodes[node]["config_name"] == self.config_name
+        ]
+        # Get all ancestors of the target config nodes
+        ancestors_by_confg_node = {
+            n: networkx_ancestors(self.build_graph, n) for n in config_nodes
+        }
+        # Union all the ancestors of the target config nodes
+        config_nodes_ancestors = set().union(
+            *(ancestors_by_confg_node[n] for n in config_nodes)
+        )
+        nodes = set(config_nodes) | config_nodes_ancestors
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def execute(self, single_depset_name: Optional[str] = None):
@@ -184,7 +219,6 @@ class DependencySetManager:
             # check if the depset exists
             _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
-
         for node in topological_sort(self.build_graph):
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":

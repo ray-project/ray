@@ -577,17 +577,19 @@ def get_compute_strategy(
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "``compute`` must specify an actor compute strategy when using a "
-                f"callable class, but got: {compute}. For example, use "
-                "``compute=ray.data.ActorPoolStrategy(size=n)``."
+                f"You specified the callable class {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule callable classes with the task "
+                f"pool strategy. To fix this error, pass an ActorPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
             raise ValueError(
-                f"``compute`` is specified as the actor compute strategy: {compute}, "
-                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
-                "use the default ``compute`` strategy."
+                f"You specified the function {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         return compute
     elif concurrency is not None:
@@ -639,10 +641,7 @@ def get_compute_strategy(
             )
     else:
         if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
+            return ActorPoolStrategy(min_size=1, max_size=None)
         else:
             return TaskPoolStrategy()
 
