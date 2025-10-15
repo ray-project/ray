@@ -46,6 +46,7 @@ from ray.data.datasource.unbound_datasource import (
     UnboundMetrics,
     UnboundPosition,
     create_unbound_read_task,
+    infer_schema_from_records,
 )
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
@@ -81,6 +82,7 @@ __all__ = [
     "TimeRange",
     "WriteResult",
     "create_unbound_read_task",
+    "infer_schema_from_records",
     "WriteReturnType",
     "SaveMode",
 ]

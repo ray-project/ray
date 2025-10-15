@@ -4676,7 +4676,7 @@ def read_kafka(
     override_num_blocks: Optional[int] = None,
     **kafka_kwargs,
 ) -> Dataset:
-    """Read from Apache Kafka topics as a streaming or batch dataset.
+    r"""Read from Apache Kafka topics as a streaming or batch dataset.
 
     .. note::
         This is an alpha API and may change in future releases.
@@ -4826,10 +4826,10 @@ def read_kafka(
             - "continuous": Continuous processing as data arrives
             - "available_now": Process all currently available data then stop
             - "interval:30s": Fixed interval triggers (supports s, m, h, d units)
-            - "cron:0 * * * *": Cron expression for scheduled processing
+            - "cron:0 \* \* \* \*": Cron expression for scheduled processing
             - "30s", "15m", "1h": Direct interval specification
             - "processingTime='30 seconds'": Alternative processing time format
-            - "0 */5 * * *": Direct cron expressions
+            - "0 \*/5 \* \* \*": Direct cron expressions
             - StreamingTrigger object for advanced configuration
         max_records_per_task: Maximum number of records per partition per task per batch.
         start_offset: Starting offset for reading. Can be:
