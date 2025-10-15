@@ -96,6 +96,11 @@ class UnboundedDataOperator(PhysicalOperator):
         self._max_backoff_seconds = 5.0  # Cap at 5 seconds
         self._total_batches_processed = 0  # Track total batches for stop conditions
 
+        # Graceful shutdown support
+        self._shutdown_requested = False
+        self._shutdown_reason = None
+        self._exception = None
+
     def start(self, options: ExecutionOptions) -> None:
         """Start the streaming operator."""
         super().start(options)
@@ -117,6 +122,47 @@ class UnboundedDataOperator(PhysicalOperator):
         if self._should_trigger_new_batch():
             self._create_read_tasks()
 
+    def request_shutdown(self, reason: str = "user_requested") -> None:
+        """Request graceful shutdown of the streaming operator.
+        
+        The operator will complete currently running tasks before stopping.
+        
+        Args:
+            reason: Reason for shutdown (for logging)
+        """
+        if not self._shutdown_requested:
+            logger.info(f"Graceful shutdown requested: {reason}")
+            self._shutdown_requested = True
+            self._shutdown_reason = reason
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current status of the streaming operator.
+        
+        Returns:
+            Dictionary containing operator status information
+        """
+        return {
+            "name": self.name,
+            "is_active": not self._completed,
+            "current_batch_id": self._current_batch_id,
+            "total_batches_processed": self._total_batches_processed,
+            "consecutive_empty_batches": self._consecutive_empty_batches,
+            "bytes_produced": self._bytes_produced,
+            "rows_produced": self._rows_produced,
+            "active_tasks": len(self._current_read_tasks),
+            "trigger_type": self.trigger.trigger_type,
+            "shutdown_requested": self._shutdown_requested,
+            "shutdown_reason": self._shutdown_reason,
+        }
+
+    def get_exception(self) -> Optional[Exception]:
+        """Get the exception if operator failed.
+        
+        Returns:
+            Exception if operator failed, None otherwise
+        """
+        return self._exception
+
     def _should_trigger_new_batch(self) -> bool:
         """Determine if a new batch should be triggered based on trigger configuration
         and backpressure.
@@ -129,6 +175,18 @@ class UnboundedDataOperator(PhysicalOperator):
         Returns:
             True if a new batch should be triggered, False otherwise
         """
+        # Check for graceful shutdown request
+        if self._shutdown_requested:
+            if len(self._current_read_tasks) == 0:
+                logger.info("All tasks completed, shutting down gracefully")
+                self._completed = True
+            else:
+                logger.debug(
+                    f"Waiting for {len(self._current_read_tasks)} tasks to complete "
+                    f"before shutdown"
+                )
+            return False
+
         if self.trigger.trigger_type == "once":
             # One-time trigger: only produce batch if we haven't already
             return not self._batch_produced
@@ -667,6 +725,7 @@ class UnboundedDataOperator(PhysicalOperator):
             # Log and propagate errors from read tasks
             # This could be network errors, deserialization failures, etc.
             logger.error(f"Error getting result from read task: {e}")
+            self._exception = e
             raise StopIteration(f"Error in read task: {e}")
 
     def input_done(self, input_index: int) -> None:
