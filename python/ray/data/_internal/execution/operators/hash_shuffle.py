@@ -529,19 +529,27 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 input_logical_ops,
             )
 
+        default_ray_remote_args = self._get_default_aggregator_ray_remote_args(
+            num_partitions=target_num_partitions,
+            num_aggregators=num_aggregators,
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+
+        if aggregator_ray_remote_args_override is not None:
+            # Set default values missing for configs missing in the override
+            for k, v in default_ray_remote_args.items():
+                aggregator_ray_remote_args_override.setdefault(k, v)
+
+            final_ray_remote_args = aggregator_ray_remote_args_override
+        else:
+            final_ray_remote_args = default_ray_remote_args
+
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
-            aggregator_ray_remote_args=(
-                aggregator_ray_remote_args_override
-                or self._get_default_aggregator_ray_remote_args(
-                    num_partitions=target_num_partitions,
-                    num_aggregators=num_aggregators,
-                    total_available_cluster_resources=total_available_cluster_resources,
-                    estimated_dataset_bytes=estimated_dataset_bytes,
-                )
-            ),
+            aggregator_ray_remote_args=final_ray_remote_args,
             data_context=data_context,
         )
 
