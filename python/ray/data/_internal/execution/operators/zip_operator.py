@@ -80,7 +80,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return num_rows
 
     def internal_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+        return sum(
+            len(bundle)
+            for buf in self._input_buffers
+            for bundle in buf
+        )
+
+    def internal_queue_size_bytes(self) -> int:
+        return sum(
+            bundle.size_bytes()
+            for buf in self._input_buffers
+            for bundle in buf
+        )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()

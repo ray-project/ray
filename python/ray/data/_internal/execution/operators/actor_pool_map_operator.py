@@ -202,7 +202,10 @@ class ActorPoolMapOperator(MapOperator):
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
-        return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
+        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
+
+    def internal_queue_size_bytes(self) -> int:
+        return self._bundle_queue.estimate_size_bytes() + self._block_ref_bundler.size_bytes()
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
