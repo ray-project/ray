@@ -1,7 +1,6 @@
 import logging
 import math
 import sys
-import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -180,7 +179,6 @@ class RichExecutionProgressManager:
     def __init__(self, dataset_id: str, topology: Topology):
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
-        self._lock = None
         self._sub_progress_bars: List[SubProgressBar] = []
 
         if not self._mode.is_enabled():
@@ -192,7 +190,6 @@ class RichExecutionProgressManager:
             return
 
         self._start_time: Optional[float] = None
-        self._lock = threading.RLock()
 
         # rich
         self._console = Console(file=sys.stderr)
@@ -319,47 +316,41 @@ class RichExecutionProgressManager:
     # Management
     def start(self):
         if self._mode.is_enabled():
-            with self._lock:
-                if not self._live.is_started:
-                    self._live.start()
+            if not self._live.is_started:
+                self._live.start()
 
     def refresh(self):
         if self._mode.is_enabled():
-            with self._lock:
-                if self._live.is_started:
-                    self._live.refresh()
-
-    def _close_no_lock(self):
-        self.refresh()
-        time.sleep(0.02)
-        self._live.stop()
+            if self._live.is_started:
+                self._live.refresh()
 
     def close_with_finishing_description(self, desc: str, success: bool):
         if self._mode.is_enabled():
-            with self._lock:
-                if self._live.is_started:
-                    kwargs = {}
-                    if success:
-                        # set everything to completed
-                        kwargs["completed"] = 1.0
-                        kwargs["total"] = 1.0
-                        for pg in self._sub_progress_bars:
-                            pg.complete()
-                        for tid, progress, _ in self._op_display.values():
-                            completed = progress.tasks[tid].completed or 0
-                            metrics = _get_progress_metrics(
-                                self._start_time, completed, completed
-                            )
-                            progress.update(
-                                tid,
-                                completed=metrics.completed,
-                                total=metrics.total,
-                                rate_str=metrics.rate_str,
-                                count_str=metrics.count_str,
-                            )
-                    self._total.update(self._total_task_id, description=desc, **kwargs)
-                    self._close_no_lock()
-                    logger.info(desc)
+            if self._live.is_started:
+                kwargs = {}
+                if success:
+                    # set everything to completed
+                    kwargs["completed"] = 1.0
+                    kwargs["total"] = 1.0
+                    for pg in self._sub_progress_bars:
+                        pg.complete()
+                    for tid, progress, _ in self._op_display.values():
+                        completed = progress.tasks[tid].completed or 0
+                        metrics = _get_progress_metrics(
+                            self._start_time, completed, completed
+                        )
+                        progress.update(
+                            tid,
+                            completed=metrics.completed,
+                            total=metrics.total,
+                            rate_str=metrics.rate_str,
+                            count_str=metrics.count_str,
+                        )
+                self._total.update(self._total_task_id, description=desc, **kwargs)
+                self.refresh()
+                time.sleep(0.02)
+                self._live.stop()
+                logger.info(desc)
 
     # Total Progress
     def _can_update_total(self) -> bool:
@@ -372,35 +363,27 @@ class RichExecutionProgressManager:
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]):
         if not self._can_update_total():
             return
-        with self._lock:
-            if self._live.is_started:
-                self._update_total_progress_no_lock(new_rows, total_rows)
-
-    def _update_total_progress_no_lock(self, new_rows: int, total_rows: Optional[int]):
-        if self._start_time is None:
-            self._start_time = time.time()
-        if new_rows is not None:
-            self._current_rows += new_rows
-        metrics = _get_progress_metrics(
-            self._start_time, self._current_rows, total_rows
-        )
-        self._total.update(
-            self._total_task_id,
-            completed=metrics.completed,
-            total=metrics.total,
-            rate_str=metrics.rate_str,
-            count_str=metrics.count_str,
-        )
+        if self._live.is_started:
+            if self._start_time is None:
+                self._start_time = time.time()
+            if new_rows is not None:
+                self._current_rows += new_rows
+            metrics = _get_progress_metrics(
+                self._start_time, self._current_rows, total_rows
+            )
+            self._total.update(
+                self._total_task_id,
+                completed=metrics.completed,
+                total=metrics.total,
+                rate_str=metrics.rate_str,
+                count_str=metrics.count_str,
+            )
 
     def update_resource_status(self, resource_status: str):
         if not self._can_update_total():
             return
-        with self._lock:
-            if self._live.is_started:
-                self._update_resource_status_no_lock(resource_status)
-
-    def _update_resource_status_no_lock(self, resource_status: str):
-        self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
+        if self._live.is_started:
+            self._total_resources.plain = _RESOURCE_REPORT_HEADER + resource_status
 
     def _can_update_operator(self, op_state: OpState) -> bool:
         if not self._mode.show_op():
@@ -416,10 +399,6 @@ class RichExecutionProgressManager:
     def update_operator_progress(self, op_state: OpState):
         if not self._can_update_operator(op_state):
             return
-        with self._lock:
-            self._update_operator_progress_no_lock(op_state)
-
-    def _update_operator_progress_no_lock(self, op_state: OpState):
         if self._start_time is None:
             self._start_time = time.time()
         uid = op_state.progress_manager_uuid
