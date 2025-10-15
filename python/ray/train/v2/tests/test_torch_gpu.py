@@ -132,7 +132,7 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
         model = torch.nn.Linear(1, 1)
 
         # Wrap in DDP and manually specify CPU.
-        model = ray.train.torch.prepare_model(model, device=torch.device("cpu"))
+        model = ray.train.torch.prepare_model(model, move_to_device=torch.device("cpu"))
 
         # Make sure model is wrapped in DDP.
         assert isinstance(model, DistributedDataParallel)
