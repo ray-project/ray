@@ -5,12 +5,30 @@ to track reading positions (offsets, sequence numbers, etc.) for fault tolerance
 """
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LagMetrics:
+    """Metrics about data lag for autoscaling decisions.
+    
+    Attributes:
+        total_lag: Total number of records/messages waiting to be read
+        capacity: Current processing capacity (records/sec)
+        partitions: Number of partitions/shards available
+        lag_per_partition: Dictionary mapping partition ID to lag
+    """
+
+    total_lag: int
+    capacity: float
+    partitions: int
+    lag_per_partition: Dict[str, int]
 
 
 class UnboundDatasource(Datasource):
@@ -76,6 +94,21 @@ class UnboundDatasource(Datasource):
             Exception: If reconnection fails
         """
         pass
+
+    def get_lag_metrics(self) -> Optional[LagMetrics]:
+        """Get current lag metrics for autoscaling decisions.
+        
+        Returns lag information to determine if more/fewer parallel tasks are needed.
+        For example, Kafka can report how many messages are waiting across partitions.
+        
+        Returns:
+            LagMetrics object with lag information, or None if not supported
+            
+        Example:
+            For Kafka: total_lag = sum of unconsumed messages across all partitions
+            For Kinesis: total_lag = records behind latest across all shards
+        """
+        return None
 
     def _get_read_tasks_for_partition(
         self,

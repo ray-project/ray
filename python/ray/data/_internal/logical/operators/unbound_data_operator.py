@@ -54,6 +54,18 @@ class StreamingTrigger:
     idle_timeout: Optional[Union[str, timedelta]] = None  # Stop if no data for X time
     poll_timeout_seconds: float = 30.0  # How long datasources wait for data
 
+    # Autoscaling configuration
+    enable_autoscaling: bool = False  # Enable dynamic parallelism adjustment
+    min_parallelism: int = 1  # Minimum number of parallel tasks
+    max_parallelism: int = 100  # Maximum number of parallel tasks
+    scale_up_threshold: float = 0.8  # Scale up when utilization > 80%
+    scale_down_threshold: float = 0.3  # Scale down when utilization < 30%
+    scaling_cooldown_seconds: float = 60.0  # Wait 60s between scaling actions
+
+    # Rate limiting (for cost control with cloud streaming services)
+    max_records_per_second: Optional[int] = None  # Global throughput limit
+    max_bytes_per_second: Optional[int] = None  # Bandwidth limit
+
     def __post_init__(self):
         if self.trigger_type == "fixed_interval" and self.interval is None:
             raise ValueError("Fixed interval trigger requires an interval")

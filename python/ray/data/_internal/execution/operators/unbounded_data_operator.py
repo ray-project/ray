@@ -101,6 +101,16 @@ class UnboundedDataOperator(PhysicalOperator):
         self._shutdown_reason = None
         self._exception = None
 
+        # Autoscaling state
+        self._last_scaling_time = datetime.now()
+        self._original_parallelism = parallelism if parallelism > 0 else 1
+
+        # Rate limiting state
+        self._rate_limit_window_start = datetime.now()
+        self._records_in_window = 0
+        self._bytes_in_window = 0
+        self._rate_limit_window_seconds = 1.0  # 1 second window
+
     def start(self, options: ExecutionOptions) -> None:
         """Start the streaming operator."""
         super().start(options)
@@ -163,6 +173,47 @@ class UnboundedDataOperator(PhysicalOperator):
         """
         return self._exception
 
+    def export_metrics_prometheus(self) -> str:
+        """Export metrics in Prometheus format for monitoring.
+        
+        Returns lightweight metrics that can be scraped by Prometheus or similar tools.
+        This is optional and complements (not replaces) Anyscale's built-in monitoring.
+        
+        Returns:
+            String in Prometheus exposition format
+        """
+        metrics_lines = [
+            "# HELP ray_data_streaming_batches_total Total batches processed",
+            "# TYPE ray_data_streaming_batches_total counter",
+            f'ray_data_streaming_batches_total{{operator_id="{self.id}",name="{self.name}"}} {self._total_batches_processed}',
+            "",
+            "# HELP ray_data_streaming_records_total Total records processed",
+            "# TYPE ray_data_streaming_records_total counter",
+            f'ray_data_streaming_records_total{{operator_id="{self.id}",name="{self.name}"}} {self._rows_produced}',
+            "",
+            "# HELP ray_data_streaming_bytes_total Total bytes processed",
+            "# TYPE ray_data_streaming_bytes_total counter",
+            f'ray_data_streaming_bytes_total{{operator_id="{self.id}",name="{self.name}"}} {self._bytes_produced}',
+            "",
+            "# HELP ray_data_streaming_empty_batches_consecutive Current consecutive empty batches",
+            "# TYPE ray_data_streaming_empty_batches_consecutive gauge",
+            f'ray_data_streaming_empty_batches_consecutive{{operator_id="{self.id}",name="{self.name}"}} {self._consecutive_empty_batches}',
+            "",
+            "# HELP ray_data_streaming_parallelism Current parallelism level",
+            "# TYPE ray_data_streaming_parallelism gauge",
+            f'ray_data_streaming_parallelism{{operator_id="{self.id}",name="{self.name}"}} {self.parallelism}',
+            "",
+            "# HELP ray_data_streaming_active_tasks Current number of active tasks",
+            "# TYPE ray_data_streaming_active_tasks gauge",
+            f'ray_data_streaming_active_tasks{{operator_id="{self.id}",name="{self.name}"}} {len(self._current_read_tasks)}',
+            "",
+            "# HELP ray_data_streaming_is_active Whether operator is currently active",
+            "# TYPE ray_data_streaming_is_active gauge",
+            f'ray_data_streaming_is_active{{operator_id="{self.id}",name="{self.name}"}} {1 if not self._completed else 0}',
+            "",
+        ]
+        return "\n".join(metrics_lines)
+
     def _should_trigger_new_batch(self) -> bool:
         """Determine if a new batch should be triggered based on trigger configuration
         and backpressure.
@@ -203,7 +254,19 @@ class UnboundedDataOperator(PhysicalOperator):
             logger.debug("Backpressure detected, delaying new batch creation")
             return False
 
-        elif self.trigger.trigger_type == "continuous":
+        # Check rate limits before creating new batches
+        estimated_records = self.datasource.max_records_per_task if hasattr(
+            self.datasource, "max_records_per_task"
+        ) else 1000
+        estimated_bytes = estimated_records * 1024  # Rough estimate: 1KB per record
+        if not self._check_rate_limit(estimated_records, estimated_bytes):
+            logger.debug("Rate limit exceeded, delaying new batch creation")
+            return False
+
+        # Apply autoscaling if enabled
+        self._check_and_apply_autoscaling()
+
+        if self.trigger.trigger_type == "continuous":
             # Continuous mode: create new tasks immediately when current batch finishes
             # This minimizes latency for real-time streaming
             return len(self._current_read_tasks) == 0
@@ -294,6 +357,125 @@ class UnboundedDataOperator(PhysicalOperator):
                 f"({self._consecutive_empty_batches} consecutive empty batches)"
             )
             time.sleep(backoff_delay)
+
+    def _check_and_apply_autoscaling(self) -> None:
+        """Check if autoscaling should be applied and adjust parallelism.
+        
+        Uses lag metrics from datasource to determine if we should scale up/down.
+        Respects cooldown period to avoid thrashing.
+        """
+        if not self.trigger.enable_autoscaling:
+            return
+
+        # Check cooldown period
+        now = datetime.now()
+        time_since_last_scaling = (now - self._last_scaling_time).total_seconds()
+        if time_since_last_scaling < self.trigger.scaling_cooldown_seconds:
+            return
+
+        # Get lag metrics from datasource
+        try:
+            lag_metrics = self.datasource.get_lag_metrics()
+            if not lag_metrics:
+                return
+        except Exception as e:
+            logger.warning(f"Failed to get lag metrics for autoscaling: {e}")
+            return
+
+        current_parallelism = self.parallelism
+
+        # Calculate utilization based on lag and capacity
+        if lag_metrics.capacity > 0:
+            utilization = lag_metrics.total_lag / (lag_metrics.capacity * 60)  # 1 min worth
+        else:
+            utilization = 0.0
+
+        # Scale up if high utilization
+        if utilization > self.trigger.scale_up_threshold:
+            new_parallelism = min(
+                int(current_parallelism * 1.5),  # 50% increase
+                self.trigger.max_parallelism,
+                lag_metrics.partitions,  # Don't exceed available partitions
+            )
+            if new_parallelism > current_parallelism:
+                logger.info(
+                    f"Autoscaling UP: {current_parallelism} -> {new_parallelism} "
+                    f"(utilization: {utilization:.2%}, lag: {lag_metrics.total_lag})"
+                )
+                self.parallelism = new_parallelism
+                self._last_scaling_time = now
+                # Cancel and recreate tasks with new parallelism
+                self._cancel_current_tasks()
+
+        # Scale down if low utilization and many consecutive empty batches
+        elif (
+            utilization < self.trigger.scale_down_threshold
+            and self._consecutive_empty_batches > 5
+            and current_parallelism > self.trigger.min_parallelism
+        ):
+            new_parallelism = max(
+                int(current_parallelism * 0.7),  # 30% decrease
+                self.trigger.min_parallelism,
+            )
+            if new_parallelism < current_parallelism:
+                logger.info(
+                    f"Autoscaling DOWN: {current_parallelism} -> {new_parallelism} "
+                    f"(utilization: {utilization:.2%}, empty batches: {self._consecutive_empty_batches})"
+                )
+                self.parallelism = new_parallelism
+                self._last_scaling_time = now
+                # Cancel and recreate tasks with new parallelism
+                self._cancel_current_tasks()
+
+    def _check_rate_limit(self, estimated_records: int, estimated_bytes: int) -> bool:
+        """Check if rate limit allows proceeding with new batch.
+        
+        Args:
+            estimated_records: Estimated records in next batch
+            estimated_bytes: Estimated bytes in next batch
+            
+        Returns:
+            True if can proceed, False if rate limit exceeded
+        """
+        if not self.trigger.max_records_per_second and not self.trigger.max_bytes_per_second:
+            return True  # No rate limiting configured
+
+        now = datetime.now()
+        time_in_window = (now - self._rate_limit_window_start).total_seconds()
+
+        # Reset window if needed
+        if time_in_window >= self._rate_limit_window_seconds:
+            self._rate_limit_window_start = now
+            self._records_in_window = 0
+            self._bytes_in_window = 0
+            time_in_window = 0
+
+        # Check records limit
+        if self.trigger.max_records_per_second:
+            projected_records = self._records_in_window + estimated_records
+            records_rate = projected_records / max(time_in_window, 0.001)
+            if records_rate > self.trigger.max_records_per_second:
+                logger.debug(
+                    f"Rate limit exceeded: {records_rate:.0f} records/s > "
+                    f"{self.trigger.max_records_per_second}"
+                )
+                return False
+
+        # Check bytes limit
+        if self.trigger.max_bytes_per_second:
+            projected_bytes = self._bytes_in_window + estimated_bytes
+            bytes_rate = projected_bytes / max(time_in_window, 0.001)
+            if bytes_rate > self.trigger.max_bytes_per_second:
+                logger.debug(
+                    f"Rate limit exceeded: {bytes_rate/1024/1024:.1f} MB/s > "
+                    f"{self.trigger.max_bytes_per_second/1024/1024:.1f} MB/s"
+                )
+                return False
+
+        # Update counters
+        self._records_in_window += estimated_records
+        self._bytes_in_window += estimated_bytes
+        return True
 
     def _check_backpressure(self) -> bool:
         """Check if backpressure conditions are met to prevent overwhelming the system.
