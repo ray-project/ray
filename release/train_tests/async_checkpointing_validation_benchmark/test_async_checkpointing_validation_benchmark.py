@@ -128,6 +128,9 @@ def validate_with_torch_trainer(checkpoint, config):
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
         datasets={"test": config["dataset"]},
+        run_config=ray.train.RunConfig(
+            name=f"{config['parent_run_name']}-validation_epoch={config['epoch']}_batch_idx={config['batch_idx']}"
+        ),
     )
     result = trainer.fit()
     return {
@@ -141,17 +144,21 @@ def validate_with_torch_trainer(checkpoint, config):
 
 def validate_and_report(
     model,
-    test_dataloader,
-    validate_within_trainer,
-    checkpoint_upload_mode,
-    validate_fn,
     epoch,
-    num_epochs,
-    rank,
+    batch_idx,
     blocked_times,
     config,
     loss,
 ):
+    validate_within_trainer = config["validate_within_trainer"]
+    num_epochs = config["num_epochs"]
+    checkpoint_upload_mode = config["checkpoint_upload_mode"]
+    validate_fn = config["validate_fn"]
+    if validate_within_trainer:
+        test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
+            batch_size=128
+        )
+
     # Validate model within training loop
     val_elapsed_time = None
     if validate_within_trainer:
@@ -171,7 +178,7 @@ def validate_and_report(
     metrics = {"loss": loss.item(), "epoch": epoch}
     if validate_within_trainer and epoch == num_epochs - 1:
         metrics["score"] = mean_acc.compute().item()
-    if rank == 0:
+    if ray.train.get_context().get_world_rank() == 0:
         if val_elapsed_time:
             metrics["validation_time"] = val_elapsed_time
         iteration_checkpoint_dir = tempfile.mkdtemp()
@@ -180,12 +187,21 @@ def validate_and_report(
             os.path.join(iteration_checkpoint_dir, "model.pt"),
         )
         start_time = time.time()
+        if validate_fn:
+            validate_config = {
+                "dataset": config["test"],
+                "parent_run_name": ray.train.get_context().get_experiment_name(),
+                "epoch": epoch,
+                "batch_idx": batch_idx,
+            }
+        else:
+            validate_config = None
         ray.train.report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
             validate_fn=validate_fn,
-            validate_config={"dataset": config["test"]} if validate_fn else None,
+            validate_config=validate_config,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -194,10 +210,7 @@ def validate_and_report(
 
 def train_func(config):
     batch_size = 256
-    validate_within_trainer = config["validate_within_trainer"]
     num_epochs = config["num_epochs"]
-    checkpoint_upload_mode = config["checkpoint_upload_mode"]
-    validate_fn = config["validate_fn"]
     midpoint_batch = int(config["rows_per_worker"] / batch_size / 2)
 
     # Prepare model, dataloader, and possibly metrics
@@ -207,14 +220,9 @@ def train_func(config):
     optimizer = Adam(model.parameters(), lr=0.001)
     train_data_shard = ray.train.get_dataset_shard("train")
     train_dataloader = train_data_shard.iter_torch_batches(batch_size=batch_size)
-    if validate_within_trainer:
-        test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
-            batch_size=128
-        )
 
     # Train / eval / report loop
     blocked_times = []
-    rank = ray.train.get_context().get_world_rank()
     for epoch in range(num_epochs):
 
         # Train model, then validate/report at midpoint and end of epoch
@@ -227,36 +235,12 @@ def train_func(config):
             loss.backward()
             optimizer.step()
             if i == midpoint_batch:
-                validate_and_report(
-                    model,
-                    test_dataloader,
-                    validate_within_trainer,
-                    checkpoint_upload_mode,
-                    validate_fn,
-                    epoch,
-                    num_epochs,
-                    rank,
-                    blocked_times,
-                    config,
-                    loss,
-                )
-        validate_and_report(
-            model,
-            test_dataloader,
-            validate_within_trainer,
-            checkpoint_upload_mode,
-            validate_fn,
-            epoch,
-            num_epochs,
-            rank,
-            blocked_times,
-            config,
-            loss,
-        )
+                validate_and_report(model, epoch, i, blocked_times, config, loss)
+        validate_and_report(model, epoch, i, blocked_times, config, loss)
 
     # Report train_func metrics with dummy checkpoint since that is the only way to
     # return metrics
-    if rank == 0:
+    if ray.train.get_context().get_world_rank() == 0:
         with tempfile.TemporaryDirectory() as temp_dir:
             ray.train.report(
                 metrics={
