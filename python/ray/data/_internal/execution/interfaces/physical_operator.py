@@ -626,13 +626,12 @@ class PhysicalOperator(Operator):
     def min_max_resource_requirements(
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
-        """Returns the min and max resources to start the operator and make progress.
+        """Returns lower/upper boundary of resource requirements for this operator:
 
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its minimum usage.
-
-        This method is used by the resource manager to reserve minimum resources and to
-        ensure that it doesn't over-provision resources.
+            - Minimal: lower bound (min) of resources required to start this operator
+            (for most operators this is 0, except the ones that utilize actors)
+            - Maximum: upper bound (max) of how many resources this operator could
+            utilize.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 
