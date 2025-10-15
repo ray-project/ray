@@ -366,6 +366,17 @@ WebDataset
 
    read_webdataset
 
+Streaming sources
+-----------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
+   read_kinesis
+   read_flink
+
 .. _data_source_api:
 
 Datasource API
@@ -379,6 +390,9 @@ Datasource API
    Datasource
    ReadTask
    datasource.FilenameProvider
+   datasource.UnboundDatasource
+   datasource.create_unbound_read_task
+   datasource.infer_schema_from_records
 
 Datasink API
 ------------
