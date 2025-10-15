@@ -92,11 +92,11 @@ class TestLLMServingArgs:
     def test_basic_creation_and_defaults(self, llm_config):
         """Test creation with minimal config and verify defaults."""
         args = LLMServingArgs(llm_configs=[llm_config])
-        
+
         # Verify llm_configs
         assert len(args.llm_configs) == 1
         assert isinstance(args.llm_configs[0], LLMConfig)
-        
+
         # Verify defaults
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
         assert args.ingress_cls_config.ingress_cls == OpenAiIngress
@@ -121,7 +121,7 @@ class TestLLMServingArgs:
         assert isinstance(args_default.ingress_cls_config, IngressClsConfig)
         assert args_default.ingress_cls_config.ingress_cls == OpenAiIngress
         assert args_default.ingress_cls_config.ingress_extra_kwargs == {}
-        
+
         # Test as dict with custom kwargs
         args_dict = LLMServingArgs(
             llm_configs=[llm_config],
@@ -129,7 +129,7 @@ class TestLLMServingArgs:
         )
         assert isinstance(args_dict.ingress_cls_config, IngressClsConfig)
         assert args_dict.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
-        
+
         # Test as object
         args_obj = LLMServingArgs(
             llm_configs=[llm_config],
@@ -137,7 +137,7 @@ class TestLLMServingArgs:
         )
         assert isinstance(args_obj.ingress_cls_config, IngressClsConfig)
         assert args_obj.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
-        
+
         # Test class loading from string
         args_str = LLMServingArgs(
             llm_configs=[llm_config],
@@ -162,7 +162,7 @@ class TestLLMServingArgs:
         )
         with pytest.raises(ValueError, match="Duplicate models found"):
             LLMServingArgs(llm_configs=[config1, config2])
-        
+
         # Empty list
         with pytest.raises(ValueError, match="List of models is empty"):
             LLMServingArgs(llm_configs=[])

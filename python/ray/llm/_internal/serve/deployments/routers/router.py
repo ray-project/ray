@@ -606,7 +606,6 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, ScoreResponse):
                 return JSONResponse(content=result.model_dump())
 
-
     @classmethod
     def get_deployment_options(
         cls, llm_configs: Optional[List[LLMConfig]] = None
