@@ -486,7 +486,10 @@ class ActorPoolMapOperator(MapOperator):
     def per_task_resource_allocation(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        # For Actor tasks resource allocation is determined as:
+        #   - Per actor resource allocation divided by
+        #   - Actor's max task concurrency
+        max_concurrency = self._actor_pool.max_actor_concurrency()
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
 
