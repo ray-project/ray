@@ -106,6 +106,26 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_1.node_lifecycle_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_1.node_lifecycle_event().state_transitions(0).state(),
             rpc::events::NodeLifecycleEvent::ALIVE);
+  ASSERT_EQ(ray_event_1.node_lifecycle_event().state_transitions(0).alive_sub_state(),
+            rpc::events::NodeLifecycleEvent::UNSPECIFIED);
+
+  // Test drain node lifecycle event only export one event
+  rpc::syncer::ResourceViewSyncMessage sync_message;
+  sync_message.set_is_draining(true);
+  node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
+  node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
+  auto drain_events = fake_ray_event_recorder_->FlushBuffer();
+  ASSERT_EQ(drain_events.size(), 1);
+  auto ray_event_02 = std::move(*drain_events[0]).Serialize();
+  ASSERT_EQ(ray_event_02.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
+  ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
+  ASSERT_EQ(ray_event_02.session_name(), "test_session_name");
+  ASSERT_EQ(ray_event_02.node_lifecycle_event().node_id(), node->node_id());
+  ASSERT_EQ(ray_event_02.node_lifecycle_event().state_transitions(0).state(),
+            rpc::events::NodeLifecycleEvent::ALIVE);
+  ASSERT_EQ(ray_event_02.node_lifecycle_event().state_transitions(0).alive_sub_state(),
+            rpc::events::NodeLifecycleEvent::DRAINING);
 
   // Remove the node from the manager
   rpc::UnregisterNodeRequest unregister_request;
