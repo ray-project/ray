@@ -5,8 +5,6 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
-import pandas as pd
-
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.train.v2._internal.constants import (
@@ -510,33 +508,10 @@ class TrainController:
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
-        storage = self._checkpoint_manager._storage_context
-
-        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
-        latest_metrics = (
-            latest_checkpoint_result.metrics if latest_checkpoint_result else None
-        )
-        latest_checkpoint = (
-            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
-        )
-        best_checkpoints = [
-            (r.checkpoint, r.metrics)
-            for r in self._checkpoint_manager.best_checkpoint_results
-        ]
-
-        # Provide the history of metrics attached to checkpoints as a dataframe.
-        metrics_dataframe = None
-        if best_checkpoints:
-            metrics_dataframe = pd.DataFrame([m for _, m in best_checkpoints])
-
-        return Result(
-            metrics=latest_metrics,
-            checkpoint=latest_checkpoint,
+        return Result.from_checkpoint_manager(
+            checkpoint_manager=self._checkpoint_manager,
+            storage_context=self._checkpoint_manager._storage_context,
             error=self.get_training_failed_error(),
-            path=storage.experiment_fs_path,
-            best_checkpoints=best_checkpoints,
-            metrics_dataframe=metrics_dataframe,
-            _storage_filesystem=storage.storage_filesystem,
         )
 
     def get_result(self) -> Result:
