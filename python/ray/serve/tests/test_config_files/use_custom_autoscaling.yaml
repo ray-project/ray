@@ -13,4 +13,4 @@ applications:
       upscale_delay_s: 1
       downscale_delay_s: 2
       policy:
-        name: ray.serve.tests.test_config_files.use_custom_autoscaling_policy.custom_autoscaling_policy
+        policy_function: ray.serve.tests.test_config_files.use_custom_autoscaling_policy.custom_autoscaling_policy

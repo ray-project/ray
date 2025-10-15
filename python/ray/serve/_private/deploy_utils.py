@@ -106,9 +106,9 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
-    autoscaling_policy_names = [
+    autoscaling_policy_functions = [
         deployment.autoscaling_config.get("policy", {}).get(
-            "name", DEFAULT_AUTOSCALING_POLICY_NAME
+            "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
         )
         for deployment in app_config.deployments
         if isinstance(deployment.autoscaling_config, dict)
@@ -125,7 +125,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
-            "autoscaling_policy_names": autoscaling_policy_names,
+            "autoscaling_policy_functions": autoscaling_policy_functions,
             "request_router_cls_names": request_router_cls_names,
         },
         sort_keys=True,

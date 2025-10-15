@@ -13,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -227,20 +228,25 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
     ):
         """
+        Initialize an ApplicationState instance.
+
         Args:
             name: Application name.
-            deployment_state_manager: State manager for all deployments
-                in the cluster.
-            endpoint_state: State manager for endpoints in the system.
+            deployment_state_manager: Manages the state of all deployments in the cluster.
+            autoscaling_state_manager: Manages autoscaling decisions in the cluster.
+            endpoint_state: Manages endpoints in the system.
+            logging_config: Logging configuration schema.
         """
 
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
@@ -435,6 +441,57 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self) -> bool:
+        """Determine if autoscaling is enabled for the application.
+
+        Returns:
+            Autoscaling is enabled for the application if any of the deployments have autoscaling enabled.
+        """
+
+        return self._autoscaling_state_manager.should_autoscale_application(self._name)
+
+    def autoscale(self) -> bool:
+        """
+        Apply the autoscaling decisions for the application.
+        If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
+
+        Returns:
+            True if there is a change to number of replicas for any deployment. False otherwise.
+        """
+        target_deployments = self.target_deployments
+        if len(target_deployments) == 0:
+            return False
+
+        deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
+        for deployment_name in target_deployments:
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+            target_num_replicas = (
+                self._deployment_state_manager.get_deployment_target_num_replicas(
+                    deployment_id
+                )
+            )
+            if target_num_replicas is None:
+                continue
+            deployment_to_target_num_replicas[deployment_id] = target_num_replicas
+
+        if len(deployment_to_target_num_replicas) == 0:
+            return False
+        decisions: Dict[
+            DeploymentID, int
+        ] = self._autoscaling_state_manager.get_decision_num_replicas(
+            self._name, deployment_to_target_num_replicas
+        )
+
+        target_state_changed = False
+        for deployment_id, decision_num_replicas in decisions.items():
+            target_state_changed = (
+                self._deployment_state_manager.autoscale(
+                    deployment_id, decision_num_replicas
+                )
+                or target_state_changed
+            )
+        return target_state_changed
+
     def apply_deployment_info(
         self,
         deployment_name: str,
@@ -575,14 +632,14 @@ class ApplicationState:
             ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
-            deployment_to_autoscaling_policy_name = {}
+            deployment_to_autoscaling_policy_function = {}
             for deployment in config.deployments:
                 # Since we are using configs to extract the autoscaling policy name, it is guaranteed that the the type of policy name is a string
                 if isinstance(deployment.autoscaling_config, dict):
-                    deployment_to_autoscaling_policy_name[
+                    deployment_to_autoscaling_policy_function[
                         deployment.name
                     ] = deployment.autoscaling_config.get("policy", {}).get(
-                        "name", DEFAULT_AUTOSCALING_POLICY_NAME
+                        "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
                     )
 
             deployment_to_request_router_cls = {}
@@ -606,7 +663,7 @@ class ApplicationState:
                 config.name,
                 config.args,
                 self._logging_config,
-                deployment_to_autoscaling_policy_name,
+                deployment_to_autoscaling_policy_function,
                 deployment_to_request_router_cls,
             )
             self._build_app_task_info = BuildAppTaskInfo(
@@ -939,11 +996,13 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
@@ -962,6 +1021,7 @@ class ApplicationStateManager:
                 app_state = ApplicationState(
                     app_name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1008,6 +1068,7 @@ class ApplicationStateManager:
                 self._application_states[name] = ApplicationState(
                     name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1058,6 +1119,7 @@ class ApplicationStateManager:
                 self._application_states[app_config.name] = ApplicationState(
                     app_config.name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
                 )
@@ -1160,6 +1222,8 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
+            if app.should_autoscale():
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
@@ -1220,7 +1284,7 @@ def build_serve_application(
     name: str,
     args: Dict,
     logging_config: LoggingConfig,
-    deployment_to_autoscaling_policy_name: Dict[str, str],
+    deployment_to_autoscaling_policy_function: Dict[str, str],
     deployment_to_request_router_cls: Dict[str, str],
 ) -> Tuple[Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
@@ -1233,8 +1297,8 @@ def build_serve_application(
             without removing existing applications.
         args: Arguments to be passed to the application builder.
         logging_config: the logging config for the build app task.
-        deployment_to_autoscaling_policy_name: a dictionary mapping deployment names to autoscaling policy names
-        deployment_to_request_router_cls: a dictionary mapping deployment names to request router classe names
+        deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
+        deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -1272,9 +1336,11 @@ def build_serve_application(
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
-            if deployment.name in deployment_to_autoscaling_policy_name:
+            if deployment.name in deployment_to_autoscaling_policy_function:
                 deployment_to_serialized_autoscaling_policy_def = cloudpickle.dumps(
-                    import_attr(deployment_to_autoscaling_policy_name[deployment.name])
+                    import_attr(
+                        deployment_to_autoscaling_policy_function[deployment.name]
+                    )
                 )
             if deployment.name in deployment_to_request_router_cls:
                 deployment_to_serialized_request_router_cls = cloudpickle.dumps(
