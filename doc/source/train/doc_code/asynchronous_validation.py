@@ -105,6 +105,8 @@ class Predictor:
 
 
 def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+    # Set name to avoid confusion; default name is "Dataset"
+    config["dataset"].set_name("validation")
     eval_res = config["dataset"].map_batches(
         Predictor,
         batch_size=128,
