@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 if TYPE_CHECKING:
     from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
@@ -58,11 +58,11 @@ class CallbackBase:
         ctx_kwargs = ctx_kwargs or {}
         self.ctx = CallbackCtx(**ctx_kwargs)
 
-    async def on_before_node_init(self) -> Awaitable[None]:
+    async def on_before_node_init(self) -> None:
         """Called before node initialization begins."""
         pass
 
-    async def on_after_node_init(self) -> Awaitable[None]:
+    async def on_after_node_init(self) -> None:
         """Called after node initialization completes."""
         pass
 
@@ -70,7 +70,7 @@ class CallbackBase:
         """Called before model files are downloaded on each node."""
         pass
 
-    def _get_method(self, method_name: str) -> Callable:
+    def _get_method(self, method_name: str) -> Tuple[Callable, bool]:
         """Get a callback method."""
         if not hasattr(self, method_name):
             raise AttributeError(
@@ -90,7 +90,7 @@ class CallbackBase:
                 f"Error running callback method '{method_name}' on {type(self).__name__}: {str(e)}"
             )
 
-    async def run_callback(self, method_name: str) -> Awaitable[None]:
+    async def run_callback(self, method_name: str) -> None:
         """Run a callback method either synchronously or asynchronously.
 
         Args:
