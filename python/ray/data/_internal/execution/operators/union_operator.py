@@ -73,7 +73,10 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         return total_rows
 
     def internal_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+        return sum(len(bundle.block_refs) for q in self._input_buffers for bundle in q)
+
+    def internal_queue_size_bytes(self) -> int:
+        return sum(bundle.size_bytes() for bundle in self._input_buffers)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
