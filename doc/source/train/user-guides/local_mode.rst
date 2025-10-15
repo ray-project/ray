@@ -119,7 +119,7 @@ First, create your training script (``train_script.py``):
         # Load dataset with file locking to avoid multiple downloads
         transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
         data_dir = "./data"
-        
+        data_dir = "./data"
         # Only local rank 0 downloads the dataset
         local_rank = get_context().get_local_rank()
         if local_rank == 0:
