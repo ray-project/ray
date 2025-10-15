@@ -2391,15 +2391,15 @@ ninja==1.11.1.4 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   vllm
     #   xgrammar
-nixl==0.6.0 \
-    --hash=sha256:1e703abfa56fb020831df8940539a4447205aa593632ace676cb2db93c8862ee \
-    --hash=sha256:4468619d1730aed076ad7de5aa206d6def4c61ae8a19067dbe31bc2846699e4a \
-    --hash=sha256:5368f36bc50ba9fb1aa1b6b7a9b083dfd19af0a45d1649142785ec9bee6b7919 \
-    --hash=sha256:6cff5aa014b80b3d17f364c21367dd055838ba6dcfaa4c50dc09b056276e8e14 \
-    --hash=sha256:ac733f706c80edf4fa9d3c2325cfb50671952b5aec5cf6a479c71e1ad175a2a0 \
-    --hash=sha256:b4a21d381cb78f92be695fb614b33fc8979a2d37f1ca6951121bd2fcccaf9daa \
-    --hash=sha256:b4dafa2b59d96c57ab7c036b6dcf41def4c28619415d6ff751190d94f321eef7 \
-    --hash=sha256:e5bc4b0a901a97e681b6f2b54a798cb8743c79bb5f4e4e4e68f06b913da2cfc9
+nixl==0.6.1 \
+    --hash=sha256:24e9e98a72839d762bedb8faca010c5878aa0b2d5624a1590d6a588aab1d223e \
+    --hash=sha256:2a9f29718e5dde20ee9e6e5fb25411d1950ab84733e0d4fceb8bb6ccf555a1e5 \
+    --hash=sha256:77eab96bef382bfb91b9d6222e5581e49b193fcf573b38dcaa7a296822a2894e \
+    --hash=sha256:7abbaccc88f0330d38e5344efa4a0768fe523e9a0083b785ea60da858d73b265 \
+    --hash=sha256:831affb62a6ff6199e41ffdccaab3430cb61bf3ca71e597ca214d2db26620955 \
+    --hash=sha256:8507c73d9bc044dd921edbef81ebae3e0750584a70a63ea90e5ade79233535d2 \
+    --hash=sha256:d28c348371045962b109d5ebf1ab054017fd9c89a6d9167902c62dc793465e2d \
+    --hash=sha256:f562139f23609336e5254b96e07b20b3298cca81ddc7549fa2da6dd788a80564
     # via -r python/requirements/llm/llm-requirements.txt
 notebook==6.5.7 \
     --hash=sha256:04eb9011dfac634fbd4442adaf0a8c27cd26beef831fe1d19faf930c327768e4 \
