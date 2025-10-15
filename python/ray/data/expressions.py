@@ -489,7 +489,7 @@ class Expr(ABC):
             >>> # Create an expression with an alias
             >>> expr = (col("price") * col("quantity")).alias("total_cost")
         """
-        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
+        return AliasExpr(expr=self, _name=name)
 
 
 @DeveloperAPI(stability="alpha")
