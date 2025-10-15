@@ -34,7 +34,7 @@ from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import _ray_start, ray_start_regular
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -711,49 +711,42 @@ for i in range(100):
 
 
 @pytest.mark.asyncio
-async def test_tail_job_logs_websocket_abnormal_closure():
+async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
     """
     Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
 
     This test starts its own Ray cluster using default ports,
     then forcefully stops Ray while tailing logs to simulate an abnormal WebSocket closure.
     """
-    subprocess.check_output(["ray", "start", "--head"])
-    address = "127.0.0.1:8265"
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(format_web_url(dashboard_url))
 
-    try:
-        assert wait_until_server_available(address)
-        client = JobSubmissionClient(format_web_url(address))
-
-        # Submit a long-running job
-        driver_script = """
+    # Submit a long-running job
+    driver_script = """
 import time
 for i in range(100):
     print("Hello", i)
     time.sleep(0.5)
 """
-        entrypoint = f"python -c '{driver_script}'"
-        job_id = client.submit_job(entrypoint=entrypoint)
+    entrypoint = f"python -c '{driver_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint)
 
-        # Start tailing logs and stop Ray while tailing
-        # Expect RuntimeError when WebSocket closes abnormally
-        with pytest.raises(
-            RuntimeError,
-            match="WebSocket connection closed unexpectedly with close code",
-        ):
-            i = 0
-            async for lines in client.tail_job_logs(job_id):
-                print(lines, end="")
-                i += 1
+    # Start tailing logs and stop Ray while tailing
+    # Expect RuntimeError when WebSocket closes abnormally
+    with pytest.raises(
+        RuntimeError,
+        match="WebSocket connection closed unexpectedly with close code",
+    ):
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            i += 1
 
-                # Run ray stop to terminate Ray after receiving a few log lines
-                if i == 3:
-                    print("\nStopping Ray cluster forcefully...")
-                    subprocess.check_output(["ray", "stop", "--force"])
-
-    finally:
-        # Ensure Ray is stopped even if test fails
-        subprocess.check_output(["ray", "stop", "--force"])
+            # Run ray stop to terminate Ray after receiving a few log lines
+            if i == 3:
+                print("\nStopping Ray cluster forcefully...")
+                ray.shutdown()
+                # subprocess.check_output(["ray", "stop", "--force"])
 
 
 def _hook(env):
