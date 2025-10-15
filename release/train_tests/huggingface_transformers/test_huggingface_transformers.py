@@ -1,5 +1,4 @@
 import os
-import pytest
 
 import numpy as np
 import evaluate
@@ -102,6 +101,4 @@ def test_huggingface_transformers():
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    test_huggingface_transformers()

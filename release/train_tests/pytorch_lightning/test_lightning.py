@@ -1,6 +1,5 @@
 import os
 import tempfile
-import pytest
 
 import torch
 from torch.utils.data import DataLoader
@@ -91,6 +90,4 @@ def test_lightning_train_run():
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    test_lightning_train_run()

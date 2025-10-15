@@ -1,5 +1,4 @@
 import tempfile
-import pytest
 
 import torch
 import evaluate
@@ -159,6 +158,4 @@ def test_huggingface_accelerate():
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    test_huggingface_accelerate()
