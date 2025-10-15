@@ -1695,7 +1695,9 @@ class ActorClass(Generic[T]):
                 "The actor will be stuck in the RESTARTING state forever if it's restartable until users explicitly kill it."
             )
 
-        if use_placement_group:
+        if scheduling_strategy is None or isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
             # TODO(jjyao) Clean this up once the
             # placement_group option is removed.
             # We should also consider pushing this logic down to c++
