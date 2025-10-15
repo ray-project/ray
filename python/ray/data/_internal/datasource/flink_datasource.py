@@ -46,6 +46,7 @@ class FlinkDatasource(UnboundDatasource):
         max_records_per_task: int = 1000,
         start_position: Optional[str] = None,
         end_position: Optional[str] = None,
+        poll_interval_seconds: float = 5.0,
     ):
         """Initialize Flink datasource.
 
@@ -55,6 +56,7 @@ class FlinkDatasource(UnboundDatasource):
             max_records_per_task: Maximum records per task
             start_position: Starting position for reading
             end_position: Ending position for reading
+            poll_interval_seconds: Seconds between polling for new data (default 5.0s)
 
         Raises:
             ValueError: If required configuration is missing
@@ -91,6 +93,7 @@ class FlinkDatasource(UnboundDatasource):
         self.max_records_per_task = max_records_per_task
         self.start_position = start_position
         self.end_position = end_position
+        self.poll_interval_seconds = poll_interval_seconds
 
     def _get_job_parallelism(self) -> int:
         """Query Flink job parallelism via REST API."""
@@ -156,6 +159,7 @@ class FlinkDatasource(UnboundDatasource):
         source_type_val = self.source_type_val
         flink_config = self.flink_config
         max_records_per_task = self.max_records_per_task
+        poll_interval_seconds = self.poll_interval_seconds
 
         for task_id in range(num_tasks):
 
@@ -164,6 +168,7 @@ class FlinkDatasource(UnboundDatasource):
                 source_type_val: str = source_type_val,
                 flink_config: Dict[str, Any] = flink_config,
                 max_records_per_task: int = max_records_per_task,
+                poll_interval_seconds: float = poll_interval_seconds,
             ):
                 def flink_read_fn() -> Iterator[pa.Table]:
                     """Read function for Flink job output via REST API."""

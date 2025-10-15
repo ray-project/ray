@@ -49,6 +49,11 @@ class StreamingTrigger:
         default_factory=lambda: timedelta(minutes=5)
     )
 
+    # Continuous mode behavior controls
+    max_consecutive_empty_batches: Optional[int] = None  # Stop after N empty batches
+    idle_timeout: Optional[Union[str, timedelta]] = None  # Stop if no data for X time
+    poll_timeout_seconds: float = 30.0  # How long datasources wait for data
+
     def __post_init__(self):
         if self.trigger_type == "fixed_interval" and self.interval is None:
             raise ValueError("Fixed interval trigger requires an interval")
@@ -66,6 +71,10 @@ class StreamingTrigger:
         # Parse string intervals to timedelta
         if isinstance(self.interval, str):
             self.interval = self._parse_interval(self.interval)
+
+        # Parse idle_timeout if it's a string
+        if isinstance(self.idle_timeout, str):
+            self.idle_timeout = self._parse_interval(self.idle_timeout)
 
     @staticmethod
     def _validate_cron_expression(cron_expr: str) -> None:

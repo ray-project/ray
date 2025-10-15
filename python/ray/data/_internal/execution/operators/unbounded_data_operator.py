@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -88,6 +89,13 @@ class UnboundedDataOperator(PhysicalOperator):
         self._bytes_produced = 0
         self._rows_produced = 0
 
+        # Adaptive backoff for continuous mode
+        self._consecutive_empty_batches = 0
+        self._last_data_time = datetime.now()  # Track when we last received data
+        self._min_backoff_seconds = 0.1  # Start with 100ms
+        self._max_backoff_seconds = 5.0  # Cap at 5 seconds
+        self._total_batches_processed = 0  # Track total batches for stop conditions
+
     def start(self, options: ExecutionOptions) -> None:
         """Start the streaming operator."""
         super().start(options)
@@ -125,6 +133,12 @@ class UnboundedDataOperator(PhysicalOperator):
             # One-time trigger: only produce batch if we haven't already
             return not self._batch_produced
 
+        # Check if we should stop due to idle timeout or consecutive empty batches
+        if self._should_stop_continuous():
+            logger.info("Stop condition met for continuous streaming")
+            self._completed = True
+            return False
+
         # Check system backpressure before creating new batches
         # This prevents overwhelming downstream operators or running out of memory
         if self._check_backpressure():
@@ -147,6 +161,81 @@ class UnboundedDataOperator(PhysicalOperator):
             )
 
         return False
+
+    def _should_stop_continuous(self) -> bool:
+        """Check if continuous streaming should stop based on configured conditions.
+
+        Returns:
+            True if streaming should stop, False otherwise
+        """
+        # Only apply these checks for continuous mode
+        if self.trigger.trigger_type != "continuous":
+            return False
+
+        # Check max_consecutive_empty_batches
+        if (
+            self.trigger.max_consecutive_empty_batches is not None
+            and self._consecutive_empty_batches
+            >= self.trigger.max_consecutive_empty_batches
+        ):
+            logger.info(
+                f"Stopping continuous stream: reached max consecutive empty batches "
+                f"({self._consecutive_empty_batches})"
+            )
+            return True
+
+        # Check idle_timeout
+        if self.trigger.idle_timeout is not None:
+            time_since_data = datetime.now() - self._last_data_time
+            if time_since_data >= self.trigger.idle_timeout:
+                logger.info(
+                    f"Stopping continuous stream: idle timeout reached "
+                    f"({time_since_data.total_seconds():.1f}s > "
+                    f"{self.trigger.idle_timeout.total_seconds():.1f}s)"
+                )
+                return True
+
+        # Check max_batches if set
+        if (
+            self.trigger.max_batches is not None
+            and self._total_batches_processed >= self.trigger.max_batches
+        ):
+            logger.info(
+                f"Stopping continuous stream: reached max batches "
+                f"({self._total_batches_processed})"
+            )
+            return True
+
+        return False
+
+    def _apply_adaptive_backoff(self) -> None:
+        """Apply exponential backoff when consecutive empty batches are detected.
+
+        This prevents busy-waiting when the data source is temporarily idle.
+        The backoff delay increases exponentially with consecutive empty batches:
+        - 1st empty: 100ms
+        - 2nd empty: 200ms
+        - 3rd empty: 400ms
+        - ...
+        - Capped at 5 seconds
+
+        The backoff resets to minimum when data is received.
+        """
+        if self._consecutive_empty_batches == 0:
+            return
+
+        # Calculate exponential backoff: min_delay * (2 ^ consecutive_empty)
+        backoff_delay = min(
+            self._min_backoff_seconds * (2 ** (self._consecutive_empty_batches - 1)),
+            self._max_backoff_seconds,
+        )
+
+        if backoff_delay > 0:
+            logger.debug(
+                f"Applying adaptive backoff: {backoff_delay:.2f}s "
+                f"({self._consecutive_empty_batches} consecutive empty batches)"
+            )
+            time.sleep(backoff_delay)
 
     def _check_backpressure(self) -> bool:
         """Check if backpressure conditions are met to prevent overwhelming the system.
@@ -481,6 +570,7 @@ class UnboundedDataOperator(PhysicalOperator):
         2. Retrieve the result (PyArrow tables)
         3. Convert to RefBundle for Ray Data's execution engine
         4. Update performance metrics
+        5. Track empty batches for adaptive backoff
 
         Returns:
             RefBundle containing blocks from the completed read task
@@ -501,12 +591,13 @@ class UnboundedDataOperator(PhysicalOperator):
         )
 
         if not ready:
-            # No tasks completed yet - for continuous mode, create new batch
+            # No tasks completed yet - for continuous mode, apply backoff and create new batch
             # This ensures continuous streaming doesn't stall between microbatches
             if (
                 self.trigger.trigger_type == "continuous"
                 and self._should_trigger_new_batch()
             ):
+                self._apply_adaptive_backoff()
                 self._create_read_tasks()
             raise StopIteration("No tasks ready")
 
@@ -518,6 +609,10 @@ class UnboundedDataOperator(PhysicalOperator):
         # This is perfect for microbatch - we get all tables from this batch
         try:
             result = ray.get(ready[0])
+
+            # Track whether this batch had data
+            has_data = False
+            bundle = None
 
             # Convert result to RefBundle format expected by Ray Data
             # For Kafka/Kinesis/Flink, result is an iterable of PyArrow tables
@@ -536,15 +631,37 @@ class UnboundedDataOperator(PhysicalOperator):
                     # (num_rows, size_bytes, schema, etc.)
                     metadata_list.append(None)
 
+                has_data = len(block_refs) > 0
                 bundle = RefBundle(refs=block_refs, metadata=metadata_list)
-                self._update_performance_metrics(bundle)
-                return bundle
             else:
                 # Single block result (less common, for simple datasources)
+                has_data = result is not None
                 block_ref = ray.put(result)
                 bundle = RefBundle(refs=[block_ref], metadata=[None])
-                self._update_performance_metrics(bundle)
-                return bundle
+
+            # Update empty batch tracking
+            self._total_batches_processed += 1
+            if has_data and len(bundle.refs) > 0:
+                # Reset empty batch counter when we get data
+                if self._consecutive_empty_batches > 0:
+                    logger.debug(
+                        f"Received data after {self._consecutive_empty_batches} "
+                        f"empty batches, resetting backoff"
+                    )
+                self._consecutive_empty_batches = 0
+                self._last_data_time = datetime.now()
+            else:
+                # Increment empty batch counter
+                self._consecutive_empty_batches += 1
+                if self._consecutive_empty_batches % 10 == 0:
+                    # Log every 10 consecutive empty batches
+                    logger.info(
+                        f"Continuous stream: {self._consecutive_empty_batches} "
+                        f"consecutive empty batches"
+                    )
+
+            self._update_performance_metrics(bundle)
+            return bundle
 
         except Exception as e:
             # Log and propagate errors from read tasks

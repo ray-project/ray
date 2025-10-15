@@ -45,6 +45,7 @@ class KafkaDatasource(UnboundDatasource):
         max_records_per_task: int = 1000,
         start_offset: Optional[str] = None,
         end_offset: Optional[str] = None,
+        poll_timeout_ms: int = 30000,
     ):
         """Initialize Kafka datasource.
 
@@ -63,6 +64,7 @@ class KafkaDatasource(UnboundDatasource):
             max_records_per_task: Maximum records per task per batch
             start_offset: Starting offset ('earliest', 'latest', or numeric)
             end_offset: Ending offset (numeric, or None for unbounded)
+            poll_timeout_ms: Timeout in milliseconds to wait for messages (default 30000ms/30s)
 
         Raises:
             ValueError: If required configuration is missing
@@ -86,6 +88,7 @@ class KafkaDatasource(UnboundDatasource):
         self.max_records_per_task = max_records_per_task
         self.start_offset = start_offset or "latest"
         self.end_offset = end_offset
+        self.poll_timeout_ms = poll_timeout_ms
 
     def _get_read_tasks_for_partition(
         self,
@@ -113,6 +116,7 @@ class KafkaDatasource(UnboundDatasource):
         max_records_per_task = self.max_records_per_task
         start_offset = self.start_offset
         end_offset = self.end_offset
+        poll_timeout_ms = self.poll_timeout_ms
 
         for topic in topics_to_process:
 
@@ -122,6 +126,7 @@ class KafkaDatasource(UnboundDatasource):
                 max_records_per_task: int = max_records_per_task,
                 start_offset: str = start_offset,
                 end_offset: Optional[str] = end_offset,
+                poll_timeout_ms: int = poll_timeout_ms,
             ):
                 """Create a Kafka read function with captured variables.
 
@@ -318,9 +323,10 @@ class KafkaDatasource(UnboundDatasource):
                         while records_read < max_records_per_task:
                             # Poll for a batch of messages from Kafka
                             # timeout_ms: how long to wait if no messages available
+                            # Default 30s allows blocking for data rather than busy-waiting
                             # max_records: limit batch size to support incremental yielding
                             msg_batch = consumer.poll(
-                                timeout_ms=kafka_config.get("poll_timeout_ms", 1000),
+                                timeout_ms=poll_timeout_ms,
                                 max_records=min(
                                     batch_size, max_records_per_task - records_read
                                 ),

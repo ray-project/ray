@@ -47,6 +47,7 @@ class KinesisDatasource(UnboundDatasource):
         end_sequence: Optional[str] = None,
         enhanced_fan_out: bool = False,
         consumer_name: Optional[str] = None,
+        poll_interval_seconds: float = 5.0,
     ):
         """Initialize Kinesis datasource.
 
@@ -58,6 +59,7 @@ class KinesisDatasource(UnboundDatasource):
             end_sequence: Ending sequence number for reading
             enhanced_fan_out: Whether to use enhanced fan-out (EFO) consumers
             consumer_name: Consumer name for enhanced fan-out
+            poll_interval_seconds: Seconds between Kinesis GetRecords calls (default 5.0s)
 
         Raises:
             ValueError: If required configuration is missing
@@ -90,6 +92,7 @@ class KinesisDatasource(UnboundDatasource):
         self.end_sequence = end_sequence
         self.enhanced_fan_out = enhanced_fan_out
         self.consumer_name = consumer_name
+        self.poll_interval_seconds = poll_interval_seconds
 
     def _get_read_tasks_for_partition(
         self,
@@ -151,6 +154,7 @@ class KinesisDatasource(UnboundDatasource):
         end_sequence = self.end_sequence
         enhanced_fan_out = self.enhanced_fan_out
         consumer_name = self.consumer_name
+        poll_interval_seconds = self.poll_interval_seconds
 
         for shard_id_val in shard_ids:
 
@@ -163,6 +167,7 @@ class KinesisDatasource(UnboundDatasource):
                 end_sequence: Optional[str] = end_sequence,
                 enhanced_fan_out: bool = enhanced_fan_out,
                 consumer_name: Optional[str] = consumer_name,
+                poll_interval_seconds: float = poll_interval_seconds,
             ):
                 """Create a Kinesis read function with captured variables.
 
@@ -449,11 +454,12 @@ class KinesisDatasource(UnboundDatasource):
                                 # Get next iterator
                                 shard_iterator = response.get("NextShardIterator")
 
-                                # Respect Kinesis rate limits - if MillisBehindLatest is 0, add small delay
+                                # Respect Kinesis rate limits - if MillisBehindLatest is 0, add delay
+                                # This prevents busy-waiting when caught up to latest data
                                 if response.get("MillisBehindLatest", 0) == 0:
                                     import time
 
-                                    time.sleep(0.2)  # 200ms delay when caught up
+                                    time.sleep(poll_interval_seconds)
 
                                 # If no more records and we haven't hit our limit, break
                                 if not response["Records"]:
