@@ -3,7 +3,7 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport int32_t as c_int32_t
 from libcpp.memory cimport unique_ptr, make_unique, shared_ptr
 from ray.includes.common cimport (
-    CThreadedRayletClient,
+    CRayletClientWithIoContext,
     CRayStatus,
     CAddress,
     ConnectOnSingletonIoContext
@@ -12,7 +12,7 @@ from cython.operator import dereference
 
 cdef class RayletClient:
     cdef:
-        unique_ptr[CThreadedRayletClient] inner
+        unique_ptr[CRayletClientWithIoContext] inner
 
     def __cinit__(self, ip_address: str, port: int):
         cdef:
@@ -20,7 +20,7 @@ cdef class RayletClient:
             c_int32_t c_port
         c_ip_address = ip_address.encode('utf-8')
         c_port = <int32_t>port
-        self.inner = make_unique[CThreadedRayletClient](c_ip_address, c_port)
+        self.inner = make_unique[CRayletClientWithIoContext](c_ip_address, c_port)
 
     def get_worker_pids(self, timeout_ms: int = 1000) -> list[int]:
         """Get the PIDs of all workers registered with the raylet."""

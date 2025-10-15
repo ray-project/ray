@@ -763,9 +763,9 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
-cdef extern from "ray/raylet_rpc_client/threaded_raylet_client.h" nogil:
-    cdef cppclass CThreadedRayletClient "ray::rpc::ThreadedRayletClient":
-        CThreadedRayletClient(const c_string &ip_address, int port)
+cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
+    cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
+        CRayletClientWithIoContext(const c_string &ip_address, int port)
         CRayStatus GetWorkerPIDs(shared_ptr[c_vector[int32_t]] worker_pids,
                                  int64_t timeout_ms)
 

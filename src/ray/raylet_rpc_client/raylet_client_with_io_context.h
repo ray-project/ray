@@ -20,16 +20,17 @@
 namespace ray {
 namespace rpc {
 
-/// Threaded raylet client is provided for python (e.g. ReporterAgent) to communicate with
-/// raylet. It creates and manages a separate thread to run the grpc event loop
-class ThreadedRayletClient : public RayletClient {
+/// Raylet client with io context is provided for python (e.g. ReporterAgent) to
+/// communicate with raylet. It creates and manages a separate thread to run the grpc
+/// event loop
+class RayletClientWithIoContext {
  public:
-  /// Connect to the raylet. Only used for cython wrapper `CThreadedRayletClient`
+  /// Connect to the raylet. Only used for cython wrapper `CRayletClientWithIoContext`
   /// new io service and new thread will be created inside.
   ///
   /// \param ip_address The IP address of raylet.
   /// \param port The port of raylet.
-  ThreadedRayletClient(const std::string &ip_address, int port);
+  RayletClientWithIoContext(const std::string &ip_address, int port);
 
   /// Get the worker pids from raylet.
   /// \param worker_pids The output worker pids.
@@ -42,8 +43,7 @@ class ThreadedRayletClient : public RayletClient {
   /// client call manager is created inside the raylet client, it should be kept active
   /// during the whole lifetime of client.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::string ip_address_;
-  int port_;
+  std::unique_ptr<rpc::RayletClient> raylet_client_;
 };
 
 }  // namespace rpc

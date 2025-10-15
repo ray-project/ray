@@ -44,9 +44,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "threaded_raylet_client_lib",
-    srcs = ["threaded_raylet_client.cc"],
-    hdrs = ["threaded_raylet_client.h"],
+    name = "raylet_client_with_io_context_lib",
+    srcs = ["raylet_client_with_io_context.cc"],
+    hdrs = ["raylet_client_with_io_context.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":raylet_client_interface",

@@ -50,8 +50,6 @@ class RayletClient : public RayletClientInterface {
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback);
 
-  RayletClient() = default;
-
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   void RequestWorkerLease(
@@ -164,6 +162,13 @@ class RayletClient : public RayletClientInterface {
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
+
+  /// Get the worker pids from raylet.
+  /// \param worker_pids The output worker pids.
+  /// \param timeout_ms The timeout in milliseconds.
+  /// \return ray::Status
+  Status GetWorkerPIDs(std::shared_ptr<std::vector<int32_t>> worker_pids,
+                       int64_t timeout_ms);
 
  protected:
   /// gRPC client to the NodeManagerService.
