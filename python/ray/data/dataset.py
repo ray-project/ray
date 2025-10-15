@@ -6171,9 +6171,9 @@ class Dataset:
                 placeholder column name in aggregators.
 
         Returns:
-            A DatasetSummary object containing two PyArrow tables:
-            - schema_matching_stats: Stats that preserve original column types
-            - schema_changing_stats: Stats that transform column types
+            A DatasetSummary object with methods to access statistics and the
+            original dataset schema. Use `to_pandas()` to get all statistics
+            as a DataFrame, or `get_column_stats(col)` for a specific column
         """
         import pyarrow as pa
 
@@ -6282,8 +6282,9 @@ class Dataset:
         )
 
         return DatasetSummary(
-            schema_matching_stats=schema_matching_table,
-            schema_changing_stats=schema_changing_table,
+            _schema_matching_stats=schema_matching_table,
+            _schema_changing_stats=schema_changing_table,
+            dataset_schema=original_schema,
         )
 
     @ConsumptionAPI(pattern="Examples:")

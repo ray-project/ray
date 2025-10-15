@@ -549,19 +549,17 @@ class SummaryTableType(str, Enum):
 
 @dataclass
 class DatasetSummary:
-    """Wrapper for dataset summary statistics with type-aware table separation.
+    """Wrapper for dataset summary statistics.
 
-    This class provides a two-table structure:
-    - schema_matching_stats: Statistics that preserve the original column dtype
-    - schema_changing_stats: Statistics that don't match the original column dtype
+    Provides methods to access computed statistics.
 
     Attributes:
-        schema_matching_stats: PyArrow table with stats matching original column types
-        schema_changing_stats: PyArrow table with stats that differ from original types
+        dataset_schema: PyArrow schema of the original dataset
     """
 
-    schema_matching_stats: pa.Table
-    schema_changing_stats: pa.Table
+    _schema_matching_stats: pa.Table
+    _schema_changing_stats: pa.Table
+    dataset_schema: pa.Schema
 
     def to_pandas(self) -> pd.DataFrame:
         """Convert summary to a single pandas DataFrame.
@@ -601,8 +599,8 @@ class DatasetSummary:
                 return pd.DataFrame(result_data)
 
         # Convert both tables to pandas
-        df_matching = safe_convert_table(self.schema_matching_stats)
-        df_changing = safe_convert_table(self.schema_changing_stats)
+        df_matching = safe_convert_table(self._schema_matching_stats)
+        df_changing = safe_convert_table(self._schema_changing_stats)
 
         # Set 'statistic' as index for easier merging
         df_matching = df_matching.set_index("statistic")
@@ -627,14 +625,14 @@ class DatasetSummary:
         dfs = []
 
         # Get from schema-matching table if column exists
-        if column in self.schema_matching_stats.schema.names:
-            df1 = self.schema_matching_stats.to_pandas()[["statistic", column]]
+        if column in self._schema_matching_stats.schema.names:
+            df1 = self._schema_matching_stats.to_pandas()[["statistic", column]]
             df1 = df1.rename(columns={column: "value"})
             dfs.append(df1)
 
         # Get from schema-changing table if column exists
-        if column in self.schema_changing_stats.schema.names:
-            df2 = self.schema_changing_stats.to_pandas()[["statistic", column]]
+        if column in self._schema_changing_stats.schema.names:
+            df2 = self._schema_changing_stats.to_pandas()[["statistic", column]]
             df2 = df2.rename(columns={column: "value"})
             dfs.append(df2)
 
@@ -649,7 +647,7 @@ class DatasetSummary:
         """String representation of DatasetSummary."""
         return (
             f"DatasetSummary(\n"
-            f"  schema_matching_stats: {self.schema_matching_stats.num_rows} rows × {self.schema_matching_stats.num_columns} columns\n"
-            f"  schema_changing_stats: {self.schema_changing_stats.num_rows} rows × {self.schema_changing_stats.num_columns} columns\n"
+            f"  schema_matching_stats: {self._schema_matching_stats.num_rows} rows × {self._schema_matching_stats.num_columns} columns\n"
+            f"  schema_changing_stats: {self._schema_changing_stats.num_rows} rows × {self._schema_changing_stats.num_columns} columns\n"
             f")"
         )
