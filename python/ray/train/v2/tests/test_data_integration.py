@@ -47,7 +47,7 @@ def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
-@pytest.mark.parametrize("datasets_to_split", ["all", ["train"]])
+@pytest.mark.parametrize("datasets_to_split", ["all", ["train"], []])
 def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
     """Tests that the dataset is sharded across a variety of num_workers."""
     NUM_ROWS = 1000
@@ -75,6 +75,13 @@ def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+def test_data_config_validation():
+    with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
+        ray.train.DataConfig(datasets_to_split="hello")
+    with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
+        ray.train.DataConfig(datasets_to_split={})
 
 
 def test_dataset_setup_callback(ray_start_4_cpus):
