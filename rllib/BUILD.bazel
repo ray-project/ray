@@ -497,7 +497,7 @@ py_test(
         "--num-aggregator-actors-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/appo/multi_agent_pong_appo.py",
+    main = "tuned_examples/appo/multi_agent_pong_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -789,7 +789,7 @@ py_test(
         "--num-cpus=4",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -812,7 +812,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "gpu",
@@ -835,7 +835,7 @@ py_test(
         "--num-learners=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -858,7 +858,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1336,7 +1336,7 @@ py_test(
         "--num-agents=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1357,7 +1357,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1379,7 +1379,7 @@ py_test(
         "--num-learners=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1401,7 +1401,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1525,7 +1525,7 @@ py_test(
         "--num-agents=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1546,7 +1546,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1568,7 +1568,7 @@ py_test(
         "--num-learners=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1590,7 +1590,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1613,7 +1613,7 @@ py_test(
         "--evaluation-num-env-runners=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1634,7 +1634,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1655,7 +1655,7 @@ py_test(
         "--num-learners=2",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1676,7 +1676,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--log-frequency=20",
     ],
-    # main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",

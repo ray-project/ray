@@ -97,6 +97,7 @@ steps:
         --only-tags gpu
         --test-env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --test-env=RLLIB_NUM_GPUS=1
+      - sleep 600
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: data tests"
@@ -175,6 +176,7 @@ steps:
         --gpus 4
         --build-name rllibgpubuild
         --only-tags multi_gpu
+      - sleep 600
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: flaky multi-gpu tests"
