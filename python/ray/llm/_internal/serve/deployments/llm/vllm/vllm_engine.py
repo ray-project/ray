@@ -184,7 +184,7 @@ class VLLMEngine(LLMEngine):
 
         await init_app_state(
             engine_client=self._engine_client,
-            # [ahao] remove vllm_config for vllm v1.12
+            # TODO (ahao): remove vllm_config for vllm v1.12
             vllm_config=vllm_engine_config,
             state=state,
             args=args,
