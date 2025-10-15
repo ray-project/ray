@@ -21,12 +21,12 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
+#include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/cgroup2/cgroup_manager.h"
-#include "ray/common/cgroup2/sysfs_cgroup_driver.h"
+#include "ray/common/cgroup2/cgroup_manager_factory.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
@@ -139,7 +139,7 @@ DEFINE_int64(system_reserved_cpu_weight,
              "The amount of cores reserved for ray system processes. It will be applied "
              "as a cpu.weight constraint to the system cgroup. 10000 - "
              "system-reserved-cpu-weight will be applied as a constraint to the "
-             "application cgroup. If enable-resource-isolation is true, then this "
+             "workers and user cgroups. If enable-resource-isolation is true, then this "
              "cannot be -1.");
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
@@ -268,88 +268,27 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-  std::unique_ptr<ray::CgroupManager> cgroup_manager;
-  AddProcessToCgroupHook add_process_to_cgroup_hook = [](const std::string &) {};
-  AddProcessToCgroupHook add_process_to_application_cgroup_hook =
-      [](const std::string &) {};
-  AddProcessToCgroupHook add_process_to_system_cgroup_hook = [](const std::string &) {};
+  // Setting up resource isolation with cgroups.
+  // The lifecycle of CgroupManager will be controlled by NodeManager.
+  std::unique_ptr<ray::CgroupManagerInterface> cgroup_manager =
+      ray::CgroupManagerFactory::Create(enable_resource_isolation,
+                                        std::move(cgroup_path),
+                                        node_id,
+                                        system_reserved_cpu_weight,
+                                        system_reserved_memory_bytes,
+                                        system_pids);
 
-  // TODO(#54703): Link OSS documentation once it's available in the error messages.
-  if (enable_resource_isolation) {
-    RAY_CHECK(!cgroup_path.empty())
-        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "cgroup_path cannot be empty.";
-    RAY_CHECK_NE(system_reserved_cpu_weight, -1)
-        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "system_reserved_cpu_weight must be set to a value between [1,10000]";
-    RAY_CHECK_NE(system_reserved_memory_bytes, -1)
-        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "system_reserved_memory_bytes must be set to a value > 0";
+  AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
+      [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
+        RAY_CHECK_OK(cgroup_mgr.AddProcessToWorkersCgroup(pid))
+            << absl::StrFormat("Failed to move process %s into the workers cgroup.", pid);
+      };
 
-    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
-        std::make_unique<ray::SysFsCgroupDriver>();
-
-    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
-        ray::CgroupManager::Create(std::move(cgroup_path),
-                                   node_id,
-                                   system_reserved_cpu_weight,
-                                   system_reserved_memory_bytes,
-                                   std::move(cgroup_driver));
-
-    // TODO(#54703) - Link to OSS documentation once available.
-    RAY_CHECK(cgroup_manager_s.ok())
-        << "Failed to start raylet. Could not create CgroupManager because of "
-        << cgroup_manager_s.ToString();
-
-    cgroup_manager = std::move(cgroup_manager_s.value());
-
-#ifndef __linux__
-    RAY_LOG(WARNING)
-        << "Resource isolation with cgroups is only supported in linux. Please set "
-           "enable_resource_isolation to false. This is likely a misconfiguration.";
-#endif
-
-    // Move system processes into the system cgroup.
-    // TODO(#54703): This logic needs to be hardened and moved out of main.cc. E.g.
-    // if system_pids is ",,,,,,", this will log an error for each empty
-    // string.
-    std::vector<std::string> system_pids_to_move;
-    if (!system_pids.empty()) {
-      system_pids_to_move = std::move(absl::StrSplit(system_pids, ","));
-    }
-    system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
-    for (const auto &pid : system_pids_to_move) {
-      ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
-      // TODO(#54703): This could be upgraded to a RAY_CHECK.
-      if (!s.ok()) {
-        RAY_LOG(WARNING) << absl::StrFormat(
-            "Failed to move process %s into system cgroup with error %s",
-            pid,
-            s.ToString());
-      }
-    }
-    add_process_to_application_cgroup_hook =
-        [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
-          ray::Status s = cgroup_mgr.AddProcessToApplicationCgroup(pid);
-          if (!s.ok()) {
-            RAY_LOG(WARNING) << absl::StrFormat(
-                "Failed to move process %s into the application cgroup with error %s.",
-                pid,
-                s.ToString());
-          }
-        };
-
-    add_process_to_system_cgroup_hook = [&cgroup_mgr =
-                                             *cgroup_manager](const std::string &pid) {
-      ray::Status s = cgroup_mgr.AddProcessToSystemCgroup(pid);
-      if (!s.ok()) {
-        RAY_LOG(WARNING) << absl::StrFormat(
-            "Failed to move process %s into the system cgroup with error %s.",
-            pid,
-            s.ToString());
-      }
-    };
-  }
+  AddProcessToCgroupHook add_process_to_system_cgroup_hook =
+      [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
+        RAY_CHECK_OK(cgroup_mgr.AddProcessToSystemCgroup(pid)) << absl::StrFormat(
+            "Failed to move process %s into the system cgroup with error.", pid);
+      };
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -388,8 +327,8 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
-  ray::stats::Gauge task_by_state_counter = ray::core::GetTaskMetric();
-  std::unique_ptr<plasma::PlasmaClient> plasma_client;
+  ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
+  std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -696,7 +635,7 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
-        std::move(add_process_to_application_cgroup_hook));
+        std::move(add_process_to_workers_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true, node_ip_address);
@@ -973,7 +912,7 @@ int main(int argc, char *argv[]) {
       return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
-    plasma_client = std::make_unique<plasma::PlasmaClient>();
+    plasma_client = std::make_shared<plasma::PlasmaClient>();
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -993,13 +932,14 @@ int main(int argc, char *argv[]) {
         *lease_dependency_manager,
         *worker_pool,
         leased_workers,
-        *plasma_client,
+        plasma_client,
         std::make_unique<ray::core::experimental::MutableObjectProvider>(
-            *plasma_client,
+            plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
-        std::move(add_process_to_system_cgroup_hook));
+        std::move(add_process_to_system_cgroup_hook),
+        std::move(cgroup_manager));
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

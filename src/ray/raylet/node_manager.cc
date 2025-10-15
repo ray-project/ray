@@ -32,6 +32,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
@@ -140,11 +141,12 @@ NodeManager::NodeManager(
     LeaseDependencyManager &lease_dependency_manager,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    plasma::PlasmaClientInterface &store_client,
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    AddProcessToCgroupHook add_process_to_system_cgroup_hook)
+    AddProcessToCgroupHook add_process_to_system_cgroup_hook,
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -157,7 +159,7 @@ NodeManager::NodeManager(
       core_worker_subscriber_(core_worker_subscriber),
       object_directory_(object_directory),
       object_manager_(object_manager),
-      store_client_(store_client),
+      store_client_(std::move(store_client)),
       mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -196,7 +198,8 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)) {
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -212,7 +215,7 @@ NodeManager::NodeManager(
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
@@ -837,6 +840,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
+  raylet_client_pool_.Disconnect(node_id);
+  worker_rpc_pool_.Disconnect(node_id);
+
   // Clean up workers that were owned by processes that were on the failed
   // node.
   for (const auto &[_, worker] : leased_workers_) {
@@ -981,8 +987,9 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
-                                              const boost::system::error_code &error) {
+void NodeManager::HandleClientConnectionError(
+    const std::shared_ptr<ClientConnection> &client,
+    const boost::system::error_code &error) {
   const std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
       error.value(),
@@ -2156,7 +2163,7 @@ void NodeManager::MarkObjectsAsFailed(
         << "Mark the object as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_.TryCreateImmediately(
+    status = store_client_->TryCreateImmediately(
         object_id,
         ref.owner_address(),
         0,
@@ -2165,7 +2172,7 @@ void NodeManager::MarkObjectsAsFailed(
         &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_.Seal(object_id);
+      status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
@@ -2457,7 +2464,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+  if (!store_client_->Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
     return false;
   }
 
@@ -2572,7 +2579,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
 }
 
 namespace {
-
 rpc::ObjectStoreStats AccumulateStoreStats(
     const std::vector<rpc::GetNodeStatsReply> &node_stats) {
   rpc::ObjectStoreStats store_stats;
@@ -2727,7 +2733,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(std::move(addr));
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
     raylet_client->GetNodeStats(
         stats_req,
         [replies, store_reply](const ray::Status &status, rpc::GetNodeStatsReply &&r) {
@@ -2788,8 +2794,7 @@ void NodeManager::TriggerGlobalGC() {
 }
 
 void NodeManager::Stop() {
-  // This never fails.
-  RAY_CHECK_OK(store_client_.Disconnect());
+  store_client_->Disconnect();
 #if !defined(_WIN32)
   // Best-effort process-group cleanup for any remaining workers before shutdown.
   if (RayConfig::instance().process_group_cleanup_enabled()) {

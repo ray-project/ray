@@ -13,6 +13,7 @@ from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -483,8 +484,11 @@ class TestTargetCapacityUpdateAndServeStatus:
         if controller_handle is None:
             assert num_running_replicas == expected_num_replicas, f"{deployment}"
         else:
+            deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
             autoscaling_metrics = ray.get(
-                controller_handle._dump_autoscaling_metrics_for_testing.remote()
+                controller_handle._get_metrics_for_deployment_for_testing.remote(
+                    deployment_id
+                )
             )
             assert num_running_replicas == expected_num_replicas, (
                 f"Status: {deployment}" f"\nAutoscaling metrics: {autoscaling_metrics}"

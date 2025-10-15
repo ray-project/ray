@@ -108,7 +108,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
-      const std::string &session_name);
+      const std::string &session_name,
+      ray::observability::MetricInterface &actor_by_state_gauge,
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
   ~GcsActorManager() override = default;
 
@@ -503,6 +505,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
