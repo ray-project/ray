@@ -252,7 +252,7 @@ inline int64_t ProtoTimestampToAbslTimeNanos(
 }
 
 namespace gcs {
-int64_t GetGcsTimeoutMs() {
+inline int64_t GetGcsTimeoutMs() {
   return absl::ToInt64Milliseconds(
       absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
 }
