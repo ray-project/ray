@@ -250,6 +250,24 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
             ["https://example.com/image.jpg"],
             "image_url_format_no_system_prompt",
         ),
+        # Test OpenAI nested format without system prompt
+        # https://github.com/openai/openai-openapi/blob/manual_spec/openapi.yaml#L1937-L1940
+        (
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.com/image.jpg"},
+                        },
+                        {"type": "text", "text": "Describe this image"},
+                    ],
+                }
+            ],
+            ["https://example.com/image.jpg"],
+            "openai_image_url_format_no_system_prompt",
+        ),
     ],
     ids=lambda x: x if isinstance(x, str) else None,
 )
@@ -260,6 +278,38 @@ def test_extract_image_info(messages, expected_images, test_description):
     image_info = udf.extract_image_info(messages)
     assert len(image_info) == len(expected_images)
     assert image_info == expected_images
+
+
+@pytest.mark.parametrize(
+    "image_url_value,test_description",
+    [
+        ({}, "missing_url"),
+        ({"url": 12345}, "non_string_url"),
+        ({"url": ""}, "empty_string_url"),
+    ],
+    ids=lambda x: x if isinstance(x, str) else None,
+)
+def test_extract_image_info_invalid_nested_image_url(image_url_value, test_description):
+    """Test that invalid nested image_url objects raise ValueError with proper message."""
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": image_url_value,
+                },
+                {"type": "text", "text": "Describe this image"},
+            ],
+        }
+    ]
+
+    with pytest.raises(
+        ValueError, match="image_url must be an object with a non-empty 'url' string"
+    ):
+        udf.extract_image_info(messages)
 
 
 if __name__ == "__main__":
