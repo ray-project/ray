@@ -37,7 +37,14 @@ def train_func():
         dataset["test"].select(range(100)).map(tokenize_function, batched=True)
     )
 
-    # Convert datasets to PyTorch format
+    # Remove unwanted columns and convert datasets to PyTorch format
+    columns_to_remove = [
+        "text",
+        "label",
+    ]  # Remove original columns, keep tokenized ones
+    small_train_dataset = small_train_dataset.remove_columns(columns_to_remove)
+    small_eval_dataset = small_eval_dataset.remove_columns(columns_to_remove)
+
     small_train_dataset.set_format("torch")
     small_eval_dataset.set_format("torch")
 

@@ -4,5 +4,6 @@
 
 set -exo pipefail
 
-# Install Lightning (the new unified package that includes pytorch-lightning)
+# Replace pytorch-lightning with lightning
+pip3 uninstall -y pytorch-lightning
 pip3 install lightning==2.4.0
