@@ -257,12 +257,12 @@ def test_local_gc_called_once_per_interval(shutdown_only):
         local_ref = weakref.ref(ObjectWithCyclicRef())
         wait_for_condition(lambda: local_ref() is None, retry_interval_ms=10)
 
-        # 1b) Check that GC *is not* called within the `local_gc_min_interval_s`.
+        # 1b) Check that GC *is not* called within the min interval.
         local_ref = weakref.ref(ObjectWithCyclicRef())
         time.sleep(RAY_GC_MIN_COLLECT_INTERVAL / 2)
         assert local_ref() is not None
 
-        # 1c) Check that GC *is* called after `local_gc_min_interval_s`.
+        # 1c) Check that GC *is* called after the min interval.
         wait_for_condition(
             lambda: local_ref() is None,
             timeout=RAY_GC_MIN_COLLECT_INTERVAL * 2,
@@ -277,12 +277,12 @@ def test_local_gc_called_once_per_interval(shutdown_only):
             lambda: not ray.get(a.has_garbage.remote()), retry_interval_ms=10
         )
 
-        # 2b) Check that GC *is not* called within the `local_gc_min_interval_s`.
+        # 2b) Check that GC *is not* called within the min interval.
         ray.get(a.make_garbage.remote())
         time.sleep(RAY_GC_MIN_COLLECT_INTERVAL / 2)
         assert ray.get(a.has_garbage.remote())
 
-        # 2c) Check that GC *is* called after `local_gc_min_interval_s`.
+        # 2c) Check that GC *is* called after the min interval.
         wait_for_condition(
             lambda: not ray.get(a.has_garbage.remote()),
             timeout=RAY_GC_MIN_COLLECT_INTERVAL * 2,
