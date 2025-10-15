@@ -70,9 +70,13 @@ class LogFileInfo:
 
     def reopen_if_necessary(self):
         """Check if the file's inode has changed and reopen it if necessary.
+
         There are a variety of reasons what we would logically consider a file
         would have different inodes, such as log rotation or file syncing
         semantics.
+
+        If the file is smaller than our recorded file position, we assume it has been
+        rotated and start reading it from the beginning.
         """
         try:
             open_inode = None
