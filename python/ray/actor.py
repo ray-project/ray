@@ -1685,9 +1685,17 @@ class ActorClass(Generic[T]):
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
 
-        if scheduling_strategy is None or isinstance(
+        use_placement_group = scheduling_strategy is not None and isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
-        ):
+        )
+        if use_placement_group and detached:
+            logger.warning(
+                "Scheduling a detached actor with a placement group is not recommended, "
+                "Raylet will kill the actor when the placement group is removed. "
+                "The actor will be stuck in the RESTARTING state forever if it's restartable until users explicitly kill it."
+            )
+
+        if use_placement_group:
             # TODO(jjyao) Clean this up once the
             # placement_group option is removed.
             # We should also consider pushing this logic down to c++
