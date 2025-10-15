@@ -125,20 +125,31 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 self._validate_actor_pool_autoscaling_config(actor_pool, op)
 
     def _validate_actor_pool_autoscaling_config(
-        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"
+        self,
+        actor_pool: "AutoscalingActorPool",
+        op: "PhysicalOperator",
+    ) -> None:
+        """Validate autoscaling configuration.
+
+        Args:
+            autoscaling_config: The autoscaling configuration to validate.
+            max_actor_concurrency: The maximum concurrency per actor.
+            max_tasks_in_flight_per_actor: The maximum tasks in flight per actor.
+        """
+
+    max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
+    max_concurrency = actor_pool.max_actor_concurrency()
+
+    if (
+        max_tasks_in_flight_per_actor / max_concurrency < self._actor_pool_scaling_up_threshold
     ):
-        if (
-            actor_pool.max_actor_concurrency()
-            == actor_pool.max_tasks_in_flight_per_actor()
-            and self._actor_pool_scaling_up_threshold > 1.0
-        ):
-            logger.warning(
-                f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
-                f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "
-                f"100%, but actor pool utilization won't be able to exceed it because "
-                f"actor pool is configured to avoid buffering (its "
-                f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
-            )
+        logger.warning(
+            f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
+            f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
+            f"couldn't be reached with configured max_concurrency={max_concurrency} "
+            f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
+            f"(max utilization will be max_tasks_in_flight_per_actor / max_actor_concurrency = {(max_tasks_in_flight_per_actor / max_actor_concurrency) * 100:0f}%)"
+        )
 
 
 def _get_max_scale_up(
