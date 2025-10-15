@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 from typing import AsyncGenerator, Optional
 
 import httpx
