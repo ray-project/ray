@@ -134,9 +134,9 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def request_shutdown(self, reason: str = "user_requested") -> None:
         """Request graceful shutdown of the streaming operator.
-        
+
         The operator will complete currently running tasks before stopping.
-        
+
         Args:
             reason: Reason for shutdown (for logging)
         """
@@ -147,7 +147,7 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status of the streaming operator.
-        
+
         Returns:
             Dictionary containing operator status information
         """
@@ -167,7 +167,7 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def get_exception(self) -> Optional[Exception]:
         """Get the exception if operator failed.
-        
+
         Returns:
             Exception if operator failed, None otherwise
         """
@@ -175,10 +175,10 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def export_metrics_prometheus(self) -> str:
         """Export metrics in Prometheus format for monitoring.
-        
+
         Returns lightweight metrics that can be scraped by Prometheus or similar tools.
         This is optional and complements (not replaces) Anyscale's built-in monitoring.
-        
+
         Returns:
             String in Prometheus exposition format
         """
@@ -360,7 +360,7 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _check_and_apply_autoscaling(self) -> None:
         """Check if autoscaling should be applied and adjust parallelism.
-        
+
         Uses lag metrics from datasource to determine if we should scale up/down.
         Respects cooldown period to avoid thrashing.
         """
@@ -429,11 +429,11 @@ class UnboundedDataOperator(PhysicalOperator):
 
     def _check_rate_limit(self, estimated_records: int, estimated_bytes: int) -> bool:
         """Check if rate limit allows proceeding with new batch.
-        
+
         Args:
             estimated_records: Estimated records in next batch
             estimated_bytes: Estimated bytes in next batch
-            
+
         Returns:
             True if can proceed, False if rate limit exceeded
         """
