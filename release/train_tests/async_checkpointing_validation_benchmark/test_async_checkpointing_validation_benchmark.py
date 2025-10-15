@@ -302,7 +302,7 @@ def run_training_with_validation(
         train_func_metrics["report_blocked_times"]
     )
     metrics["total_validation_time"] = sum(
-        t[1]["validation_time"] for t in result.best_checkpoints[:num_epochs]
+        t[1]["validation_time"] for t in result.best_checkpoints[:-1]
     )
     metrics["final_score"] = result.best_checkpoints[-2][1]["score"]
     return metrics
