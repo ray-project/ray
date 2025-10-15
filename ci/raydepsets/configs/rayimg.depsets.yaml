@@ -15,15 +15,15 @@ build_arg_sets:
 
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
-    packages:
-      - ray[all]==100.0.0.dev0
+    requirements:
+      - release/ray_release/byod/ray_dev_py${PYTHON_VERSION}.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
-      - --find-links=.whl/
+      - --unsafe-package ray
       - --python-platform=linux
     build_arg_sets:
       - py39
@@ -41,11 +41,12 @@ depsets:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
-      - python/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
@@ -61,11 +62,12 @@ depsets:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
-      - python/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
