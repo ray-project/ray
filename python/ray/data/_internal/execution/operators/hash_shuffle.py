@@ -1088,6 +1088,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             #       nodes to prevent any single node being overloaded with a "thundering
             #       herd"
             "scheduling_strategy": "SPREAD",
+            # Allow actor tasks to execute out of order by default to prevent head-of-line
+            # blocking scenario.
+            "allow_out_of_order_execution": True,
         }
 
         return remote_args
