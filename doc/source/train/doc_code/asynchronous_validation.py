@@ -12,7 +12,7 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
     with checkpoint.as_directory() as checkpoint_dir:
         model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
         model.load_state_dict(model_state_dict)
-    model.cuda().eval()
+    model.eval()
 
     # Perform validation on the data
     total_accuracy = 0

@@ -13,17 +13,17 @@ separate Ray task, which has following benefits:
 * Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
 * Letting training continue immediately after saving a checkpoint with partial metrics (for example, loss)
   and then receiving validation metrics (for example, accuracy) as soon as they are available. If the initial
-  and validated metrics share the same key, the latter will overwrite the former.
+  and validated metrics share the same key, the validated metrics overwrite the initial metrics.
 
-.. _train-validate-fn:
-
-Basic instructions
--------------------
+Tutorial
+--------
 
 First, define a ``validate_fn`` that takes a :class:`ray.train.Checkpoint` to validate
 and an optional ``validate_config`` dictionary. This dictionary can contain arguments needed
 for validation, such as the validation dataset. Your function should return a dictionary of metrics
-from that validation. The following is a simple example:
+from that validation. The following is a simple example for teaching purposes only. It is impractical
+because the validation task always runs on cpu; for a more realistic example, see
+:ref:`train-distributed-validate-fn`.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -34,10 +34,10 @@ from that validation. The following is a simple example:
 
     Don't pass large objects to the ``validate_fn`` because Ray Train runs it as a Ray task and
     serializes all captured variables. Instead, package large objects in the ``Checkpoint`` and
-    access them from shared storage later.
+    access them from shared storage later as explained in :ref:`train-checkpointing`.
 
 Next, within your training loop, call :func:`ray.train.report` with ``validate_fn`` and
-``validate_config`` as arguments like the following:
+``validate_config`` as arguments from the rank 0 worker like the following:
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -46,6 +46,8 @@ Next, within your training loop, call :func:`ray.train.report` with ``validate_f
 
 Finally, after training is done, you can access your checkpoints and their associated metrics with the
 :class:`ray.train.Result` object. See :ref:`train-inspect-results` for more details.
+
+.. _train-distributed-validate-fn:
 
 Write a distributed validation function
 ---------------------------------------
