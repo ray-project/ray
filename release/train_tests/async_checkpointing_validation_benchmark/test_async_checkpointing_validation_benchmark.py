@@ -65,7 +65,7 @@ class Predictor:
 
     def __call__(self, batch):
         image = torch.as_tensor(batch["image"], dtype=torch.float32, device="cuda")
-        label = torch.as_tensor(batch["label"], dtype=torch.float32, device="cuda")
+        label = torch.as_tensor(batch["label"], dtype=torch.int8, device="cuda")
         pred = self.model(image)
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
