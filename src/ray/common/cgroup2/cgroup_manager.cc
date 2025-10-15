@@ -173,10 +173,8 @@ void CgroupManager::RegisterRemoveConstraint(const std::string &cgroup,
   cleanup_operations_.emplace_back(
       [this, constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
         std::string default_value = std::to_string(constraint_to_remove.default_value_);
-        Status s = this->cgroup_driver_->AddConstraint(constrained_cgroup,
-                                                       constraint_to_remove.controller_,
-                                                       constraint_to_remove.name_,
-                                                       default_value);
+        Status s = this->cgroup_driver_->AddConstraint(
+            constrained_cgroup, constraint_to_remove.name_, default_value);
         if (!s.ok()) {
           RAY_LOG(WARNING) << absl::StrFormat(
               "Failed to set constraint %s=%s to default value for cgroup %s with error "
@@ -292,22 +290,18 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_,
-                                    cpu_weight_constraint_.controller_,
                                     cpu_weight_constraint_.name_,
                                     std::to_string(system_reserved_cpu_weight)));
   RegisterRemoveConstraint(system_cgroup_, cpu_weight_constraint_);
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_,
-                                    memory_min_constraint_.controller_,
                                     memory_min_constraint_.name_,
                                     std::to_string(system_reserved_memory_bytes)));
   RegisterRemoveConstraint(system_cgroup_, memory_min_constraint_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(user_cgroup_,
-                                                  cpu_weight_constraint_.controller_,
-                                                  cpu_weight_constraint_.name_,
-                                                  std::to_string(user_cpu_weight)));
+  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(
+      user_cgroup_, cpu_weight_constraint_.name_, std::to_string(user_cpu_weight)));
   RegisterRemoveConstraint(user_cgroup_, cpu_weight_constraint_);
 
   return Status::OK();
