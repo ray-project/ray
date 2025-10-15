@@ -14,7 +14,7 @@ RUN sudo chmod +x install-ml-docker-requirements.sh \
     && ./install-ml-docker-requirements.sh
 RUN sudo apt-get update && sudo apt-get install -y curl
 RUN sudo chmod +x install-gdrcopy.sh \
-    && sudo ./install-gdrcopy.sh ubuntu22.04 12.2 x64
+    && sudo ./install-gdrcopy.sh ubuntu22_04 12.2 x64
 
 # Export installed packages
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
