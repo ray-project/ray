@@ -280,7 +280,8 @@ The timing parameters interact in important ways:
 
 **Push interval vs upscale/downscale delays:**
 - Delays (30s/600s) should be ≥ push interval (10s)
-- If delays are shorter than push interval, autoscaler can't react quickly
+- Generally the delay should be set to some multiples of push interval, so the autoscaler only reacts after 
+  multiple consecutive metric breaches—this filters out short-lived spikes and prevents noisy, oscillating scale-ups.
 - Example: `upscale_delay_s = 5` but push interval = 10s means actual delay ≈ 10s
 
 **Recommendation:** Keep default values unless you have specific needs. If you
