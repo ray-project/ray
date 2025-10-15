@@ -11,7 +11,7 @@ The primary use cases for reporting are:
 * metrics (accuracy, loss, etc.) at the end of each training epoch. See :ref:`train-dl-saving-checkpoints` for usage examples.
 * validating checkpoints on a validation set with a user-defined validation function. See :ref:`train-validating-checkpoints` for usage examples.
 
-Only the result reported by the rank 0 worker will be attached to the checkpoint.
+Only the result reported by the rank 0 worker is attached to the checkpoint.
 However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
 To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 

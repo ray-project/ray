@@ -11,8 +11,8 @@ separate Ray task, which has following benefits:
 * Running validation in parallel without blocking the training loop
 * Running validation on different hardware than training
 * Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
-* Letting training continue immediately after saving a checkpoint with partial metrics (e.g. loss)
-  and then receiving validation metrics (e.g. accuracy) as soon as they are available. If the initial
+* Letting training continue immediately after saving a checkpoint with partial metrics (for example, loss)
+  and then receiving validation metrics (for example, accuracy) as soon as they are available. If the initial
   and validated metrics share the same key, the latter will overwrite the former.
 
 .. _train-validate-fn:
@@ -23,7 +23,7 @@ Basic instructions
 First, define a ``validate_fn`` that takes a :class:`ray.train.Checkpoint` to validate
 and an optional ``validate_config`` dictionary. This dictionary can contain arguments needed
 for validation, such as the validation dataset. Your function should return a dictionary of metrics
-from that validation. Here is a simple example:
+from that validation. The following is a simple example:
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -32,32 +32,32 @@ from that validation. Here is a simple example:
 
 .. warning::
 
-    Do not pass large objects to the ``validate_fn`` because it is run as a Ray task and will
-    serialize all captured variables. Instead, package large objects in the ``Checkpoint`` and
-    access from shared storage later.
+    Don't pass large objects to the ``validate_fn`` because Ray Train runs it as a Ray task and
+    serializes all captured variables. Instead, package large objects in the ``Checkpoint`` and
+    access them from shared storage later.
 
 Next, within your training loop, call :func:`ray.train.report` with ``validate_fn`` and
-``validate_config`` as arguments like so.
+``validate_config`` as arguments like the following:
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
     :start-after: __validate_fn_report_start__
     :end-before: __validate_fn_report_end__
 
-Finally, after training is done, you can access your checkpoints and their associated metrics via the
+Finally, after training is done, you can access your checkpoints and their associated metrics with the
 :class:`ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
-Writing a distributed validation function
------------------------------------------
+Write a distributed validation function
+---------------------------------------
 
 The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
-even more Ray tasks and/or actors. We recommend doing this with one of the following approaches:
+even more Ray tasks or actors. The Ray team recommends doing this with one of the following approaches:
 
 * Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
 * Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
 
-Choosing an approach
-~~~~~~~~~~~~~~~~~~~~
+Choose an approach
+~~~~~~~~~~~~~~~~~~
 
 You should use ``TorchTrainer`` if:
 
@@ -82,9 +82,9 @@ Here is a ``validate_fn`` that uses a ``TorchTrainer`` to calculate average cros
 loss on a validation set. Note the following about this example:
 
 * It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
-* While the ``TorchTrainer`` is typically used for training, it can be used solely for validation like in this example.
+* While you typically use the ``TorchTrainer`` for training, you can use it solely for validation like in this example.
 * Because training generally has a higher GPU memory requirement than inference, you can set different
-  resource requirements for training and validation e.g. A100 for training and A10G for validation.
+  resource requirements for training and validation, for example, A100 for training and A10G for validation.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -94,9 +94,9 @@ loss on a validation set. Note the following about this example:
 Example: validation with Ray Data map_batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
+The following is a ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
-``map_batches`` for batch inference, check out :ref:`batch_inference_home`.
+``map_batches`` for batch inference, see :ref:`batch_inference_home`.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -106,7 +106,7 @@ calculate average accuracy on a validation set. To learn more about how to use
 Checkpoint metrics lifecycle
 -----------------------------
 
-This is what happens to your checkpoints and metrics during the training loop:
+During the training loop the following happens to your checkpoints and metrics :
 
 1. You report a checkpoint with some initial metrics, such as training loss, as well as a
    ``validate_fn`` and ``validate_config``.
@@ -114,9 +114,9 @@ This is what happens to your checkpoints and metrics during the training loop:
    in a new Ray task.
 3. When that validation task completes, Ray Train associates the metrics returned by your ``validate_fn``
    with that checkpoint.
-4. After training is done, you can access your checkpoints and their associated metrics via the
+4. After training is done, you can access your checkpoints and their associated metrics with the
    :class:`ray.train.Result` object. See :ref:`train-inspect-results` for more details.
 
 .. figure:: ../images/checkpoint_metrics_lifecycle.png
 
-    How checkpoint metrics get populated during training and accessed after training.
+    How Ray Train populates checkpoint metrics during training and how you access them after training.
