@@ -27,6 +27,21 @@ steps:
     wanda: ci/docker/servetracing.build.wanda.yaml
 
   - name: minbuild-serve
+    label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    matrix:
+      app:
+        - serve
+        - default
+      python:
+        - "3.9"
+        - "3.10"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      EXTRA_DEPENDENCY: "{{matrix.app}}"
+    tags: cibase
+
+  - name: minbuild-serve-
     label: "wanda: minbuild-{{matrix}}-py310"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
@@ -48,7 +63,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.10
+        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
