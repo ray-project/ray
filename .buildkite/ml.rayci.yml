@@ -63,7 +63,7 @@ steps:
     tags: cibase
 
   # tests
-  - label: ":train: ml: train tests"
+  - label: ":train: ml: train v1 tests"
     tags: train
     instance_type: large
     parallelism: 2
@@ -107,7 +107,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... //python/ray/air/... ml
         --workers 4 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags gpu,minimal,doctest,needs_credentials,soft_imports,rllib
+        --except-tags gpu,train_v2_gpu,minimal,doctest,needs_credentials,soft_imports,rllib
     depends_on:
       - mlbuild-multipy
       - forge
@@ -117,7 +117,7 @@ steps:
         python: ["3.12"]
         worker_id: ["0", "1", "2", "3"]
 
-  - label: ":train: ml: train gpu tests"
+  - label: ":train: ml: train v1 gpu tests"
     tags:
       - train
       - gpu
@@ -141,7 +141,7 @@ steps:
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 2
         --python-version {{matrix.python}}
         --build-name mlgpubuild-py{{matrix.python}}
-        --only-tags gpu
+        --only-tags gpu,train_v2_gpu
         --except-tags doctest
     depends_on: [ "mlgpubuild-multipy", "forge" ]
     matrix:
@@ -283,7 +283,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
-        --except-tags gpu,needs_credentials
+        --except-tags gpu,needs_credentials,train_v2_gpu
     depends_on: [ "mlbuild", "forge" ]
     soft_fail: true
 
@@ -315,6 +315,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
         --build-name mlgpubuild
-        --only-tags gpu
+        --only-tags gpu,train_v2_gpu
     depends_on: [ "mlgpubuild", "forge" ]
     soft_fail: true

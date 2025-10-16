@@ -4,10 +4,10 @@ load("//bazel:python.bzl", "doctest")
 doctest(
     name = "py_doctest[train]",
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = glob(
         ["**/*.py"],
         exclude = [
-            "collective/**",  # Only works on v2
             "examples/**",
             "tests/**",
             "horovod/**",  # CI do not have horovod installed

@@ -62,6 +62,15 @@ examples:
     use_cases:
       - computer vision
     link: examples/pytorch/pytorch-fsdp/README
+  - title: Fine-tune an LLM with Ray Train and DeepSpeed
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+      - deepspeed
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/deepspeed_finetune/README
   - title: Train a text classifier with DeepSpeed
     frameworks:
       - deepspeed
