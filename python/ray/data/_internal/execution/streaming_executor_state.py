@@ -38,7 +38,7 @@ from ray.data._internal.execution.resource_manager import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
-    unify_schemas_with_validation,
+    unify_schemas_with_validation, GiB,
 )
 from ray.data.context import DataContext
 
@@ -348,7 +348,7 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
+        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()} ({self.total_enqueued_input_bundles_bytes() / GiB:.2f}Gb)"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.
@@ -400,7 +400,7 @@ class OpState:
                 return ref
             time.sleep(0.01)
 
-    def inqueue_memory_usage(self) -> int:
+    def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
         total = 0
         for op, inq in zip(self.op.input_dependencies, self.input_queues):
@@ -409,13 +409,9 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def outqueue_memory_usage(self) -> int:
+    def output_queue_bytes(self) -> int:
         """Return the object store memory of this operator's outqueue."""
         return self.output_queue.memory_usage
-
-    def outqueue_num_blocks(self) -> int:
-        """Return the number of blocks in this operator's outqueue."""
-        return self.output_queue.num_blocks
 
     def mark_finished(self, exception: Optional[Exception] = None):
         """Marks this operator as finished. Used for exiting get_output_blocking."""
