@@ -10,6 +10,7 @@ depsets:
   - name: audio_transcription_py${PYTHON_SHORT}
     operation: expand
     depsets:
+      - ray_img_depset_${PYTHON_SHORT}
       - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     requirements:
       - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
