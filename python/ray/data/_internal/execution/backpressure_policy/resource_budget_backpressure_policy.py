@@ -15,10 +15,8 @@ class ResourceBudgetBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy based on resource budgets in ResourceManager."""
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
-        budget = self._resource_manager.get_budget(op)
-        if budget is None:
-            return True
-        return op.incremental_resource_usage().satisfies_limit(budget)
+        # TODO fix NPE
+        return self._resource_manager._op_resource_allocator.can_submit_new_task(op)
 
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
         """Determine maximum bytes to read based on the resource budgets.

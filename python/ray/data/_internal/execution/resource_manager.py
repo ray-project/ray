@@ -234,7 +234,12 @@ class ResourceManager:
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
         if self._op_resource_allocator is not None:
-            self._op_resource_allocator.update_usages()
+            self._op_resource_allocator.update_budgets(
+                limits=self._global_limits,
+                task_resources_usage=self._op_usages,
+                internal_object_store_usage=self._mem_op_internal,
+                outputs_object_store_usage=self._mem_op_outputs,
+            )
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
