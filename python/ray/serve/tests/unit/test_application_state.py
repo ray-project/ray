@@ -10,6 +10,7 @@ from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
     ApplicationStatusInfo,
+    BuildAppStatus,
     StatusOverview,
     override_deployment_info,
 )
@@ -2408,6 +2409,621 @@ class TestAutoscale:
                 timestamp=time.time(),
             )
             asm.record_request_metrics_for_replica(replica_report)
+
+
+def simple_app_level_policy(contexts):
+    """Simple policy that scales all deployments to 3 replicas."""
+    decisions = {}
+    for deployment_id, _ in contexts.items():
+        decisions[deployment_id] = 3
+    return decisions, {}
+
+
+class TestApplicationLevelAutoscaling:
+    """Test application-level autoscaling policy registration, execution, and lifecycle."""
+
+    def _create_app_config(
+        self, app_name="test_app", has_policy=True, deployments=None
+    ):
+        """Helper to create a ServeApplicationSchema with optional autoscaling policy."""
+        if deployments is None:
+            deployments = [
+                DeploymentSchema(
+                    name="d1",
+                    autoscaling_config={
+                        "target_ongoing_requests": 1,
+                        "min_replicas": 1,
+                        "max_replicas": 5,
+                        "initial_replicas": 1,
+                    },
+                )
+            ]
+
+        return ServeApplicationSchema(
+            name=app_name,
+            import_path="fake.import.path",
+            route_prefix="/hi",
+            autoscaling_policy={
+                "policy_function": "ray.serve.tests.unit.test_application_state:simple_app_level_policy"
+            }
+            if has_policy
+            else None,
+            deployments=deployments,
+        )
+
+    def _deploy_app_with_mocks(self, app_state_manager, app_config):
+        """Helper to deploy an app with proper mocking to avoid Ray initialization."""
+        with patch(
+            "ray.serve._private.application_state.build_serve_application"
+        ) as mock_build:
+            mock_build.return_value = Mock()
+            app_state_manager.apply_app_configs([app_config])
+
+        app_state = app_state_manager._application_states[app_config.name]
+        app_state._build_app_task_info = Mock()
+        app_state._build_app_task_info.code_version = "test_version"
+        app_state._build_app_task_info.config = app_config
+        app_state._build_app_task_info.target_capacity = None
+        app_state._build_app_task_info.target_capacity_direction = None
+
+        # Mock reconcile to succeed
+        with patch.object(app_state, "_reconcile_build_app_task") as mock_reconcile:
+            deployment_infos = {}
+            for deployment in app_config.deployments:
+                deployment_infos[deployment.name] = deployment_info(
+                    deployment.name,
+                    "/hi" if deployment.name == "d1" else None,
+                    autoscaling_config={
+                        "target_ongoing_requests": 1,
+                        "min_replicas": 1,
+                        "max_replicas": 5,
+                        "initial_replicas": 1,
+                    },
+                )
+
+            mock_reconcile.return_value = (
+                deployment_infos,
+                BuildAppStatus.SUCCEEDED,
+                "",
+            )
+            app_state.update()
+
+        return app_state
+
+    def _register_deployments(self, app_state_manager, app_config):
+        """Helper to register deployments with autoscaling manager."""
+        asm = app_state_manager._autoscaling_state_manager
+        for deployment in app_config.deployments:
+            deployment_id = DeploymentID(name=deployment.name, app_name=app_config.name)
+            deployment_info_obj = deployment_info(
+                deployment.name,
+                "/hi" if deployment.name == "d1" else None,
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            )
+            asm.register_deployment(deployment_id, deployment_info_obj, 1)
+        return asm
+
+    def _deploy_multiple_apps_with_mocks(self, app_state_manager, app_configs):
+        """Helper to deploy multiple apps simultaneously with proper mocking."""
+        # Deploy all apps at once
+        with patch(
+            "ray.serve._private.application_state.build_serve_application"
+        ) as mock_build:
+            mock_build.return_value = Mock()
+            app_state_manager.apply_app_configs(app_configs)
+
+        # Mock the build app tasks for all apps
+        for app_config in app_configs:
+            app_state = app_state_manager._application_states[app_config.name]
+            app_state._build_app_task_info = Mock()
+            app_state._build_app_task_info.code_version = "test_version"
+            app_state._build_app_task_info.config = app_config
+            app_state._build_app_task_info.target_capacity = None
+            app_state._build_app_task_info.target_capacity_direction = None
+
+            # Mock reconcile to succeed
+            with patch.object(app_state, "_reconcile_build_app_task") as mock_reconcile:
+                deployment_infos = {}
+                for deployment in app_config.deployments:
+                    deployment_infos[deployment.name] = deployment_info(
+                        deployment.name,
+                        "/hi" if deployment.name == "d1" else None,
+                        autoscaling_config={
+                            "target_ongoing_requests": 1,
+                            "min_replicas": 1,
+                            "max_replicas": 5,
+                            "initial_replicas": 1,
+                        },
+                    )
+
+                mock_reconcile.return_value = (
+                    deployment_infos,
+                    BuildAppStatus.SUCCEEDED,
+                    "",
+                )
+                app_state.update()
+
+        return app_state_manager._autoscaling_state_manager
+
+    def test_app_level_autoscaling_policy_registration_and_execution(
+        self, mocked_application_state_manager
+    ):
+        """Test that application-level autoscaling policy is registered and executed when set in config."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config with policy
+        app_config = self._create_app_config()
+
+        # Deploy app
+        app_state = self._deploy_app_with_mocks(app_state_manager, app_config)
+
+        # Register deployments
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Verify policy was registered
+        assert asm._application_has_policy("test_app") is True
+        assert app_state.should_autoscale() is True
+        assert asm.should_autoscale_application("test_app") is True
+
+        # Create replicas and test autoscaling
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        # Clear scaling decisions and test autoscaling
+        deployment_state_manager._scaling_decisions.clear()
+
+        app_state_manager.update()
+
+        # Verify policy was executed (scales to 3 replicas)
+        assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    def test_app_level_autoscaling_policy_recovery(
+        self, mocked_application_state_manager
+    ):
+        """Test that application-level autoscaling policy is registered when recovered from checkpoint."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            kv_store,
+        ) = mocked_application_state_manager
+
+        # Deploy app with policy
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Save checkpoint
+        app_state_manager.update()
+
+        # Simulate controller crash - create new managers
+        new_deployment_state_manager = MockDeploymentStateManager(kv_store)
+        new_app_state_manager = ApplicationStateManager(
+            new_deployment_state_manager,
+            asm,
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+
+        # Recovery happens automatically during initialization
+        # Verify app-level policy was recovered
+        assert asm._application_has_policy("test_app") is True
+
+        # Test that recovered policy still works
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        new_deployment_state_manager._scaling_decisions.clear()
+        new_app_state_manager.update()
+
+        assert new_deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    def test_app_level_autoscaling_policy_deregistration_on_deletion(
+        self, mocked_application_state_manager
+    ):
+        """Test that application-level autoscaling policy is deregistered when application is deleted."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app with policy
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Verify app is registered
+        assert asm._application_has_policy("test_app") is True
+
+        # Delete the application
+        deployment_state_manager.delete_deployment(
+            DeploymentID(name="d1", app_name="test_app")
+        )
+        deployment_state_manager.set_deployment_deleted(
+            DeploymentID(name="d1", app_name="test_app")
+        )
+        app_state_manager.delete_app("test_app")
+        app_state_manager.update()
+
+        # Verify app-level policy is deregistered
+        assert asm._application_has_policy("test_app") is False
+        assert asm.should_autoscale_application("test_app") is False
+
+    def test_app_level_autoscaling_policy_add_and_remove_from_config(
+        self, mocked_application_state_manager
+    ):
+        """Test that application-level autoscaling policy is registered when added and deregistered when removed."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app without policy initially
+        app_config_no_policy = self._create_app_config(has_policy=False)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config_no_policy)
+        asm = self._register_deployments(app_state_manager, app_config_no_policy)
+
+        # Verify no app-level policy initially
+        # Note: The app might be registered but without a policy
+        assert asm._application_has_policy("test_app") is False
+
+        # Now add app-level autoscaling policy
+        app_config_with_policy = self._create_app_config(has_policy=True)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config_with_policy)
+
+        # Verify app-level policy is registered
+        assert asm._application_has_policy("test_app") is True
+
+        # Now remove app-level autoscaling policy
+        app_config_no_policy_again = self._create_app_config(has_policy=False)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config_no_policy_again)
+
+        # Verify app-level policy is deregistered
+        # Note: The app might still exist but without a policy
+        assert asm._application_has_policy("test_app") is False
+        assert asm.should_autoscale_application("test_app") is False
+
+    def test_app_level_autoscaling_policy_with_multiple_deployments(
+        self, mocked_application_state_manager
+    ):
+        """Test that app-level autoscaling policy works correctly with multiple deployments."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app with multiple deployments
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d3",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "initial_replicas": 1,
+                },
+            ),
+        ]
+
+        app_config = self._create_app_config(deployments=deployments)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Verify policy was registered
+        assert asm._application_has_policy("test_app") is True
+
+        # Create replicas for all deployments
+        deployment_ids = [
+            DeploymentID(name=f"d{i}", app_name="test_app") for i in range(1, 4)
+        ]
+        for i, deployment_id in enumerate(deployment_ids):
+            replicas = [
+                ReplicaID(unique_id=f"d{i+1}_replica_{j}", deployment_id=deployment_id)
+                for j in [1, 2]
+            ]
+            asm.update_running_replica_ids(deployment_id, replicas)
+
+        # Test autoscaling
+        deployment_state_manager._scaling_decisions.clear()
+        app_state_manager.update()
+
+        # Verify all deployments were scaled to 3 (our policy scales all to 3)
+        assert asm.should_autoscale_application("test_app") is True
+        for deployment_id in deployment_ids:
+            assert deployment_id in deployment_state_manager._scaling_decisions
+            assert deployment_state_manager._scaling_decisions[deployment_id] == 3
+
+    def test_app_level_autoscaling_policy_state_persistence(
+        self, mocked_application_state_manager
+    ):
+        """Test that app-level autoscaling policy state is maintained across multiple calls."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app with policy
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        # Test multiple autoscaling calls
+        for i in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            assert asm.should_autoscale_application("test_app") is True
+            assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    def test_autoscaling_state_manager_helper_methods(
+        self, mocked_application_state_manager
+    ):
+        """Test the new helper methods in AutoscalingStateManager."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        asm = app_state_manager._autoscaling_state_manager
+
+        # Test with no applications registered
+        assert asm._application_has_policy("nonexistent_app") is False
+        assert asm.should_autoscale_application("nonexistent_app") is False
+
+        # Deploy app with policy
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Test helper methods
+        assert asm._application_has_policy("test_app") is True
+        assert asm.should_autoscale_application("test_app") is True
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        assert asm.should_autoscale_deployment(d1_id) is True
+
+        # Test with app without policy
+        app_config_no_policy = self._create_app_config(has_policy=False)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config_no_policy)
+        asm_no_policy = self._register_deployments(
+            app_state_manager, app_config_no_policy
+        )
+
+        assert asm_no_policy._application_has_policy("test_app") is False
+        assert (
+            asm_no_policy.should_autoscale_application("test_app") is True
+        )  # App exists but no policy
+        assert asm_no_policy.should_autoscale_deployment(d1_id) is True
+
+    def test_get_decision_num_replicas_method(self, mocked_application_state_manager):
+        """Test the get_decision_num_replicas method in AutoscalingStateManager."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app with policy
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        # Test get_decision_num_replicas
+        deployment_to_target_num_replicas = {d1_id: 2}
+        decisions = asm.get_decision_num_replicas(
+            "test_app", deployment_to_target_num_replicas
+        )
+
+        assert d1_id in decisions
+        assert decisions[d1_id] == 3  # Our policy scales to 3
+
+    def test_multiple_applications_autoscaling_isolation(
+        self, mocked_application_state_manager
+    ):
+        """Test that autoscaling works correctly with multiple applications."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy both apps simultaneously
+        app_config1 = self._create_app_config(app_name="app1")
+        app_config2 = self._create_app_config(app_name="app2", has_policy=False)
+
+        # Deploy both apps using new helper
+        asm = self._deploy_multiple_apps_with_mocks(
+            app_state_manager, [app_config1, app_config2]
+        )
+
+        # Register deployments for both apps using existing helper
+        asm = self._register_deployments(app_state_manager, app_config1)
+        asm = self._register_deployments(app_state_manager, app_config2)
+
+        # Test isolation
+        assert asm._application_has_policy("app1") is True
+        assert asm._application_has_policy("app2") is False
+        assert asm.should_autoscale_application("app1") is True
+        assert asm.should_autoscale_application("app2") is True
+
+        # Test deployment-level isolation
+        d1_app1_id = DeploymentID(name="d1", app_name="app1")
+        d1_app2_id = DeploymentID(name="d1", app_name="app2")
+
+        asm.update_running_replica_ids(
+            d1_app1_id,
+            [
+                ReplicaID(unique_id=f"d1_app1_replica_{i}", deployment_id=d1_app1_id)
+                for i in [1, 2]
+            ],
+        )
+        asm.update_running_replica_ids(
+            d1_app2_id,
+            [
+                ReplicaID(unique_id=f"d1_app2_replica_{i}", deployment_id=d1_app2_id)
+                for i in [1, 2]
+            ],
+        )
+
+        assert asm.should_autoscale_deployment(d1_app1_id) is True
+        assert asm.should_autoscale_deployment(d1_app2_id) is True
+
+        deployment_state_manager._scaling_decisions.clear()
+
+        app_state_manager.update()
+
+        # Both apps should be autoscaled, but with different behaviors:
+        # app1 has an app-level policy, so it scales to 3 replicas
+        # app2 doesn't have an app-level policy, so it uses deployment-level autoscaling (scales to 1)
+        assert d1_app1_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_app1_id] == 3
+        assert d1_app2_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_app2_id] == 1
+
+    def test_autoscaling_state_manager_edge_cases(
+        self, mocked_application_state_manager
+    ):
+        """Test edge cases for AutoscalingStateManager methods."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        asm = app_state_manager._autoscaling_state_manager
+
+        # Test with empty app name
+        assert asm._application_has_policy("") is False
+        assert asm.should_autoscale_application("") is False
+
+        # Test with None app name
+        assert asm._application_has_policy(None) is False
+        assert asm.should_autoscale_application(None) is False
+
+        # Test get_decision_num_replicas with nonexistent app
+        with pytest.raises(KeyError):
+            asm.get_decision_num_replicas("nonexistent_app", {})
+
+        # Test should_autoscale_deployment with nonexistent deployment
+        nonexistent_deployment_id = DeploymentID(
+            name="nonexistent", app_name="nonexistent_app"
+        )
+        assert asm.should_autoscale_deployment(nonexistent_deployment_id) is False
+
+    def test_autoscaling_with_deployment_level_configs(
+        self, mocked_application_state_manager
+    ):
+        """Test that app-level autoscaling respects deployment-level autoscaling configs."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app with deployments that have different autoscaling configs
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 3,  # Lower max
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,  # Higher max
+                    "initial_replicas": 1,
+                },
+            ),
+        ]
+
+        app_config = self._create_app_config(deployments=deployments)
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        # Test autoscaling
+        deployment_state_manager._scaling_decisions.clear()
+        app_state_manager.update()
+
+        # Verify both deployments were scaled, but d1 should be capped at max_replicas=3
+        assert d1_id in deployment_state_manager._scaling_decisions
+        assert d2_id in deployment_state_manager._scaling_decisions
+        assert (
+            deployment_state_manager._scaling_decisions[d1_id] == 3
+        )  # Capped by max_replicas
+        assert (
+            deployment_state_manager._scaling_decisions[d2_id] == 3
+        )  # Our policy scales to 3
 
 
 if __name__ == "__main__":

@@ -99,7 +99,7 @@ class LLMServingArgs(BaseModelExtended):
             elif isinstance(config, LLMConfig):
                 llm_configs.append(config)
             else:
-                raise ValueError(f"Invalid LLMConfig: {config}")
+                raise TypeError(f"Invalid LLMConfig type: {type(config)}")
         return llm_configs
 
     @model_validator(mode="after")
