@@ -678,7 +678,7 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 
 #### Define an application level policy
 
-An application-level autoscaling policy is a function that takes a dictionary of [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
