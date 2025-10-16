@@ -147,7 +147,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
                 f"couldn't be reached with configured max_concurrency={max_concurrency} "
                 f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
-                f"(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = {(max_tasks_in_flight_per_actor / max_concurrency) * 100:0f}%)"
+                f"(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = {(max_tasks_in_flight_per_actor / max_concurrency) * 100:g}%)"
             )
 
 
