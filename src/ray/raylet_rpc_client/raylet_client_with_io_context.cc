@@ -36,9 +36,9 @@ RayletClientWithIoContext::RayletClientWithIoContext(const std::string &ip_addre
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service, /*record_stats=*/false, ip_address);
   auto raylet_unavailable_timeout_callback = []() {
-    RAY_LOG(WARNING) << "Raylet is unavailable for "
-                     << ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s()
-                     << "s";
+    RAY_LOG(WARNING)
+        << "Raylet is unavailable for "
+        << ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_max_s() << "s";
   };
   rpc::Address rpc_address;
   rpc_address.set_ip_address(ip_address);
