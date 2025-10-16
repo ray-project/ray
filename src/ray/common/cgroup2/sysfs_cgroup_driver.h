@@ -236,7 +236,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     Adds a constraint to the respective cgroup file.
 
     @param cgroup_path absolute path of the cgroup.
-    @param controller the name of the controller
     @param constraint the name of the cgroup file to add the constraint to e.g. cpu.weight
     @param constraint_value
 
@@ -244,11 +243,10 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, controller is not
-    enabled, or cannot write to the constraint file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2, or cannot write
+    to the constraint file.
    */
   Status AddConstraint(const std::string &cgroup,
-                       const std::string &controller,
                        const std::string &constraint,
                        const std::string &constraint_value) override;
 

@@ -23,3 +23,9 @@ class BaseModelExtended(BaseModel):
         kwargs.setdefault("Loader", yaml.SafeLoader)
         dict_args = yaml.load(file, **kwargs)
         return cls.model_validate(dict_args)
+
+    @classmethod
+    def from_file(cls: Type[ModelT], path: str, **kwargs) -> ModelT:
+        """Load a model from a YAML file path."""
+        with open(path, "r") as f:
+            return cls.parse_yaml(f, **kwargs)
