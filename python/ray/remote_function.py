@@ -58,7 +58,8 @@ class RemoteFunction:
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _label_selector: The label requirements on a node for scheduling of the task or actor.
-        _fallback_strategy: A list of label selectors to support soft constraints for scheduling
+        _fallback_strategy: Soft constraints of a list of decorator options to fall back on when scheduling on a node.
+       _resources: The default custom resource requirements for invocations of
             on a node.
         _resources: The default custom resource requirements for invocations of
             this remote function.
