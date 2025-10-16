@@ -812,19 +812,16 @@ def install_driver_signal_handlers() -> None:
 
     Must be called from the main thread (Python signal handlers requirement).
     Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details.
-
-    Raises:
-        RuntimeError: If called from a non-main thread.
     """
     global _signal_handler_installed, _graceful_shutdown_in_progress
     if _signal_handler_installed:
         return
 
     if threading.current_thread() is not threading.main_thread():
-        raise RuntimeError(
-            "Signal handlers must be installed from the main thread. "
-            f"Current thread: {threading.current_thread().name}"
+        logger.warning(
+            "Signal handlers not installed because current thread is not the main thread. Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details."
         )
+        return
 
     def _handler(signum, _frame):
         global _graceful_shutdown_in_progress
@@ -857,7 +854,8 @@ def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> 
 
     Raises:
         AssertionError: If force_shutdown_fn is None.
-        RuntimeError: If called from a non-main thread.
+
+    Only installs on the main thread; logs a warning otherwise.
     """
     global _signal_handler_installed
     assert (
@@ -868,10 +866,10 @@ def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> 
         return
 
     if threading.current_thread() is not threading.main_thread():
-        raise RuntimeError(
-            "Signal handlers must be installed from the main thread. "
-            f"Current thread: {threading.current_thread().name}"
+        logger.warning(
+            "Signal handlers not installed because current thread is not the main thread. Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details."
         )
+        return
 
     def _handler(signum, _frame):
         # Workers treat external SIGTERM as immediate forced exit to avoid hangs.
