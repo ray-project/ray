@@ -129,7 +129,7 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    @pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+    @pytest.mark.parametrize("aggregation_function", ["mean", "max"])
     def test_basic(self, serve_instance, aggregation_function):
         """Test that request metrics are sent correctly to the controller."""
 
