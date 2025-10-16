@@ -169,7 +169,7 @@ def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""
         if ray.train.get_context().get_world_rank() == 0:
-            raise ValueError("error")
+            raise ValueError("user error")
 
     trainer = DataParallelTrainer(
         _error_func_rank_0,
@@ -178,8 +178,9 @@ def test_error(tmp_path):
     )
     with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-        assert isinstance(exc_info.value, WorkerGroupError)
-        assert isinstance(exc_info.value.__cause__.worker_failures[0], ValueError)
+    assert isinstance(exc_info.value, WorkerGroupError)
+    assert "user error" in str(exc_info.value.worker_failures[0])
+    assert len(exc_info.value.worker_failures) == 1
 
 
 @pytest.mark.parametrize("env_disabled", [True, False])
