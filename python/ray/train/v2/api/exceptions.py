@@ -1,11 +1,16 @@
-from typing import Dict, Union
+from typing import Dict
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class WorkerGroupError(RayTrainError):
+class TrainingFailedError(RayTrainError):
+    """Exception raised when training fails from a `trainer.fit()` call."""
+
+
+@PublicAPI(stability="alpha")
+class WorkerGroupError(TrainingFailedError):
     """Exception raised from the worker group during training.
 
     Args:
@@ -24,7 +29,7 @@ class WorkerGroupError(RayTrainError):
 
 
 @PublicAPI(stability="alpha")
-class ControllerError(RayTrainError):
+class ControllerError(TrainingFailedError):
     """Exception raised when training fails due to a controller error.
 
     Args:
@@ -39,6 +44,3 @@ class ControllerError(RayTrainError):
 
     def __reduce__(self):
         return (self.__class__, (self.controller_failure,))
-
-
-TrainingFailedError = Union[WorkerGroupError, ControllerError]
