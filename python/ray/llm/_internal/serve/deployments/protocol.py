@@ -26,7 +26,7 @@ class DeploymentProtocol(Protocol):
         """Get the default deployment options for the this deployment."""
 
 
-class LLMServerProtocol(DeploymentProtocol, Protocol):
+class LLMServerProtocol(DeploymentProtocol):
     """
     This is the common interface between all the llm deployment. All llm deployments
     need to implement a sync constructor, an async start method, and check_health method.
