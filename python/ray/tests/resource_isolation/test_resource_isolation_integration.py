@@ -80,7 +80,6 @@ _EXPECTED_SYSTEM_PROCESSES_RAY_START = [
     ray_constants.PROCESS_TYPE_RAYLET,
     ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
     ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
-    ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
 ]
 _EXPECTED_SYSTEM_PROCESSES_RAY_INIT = [
     ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -90,7 +89,6 @@ _EXPECTED_SYSTEM_PROCESSES_RAY_INIT = [
     ray_constants.PROCESS_TYPE_RAYLET,
     ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
     ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
-    ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
 ]
 
 
@@ -455,6 +453,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
@@ -517,6 +516,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
