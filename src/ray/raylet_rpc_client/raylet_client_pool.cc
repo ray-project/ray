@@ -96,15 +96,6 @@ std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddr
   return connection;
 }
 
-std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetByID(ray::NodeID id) {
-  absl::MutexLock lock(&mu_);
-  auto it = client_map_.find(id);
-  if (it == client_map_.end()) {
-    return {};
-  }
-  return it->second;
-}
-
 void RayletClientPool::Disconnect(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);

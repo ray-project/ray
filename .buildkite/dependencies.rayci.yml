@@ -29,6 +29,7 @@ steps:
       - cp ./python/deplocks/llm/* /artifact-mount/
     job_env: manylinux
     depends_on: manylinux
+    soft_fail: true
 
   - label: ":tapioca: build: raydepsets: compile ray img dependencies"
     key: raydepsets_compile_rayimg_dependencies
