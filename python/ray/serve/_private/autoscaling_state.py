@@ -30,6 +30,15 @@ from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# We set the timeout to be 2.5x the metric push interval instead of just 2x
+# to account for some jitter in the metric push timing.
+# If it's been 2.5x the interval since the last update, then we can
+# be pretty confident that we've missed two updates in a row.
+STALE_AUTOSCALING_METRICS_TIMEOUT = max(
+    2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+)
+
 
 class DeploymentAutoscalingState:
     """Manages autoscaling for a single deployment."""
@@ -165,14 +174,6 @@ class DeploymentAutoscalingState:
         received an update for too long.
         """
 
-        # We set the timeout to be 2.5x the metric push interval instead of just 2x
-        # to account for some jitter in the metric push timing.
-        # If it's been 2.5x the interval since the last update, then we can
-        # be pretty confident that we've missed two updates in a row.
-        timeout_s = max(
-            2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-        )
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
@@ -191,14 +192,17 @@ class DeploymentAutoscalingState:
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
-            elif time.time() - handle_metric.timestamp >= timeout_s:
+            elif (
+                time.time() - handle_metric.timestamp
+                >= STALE_AUTOSCALING_METRICS_TIMEOUT
+            ):
                 del self._handle_requests[handle_id]
                 if handle_metric.total_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
                     logger.info(
                         f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
-                        f"because no update was received for {timeout_s:.1f}s. "
+                        f"because no update was received for {STALE_AUTOSCALING_METRICS_TIMEOUT:.1f}s. "
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 
