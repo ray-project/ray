@@ -11,7 +11,7 @@ from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
-
+import time
 
 @pytest.mark.asyncio(scope="function")
 async def test_engine_metrics():
@@ -151,6 +151,9 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
+    serve.shutdown()
+    time.sleep(1)
+
 
 
 @pytest.mark.asyncio(scope="function")
@@ -184,6 +187,7 @@ def remote_model_app(request):
 
     # Cleanup
     serve.shutdown()
+    time.sleep(1)
 
 
 class TestRemoteCode:
