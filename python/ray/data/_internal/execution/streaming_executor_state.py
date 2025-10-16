@@ -40,7 +40,8 @@ from ray.data._internal.execution.resource_manager import (
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
-    unify_schemas_with_validation, GiB,
+    unify_schemas_with_validation,
+    GiB,
 )
 from ray.data.context import DataContext
 
@@ -302,8 +303,8 @@ class OpState:
 
     def total_enqueued_num_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
-            1. Input queue(s) pending dispatching (``OpState.input_queues``)
-            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (

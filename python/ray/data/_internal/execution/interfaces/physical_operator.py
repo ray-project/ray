@@ -704,10 +704,10 @@ class PhysicalOperator(Operator):
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Returns lower/upper boundary of resource requirements for this operator:
 
-            - Minimal: lower bound (min) of resources required to start this operator
-            (for most operators this is 0, except the ones that utilize actors)
-            - Maximum: upper bound (max) of how many resources this operator could
-            utilize.
+        - Minimal: lower bound (min) of resources required to start this operator
+        (for most operators this is 0, except the ones that utilize actors)
+        - Maximum: upper bound (max) of how many resources this operator could
+        utilize.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 

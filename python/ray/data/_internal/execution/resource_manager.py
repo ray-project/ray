@@ -5,8 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, \
-    Any, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Any, Tuple
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -20,7 +19,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.hash_shuffle import HashShufflingOperatorBase
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
@@ -314,7 +315,9 @@ class ResourceManager:
                     usage_str += f",obj_store={budget.object_store_memory_str()}"
 
                     # Remaining memory budget for producing new task outputs.
-                    if isinstance(self._op_resource_allocator, ReservationOpResourceAllocator):
+                    if isinstance(
+                        self._op_resource_allocator, ReservationOpResourceAllocator
+                    ):
                         reserved_for_output = memory_string(
                             self._op_resource_allocator._output_budgets.get(op, 0)
                         )
@@ -445,7 +448,6 @@ class OpResourceAllocator(ABC):
         task_resources_usage: Dict[PhysicalOperator, ExecutionResources],
         internal_object_store_usage: Dict[PhysicalOperator, int],
         outputs_object_store_usage: Dict[PhysicalOperator, int],
-
     ):
         """Callback to update resource usages."""
         ...
@@ -492,8 +494,13 @@ class OpResourceAllocator(ABC):
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         first_pending_shuffle_op_idx = _get_first_pending_shuffle_op(self._topology)
         return [
-            op for idx, op in enumerate(self._topology)
-            if self._is_op_eligible(op) and (first_pending_shuffle_op_idx == -1 or idx <= first_pending_shuffle_op_idx)
+            op
+            for idx, op in enumerate(self._topology)
+            if self._is_op_eligible(op)
+            and (
+                first_pending_shuffle_op_idx == -1
+                or idx <= first_pending_shuffle_op_idx
+            )
         ]
 
     @staticmethod
@@ -648,9 +655,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
-        default_reserved = limits.scale(
-            self._reservation_ratio / (len(eligible_ops))
-        )
+        default_reserved = limits.scale(self._reservation_ratio / (len(eligible_ops)))
         for index, op in enumerate(eligible_ops):
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
@@ -747,7 +752,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._get_op_outputs_usage_with_downstream(op, task_resource_usage, output_object_store_usage)
+        op_outputs_usage = self._get_op_outputs_usage_with_downstream(
+            op, task_resource_usage, output_object_store_usage
+        )
 
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         if math.isinf(res):
@@ -808,11 +815,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage += internal_object_store_usage[op]
             # Add the portion of op outputs usage that has
             # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._get_op_outputs_usage_with_downstream(op, task_resources_usage, outputs_object_store_usage)
-            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-            op_usage = task_resources_usage[op].copy(
-                object_store_memory=op_mem_usage
+            op_outputs_usage = self._get_op_outputs_usage_with_downstream(
+                op, task_resources_usage, outputs_object_store_usage
             )
+            op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
+            op_usage = task_resources_usage[op].copy(object_store_memory=op_mem_usage)
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
             op_reserved_remaining = op_reserved.subtract(op_usage).max(
@@ -863,8 +870,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 #    available num of GPUs.
                 # 2. The cluster scales down, and the global limit decreases.
                 target_num_gpu = max(
-                    limits.gpu
-                    - task_resources_usage[op].gpu,
+                    limits.gpu - task_resources_usage[op].gpu,
                     0,
                 )
             else:
