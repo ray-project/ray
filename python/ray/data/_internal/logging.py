@@ -187,14 +187,12 @@ def configure_logging() -> None:
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
     """
-    import importlib
-
     config = _get_logging_config()
 
     # Create formatters, filters, and handlers from config
-    formatters = _create_formatters(config, importlib)
-    filters = _create_filters(config, importlib)
-    handlers = _create_handlers(config, importlib, formatters, filters)
+    formatters = _create_formatters(config)
+    filters = _create_filters(config)
+    handlers = _create_handlers(config, formatters, filters)
 
     # Configure each logger defined in the config
     _configure_loggers(config, handlers)
@@ -203,59 +201,69 @@ def configure_logging() -> None:
     _warn_if_incompatible_env_vars()
 
 
-def _create_formatters(config: dict, importlib) -> dict:
+def _import_class(class_path: str):
+    """Dynamically import a class from a fully qualified path."""
+    import importlib
+
+    if "." not in class_path:
+        raise ValueError(f"Invalid class path: {class_path}")
+
+    module_name, class_name = class_path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
+def _create_formatters(config: dict) -> dict:
     """Create formatter instances from config."""
     formatters = {}
+
     for name, fmt_config in config.get("formatters", {}).items():
         if "class" in fmt_config:
-            # Dynamically import custom formatter class
-            module_name, class_name = fmt_config["class"].rsplit(".", 1)
-            module = importlib.import_module(module_name)
-            formatter_class = getattr(module, class_name)
+            formatter_class = _import_class(fmt_config["class"])
             formatters[name] = formatter_class()
         elif "format" in fmt_config:
-            # Use standard formatter with format string
             formatters[name] = logging.Formatter(fmt_config["format"])
+
     return formatters
 
 
-def _create_filters(config: dict, importlib) -> dict:
+def _create_filters(config: dict) -> dict:
     """Create filter instances from config."""
     filters = {}
+
     for name, filter_config in config.get("filters", {}).items():
+        # https://docs.python.org/3/library/logging.config.html#dictionary-schema-details
         if "()" in filter_config:
-            # Dynamically import custom filter class
-            module_name, class_name = filter_config["()"].rsplit(".", 1)
-            module = importlib.import_module(module_name)
-            filter_class = getattr(module, class_name)
+            filter_class = _import_class(filter_config["()"])
             filters[name] = filter_class()
+
     return filters
 
 
-def _create_handlers(config: dict, importlib, formatters: dict, filters: dict) -> dict:
+def _create_handlers(config: dict, formatters: dict, filters: dict) -> dict:
     """Create and configure handler instances from config."""
     handlers = {}
+
     for name, handler_config in config.get("handlers", {}).items():
-        # Instantiate handler class
-        module_name, class_name = handler_config["class"].rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        handler_class = getattr(module, class_name)
-
-        # Extract constructor arguments
-        handler_kwargs = {}
-        if "filename" in handler_config:
-            handler_kwargs["filename"] = handler_config["filename"]
-
+        # Instantiate handler
+        handler_class = _import_class(handler_config["class"])
+        handler_kwargs = {k: v for k, v in handler_config.items() if k in ("filename",)}
         handler = handler_class(**handler_kwargs)
         handler.name = name
 
-        # Apply handler configuration
+        # Configure handler
         if "level" in handler_config:
             handler.setLevel(handler_config["level"])
+
         if "formatter" in handler_config:
-            handler.setFormatter(formatters[handler_config["formatter"]])
+            formatter = formatters.get(handler_config["formatter"])
+            if formatter:
+                handler.setFormatter(formatter)
+
         for filter_name in handler_config.get("filters", []):
-            handler.addFilter(filters[filter_name])
+            filter_obj = filters.get(filter_name)
+            if filter_obj:
+                handler.addFilter(filter_obj)
 
         handlers[name] = handler
 
@@ -266,8 +274,6 @@ def _configure_loggers(config: dict, handlers: dict) -> None:
     """Configure logger instances from config."""
     for logger_name, logger_config in config.get("loggers", {}).items():
         logger = logging.getLogger(logger_name)
-
-        # Set level
         logger.setLevel(logger_config.get("level", logging.NOTSET))
 
         # Clear existing handlers
@@ -276,9 +282,10 @@ def _configure_loggers(config: dict, handlers: dict) -> None:
 
         # Add configured handlers
         for handler_name in logger_config.get("handlers", []):
-            logger.addHandler(handlers[handler_name])
+            handler = handlers.get(handler_name)
+            if handler:
+                logger.addHandler(handler)
 
-        # Set propagate flag
         logger.propagate = logger_config.get("propagate", True)
 
 
@@ -287,7 +294,7 @@ def _warn_if_incompatible_env_vars() -> None:
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
 
-    if config_path is not None and log_encoding is not None:
+    if config_path and log_encoding:
         logger = logging.getLogger(__name__)
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
