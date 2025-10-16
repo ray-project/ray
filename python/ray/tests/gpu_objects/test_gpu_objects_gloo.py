@@ -950,11 +950,6 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
     result_ref = actors[1].recv.remote(gpu_obj_ref)
     ray.kill(actors[1])
 
-    with pytest.raises(ray.exceptions.ActorDiedError):
-        ray.get(result_ref)
-    with pytest.raises(ray.exceptions.ActorDiedError):
-        ray.get(actors[0].recv.remote(1))
-
     def check_logs():
         records = caplog.records
         return any(
@@ -968,6 +963,11 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
         )
 
     wait_for_condition(check_logs)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(actors[0].recv.remote(1))
 
 
 if __name__ == "__main__":
