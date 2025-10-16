@@ -112,7 +112,6 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
             # ↓↓↓ make cleanup fast/consistent in CI
             "object_timeout_milliseconds": 200,
             "local_gc_min_interval_s": 1,
-            "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
 
@@ -215,8 +214,6 @@ def test_delete_objects_multi_node(
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-            # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
-            "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
     ray.init(address=cluster.address)
