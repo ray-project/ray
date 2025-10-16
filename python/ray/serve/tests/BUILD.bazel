@@ -97,6 +97,7 @@ py_test_module_list(
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
+        "test_failure_2.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -325,6 +326,7 @@ py_test(
         "test_api_2.py",
         "test_controller_crashes.py",
         "test_failure.py",
+        "test_failure_2.py",
     ],
     tags = [
         "exclusive",
