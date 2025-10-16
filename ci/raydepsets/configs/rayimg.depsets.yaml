@@ -16,7 +16,7 @@ build_arg_sets:
 
 
 depsets:
-  - name: ray_img_depset_py${PYTHON_SHORT}
+  - name: ray_img_depset_${PYTHON_SHORT}
     requirements:
       - release/ray_release/byod/ray_dev_py${PYTHON_VERSION}.in
     constraints:
@@ -25,8 +25,8 @@ depsets:
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
       - --unsafe-package ray
+      - --python-platform=linux
     build_arg_sets:
       - py39
       - py310
@@ -39,15 +39,18 @@ depsets:
   - name: ray_base_extra_testdeps_py${PYTHON_SHORT}
     operation: expand
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     requirements:
       - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -60,15 +63,18 @@ depsets:
   - name: ray_ml_cpu_base_extra_testdeps_py${PYTHON_SHORT}
     operation: expand
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     requirements:
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -79,7 +85,7 @@ depsets:
   - name: ray_ml_cuda121_base_extra_testdeps_py${PYTHON_SHORT}
     operation: expand
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     requirements:
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in

@@ -13,10 +13,10 @@ class DataloaderType(enum.Enum):
 
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
-    limit_training_rows: int = 1000000
+    limit_training_rows: int = 1000000  # Use -1 for unlimited
 
     validation_batch_size: int = 256
-    limit_validation_rows: int = 50000
+    limit_validation_rows: int = 50000  # Use -1 for unlimited
 
 
 class TaskConfig(BaseModel):
