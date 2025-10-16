@@ -25,26 +25,23 @@
 namespace ray {
 namespace raylet {
 
-class FakeClientConnection {
- public:
-  static std::shared_ptr<ClientConnection> Create(instrumented_io_context &io_context) {
-    local_stream_socket socket(io_context);
-    return ClientConnection::Create(
-        [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-        [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
-        std::move(socket),
-        "fake_worker_connection",
-        {});
-  }
-};
-
 class FakeWorker : public WorkerInterface {
  public:
   FakeWorker(WorkerID worker_id, int port, instrumented_io_context &io_context)
       : worker_id_(worker_id),
         port_(port),
         proc_(Process::CreateNewDummy()),
-        connection_(FakeClientConnection::Create(io_context)) {}
+        connection_([&io_context]() {
+          local_stream_socket socket(io_context);
+          return ClientConnection::Create(
+              [](std::shared_ptr<ClientConnection>,
+                 int64_t,
+                 const std::vector<uint8_t> &) {},
+              [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+              std::move(socket),
+              "fake_worker_connection",
+              {});
+        }()) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
   rpc::WorkerType GetWorkerType() const override { return rpc::WorkerType::WORKER; }
