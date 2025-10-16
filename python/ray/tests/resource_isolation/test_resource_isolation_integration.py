@@ -80,6 +80,7 @@ _EXPECTED_SYSTEM_PROCESSES_RAY_START = [
     ray_constants.PROCESS_TYPE_RAYLET,
     ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
     ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
+    ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
 ]
 _EXPECTED_SYSTEM_PROCESSES_RAY_INIT = [
     ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -89,6 +90,7 @@ _EXPECTED_SYSTEM_PROCESSES_RAY_INIT = [
     ray_constants.PROCESS_TYPE_RAYLET,
     ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
     ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
+    ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
 ]
 
 
@@ -456,9 +458,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
-        node_id,
-        resource_isolation_config,
-        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START) + 1,
+        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
@@ -520,7 +520,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT) + 1
+        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
