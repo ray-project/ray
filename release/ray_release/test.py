@@ -655,7 +655,7 @@ class Test(dict):
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
-        If ray_version is specified in cluster config, returns a DockerHub image.
+        If ray_version is specified in cluster config, returns anyscale/ray image.
         """
         ray_version = self.get_ray_version()
         if ray_version and not self.require_custom_byod_image():
@@ -664,6 +664,8 @@ class Test(dict):
             tag_suffix = self.get_tag_suffix()
             if tag_suffix == "gpu":
                 tag_suffix = "cu121"
+            if self.require_custom_byod_image():
+                tag_suffix = tag_suffix + "-" + self.get_byod_image_tag(build_id)
             return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
 
         return (
