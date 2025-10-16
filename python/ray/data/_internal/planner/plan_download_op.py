@@ -45,6 +45,7 @@ def plan_download_op(
         upstream_op_is_download = True
 
     uri_column_names = op.uri_column_names
+    uri_column_names_str = ", ".join(uri_column_names)
     output_bytes_column_names = op.output_bytes_column_names
     ray_remote_args = op.ray_remote_args
 
@@ -86,7 +87,7 @@ def plan_download_op(
             partition_map_transformer,
             input_physical_dag,
             data_context,
-            name="URIPartitioner",
+            name=f"Partition({uri_column_names_str})",
             # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
             #       since those only apply to the actual download tasks. Partitioning is
             #       a lightweight internal operation that doesn't need custom resource
@@ -128,7 +129,7 @@ def plan_download_op(
         download_map_transformer,
         partition_map_operator if partition_map_operator else input_physical_dag,
         data_context,
-        name="URIDownloader",
+        name=f"Download({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
     )
