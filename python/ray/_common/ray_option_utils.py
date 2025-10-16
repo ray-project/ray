@@ -8,8 +8,6 @@ from ray._private import ray_constants
 from ray._private.label_utils import (
     validate_fallback_strategy,
     validate_label_selector,
-    validate_fallback_strategy,
-    validate_label_selector,
 )
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
