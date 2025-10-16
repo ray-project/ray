@@ -1056,8 +1056,15 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def serving(self) -> None:
-        """Wait for the proxy to be ready to serve requests."""
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests.
+
+        Args:
+            wait_for_applications_running: Whether to wait for the applications to be running
+
+        Returns:
+            None
+        """
         pass
 
     @abstractmethod
@@ -1313,7 +1320,7 @@ class ProxyActor(ProxyActorInterface):
             ]
         )
 
-    async def serving(self) -> None:
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
         """Wait for the proxy to be ready to serve requests."""
         return
 

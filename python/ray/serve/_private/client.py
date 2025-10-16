@@ -290,10 +290,17 @@ class ServeControllerClient:
             )
 
     @_ensure_connected
-    def wait_for_proxies_serving(self) -> None:
+    def wait_for_proxies_serving(
+        self, wait_for_applications_running: bool = True
+    ) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = ray.get(self._controller.get_proxies.remote())
-        serving_refs = [handle.serving.remote() for handle in proxy_handles.values()]
+        serving_refs = [
+            handle.serving.remote(
+                wait_for_applications_running=wait_for_applications_running
+            )
+            for handle in proxy_handles.values()
+        ]
 
         done, pending = ray.wait(
             serving_refs,

@@ -614,7 +614,9 @@ def _run_many(
             wait_for_applications_running=wait_for_applications_running,
         )
 
-        client.wait_for_proxies_serving()
+        client.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
         return handles
 
 
