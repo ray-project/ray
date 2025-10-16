@@ -440,12 +440,14 @@ with checkpoint.as_directory() as checkpoint_dir:
 def train_fn(config):
     ...
     metrics = {...}
-    checkpoint = Checkpoint.from_directory(local_dir)
-    train.report(
-        metrics,
-        checkpoint=checkpoint,
-        checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ...  # Save checkpoint to tmpdir
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
+        )
 
 
 # __checkpoint_upload_mode_sync_end__
@@ -454,7 +456,9 @@ def train_fn(config):
 def train_fn(config):
     ...
     metrics = {...}
-    checkpoint = Checkpoint.from_directory(local_dir)
+    tmpdir = tempfile.mkdtemp()
+    ...  # Save checkpoint to tmpdir
+    checkpoint = Checkpoint.from_directory(tmpdir)
     train.report(
         metrics,
         checkpoint=checkpoint,
