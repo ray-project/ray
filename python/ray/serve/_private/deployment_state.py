@@ -2164,7 +2164,7 @@ class DeploymentState:
         current target. Otherwise updates the state and logs an up/down scaling.
 
         Args:
-            decision_num_replicas: Optional target replica count to apply.
+            decision_num_replicas: target replica count to apply.
 
         Returns:
             bool: True if the target state was updated, False if no change occurred.

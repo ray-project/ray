@@ -25,7 +25,7 @@ from ray.serve._private.metrics_utils import (
     merge_timeseries_dicts,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
-from ray.serve.config import AutoscalingContext
+from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -50,6 +50,8 @@ class DeploymentAutoscalingState:
         self._policy: Optional[
             Callable[[AutoscalingContext], Tuple[int, Optional[Dict[str, Any]]]]
         ] = None
+        # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
+        # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
@@ -62,6 +64,10 @@ class DeploymentAutoscalingState:
         """
 
         config = info.deployment_config.autoscaling_config
+        if config is None:
+            raise ValueError(
+                f"Autoscaling config is not set for deployment {self._deployment_id}"
+            )
         if (
             self._deployment_info is None or self._deployment_info.config_changed(info)
         ) and config.initial_replicas is not None:
@@ -212,7 +218,6 @@ class DeploymentAutoscalingState:
         """
         if self._policy is None:
             raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
-
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
         if _skip_bound_check:
@@ -577,10 +582,36 @@ class ApplicationAutoscalingState:
         self._deployment_autoscaling_states: Dict[
             DeploymentID, DeploymentAutoscalingState
         ] = {}
+        self._policy: Optional[
+            Callable[
+                [Dict[DeploymentID, AutoscalingContext]],
+                Tuple[Dict[DeploymentID, int], Optional[Dict[str, Dict]]],
+            ]
+        ] = None
+        # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
+        # content of the dictionary is determined by the user defined policy
+        self._policy_state: Optional[Dict[str, Any]] = None
 
     @property
     def deployments(self):
         return self._deployment_autoscaling_states.keys()
+
+    def register(
+        self,
+        autoscaling_policy: AutoscalingPolicy,
+    ):
+        """Register or update application-level autoscaling config and deployments.
+
+        This will overwrite the deployment-level policies with the application-level policy.
+
+        Args:
+            autoscaling_policy: The autoscaling policy to register.
+        """
+        self._policy = autoscaling_policy.get_policy()
+        self._policy_state = {}
+
+    def has_policy(self) -> bool:
+        return self._policy is not None
 
     def register_deployment(
         self,
@@ -594,19 +625,34 @@ class ApplicationAutoscalingState:
                 deployment_id
             ] = DeploymentAutoscalingState(deployment_id)
 
+        if info.deployment_config.autoscaling_config is None:
+            raise ValueError(
+                f"Autoscaling config is not set for deployment {deployment_id}"
+            )
+
+        # if the deployment-level policy is not the default policy, and the application has a policy,
+        # warn the user that the application-level policy will take precedence
+        if (
+            not info.deployment_config.autoscaling_config.policy.is_default_policy_function()
+            and self.has_policy()
+        ):
+            logger.warning(
+                f"User provided both a deployment-level and an application-level policy for deployment {deployment_id}. "
+                "The application-level policy will take precedence."
+            )
+
         return self._deployment_autoscaling_states[deployment_id].register(
             info,
             curr_target_num_replicas,
         )
 
-    def deregister_deployment(self, deployment_id: DeploymentID) -> int:
+    def deregister_deployment(self, deployment_id: DeploymentID):
         if deployment_id not in self._deployment_autoscaling_states:
             logger.warning(
                 f"Cannot deregister autoscaling state for deployment {deployment_id} because it is not registered"
             )
-            return len(self._deployment_autoscaling_states)
+            return
         self._deployment_autoscaling_states.pop(deployment_id)
-        return len(self._deployment_autoscaling_states)
 
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
@@ -620,15 +666,52 @@ class ApplicationAutoscalingState:
         Decide scaling for all deployments in this application by calling
         each deployment's autoscaling policy.
         """
-        return {
-            deployment_id: deployment_autoscaling_state.get_decision_num_replicas(
-                curr_target_num_replicas=deployment_to_target_num_replicas[
-                    deployment_id
-                ],
-                _skip_bound_check=_skip_bound_check,
-            )
-            for deployment_id, deployment_autoscaling_state in self._deployment_autoscaling_states.items()
-        }
+        if self.has_policy():
+            # Using app-level policy
+            autoscaling_contexts = {
+                deployment_id: state.get_autoscaling_context(
+                    deployment_to_target_num_replicas[deployment_id]
+                )
+                for deployment_id, state in self._deployment_autoscaling_states.items()
+            }
+
+            # Policy returns {deployment_name -> decision}
+            decisions, self._policy_state = self._policy(autoscaling_contexts)
+
+            assert (
+                type(decisions) is dict
+            ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
+
+            # assert that deployment_id is in decisions is valid
+            for deployment_id in decisions.keys():
+                assert (
+                    deployment_id in self._deployment_autoscaling_states
+                ), f"Deployment {deployment_id} is not registered"
+                assert (
+                    deployment_id in deployment_to_target_num_replicas
+                ), f"Deployment {deployment_id} is invalid"
+
+            return {
+                deployment_id: (
+                    self._deployment_autoscaling_states[deployment_id].apply_bounds(
+                        num_replicas
+                    )
+                    if not _skip_bound_check
+                    else num_replicas
+                )
+                for deployment_id, num_replicas in decisions.items()
+            }
+        else:
+            # Using deployment-level policy
+            return {
+                deployment_id: deployment_autoscaling_state.get_decision_num_replicas(
+                    curr_target_num_replicas=deployment_to_target_num_replicas[
+                        deployment_id
+                    ],
+                    _skip_bound_check=_skip_bound_check,
+                )
+                for deployment_id, deployment_autoscaling_state in self._deployment_autoscaling_states.items()
+            }
 
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
@@ -718,6 +801,7 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.setdefault(
             app_name, ApplicationAutoscalingState(app_name)
         )
+        logger.info(f"Registering autoscaling state for deployment {deployment_id}")
         return app_state.register_deployment(
             deployment_id, info, curr_target_num_replicas
         )
@@ -726,10 +810,33 @@ class AutoscalingStateManager:
         """Remove deployment from tracking."""
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
-            num_deployments = app_state.deregister_deployment(deployment_id)
-            if num_deployments == 0:
-                # Clean up the app_name entry if no deployments are left
-                del self._app_autoscaling_states[deployment_id.app_name]
+            logger.info(
+                f"Deregistering autoscaling state for deployment {deployment_id}"
+            )
+            app_state.deregister_deployment(deployment_id)
+
+    def register_application(
+        self,
+        app_name: ApplicationName,
+        autoscaling_policy: AutoscalingPolicy,
+    ):
+        app_state = self._app_autoscaling_states.setdefault(
+            app_name, ApplicationAutoscalingState(app_name)
+        )
+        logger.info(f"Registering autoscaling state for application {app_name}")
+        app_state.register(autoscaling_policy)
+
+    def deregister_application(self, app_name: ApplicationName):
+        """Remove application from tracking."""
+        if app_name in self._app_autoscaling_states:
+            logger.info(f"Deregistering autoscaling state for application {app_name}")
+            self._app_autoscaling_states.pop(app_name, None)
+
+    def _application_has_policy(self, app_name: ApplicationName) -> bool:
+        return (
+            app_name in self._app_autoscaling_states
+            and self._app_autoscaling_states[app_name].has_policy()
+        )
 
     def get_decision_num_replicas(
         self,
