@@ -338,11 +338,3 @@ def test_filter_bad_expression(sample_data):
     sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
         pq.read_table(sample_data_path, filters=filters)
-
-
-if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main(["-v", __file__]))
