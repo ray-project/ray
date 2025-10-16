@@ -253,6 +253,8 @@ repos:
           - eslint-plugin-react@7.34.2
           - eslint-plugin-import@2.29.1
           - eslint-config-react-app@7.0.1
+          - eslint-plugin-react-hooks@5.1.0
+          - eslint-plugin-prefer-arrow@1.2.3
           - '@babel/eslint-parser@7.23.3'
           - '@typescript-eslint/parser@6.9.0'
           - '@typescript-eslint/eslint-plugin@6.9.0'
