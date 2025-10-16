@@ -9,5 +9,6 @@ Prefill/decode disaggregation <prefill-decode>
 Prefix-aware routing <prefix-aware-routing>
 Multi-LoRA deployment <multi-lora>
 vLLM compatibility <vllm-compatibility>
+Serving on fractional GPUs <fractional-gpu>
 ```
 
