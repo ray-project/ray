@@ -13,9 +13,8 @@ COPY docker/ray-ml/install-gdrcopy.sh ./
 RUN sudo chmod +x install-ml-docker-requirements.sh \
     && ./install-ml-docker-requirements.sh
 RUN sudo apt-get update && sudo apt-get install -y curl
-ENV GDRCOPY_VERSION=2.4-1
 RUN sudo chmod +x install-gdrcopy.sh \
-    && sudo ./install-gdrcopy.sh ubuntu22_04 12.2 x64
+    && sudo GDRCOPY_VERSION=2.4-1 ./install-gdrcopy.sh ubuntu22_04 12.2 x64
 
 # Export installed packages
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
