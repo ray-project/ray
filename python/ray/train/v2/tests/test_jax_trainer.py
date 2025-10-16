@@ -171,6 +171,7 @@ def test_jax_platforms_env_var_with_existing_tpu(ray_tpu_single_host, tmp_path):
         jax_platforms = os.environ.get("JAX_PLATFORMS", "")
         assert jax_platforms == "tpu,cpu"
 
+
     trainer = JaxTrainer(
         train_loop_per_worker=train_func_check_env,
         scaling_config=ScalingConfig(
