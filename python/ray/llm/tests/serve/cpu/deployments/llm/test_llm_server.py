@@ -450,8 +450,8 @@ class TestLLMServer:
 
 
 class TestGetDeploymentOptions:
-    def test_resources_per_bundle(self):
-        """Test that resources_per_bundle is correctly parsed."""
+    def test_placement_group_config(self):
+        """Test that placement_group_config is correctly parsed."""
 
         # Test the default resource bundle
         llm_config = LLMConfig(
@@ -464,16 +464,23 @@ class TestGetDeploymentOptions:
             {"GPU": 1} for _ in range(5)
         ]
 
-        # Test the custom resource bundle
+        # Test the custom placement group config
+        # Note: The first bundle gets merged with replica actor resources (CPU: 1, GPU: 0)
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-            resources_per_bundle={"XPU": 1},
+            placement_group_config={
+                "bundles": [{"CPU": 1, "XPU": 1}] + [{"XPU": 1}] * 5,
+                "strategy": "PACK",
+            },
         )
         serve_options = LLMServer.get_deployment_options(llm_config)
+        # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
+        # All bundles get GPU: 1.0 added as accelerator hint (and CPU: 0.0 for workers)
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0, "XPU": 1}
-        ] + [{"XPU": 1} for _ in range(5)]
+            {"CPU": 2.0, "GPU": 1.0, "XPU": 1}
+        ] + [{"CPU": 0.0, "GPU": 1.0, "XPU": 1} for _ in range(5)]
+        assert serve_options["placement_group_strategy"] == "PACK"
 
     def test_get_serve_options_with_accelerator_type(self):
         """Test that get_serve_options returns the correct options when accelerator_type is set."""
@@ -501,7 +508,8 @@ class TestGetDeploymentOptions:
         assert serve_options["placement_group_bundles"] == [
             {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
         ]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
 
         # Check that our custom env vars are present
         assert (
@@ -535,7 +543,8 @@ class TestGetDeploymentOptions:
             "max_replicas": 10,
         }
         assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
 
         # Check that our custom env vars are present
         assert (

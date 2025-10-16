@@ -64,7 +64,7 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounter &reference_counter,
+    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
@@ -92,7 +92,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_->Disconnect());
+  store_client_->Disconnect();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -241,9 +241,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object = std::make_shared<RayObject>(
+      auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      (*results)[object_id] = result_object;
+      (*results)[object_id] = std::move(result_object);
     }
   }
   return Status::OK();
