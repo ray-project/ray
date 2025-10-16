@@ -62,17 +62,6 @@ class Raylet {
   /// Stop this raylet.
   void Stop();
 
-  /// Unregister this raylet from the GCS.
-  ///
-  /// \param node_death_info The death information regarding why to unregister self.
-  /// \param unregister_done_callback The callback to call when the unregistration is
-  /// done.
-  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
-                      std::function<void()> unregister_done_callback);
-
-  /// Destroy the NodeServer.
-  ~Raylet();
-
   NodeID GetNodeId() const { return self_node_id_; }
 
   NodeManager &node_manager() { return node_manager_; }

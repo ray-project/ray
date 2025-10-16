@@ -31,12 +31,27 @@ py_test_module_list(
 )
 
 # Custom metrics tests.
-py_test_module_list(
+py_test_module_list_with_env_variants(
     size = "small",
-    env = {
-        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-        "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "2",
-        "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
+    env_variants = {
+        "metr_agg_at_controller": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "0.5",
+                "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
+            },
+            "name_suffix": "_metr_agg_at_controller",
+        },
+        "metr_agg_at_replicas": {
+            "env": {
+                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "0",
+                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S": "0.5",
+                "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
+            },
+            "name_suffix": "_metr_agg_at_replicas",
+        },
     },
     files = [
         "test_custom_autoscaling_metrics.py",

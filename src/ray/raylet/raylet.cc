@@ -24,21 +24,20 @@
 
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
-#include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
 
 namespace {
 
-const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
-                                                 int start_index,
-                                                 int end_index) {
+std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
+                                           int start_index,
+                                           int end_index) {
   std::vector<std::string> enum_names;
+  enum_names.reserve(start_index);
   for (int i = 0; i < start_index; ++i) {
-    enum_names.push_back("EmptyMessageType");
+    enum_names.emplace_back("EmptyMessageType");
   }
   size_t i = 0;
   while (true) {
@@ -46,7 +45,7 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
     if (name == nullptr) {
       break;
     }
-    enum_names.push_back(name);
+    enum_names.emplace_back(name);
     i++;
   }
   RAY_CHECK(static_cast<size_t>(end_index) == enum_names.size() - 1)
@@ -54,15 +53,13 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
   return enum_names;
 }
 
-static const std::vector<std::string> node_manager_message_enum =
+const std::vector<std::string> node_manager_message_enum =
     GenerateEnumNames(ray::protocol::EnumNamesMessageType(),
                       static_cast<int>(ray::protocol::MessageType::MIN),
                       static_cast<int>(ray::protocol::MessageType::MAX));
 }  // namespace
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 Raylet::Raylet(instrumented_io_context &main_service,
                const NodeID &self_node_id,
@@ -111,18 +108,11 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
 }
 
-Raylet::~Raylet() {}
-
 void Raylet::Start() {
   RegisterGcs();
 
   // Start listening for clients.
   DoAccept();
-}
-
-void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
-                            std::function<void()> unregister_done_callback) {
-  gcs_client_.Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
 }
 
 void Raylet::Stop() {
@@ -145,7 +135,7 @@ void Raylet::RegisterGcs() {
     node_manager_.RegisterGcs();
   };
 
-  RAY_CHECK_OK(gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback));
+  gcs_client_.Nodes().RegisterSelf(self_node_info_, register_callback);
 }
 
 void Raylet::DoAccept() {
@@ -191,6 +181,4 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   DoAccept();
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

@@ -116,19 +116,13 @@ namespace gcs {
 
 class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               RegisterSelf,
               (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(const NodeID &, GetSelfId, (), (const, override));
-  MOCK_METHOD(const rpc::GcsNodeInfo &, GetSelfInfo, (), (const, override));
   MOCK_METHOD(void,
               AsyncRegister,
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void,
-              AsyncCheckSelfAlive,
-              (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,

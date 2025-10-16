@@ -14,6 +14,7 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -420,7 +421,8 @@ class NodeManagerTest : public ::testing::Test {
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
         [](const std::string &) {},
-        nullptr);
+        nullptr,
+        shutting_down_);
   }
 
   instrumented_io_context io_service_;
@@ -448,6 +450,8 @@ class NodeManagerTest : public ::testing::Test {
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+
+  std::atomic_bool shutting_down_ = RayletShutdownState::ALIVE;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -466,8 +470,9 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
+      .WillOnce(
+          [&promise](const auto &, const auto &, const auto &) { promise.set_value(); });
   node_manager_->RegisterGcs();
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
@@ -590,12 +595,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
-
-  // Invoke RegisterGcs and wait until publish_node_change_callback is set.
   node_manager_->RegisterGcs();
-  while (!publish_node_change_callback) {
-    io_service_.run_one();
-  }
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
@@ -1223,6 +1223,45 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
 
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
+                         testing::Bool());
+
+class NodeManagerDeathTest : public NodeManagerTest,
+                             public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
+  // When the GCS publishes the node's death,
+  // 1. The raylet should kill itself immediately if it's not shutting down.
+  // 2. The raylet should ignore the death publish if the shutdown process has already
+  //    started
+  const bool shutting_down_during_death_publish = GetParam();
+
+  gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+      publish_node_change_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
+                    const gcs::StatusCallback &done) {
+        publish_node_change_callback = subscribe;
+      });
+  node_manager_->RegisterGcs();
+
+  shutting_down_ = shutting_down_during_death_publish;
+
+  rpc::GcsNodeAddressAndLiveness dead_node_info;
+  dead_node_info.set_node_id(raylet_node_id_.Binary());
+  dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
+
+  if (shutting_down_during_death_publish) {
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+  } else {
+    ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
+                 ".*Exiting because this node manager has.*");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
+                         NodeManagerDeathTest,
                          testing::Bool());
 
 }  // namespace ray::raylet

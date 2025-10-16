@@ -1857,6 +1857,22 @@
 
   alert: default
 
+- name: train_async_checkpointing_validation_benchmark
+  group: Train tests
+  working_dir: train_tests/async_checkpointing_validation_benchmark
+  frequency: nightly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+  run:
+    timeout: 10800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_async_checkpointing_validation_benchmark.py
+    wait_for_nodes:
+      num_nodes: 2
+  alert: default
+
 - name: train_colocate_trainer
   python: "3.10"
   group: Train tests

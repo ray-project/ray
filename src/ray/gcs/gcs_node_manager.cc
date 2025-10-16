@@ -196,9 +196,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto num_drain_request = request.drain_node_data_size();
-  for (auto i = 0; i < num_drain_request; i++) {
-    const auto &node_drain_request = request.drain_node_data(i);
+  for (const auto &node_drain_request : request.drain_node_data()) {
     const auto node_id = NodeID::FromBinary(node_drain_request.node_id());
 
     DrainNode(node_id);

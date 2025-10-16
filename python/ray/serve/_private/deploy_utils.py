@@ -98,11 +98,21 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
+    deployment_autoscaling_policies = [
+        deployment_config.autoscaling_config.get("policy", None)
+        for deployment_config in app_config.deployments
+        if isinstance(deployment_config.autoscaling_config, dict)
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            # NOTE: trigger a change in the code version when
+            # application level autoscaling policy is changed or
+            # any one of the deployment level autoscaling policy is changed
+            "autoscaling_policy": app_config.autoscaling_policy,
+            "deployment_autoscaling_policies": deployment_autoscaling_policies,
         },
         sort_keys=True,
     ).encode("utf-8")

@@ -40,14 +40,14 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(message) {
+  explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit BundleSpecification(std::shared_ptr<rpc::Bundle> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
   // Return the bundle_id

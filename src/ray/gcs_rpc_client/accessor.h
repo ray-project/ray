@@ -297,31 +297,23 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
   explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
+
   /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
-  /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                              const StatusCallback &callback);
+  virtual void RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                            const StatusCallback &callback);
 
   /// Unregister local node to GCS asynchronously.
   ///
+  /// \param node_id The ID of the node to unregister from GCS.
   /// \param node_death_info The death information regarding why to unregister from GCS.
   /// \param unregister_done_callback Callback that will be called when unregistration is
   /// done.
-  virtual void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+  virtual void UnregisterSelf(const NodeID &node_id,
+                              const rpc::NodeDeathInfo &node_death_info,
                               std::function<void()> unregister_done_callback);
-
-  /// Get id of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return NodeID
-  virtual const NodeID &GetSelfId() const;
-
-  /// Get information of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return GcsNodeInfo
-  virtual const rpc::GcsNodeInfo &GetSelfInfo() const;
 
   /// Register a node to GCS asynchronously.
   ///
@@ -329,13 +321,6 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called when registration is complete.
   virtual void AsyncRegister(const rpc::GcsNodeInfo &node_info,
                              const StatusCallback &callback);
-
-  /// Send a check alive request to GCS for the liveness of this node.
-  ///
-  /// \param callback The callback function once the request is finished.
-  /// \param timeout_ms The timeout for this request.
-  virtual void AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
-                                   int64_t timeout_ms);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -477,9 +462,6 @@ class NodeInfoAccessor {
   FetchDataOperation fetch_node_address_and_liveness_data_operation_;
 
   GcsClient *client_impl_;
-
-  rpc::GcsNodeInfo local_node_info_;
-  NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
   std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;

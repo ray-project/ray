@@ -19,7 +19,7 @@ from ray._common.pydantic_compat import (
 from ray._common.utils import import_attr
 
 # Import types needed for AutoscalingContext
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -63,18 +63,18 @@ class AutoscalingContext:
 
     # Built-in metrics
     total_num_requests: float  #: Total number of requests across all replicas.
-    queued_requests: Optional[float]  #: Number of requests currently queued.
-    requests_per_replica: Dict[
-        ReplicaID, float
-    ]  #: Mapping of replica ID to number of requests.
+    total_queued_requests: Optional[float]  #: Number of requests currently queued.
+    total_running_requests: Optional[
+        float
+    ]  #: Total number of requests currently running.
 
     # Custom metrics
     aggregated_metrics: Dict[
         str, Dict[ReplicaID, float]
     ]  #: Time-weighted averages of custom metrics per replica.
     raw_metrics: Dict[
-        str, Dict[ReplicaID, List[float]]
-    ]  #: Raw custom metric values per replica.
+        str, Dict[ReplicaID, TimeSeries]
+    ]  #: Raw custom metric timeseries per replica.
 
     # Capacity and bounds
     capacity_adjusted_min_replicas: int  #: Minimum replicas adjusted for cluster capacity.
@@ -260,6 +260,9 @@ class AutoscalingPolicy(BaseModel):
             self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
 
         self.policy_function = policy_path
+
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""

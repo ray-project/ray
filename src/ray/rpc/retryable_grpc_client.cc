@@ -17,6 +17,8 @@
 #include <memory>
 #include <utility>
 
+#include "ray/util/exponential_backoff.h"
+
 namespace ray::rpc {
 RetryableGrpcClient::~RetryableGrpcClient() {
   timer_.cancel();
@@ -81,11 +83,21 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   case GRPC_CHANNEL_CONNECTING: {
     if (server_unavailable_timeout_time_ < now) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
-                       << server_unavailable_timeout_seconds_ << " seconds";
+                       << ExponentialBackoff::GetBackoffMs(
+                              attempt_number_,
+                              server_reconnect_timeout_base_seconds_ * 1000,
+                              server_reconnect_timeout_max_seconds_ * 1000) /
+                              1000
+                       << " seconds";
       server_unavailable_timeout_callback_();
       // Reset the unavailable timeout.
+      attempt_number_++;
       server_unavailable_timeout_time_ =
-          now + absl::Seconds(server_unavailable_timeout_seconds_);
+          now + absl::Seconds(ExponentialBackoff::GetBackoffMs(
+                                  attempt_number_,
+                                  server_reconnect_timeout_base_seconds_ * 1000,
+                                  server_reconnect_timeout_max_seconds_ * 1000) /
+                              1000);
     }
 
     if (reset_timer) {
@@ -107,6 +119,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       pending_requests_.erase(pending_requests_.begin());
     }
     pending_requests_bytes_ = 0;
+    attempt_number_ = 0;
     break;
   }
   default: {
@@ -154,7 +167,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
     server_unavailable_timeout_time_ =
-        now + absl::Seconds(server_unavailable_timeout_seconds_);
+        now + absl::Seconds(server_reconnect_timeout_base_seconds_);
     SetupCheckTimer();
   }
 }
