@@ -465,7 +465,7 @@ class ParquetDatasource(Datasource):
             summary.append(f"Projected Columns: {projection}")
 
         filter_expr = self._to_batches_kwargs.get("filter", None)
-        if filter_expr:
+        if filter_expr is not None:
             summary.append(f"Filter: {filter_expr}")
 
         # Schema
