@@ -10,12 +10,17 @@ depsets:
   - name: audio_transcription_py${PYTHON_SHORT}
     operation: compile
     requirements:
-      - release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+      - release/ray_release/byod/ray_dev_py${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
       - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
     output: release/ray_release/byod/audio_transcription_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
       - --python-platform=linux
     build_arg_sets:
       - py39
       - py310
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
