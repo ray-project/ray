@@ -161,7 +161,6 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] object_ids objects to fetch if they are not already in local plasma.
   /// \param[in] timeout_ms if the timeout elapses, the request will be canceled.
   /// \param[out] results objects fetched from plasma. This is only valid if the function
-  /// returns Status::OK.
   ///
   /// \return Status::IOError if there's an error communicating with the raylet.
   /// \return Status::TimedOut if timeout_ms was reached before all object_ids could be
@@ -169,6 +168,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Status::Interrupted if a SIGINT signal was received.
   /// \return Status::IntentionalSystemExit if a SIGTERM signal was was received.
   /// \return Status::UnexpectedSystemExit if any other signal was received.
+  /// \return Status::OK otherwise.
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
              int64_t timeout_ms,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
@@ -232,7 +232,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status::IOError if there is an error in communicating with the raylet or the
   /// plasma store.
-  /// \return Status::OK
+  /// \return Status::OK otherwise.
   Status PullObjectsAndGetFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining,
       const std::vector<ObjectID> &batch_ids,
