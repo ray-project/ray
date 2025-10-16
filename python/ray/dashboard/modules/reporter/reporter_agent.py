@@ -893,8 +893,8 @@ class ReporterAgent(
         try:
             # Get worker pids from raylet via gRPC.
             return self._raylet_client.get_worker_pids()
-        except TimeoutError as e:
-            logger.debug(f"Failed to get worker pids from raylet: {e}")
+        except (TimeoutError, RuntimeError):
+            logger.exception("Failed to get worker pids from raylet")
             return []
 
     def _get_agent_proc(self) -> psutil.Process:
@@ -916,6 +916,7 @@ class ReporterAgent(
                 proc = psutil.Process(pid)
                 workers[self._generate_worker_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access worker process {pid}")
                 continue
         return workers
 
