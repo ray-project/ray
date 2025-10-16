@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch
 
 from click.testing import CliRunner
+
 from ray_release.scripts.custom_byod_build import main
 
 
