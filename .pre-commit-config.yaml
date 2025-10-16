@@ -245,6 +245,8 @@ repos:
       - id: eslint
         files: ^python/ray/dashboard/client/src/.*\.[jt]sx?$
         types: [file]
+        args:
+          - --max-warnings=0
         additional_dependencies:
           - eslint@8.56.0
           - eslint-config-google@0.14.0
