@@ -272,7 +272,7 @@ class RouterMetricsManager:
                 self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    autoscaling_config.metrics_interval_s,
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
                 ),
             )
             # Push metrics to the controller periodically.
