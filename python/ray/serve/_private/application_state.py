@@ -25,8 +25,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY_NAME,
-    DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
 )
@@ -210,6 +208,7 @@ class ApplicationTargetState:
     target_capacity_direction: the scale direction to use when
         running the Serve autoscaler.
     deleting: whether the application is being deleted.
+    serialized_application_autoscaling_policy_def: Optional[bytes]
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -219,6 +218,7 @@ class ApplicationTargetState:
     target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
     api_type: APIType
+    serialized_application_autoscaling_policy_def: Optional[bytes]
 
 
 class ApplicationState:
@@ -337,6 +337,19 @@ class ApplicationState:
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
+        # Restore app-level autoscaling policy from checkpoint
+        if (
+            checkpoint_data.config
+            and checkpoint_data.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                AutoscalingPolicy(
+                    _serialized_policy_def=checkpoint_data.serialized_application_autoscaling_policy_def,
+                    **checkpoint_data.config.autoscaling_policy,
+                ),
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -347,6 +360,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
+        serialized_application_autoscaling_policy_def: Optional[bytes] = None,
     ):
         """Set application target state.
 
@@ -377,6 +391,7 @@ class ApplicationState:
             target_capacity_direction,
             deleting,
             api_type=api_type,
+            serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
         self._target_state = target_state
@@ -632,25 +647,27 @@ class ApplicationState:
             ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
-            deployment_to_autoscaling_policy_function = {}
-            for deployment in config.deployments:
-                # Since we are using configs to extract the autoscaling policy name, it is guaranteed that the the type of policy name is a string
-                if isinstance(deployment.autoscaling_config, dict):
-                    deployment_to_autoscaling_policy_function[
-                        deployment.name
-                    ] = deployment.autoscaling_config.get("policy", {}).get(
-                        "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
-                    )
+            if isinstance(config.autoscaling_policy, dict):
+                application_autoscaling_policy_function = config.autoscaling_policy.get(
+                    "policy_function"
+                )
+            else:
+                application_autoscaling_policy_function = None
 
-            deployment_to_request_router_cls = {}
-            for deployment in config.deployments:
-                # Since we are using configs to extract the request router cls, it is guaranteed that the the type of request router cls is a string
-                if isinstance(deployment.request_router_config, dict):
-                    deployment_to_request_router_cls[
-                        deployment.name
-                    ] = deployment.request_router_config.get(
-                        "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
-                    )
+            deployment_to_autoscaling_policy_function = {
+                deployment.name: deployment.autoscaling_config.get("policy", {}).get(
+                    "policy_function"
+                )
+                for deployment in config.deployments
+                if isinstance(deployment.autoscaling_config, dict)
+            }
+            deployment_to_request_router_cls = {
+                deployment.name: deployment.request_router_config.get(
+                    "request_router_class"
+                )
+                for deployment in config.deployments
+                if isinstance(deployment.request_router_config, dict)
+            }
 
             # Kick off new build app task
             logger.info(f"Importing and building app '{self._name}'.")
@@ -663,6 +680,7 @@ class ApplicationState:
                 config.name,
                 config.args,
                 self._logging_config,
+                application_autoscaling_policy_function,
                 deployment_to_autoscaling_policy_function,
                 deployment_to_request_router_cls,
             )
@@ -736,10 +754,15 @@ class ApplicationState:
         else:
             return ApplicationStatus.RUNNING, ""
 
-    def _reconcile_build_app_task(self) -> Tuple[Optional[Dict], BuildAppStatus, str]:
+    def _reconcile_build_app_task(
+        self,
+    ) -> Tuple[Optional[bytes], Optional[Dict], BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
 
         Returns:
+            Serialized application autoscaling policy def (bytes):
+                The serialized application autoscaling policy def returned from the build app task
+                if it was built successfully, otherwise None.
             Deploy arguments (Dict[str, DeploymentInfo]):
                 The deploy arguments returned from the build app task
                 and their code version.
@@ -760,7 +783,9 @@ class ApplicationState:
         # Retrieve build app task result
         self._build_app_task_info.finished = True
         try:
-            args, err = ray.get(self._build_app_task_info.obj_ref)
+            serialized_application_autoscaling_policy_def, args, err = ray.get(
+                self._build_app_task_info.obj_ref
+            )
             if err is None:
                 logger.info(f"Imported and built app '{self._name}' successfully.")
             else:
@@ -808,15 +833,20 @@ class ApplicationState:
                 deployment_to_serialized_request_router_cls,
             )
             self._route_prefix = self._check_routes(overrided_infos)
-            return overrided_infos, BuildAppStatus.SUCCEEDED, ""
+            return (
+                serialized_application_autoscaling_policy_def,
+                overrided_infos,
+                BuildAppStatus.SUCCEEDED,
+                "",
+            )
         except (TypeError, ValueError, RayServeException):
-            return None, BuildAppStatus.FAILED, traceback.format_exc()
+            return None, None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -907,7 +937,12 @@ class ApplicationState:
         # If the application is being deleted, ignore any build task results to
         # avoid flipping the state back to DEPLOYING/RUNNING.
         if not self._target_state.deleting:
-            infos, task_status, msg = self._reconcile_build_app_task()
+            (
+                serialized_application_autoscaling_policy_def,
+                infos,
+                task_status,
+                msg,
+            ) = self._reconcile_build_app_task()
             if task_status == BuildAppStatus.SUCCEEDED:
                 target_state_changed = True
                 self._set_target_state(
@@ -919,7 +954,23 @@ class ApplicationState:
                     target_capacity_direction=(
                         self._build_app_task_info.target_capacity_direction
                     ),
+                    serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
                 )
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if (
+                    self._target_state.config is not None
+                    and self._target_state.config.autoscaling_policy is not None
+                ):
+                    self._autoscaling_state_manager.register_application(
+                        self._name,
+                        AutoscalingPolicy(
+                            _serialized_policy_def=serialized_application_autoscaling_policy_def,
+                            **self._target_state.config.autoscaling_policy,
+                        ),
+                    )
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
             elif task_status == BuildAppStatus.FAILED:
                 self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
@@ -1234,6 +1285,7 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
@@ -1284,9 +1336,10 @@ def build_serve_application(
     name: str,
     args: Dict,
     logging_config: LoggingConfig,
+    application_autoscaling_policy_function: Optional[str],
     deployment_to_autoscaling_policy_function: Dict[str, str],
     deployment_to_request_router_cls: Dict[str, str],
-) -> Tuple[Optional[List[Dict]], Optional[str]]:
+) -> Tuple[Optional[bytes], Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
 
     Args:
@@ -1297,9 +1350,12 @@ def build_serve_application(
             without removing existing applications.
         args: Arguments to be passed to the application builder.
         logging_config: the logging config for the build app task.
+        application_autoscaling_policy_function: the application autoscaling policy function name
         deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
         deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
     Returns:
+        Serialized application autoscaling policy def: a serialized autoscaling
+            policy def for the application if it was built successfully, otherwise None.
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
         Error message: a string if an error was raised, otherwise None.
@@ -1334,6 +1390,11 @@ def build_serve_application(
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
+            application_serialized_autoscaling_policy_def = None
+            if application_autoscaling_policy_function:
+                application_serialized_autoscaling_policy_def = cloudpickle.dumps(
+                    import_attr(application_autoscaling_policy_function)
+                )
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
             if deployment.name in deployment_to_autoscaling_policy_function:
@@ -1359,12 +1420,16 @@ def build_serve_application(
                 )
             )
         if num_ingress_deployments > 1:
-            return None, (
-                f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                "Please only include one deployment with @serve.ingress "
-                "in your application to avoid this issue."
+            return (
+                None,
+                None,
+                (
+                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
+                ),
             )
-        return deploy_args_list, None
+        return application_serialized_autoscaling_policy_def, deploy_args_list, None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.

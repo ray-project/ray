@@ -8,11 +8,7 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY_NAME,
-    DEFAULT_REQUEST_ROUTER_PATH,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
@@ -106,27 +102,27 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
-    autoscaling_policy_functions = [
-        deployment.autoscaling_config.get("policy", {}).get(
-            "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
-        )
-        for deployment in app_config.deployments
-        if isinstance(deployment.autoscaling_config, dict)
-    ]
-    request_router_cls_names = [
-        deployment.request_router_config.get(
-            "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
-        )
+    request_router_configs = [
+        deployment.request_router_config
         for deployment in app_config.deployments
         if isinstance(deployment.request_router_config, dict)
+    ]
+    deployment_autoscaling_policies = [
+        deployment_config.autoscaling_config.get("policy", None)
+        for deployment_config in app_config.deployments
+        if isinstance(deployment_config.autoscaling_config, dict)
     ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
-            "autoscaling_policy_functions": autoscaling_policy_functions,
-            "request_router_cls_names": request_router_cls_names,
+            # NOTE: trigger a change in the code version when
+            # application level autoscaling policy is changed or
+            # any one of the deployment level autoscaling policy is changed
+            "autoscaling_policy": app_config.autoscaling_policy,
+            "deployment_autoscaling_policies": deployment_autoscaling_policies,
+            "request_router_configs": request_router_configs,
         },
         sort_keys=True,
     ).encode("utf-8")
