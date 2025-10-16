@@ -658,20 +658,26 @@ class Test(dict):
         If ray_version is specified in cluster config, returns anyscale/ray image.
         """
         ray_version = self.get_ray_version()
-        if ray_version and not self.require_custom_byod_image():
-            # Use released Ray image from DockerHub
-            python_version = "py" + self.get_python_version().replace(".", "")
-            tag_suffix = self.get_tag_suffix()
-            if tag_suffix == "gpu":
-                tag_suffix = "cu121"
-            if self.require_custom_byod_image():
-                tag_suffix = tag_suffix + "-" + self.get_byod_image_tag(build_id)
-            return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
+        if not ray_version:
+            # Use custom BYOD image
+            return (
+                f"{self.get_byod_ecr()}/"
+                f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
+            )
 
-        return (
-            f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
-        )
+        # Handle Ray version cases
+        if self.require_custom_byod_image():
+            # Custom BYOD image with Ray version
+            tag = self.get_byod_image_tag(build_id)
+        else:
+            # Standard Ray image from DockerHub
+            python_version = "py" + self.get_python_version().replace(".", "")
+            tag_suffix = (
+                "cu121" if self.get_tag_suffix() == "gpu" else self.get_tag_suffix()
+            )
+            tag = f"{ray_version}-{python_version}-{tag_suffix}"
+
+        return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 
     def get_test_results(
         self,
