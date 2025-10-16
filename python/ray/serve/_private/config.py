@@ -770,10 +770,10 @@ class ReplicaConfig:
             proto.placement_group_strategy
             if proto.placement_group_strategy != ""
             else None,
-            proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             json.loads(proto.bundle_label_selector)
             if proto.bundle_label_selector
             else None,
+            proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
         )
 
@@ -793,12 +793,12 @@ class ReplicaConfig:
             if self.placement_group_bundles is not None
             else "",
             placement_group_strategy=self.placement_group_strategy,
-            max_replicas_per_node=self.max_replicas_per_node
-            if self.max_replicas_per_node is not None
-            else 0,
             bundle_label_selector=json.dumps(self.bundle_label_selector)
             if self.bundle_label_selector is not None
             else "",
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     def to_proto_bytes(self):
