@@ -158,6 +158,7 @@ steps:
           - "3.11"
         cuda:
           - "12.1.1-cudnn8"
+          - "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
