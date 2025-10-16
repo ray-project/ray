@@ -5,7 +5,12 @@ import pydantic
 import pytest
 
 import ray
+
+# Import build_llm_processor from source
+# Note: This imports from the modified source code in this repo
 from ray.data.llm import build_llm_processor
+
+# Import from internal module to ensure we're testing source code, not installed package
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -389,8 +394,8 @@ class TestMapKwargs:
         assert processor.preprocess_map_kwargs == {}
         assert processor.postprocess_map_kwargs == {}
 
-    def test_map_kwargs_work_with_build_llm_processor(self):
-        """Test that map kwargs work through build_llm_processor API."""
+    def test_map_kwargs_passthrough_via_builder(self):
+        """Test that map kwargs are passed through ProcessorBuilder."""
 
         def build_processor_simple(
             config: ProcessorConfig,
@@ -408,13 +413,11 @@ class TestMapKwargs:
                 postprocess_map_kwargs=postprocess_map_kwargs,
             )
 
-        # Clear and re-register to avoid conflicts
         ProcessorBuilder.clear_registry()
         ProcessorBuilder.register(DummyProcessorConfig, build_processor_simple)
 
         config = DummyProcessorConfig(batch_size=64)
-        # Build directly using ProcessorBuilder instead of build_llm_processor
-        # to avoid import issues with installed vs source code
+        # Test through ProcessorBuilder which is called by build_llm_processor
         processor = ProcessorBuilder.build(
             config,
             preprocess=lambda row: {"val": row["id"]},
@@ -470,8 +473,8 @@ class TestMapKwargs:
             logger.removeHandler(handler)
 
     def test_builder_kwargs_conflict_with_map_kwargs(self):
-        """Test that builder_kwargs can't contain map kwargs."""
-        # Test validation directly instead of through build_llm_processor
+        """Test that builder_kwargs validation rejects map kwargs."""
+        # Test the validation that build_llm_processor calls
         with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
             ProcessorBuilder.validate_builder_kwargs(
                 {"preprocess_map_kwargs": {"num_cpus": 0.5}}
@@ -488,7 +491,7 @@ class TestMapKwargs:
             config=ProcessorConfig(batch_size=64),
             stages=[],
             preprocess=lambda row: {"val": row["id"] * 2},
-            postprocess=lambda row: {"result": row["val"] + 1},
+            postprocess=lambda row: {"result": row["val"] + 1, "id": row["id"]},
             preprocess_map_kwargs={"num_cpus": 0.5},
             postprocess_map_kwargs={"num_cpus": 0.25},
         )
@@ -496,8 +499,9 @@ class TestMapKwargs:
         ds = ray.data.range(5)
         result = processor(ds).take_all()
 
-        for i, row in enumerate(result):
-            assert row["result"] == i * 2 + 1
+        for row in result:
+            # Verify the computation: val = id * 2, result = val + 1
+            assert row["result"] == row["id"] * 2 + 1
 
     def test_backward_compatibility_without_map_kwargs(self):
         """Test that existing code without map kwargs still works."""
