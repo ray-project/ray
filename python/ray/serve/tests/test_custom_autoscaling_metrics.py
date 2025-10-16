@@ -56,9 +56,10 @@ class TestCustomServeMetrics:
             autoscaling_config={
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "upscale_delay_s": 2,
-                "downscale_delay_s": 10,
-                "metrics_interval_s": 1,
+                "upscale_delay_s": 0.5,
+                "downscale_delay_s": 0.5,
+                "metrics_interval_s": 0.1,
+                "look_back_period_s": 1,
             }
         )
         class DummyMetricIncrementer:
@@ -100,6 +101,7 @@ class TestCustomServeMetrics:
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
                 "metrics_interval_s": 1,
+                "look_back_period_s": 1,
             }
         )
         class DummyMetricTimeout:
@@ -131,6 +133,7 @@ class TestCustomServeMetrics:
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
                 "metrics_interval_s": 1,
+                "look_back_period_s": 1,
             }
         )
         class DummyInvalidMetric:
