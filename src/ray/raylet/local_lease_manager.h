@@ -29,7 +29,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
