@@ -61,7 +61,6 @@ User Guides <user-guides/index>
 Architecture <architecture/index>
 Troubleshooting <troubleshooting>
 Prefill/Decode Disaggregation <pd-dissagregation>
-Cache-aware request routing <prefix-aware-request-router>
 ```
 
 ## Examples
