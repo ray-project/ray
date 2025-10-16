@@ -19,7 +19,7 @@ from ray._common.pydantic_compat import (
 from ray._common.utils import import_attr
 
 # Import types needed for AutoscalingContext
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -73,7 +73,7 @@ class AutoscalingContext:
         str, Dict[ReplicaID, float]
     ]  #: Time-weighted averages of custom metrics per replica.
     raw_metrics: Dict[
-        str, Dict[ReplicaID, List[TimeStampedValue]]
+        str, Dict[ReplicaID, TimeSeries]
     ]  #: Raw custom metric timeseries per replica.
 
     # Capacity and bounds

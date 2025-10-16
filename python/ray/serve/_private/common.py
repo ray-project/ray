@@ -766,6 +766,10 @@ class TimeStampedValue:
     value: float = field(compare=False)
 
 
+# Type alias for time series data
+TimeSeries = List[TimeStampedValue]
+
+
 @dataclass
 class HandleMetricReport:
     """Report from a deployment handle on queued and ongoing requests.
@@ -796,9 +800,9 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
-    queued_requests: List[TimeStampedValue]
+    queued_requests: TimeSeries
     aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, List[TimeStampedValue]]]
+    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
     timestamp: float
 
     @property
@@ -839,5 +843,5 @@ class ReplicaMetricReport:
 
     replica_id: ReplicaID
     aggregated_metrics: Dict[str, float]
-    metrics: Dict[str, List[TimeStampedValue]]
+    metrics: Dict[str, TimeSeries]
     timestamp: float

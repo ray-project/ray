@@ -4,8 +4,6 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ray.serve._private.common import (
-    ONGOING_REQUESTS_KEY,
-    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     DeploymentID,
@@ -13,7 +11,7 @@ from ray.serve._private.common import (
     ReplicaID,
     ReplicaMetricReport,
     TargetCapacityDirection,
-    TimeStampedValue,
+    TimeSeries,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
@@ -23,7 +21,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
-    merge_timeseries_dicts,
+    merge_instantaneous_total,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext
@@ -253,11 +251,11 @@ class DeploymentAutoscalingState:
 
         return autoscaling_context
 
-    def _collect_replica_running_requests(self) -> List[List[TimeStampedValue]]:
+    def _collect_replica_running_requests(self) -> List[TimeSeries]:
         """Collect running requests timeseries from replicas for aggregation.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]).
+            List of timeseries data.
         """
         timeseries_list = []
 
@@ -273,22 +271,22 @@ class DeploymentAutoscalingState:
 
         return timeseries_list
 
-    def _collect_handle_queued_requests(self) -> List[List[TimeStampedValue]]:
+    def _collect_handle_queued_requests(self) -> List[TimeSeries]:
         """Collect queued requests timeseries from all handles.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]).
+            List of timeseries data.
         """
         timeseries_list = []
         for handle_metric_report in self._handle_requests.values():
             timeseries_list.append(handle_metric_report.queued_requests)
         return timeseries_list
 
-    def _collect_handle_running_requests(self) -> List[List[TimeStampedValue]]:
+    def _collect_handle_running_requests(self) -> List[TimeSeries]:
         """Collect running requests timeseries from handles when not collected on replicas.
 
         Returns:
-            List of timeseries data (List[TimeStampedValue]).
+            List of timeseries data.
 
         Example:
             If there are 2 handles, each managing 2 replicas, and the running requests metrics are:
@@ -318,52 +316,44 @@ class DeploymentAutoscalingState:
 
         return timeseries_list
 
-    def _aggregate_timeseries_metric(
+    def _merge_and_aggregate_timeseries(
         self,
-        metrics_timeseries_dicts: List[Dict[str, List[TimeStampedValue]]],
-        metric_key: str,
+        timeseries_list: List[TimeSeries],
     ) -> float:
         """Aggregate and average a metric from timeseries data using instantaneous merge.
 
         Args:
-            metrics_timeseries_dicts: A list of dictionaries, each containing a key-value pair:
-                - The key is the name of the metric (e.g., ONGOING_REQUESTS_KEY or custom metric name)
-                - The value is a list of TimeStampedValue objects, each representing a single measurement of the metric
-                this list is sorted by timestamp ascending
-            metric_key: The key to use when extracting the metric from the dictionaries
+            timeseries_list: A list of TimeSeries (TimeSeries), where each
+                TimeSeries represents measurements from a single source (replica, handle, etc.).
+                Each list is sorted by timestamp ascending.
 
         Returns:
             The time-weighted average of the metric
 
         Example:
-            If the metrics_timeseries_dicts is:
+            If the timeseries_list is:
             [
-                {
-                    "ongoing_requests": [
-                        TimeStampedValue(timestamp=0.1, value=5.0),
-                        TimeStampedValue(timestamp=0.2, value=7.0),
-                    ]
-                },
-                {
-                    "ongoing_requests": [
-                        TimeStampedValue(timestamp=0.2, value=3.0),
-                        TimeStampedValue(timestamp=0.3, value=1.0),
-                    ]
-                }
+                [
+                    TimeStampedValue(timestamp=0.1, value=5.0),
+                    TimeStampedValue(timestamp=0.2, value=7.0),
+                ],
+                [
+                    TimeStampedValue(timestamp=0.2, value=3.0),
+                    TimeStampedValue(timestamp=0.3, value=1.0),
+                ]
             ]
             Then the returned value will be:
             (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
         """
 
-        if not metrics_timeseries_dicts:
+        if not timeseries_list:
             return 0.0
 
         # Use instantaneous merge approach - no arbitrary windowing needed
-        aggregated_metrics = merge_timeseries_dicts(*metrics_timeseries_dicts)
-        metric_timeseries = aggregated_metrics.get(metric_key, [])
-        if metric_timeseries:
+        merged_timeseries = merge_instantaneous_total(timeseries_list)
+        if merged_timeseries:
             # assume that the last recorded metric is valid for last_window_s seconds
-            last_metric_time = metric_timeseries[-1].timestamp
+            last_metric_time = merged_timeseries[-1].timestamp
             # we dont want to make any assumption about how long the last metric will be valid
             # only conclude that the last metric is valid for last_window_s seconds that is the
             # difference between the current time and the last metric recorded time
@@ -374,7 +364,7 @@ class DeploymentAutoscalingState:
                 last_window_s = 1e-3
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
-                metric_timeseries,
+                merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
             )
@@ -382,23 +372,18 @@ class DeploymentAutoscalingState:
 
         return 0.0
 
-    def _aggregate_ongoing_requests(
-        self, metrics_timeseries_dicts: List[Dict[str, List[TimeStampedValue]]]
-    ) -> float:
+    def _aggregate_ongoing_requests(self, timeseries_list: List[TimeSeries]) -> float:
         """Aggregate and average ongoing requests from timeseries data using instantaneous merge.
 
-        This is a convenience wrapper around _aggregate_timeseries_metric for ongoing requests.
+        This is a convenience wrapper around _merge_and_aggregate_timeseries for ongoing requests.
 
         Args:
-            metrics_timeseries_dicts: A list of dictionaries containing ONGOING_REQUESTS_KEY
-                mapped to timeseries data.
+            timeseries_list: A list of TimeSeries representing ongoing requests from different sources.
 
         Returns:
             The time-weighted average of the ongoing requests
         """
-        return self._aggregate_timeseries_metric(
-            metrics_timeseries_dicts, ONGOING_REQUESTS_KEY
-        )
+        return self._merge_and_aggregate_timeseries(timeseries_list)
 
     def _calculate_total_requests_aggregate_mode(self) -> float:
         """Calculate total requests using aggregate metrics mode with timeseries data.
@@ -462,11 +447,11 @@ class DeploymentAutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
-        # Collect replica-based running requests (returns List[List[TimeStampedValue]])
+        # Collect replica-based running requests (returns List[TimeSeries])
         replica_timeseries = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_timeseries) > 0
 
-        # Collect queued requests from handles (returns List[List[TimeStampedValue]])
+        # Collect queued requests from handles (returns List[TimeSeries])
         queued_timeseries = self._collect_handle_queued_requests()
 
         if not metrics_collected_on_replicas:
@@ -475,23 +460,21 @@ class DeploymentAutoscalingState:
         else:
             handle_timeseries = []
 
-        # Create minimal dictionary objects only when needed
-        ongoing_requests_metrics = []
+        # Collect all timeseries for ongoing requests
+        ongoing_requests_timeseries = []
 
-        # Add replica timeseries with minimal dict wrapping
-        for timeseries in replica_timeseries:
-            ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
+        # Add replica timeseries
+        ongoing_requests_timeseries.extend(replica_timeseries)
 
         # Add handle timeseries if replica metrics weren't collected
         if not metrics_collected_on_replicas:
-            for timeseries in handle_timeseries:
-                ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
+            ongoing_requests_timeseries.extend(handle_timeseries)
 
-        # Add queued timeseries with minimal dict wrapping
-        for timeseries in queued_timeseries:
-            ongoing_requests_metrics.append({ONGOING_REQUESTS_KEY: timeseries})
+        # Add queued timeseries
+        ongoing_requests_timeseries.extend(queued_timeseries)
+
         # Aggregate and add running requests to total
-        ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_metrics)
+        ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_timeseries)
 
         return ongoing_requests
 
@@ -580,7 +563,7 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
-    def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeStampedValue]]:
+    def get_replica_metrics(self) -> Dict[ReplicaID, TimeSeries]:
         """Get the raw replica metrics dict."""
         metric_values = defaultdict(list)
         for id in self._running_replicas:
@@ -603,12 +586,7 @@ class DeploymentAutoscalingState:
             if not queued_timeseries:
                 return 0.0
 
-            queued_metrics = [
-                {QUEUED_REQUESTS_KEY: timeseries} for timeseries in queued_timeseries
-            ]
-            return self._aggregate_timeseries_metric(
-                queued_metrics, QUEUED_REQUESTS_KEY
-            )
+            return self._merge_and_aggregate_timeseries(queued_timeseries)
         else:
             # Simple mode: sum pre-aggregated values
             return sum(
@@ -637,25 +615,21 @@ class DeploymentAutoscalingState:
 
             for metric_name, timeseries in replica_metric_report.metrics.items():
                 # Aggregate the timeseries for this custom metric
-                # Use the actual metric name as the key
-                metrics = [{metric_name: timeseries}]
-                aggregated_value = self._aggregate_timeseries_metric(
-                    metrics, metric_name
-                )
+                aggregated_value = self._merge_and_aggregate_timeseries([timeseries])
                 aggregated_metrics[metric_name][replica_id] = aggregated_value
 
         return dict(aggregated_metrics)
 
     def _get_raw_custom_metrics(
         self,
-    ) -> Dict[str, Dict[ReplicaID, List[TimeStampedValue]]]:
+    ) -> Dict[str, Dict[ReplicaID, TimeSeries]]:
         """Extract raw custom metric values from replica metric reports.
 
         Custom metrics are all metrics except RUNNING_REQUESTS_KEY. These are metrics
         emitted by the deployment using the `record_autoscaling_stats` method.
 
         Returns:
-            Dict mapping metric name to dict of replica ID to list of raw metric values.
+            Dict mapping metric name to dict of replica ID to raw metric timeseries.
         """
         raw_metrics = defaultdict(dict)
 
