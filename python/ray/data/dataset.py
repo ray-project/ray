@@ -40,7 +40,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+from ray.data._internal.datasource.iceberg import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
@@ -131,6 +131,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     import torch.utils.data
+    from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
@@ -4021,16 +4022,25 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
+        mode: Literal["append", "overwrite", "merge"] = "append",
+        overwrite_filter: Optional[Union[str, "BooleanExpression"]] = None,
+        merge_keys: Optional[List[str]] = None,
+        update_filter: Optional[Union[str, "BooleanExpression"]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
+        This method writes Ray Data to Apache Iceberg tables using PyIceberg.
+        It supports append, overwrite, and merge (upsert) modes with optional
+        partition filtering.
+
         .. tip::
-            For more details on PyIceberg, see
-            - URI: https://py.iceberg.apache.org/
+            For more details on PyIceberg, see https://py.iceberg.apache.org/
 
         Examples:
+            Append data to an existing table:
+
              .. testcode::
                 :skipif: True
 
@@ -4040,34 +4050,163 @@ class Dataset:
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode="append"
+                )
+
+            Overwrite entire table:
+
+             .. testcode::
+                :skipif: True
+
+                ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode="overwrite"
+                )
+
+            Dynamic partition overwrite (replace only matching partitions):
+
+             .. testcode::
+                :skipif: True
+
+                from pyiceberg.expressions import GreaterThanOrEqual
+                ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode="overwrite",
+                    overwrite_filter=GreaterThanOrEqual("year", 2024)
+                )
+
+            Merge (upsert) data based on key columns:
+
+             .. testcode::
+                :skipif: True
+
+                # Update existing customers and insert new ones
+                updated_customers.write_iceberg(
+                    table_identifier="db.customers",
+                    catalog_kwargs={"type": "glue"},
+                    mode="merge",
+                    merge_keys=["customer_id"]
+                )
+
+            Merge with update filter (only update active records):
+
+             .. testcode::
+                :skipif: True
+
+                from pyiceberg.expressions import EqualTo
+                new_data.write_iceberg(
+                    table_identifier="db.customers",
+                    catalog_kwargs={"type": "glue"},
+                    mode="merge",
+                    merge_keys=["customer_id"],
+                    update_filter=EqualTo("status", "active")
                 )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
-            catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
-                `pyiceberg catalog
-                <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-                #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
-                to an iceberg table.
+            catalog_kwargs: Arguments to pass to PyIceberg's
+                :func:`~pyiceberg.catalog.load_catalog` function. Common keys:
+
+                - ``"name"``: Catalog name (default: ``"default"``)
+                - ``"type"``: Catalog type (e.g., ``"glue"``, ``"sql"``, ``"hive"``, ``"rest"``)
+                - Additional catalog-specific configuration
+
+                See the `PyIceberg catalog documentation
+                <https://py.iceberg.apache.org/configuration/>`_ for details.
+            snapshot_properties: Custom properties to attach to the Iceberg snapshot
+                when committing. Useful for tracking metadata (e.g.,
+                ``{"app": "ray_data", "user": "data_team"}``).
+            mode: Write mode:
+
+                - ``"append"``: Add new data without removing existing data
+                - ``"overwrite"``: Replace existing data (optionally with filter)
+                - ``"merge"``: Upsert operation - update matching rows and insert new rows
+                  based on ``merge_keys``. Requires PyIceberg 0.9.0+ for optimal performance.
+
+                Defaults to ``"append"``.
+            overwrite_filter: PyIceberg BooleanExpression to filter which data to
+                overwrite. Only used when ``mode="overwrite"``. When provided, only
+                partitions matching the filter are replaced (dynamic partition overwrite).
+                When not provided, the entire table is replaced. See the `PyIceberg
+                expressions documentation <https://py.iceberg.apache.org/api/#expressions>`_
+                for filter syntax.
+            merge_keys: List of column names to use as keys for merge operations.
+                Required when ``mode="merge"``. These columns act as the join keys to
+                match rows between the source dataset and target table. Matching rows
+                are updated with new values, non-matching rows are inserted.
+
+                For optimal performance, use merge keys that align with the table's
+                partition scheme. Misaligned keys may cause Iceberg to rewrite more
+                data files than strictly necessary, though the operation remains correct.
+            update_filter: PyIceberg BooleanExpression to filter which rows in the
+                target table can be updated during merge. Only used when ``mode="merge"``.
+                Only rows matching this filter will be considered for updates. Rows not
+                matching the filter won't be modified.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
-                to control number of tasks to run concurrently. This doesn't change the
+                to control the number of tasks running simultaneously. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
-                decided based on the available resources.
+                determined based on available resources.
+
+        Note:
+            The merge operation (``mode="merge"``) uses PyIceberg's native upsert functionality
+            when available (PyIceberg 0.9.0+). For older versions, it falls back to a
+            read-merge-write pattern. Consider upgrading PyIceberg for optimal performance.
+
+            **Merge Performance**: For best performance, merge keys should align with the
+            table's partition scheme. When keys don't match partitions (e.g., merging by
+            ``customer_id`` on a table partitioned by ``date``), Iceberg may rewrite entire
+            data files even if only a few rows changed. The operation is still correct but
+            may be slower for tables with many partitions.
+
+            For simple DELETE or UPDATE operations without merging new data, use Ray
+            Data's transformation primitives:
+
+            - **Delete**: :meth:`~Dataset.filter` out unwanted rows, then overwrite
+            - **Update**: :meth:`~Dataset.map_batches` to transform rows, then overwrite
+
+        Raises:
+            ValueError: If ``mode="merge"`` but ``merge_keys`` is not provided, or if
+                invalid combinations of parameters are used.
         """
+        # Handle merge mode specially - use the upsert utility
+        if mode == "merge":
+            if not merge_keys:
+                raise ValueError(
+                    "merge_keys must be provided when mode='merge'. "
+                    "Specify at least one column to use as a key for matching rows."
+                )
 
-        datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
-        )
+            from ray.data._internal.datasource.iceberg import upsert_to_iceberg
 
-        self.write_datasink(
-            datasink,
-            ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
-        )
+            upsert_to_iceberg(
+                dataset=self,
+                table_identifier=table_identifier,
+                join_columns=merge_keys,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                update_filter=update_filter,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
+        else:
+            # For append and overwrite modes, use the normal datasink path
+            datasink = IcebergDatasink(
+                table_identifier=table_identifier,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                mode=mode,
+                overwrite_filter=overwrite_filter,
+            )
+
+            self.write_datasink(
+                datasink,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
 
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI

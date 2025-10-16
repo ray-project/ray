@@ -1,5 +1,16 @@
 """
-Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API.
+Module to read Apache Iceberg tables into Ray Datasets using the Ray Datasource API.
+
+This module leverages PyIceberg (https://py.iceberg.apache.org/) to read Iceberg tables
+with support for:
+- Row filtering (predicate pushdown)
+- Column projection
+- Partition pruning
+- Snapshot time travel
+- Delete file handling (position and equality deletes)
+
+The implementation distributes Iceberg file scan tasks across Ray workers for
+parallel reading, with automatic load balancing based on file sizes.
 """
 
 import heapq
@@ -37,11 +48,43 @@ def _get_read_task(
     limit: Optional[int],
     schema: "Schema",
 ) -> Iterable[Block]:
+    """
+    Read a set of Iceberg file scan tasks and yield Arrow table blocks.
+
+    This function handles reading Iceberg data files while applying:
+    - Row filters (predicate pushdown)
+    - Column projection (only read selected columns)
+    - Delete files (position and equality deletes)
+
+    Args:
+        tasks: Iterable of PyIceberg FileScanTask objects representing files to read
+        table_io: PyIceberg FileIO instance for reading from storage
+        table_metadata: Iceberg table metadata containing schema and partition info
+        row_filter: PyIceberg BooleanExpression to filter rows
+        case_sensitive: Whether column name matching should be case sensitive
+        limit: Optional row limit for the scan
+        schema: Projected schema (only columns being read)
+
+    Yields:
+        Arrow Table blocks containing the scanned data
+
+    Note:
+        FileScanTasks are not just simple file paths - they include:
+        - The data file to read
+        - Any associated delete files (position or equality deletes)
+        - Partition information
+        - File-level metadata
+
+        PyIceberg handles the complexity of merging data files with delete files.
+        See: https://iceberg.apache.org/docs/latest/deletes/
+    """
     # Determine the PyIceberg version to handle backward compatibility
+    # See: https://github.com/apache/iceberg-python/releases
     import pyiceberg
 
     if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
         # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
+        # ArrowScan provides better performance and memory efficiency
         from pyiceberg.io.pyarrow import ArrowScan
 
         # Initialize scanner with Iceberg metadata and query parameters
@@ -55,9 +98,15 @@ def _get_read_task(
         )
 
         # Convert scanned data to Arrow Table format
+        # This internally handles:
+        # - Reading Parquet/ORC/Avro files
+        # - Applying delete files
+        # - Applying row filters
+        # - Projecting columns
         result_table = scanner.to_table(tasks=tasks)
 
         # Stream results as RecordBatches for memory efficiency
+        # Rather than loading entire table, yield smaller batches
         for batch in result_table.to_batches():
             yield pa.Table.from_batches([batch])
 
@@ -65,10 +114,12 @@ def _get_read_task(
         # Legacy implementation using project_table (PyIceberg <0.9.0)
         from pyiceberg.io import pyarrow as pyi_pa_io
 
-        # Use the PyIceberg API to read only a single task (specifically, a
-        # FileScanTask) - note that this is not as simple as reading a single
-        # parquet file, as there might be delete files, etc. associated, so we
-        # must use the PyIceberg API for the projection.
+        # Use the PyIceberg API to read FileScanTasks
+        # This is NOT as simple as reading Parquet files directly because:
+        # 1. Delete files must be applied
+        # 2. Partition values may need to be added
+        # 3. Column mappings and evolution must be handled
+        # Always use PyIceberg's API rather than reading files directly
         yield pyi_pa_io.project_table(
             tasks=tasks,
             table_metadata=table_metadata,
