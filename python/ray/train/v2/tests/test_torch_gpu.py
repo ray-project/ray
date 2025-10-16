@@ -12,7 +12,7 @@ from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import WorkerGroupError
 
 
 def test_torch_trainer_cuda_initialization(ray_start_4_cpus_2_gpus):
@@ -205,7 +205,7 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
     )
 
     # Training should fail and not hang.
-    with pytest.raises(TrainingFailedError):
+    with pytest.raises(WorkerGroupError):
         trainer.fit()
 
 
