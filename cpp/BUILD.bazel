@@ -274,8 +274,8 @@ cc_test(
     ],
     linkstatic = True,
     tags = [
-        "team:core",
         "no_macos",
+        "team:core",
     ],
     deps = [
         "ray_api_lib",
