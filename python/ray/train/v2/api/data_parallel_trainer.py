@@ -17,6 +17,7 @@ from ray.train import (
     Result,
     RunConfig,
     ScalingConfig,
+    TrainingFailedError,  # noqa: F401
 )
 from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
