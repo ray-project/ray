@@ -1,7 +1,8 @@
 import logging
 import logging.config
 import os
-from typing import Any, Dict, List, Optional, Tuple
+import weakref
+from typing import List, Optional
 
 import yaml
 
@@ -146,8 +147,6 @@ class SessionFileHandler(logging.Handler):
 
 
 def _get_logging_config() -> Optional[dict]:
-    import copy
-
     def _load_logging_config(config_path: str):
         with open(config_path) as file:
             config = yaml.safe_load(file)
@@ -160,8 +159,7 @@ def _get_logging_config() -> Optional[dict]:
     if config_path is not None:
         config = _load_logging_config(config_path)
     else:
-        # Make a deep copy to avoid mutating the DEFAULT_CONFIG
-        config = copy.deepcopy(DEFAULT_CONFIG)
+        config = DEFAULT_CONFIG
         if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
                 for (
@@ -180,103 +178,6 @@ def _get_logger_names() -> List[str]:
     return list(logger_config.keys())
 
 
-def _get_loggers_to_configure(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Return subset of loggers from config that need configuration.
-
-    Loggers that already have handlers attached are skipped to preserve existing setup.
-    """
-    loggers_to_configure: Dict[str, Dict[str, Any]] = {}
-    for logger_name, logger_config in config.get("loggers", {}).items():
-        logger = logging.getLogger(logger_name)
-        if not logger.handlers:
-            loggers_to_configure[logger_name] = logger_config
-    return loggers_to_configure
-
-
-def _snapshot_handler_attrs(handler: logging.Handler) -> Dict[str, Any]:
-    """Capture a safe, minimal set of handler attributes to restore later."""
-    attrs: Dict[str, Any] = {
-        "level": handler.level,
-        "formatter": getattr(handler, "formatter", None),
-        "filters": list(getattr(handler, "filters", []) or []),
-    }
-    if hasattr(handler, "target"):
-        attrs["target"] = getattr(handler, "target", None)
-    return attrs
-
-
-def _apply_handler_attrs(handler: logging.Handler, attrs: Dict[str, Any]) -> None:
-    """Restore the captured handler attributes (best-effort, safe only)."""
-    try:
-        if "level" in attrs:
-            handler.setLevel(attrs["level"])
-    except Exception:
-        pass
-
-    try:
-        fmt = attrs.get("formatter")
-        if fmt is not None:
-            handler.setFormatter(fmt)
-    except Exception:
-        pass
-
-    try:
-        current_filters = list(getattr(handler, "filters", []) or [])
-        for f in attrs.get("filters", []) or []:
-            if f not in current_filters:
-                handler.addFilter(f)
-    except Exception:
-        pass
-
-    if "target" in attrs:
-        try:
-            if hasattr(handler, "setTarget"):
-                handler.setTarget(attrs["target"])
-            elif hasattr(handler, "target"):
-                handler.target = attrs["target"]
-        except Exception:
-            pass
-
-
-def _preserve_and_detach_child_handlers(
-    prefixes: List[str],
-) -> Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]]:
-    """Collect and detach handlers from child loggers of given prefixes.
-
-    We temporarily detach to prevent dictConfig from closing or mutating them.
-    Returns a mapping: logger_name -> list of (handler, preserved_attrs).
-    """
-    preserved: Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]] = {}
-    for logger_name, existing in logging.root.manager.loggerDict.items():
-        if not isinstance(existing, logging.Logger):
-            continue
-
-        if any(logger_name.startswith(prefix) for prefix in prefixes):
-            child_logger = logging.getLogger(logger_name)
-            if not child_logger.handlers:
-                continue
-
-            handlers_info: List[Tuple[logging.Handler, Dict[str, Any]]] = []
-            for handler in list(child_logger.handlers):
-                handlers_info.append((handler, _snapshot_handler_attrs(handler)))
-                child_logger.removeHandler(handler)
-
-            preserved[logger_name] = handlers_info
-
-    return preserved
-
-
-def _restore_child_handlers(
-    preserved: Dict[str, List[Tuple[logging.Handler, Dict[str, Any]]]]
-) -> None:
-    """Reattach preserved child handlers and restore minimal attributes if needed."""
-    for logger_name, handlers_info in preserved.items():
-        child_logger = logging.getLogger(logger_name)
-        for handler, attrs in handlers_info:
-            child_logger.addHandler(handler)
-            _apply_handler_attrs(handler, attrs)
-
-
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
@@ -286,35 +187,28 @@ def configure_logging() -> None:
 
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
-
-    Note: This function is idempotent after initial configuration when handlers have been
-    added to ray.data loggers, as reconfiguration would close and invalidate those handlers.
     """
 
-    # Dynamically load env vars and get config
+    # Dynamically load env vars
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
-    # Determine which Ray Data loggers actually need configuration (preserve existing handlers)
-    loggers_to_configure = _get_loggers_to_configure(config)
+    existing_handlers_map = logging._handlers
 
-    # If no loggers need configuration, return early
-    if not loggers_to_configure:
-        return
+    logging._acquireLock()
+    logging._handlers = weakref.WeakValueDictionary()
+    logging._handlerList = []
+    logging._releaseLock()
 
-    # Preserve and detach handlers from child loggers (e.g., "ray.data.*") to avoid closure by dictConfig
-    prefixes_to_configure = list(loggers_to_configure.keys())
-    preserved_child_handlers = _preserve_and_detach_child_handlers(
-        prefixes_to_configure
-    )
-
-    # Configure only the necessary loggers
-    config["loggers"] = loggers_to_configure
     logging.config.dictConfig(config)
 
-    # Restore preserved child logger handlers and any relevant attributes
-    _restore_child_handlers(preserved_child_handlers)
+    logging._acquireLock()
+    for name, handler in existing_handlers_map.items():
+        if name not in logging._handlers:
+            logging._handlers[name] = handler
+            logging._handlerList.append(handler)
+    logging._releaseLock()
 
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
@@ -333,15 +227,9 @@ def reset_logging() -> None:
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
-
-    def _clear_logger_handlers(handler_names: List[str]):
-        for name in handler_names:
-            logger = logging.getLogger(name)
-            logger.handlers.clear()
-            logger.setLevel(logging.NOTSET)
-
-    # Also clear all loggers managed by Ray Data logging config
-    _clear_logger_handlers(_get_logger_names())
+    logger = logging.getLogger("ray.data")
+    logger.handlers.clear()
+    logger.setLevel(logging.NOTSET)
 
     _DATASET_LOGGER_HANDLER = {}
     _ACTIVE_DATASET = None
@@ -457,5 +345,4 @@ def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
         for logger in loggers:
             logger.removeHandler(log_handler)
         log_handler.close()
-
     return _ACTIVE_DATASET

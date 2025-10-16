@@ -176,7 +176,7 @@ def test_configure_logging_preserves_existing_handlers(reset_logging, shutdown_o
     ray.init()
 
     # Create a logger and add a MemoryHandler with a target before configuring Ray Data logging
-    test_logger = logging.getLogger("ray.data.test_preserve")
+    test_logger = logging.getLogger("ray.serve.test_preserve")
     target_handler = logging.StreamHandler()
     memory_handler = logging.handlers.MemoryHandler(capacity=100, target=target_handler)
     test_logger.addHandler(memory_handler)
