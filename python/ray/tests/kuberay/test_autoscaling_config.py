@@ -1,6 +1,5 @@
 import copy
 import platform
-import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
@@ -474,7 +473,7 @@ TEST_DATA = (
             _get_basic_autoscaling_config(),
             None,
             None,
-            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams. Group labels are supported in the top-level Labels field starting in Kuberay v1.5",
+            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-raystartparam-labels",
         ),
         pytest.param(
@@ -482,16 +481,14 @@ TEST_DATA = (
             _get_autoscaling_config_with_top_level_labels(),
             None,
             None,
-            "Ignoring labels: instance-type=n2 set in rayStartParams. Group labels are supported in the top-level Labels field starting in Kuberay v1.5",
+            "Ignoring labels: instance-type=n2 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-top-level-labels",
         ),
         pytest.param(
             _get_ray_cr_with_invalid_top_level_labels(),
             _get_basic_autoscaling_config(),
+            ValueError,
             None,
-            re.escape(
-                "Invalid label key name `!!invalid-key!!`. Name must be 63 chars or less beginning and ending with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),dots (.), and alphanumerics between."
-            ),
             None,
             id="invalid-top-level-labels",
         ),

@@ -321,23 +321,14 @@ def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
     labels_str = ray_start_params.get("labels")
     if labels_str:
         logger.warning(
-            f"Ignoring labels: {labels_str} set in rayStartParams. Group labels are supported in the top-level Labels field starting in Kuberay v1.5"
+            f"Ignoring labels: {labels_str} set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5"
         )
 
     # Check for top-level structured Labels field.
     if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
         labels_dict = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
-        if labels_dict:
-            try:
-                validate_node_label_syntax(labels_dict)
-            except ValueError as e:
-                group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
-                logger.error(
-                    f"Error parsing `labels`: {labels_dict} for group {group_name}: {e}"
-                )
-                # Return an empty dict when failed to parse labels.
-                return {}
+        validate_node_label_syntax(labels_dict)
 
     return labels_dict
 
