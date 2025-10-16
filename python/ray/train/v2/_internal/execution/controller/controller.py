@@ -508,7 +508,7 @@ class TrainController:
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
-        return Result.from_checkpoint_manager(
+        return Result._from_checkpoint_manager(
             checkpoint_manager=self._checkpoint_manager,
             storage_context=self._checkpoint_manager._storage_context,
             error=self.get_training_failed_error(),
