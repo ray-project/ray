@@ -669,8 +669,6 @@ In your policy, access custom metrics via:
   The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
-> Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
-
 
 ### Application level autoscaling
 
