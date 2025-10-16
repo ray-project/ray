@@ -204,6 +204,10 @@ LEGACY_DEFAULT_BATCH_SIZE = 1024
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
+# Downstream capacity-based output backpressure configuration
+# Multiplier for estimated downstream capacity (safety factor for discrete scheduling)
+DEFAULT_DOWNSTREAM_CAPACITY_OUTPUT_BACKPRESSURE_MULTIPLIER = 10.0
+
 # Default value for whether or not to try to create directories for write
 # calls if the URI is an S3 URI.
 DEFAULT_S3_TRY_CREATE_DIR = False
@@ -590,6 +594,10 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    downstream_capacity_output_backpressure_multiplier: float = (
+        DEFAULT_DOWNSTREAM_CAPACITY_OUTPUT_BACKPRESSURE_MULTIPLIER
+    )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
