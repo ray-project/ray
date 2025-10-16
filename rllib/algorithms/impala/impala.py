@@ -801,6 +801,7 @@ class IMPALA(Algorithm):
         if num_healthy_remote_workers > 0:
             async_results = self.env_runner_group.foreach_env_runner_async_fetch_ready(
                 func="sample_get_state_and_metrics",
+                tag="sample_get_state_and_metrics",
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
                 return_actor_ids=True,
