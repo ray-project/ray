@@ -344,66 +344,73 @@ def test_autoscaling_config_validation_warnings(
             # Map operates on rows which are dicts
             return {"value": row["id"] * 2}
 
-    # Test case 1: max_tasks_in_flight / max_concurrency < threshold should emit warning
-    # max_tasks_in_flight=1, max_concurrency=2 => ratio=0.5 < threshold=0.6
-    ctx = ray.data.DataContext.get_current()
-    ctx.target_max_block_size = 1 * 1024**2
-    ctx.autoscaling_config = AutoscalingConfig(
-        actor_pool_util_upscaling_threshold=0.6,
-        actor_pool_util_downscaling_threshold=0.3,
-    )
-
+    # Test #1: Invalid config (should warn)
+    #   - max_tasks_in_flight / max_concurrency == 1
+    #   - Default upscaling threshold (200%)
     with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
-        ds = ray.data.range(2, override_num_blocks=2).map(
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
             compute=ray.data.ActorPoolStrategy(
-                min_size=1,
-                max_size=1,
                 max_tasks_in_flight_per_actor=1,
             ),
-            max_concurrency=2,
+            max_concurrency=1,
         )
         # Take just one item to minimize execution time
-        list(ds.iter_rows())
+        ds.take_all()
 
     # Check that warning was called with expected message
-    assert mock_warning.called, "Expected warning to be logged"
-    warning_message = str(mock_warning.call_args_list[0][0][0])
+    wanr_log_args_str = str(mock_warning.call_args_list)
     expected_message = (
         "⚠️  Actor Pool configuration of the "
-        "ActorPoolMapOperator(Map(SimpleMapper)) will not allow it to scale up: "
-        "configured utilization threshold (60.0%) couldn't be reached with "
-        "configured max_concurrency=2 and max_tasks_in_flight_per_actor=1 "
-        "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 50%)"
-    )
-    assert warning_message == expected_message, f"Warning message mismatch.\nExpected: {expected_message}\nGot: {warning_message}"
-
-    # Test case 2: Valid config - no warning should be emitted
-    # max_tasks_in_flight=2, max_concurrency=1 (default) => ratio=2.0 >= threshold=0.8
-    ctx.autoscaling_config = AutoscalingConfig(
-        actor_pool_util_upscaling_threshold=0.8,
-        actor_pool_util_downscaling_threshold=0.3,
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+        "configured utilization threshold (200.0%) couldn't be reached with "
+        "configured max_concurrency=1 and max_tasks_in_flight_per_actor=1 "
+        "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 100%)"
     )
 
+    assert expected_message in wanr_log_args_str
+
+    # Test #2: Provided config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 2 (default)
+    #   - Default upscaling threshold (200%)
     with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
-        ds = ray.data.range(2, override_num_blocks=2).map(
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
             compute=ray.data.ActorPoolStrategy(
-                min_size=1,
-                max_size=1,
                 max_tasks_in_flight_per_actor=2,
             ),
-            # max_concurrency defaults to 1
+            max_concurrency=1,
         )
-        # Take just one item to minimize execution time
-        list(ds.iter_rows())
+        ds.take_all()
 
-    # Check that NO warning was called about scaling
-    scale_up_warnings = [
-        call for call in mock_warning.call_args_list
-        if "will not allow it to scale up" in str(call[0][0])
-    ]
-    assert len(scale_up_warnings) == 0, f"Unexpected warning found: {scale_up_warnings}"
+    # Check that this warning hasn't been emitted
+    wanr_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in wanr_log_args_str
+
+
+    # Test #3: Default config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 4 (default)
+    #   - Default upscaling threshold (200%)
+    with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted
+    wanr_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in wanr_log_args_str
+
 
 
 if __name__ == "__main__":
