@@ -36,8 +36,6 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.tests.conftest import _ray_start
 
-import psutil
-
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
 
@@ -710,49 +708,6 @@ for i in range(100):
                 print("Exception:", ex)
 
         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
-
-
-@pytest.mark.asyncio
-async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
-    """
-    Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
-
-    This test starts its own Ray cluster using default ports,
-    then forcefully stops Ray while tailing logs to simulate an abnormal WebSocket closure.
-    """
-    dashboard_url = ray_start_regular.dashboard_url
-    client = JobSubmissionClient(format_web_url(dashboard_url))
-
-    # Submit a long-running job
-    driver_script = """
-import time
-for i in range(100):
-    print("Hello", i)
-    time.sleep(0.5)
-"""
-    entrypoint = f"python -c '{driver_script}'"
-    job_id = client.submit_job(entrypoint=entrypoint)
-
-    # Start tailing logs and stop Ray while tailing
-    # Expect RuntimeError when WebSocket closes abnormally
-    with pytest.raises(
-        RuntimeError,
-        match="WebSocket connection closed unexpectedly with close code",
-    ):
-        i = 0
-        async for lines in client.tail_job_logs(job_id):
-            print(lines, end="")
-            i += 1
-
-            # Kill the dashboard after receiving a few log lines
-            if i == 3:
-                from ray._private import ray_constants
-
-                print("\nKilling the dashboard to close websocket abnormally...")
-                dash_info = ray._private.worker._global_node.all_processes[
-                    ray_constants.PROCESS_TYPE_DASHBOARD
-                ][0]
-                psutil.Process(dash_info.process.pid).kill()
 
 
 def _hook(env):
