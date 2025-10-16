@@ -62,12 +62,10 @@ Architecture <architecture/index>
 Troubleshooting <troubleshooting>
 ```
 
-## Examples
+## Get started
 
-- {doc}`Deploy a small-sized LLM <../tutorials/deployment-serve-llm/small-size-llm/README>`
-- {doc}`Deploy a medium-sized LLM <../tutorials/deployment-serve-llm/medium-size-llm/README>`
-- {doc}`Deploy a large-sized LLM <../tutorials/deployment-serve-llm/large-size-llm/README>`
-- {doc}`Deploy a vision LLM <../tutorials/deployment-serve-llm/vision-llm/README>`
-- {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
-- {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
-- {doc}`Deploy gpt-oss <../tutorials/deployment-serve-llm/gpt-oss/README>`
+- {doc}`Quickstart <quick-start>` - Deploy your first LLM with Ray Serve
+- {doc}`Examples <examples>` - Production-ready deployment tutorials
+- {doc}`User Guides <user-guides/index>` - Practical guides for advanced features
+- {doc}`Architecture <architecture/index>` - Technical design and implementation details
+- {doc}`Troubleshooting <troubleshooting>` - Common issues and solutions
