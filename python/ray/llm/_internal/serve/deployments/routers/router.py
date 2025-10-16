@@ -4,6 +4,7 @@ import sys
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import (
+    Annotated,
     Any,
     AsyncGenerator,
     Awaitable,
@@ -17,7 +18,7 @@ from typing import (
     Union,
 )
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -139,7 +140,9 @@ DEFAULT_ENDPOINTS = {
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
-    "transcriptions": lambda app: app.post("/v1/audio/transcriptions"),
+    "transcriptions": lambda app: app.post(
+        "/v1/audio/transcriptions",
+    ),
     "score": lambda app: app.post("/v1/score"),
 }
 
@@ -604,7 +607,9 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
-    async def transcriptions(self, body: TranscriptionRequest) -> Response:
+    async def transcriptions(
+        self, body: Annotated[TranscriptionRequest, Form()]
+    ) -> Response:
         """Create transcription for the provided audio input.
 
         Args:

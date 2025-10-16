@@ -8,6 +8,8 @@ Structure:
 """
 
 import time
+import openai
+import requests
 from ray import serve
 from ray.serve.schema import ApplicationStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -97,5 +99,21 @@ if status != ApplicationStatus.RUNNING:
     raise AssertionError(
         f"Deployment failed to reach RUNNING status within {timeout_seconds}s. Current status: {status}"
     )
+
+response = requests.get("https://voiceage.com/wbsamples/in_stereo/Sports.wav")
+with open("audio.wav", "wb") as f:
+    f.write(response.content)
+
+client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+file = open("/audio.wav", "rb")
+try:
+    response = client.audio.transcriptions.create(
+        model="whisper-large",
+        file=file,
+        temperature=0.0,
+        language="en",
+    )
+except Exception as e:
+    raise AssertionError(f"Error while querying models: {e}. Check the logs for more details.")
 
 serve.shutdown()
