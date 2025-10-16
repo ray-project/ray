@@ -552,7 +552,7 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
-    def get_replica_metrics(self) -> Dict[ReplicaID, TimeSeries]:
+    def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values = defaultdict(list)
         for id in self._running_replicas:
@@ -843,7 +843,7 @@ class AutoscalingStateManager:
 
     def get_metrics_for_deployment(
         self, deployment_id: DeploymentID
-    ) -> Dict[ReplicaID, List[Any]]:
+    ) -> Dict[ReplicaID, List[TimeSeries]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name
