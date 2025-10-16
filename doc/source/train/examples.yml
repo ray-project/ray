@@ -55,7 +55,7 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
-  - title: Get Started with PyTorch Profiler and Ray Train
+  - title: Get started with PyTorch Profiler and Ray Train
     frameworks:
       - pytorch
     skill_level: beginner

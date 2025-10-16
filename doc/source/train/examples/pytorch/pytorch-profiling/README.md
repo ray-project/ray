@@ -1,23 +1,27 @@
-# Profiling your Ray Train Workload with PyTorch Profiler
+# Profiling a Ray Train Workload with PyTorch Profiler
 
-**Time to complete**: 10 min
+**Time to complete**: 15 min
 
-This template shows you how to profile your PyTorch training code with PyTorch Profiler to identify performance bottlenecks, optimize memory usage, and monitor training efficiency in distributed environments.
+This template profiles PyTorch training code with PyTorch Profiler to identify performance bottlenecks, optimize memory usage, and monitor training efficiency in distributed environments.
 
 In this tutorial, you will:
-1. Learn how to integrate PyTorch Profiler with Ray Train for distributed training workload profiling.
-2. Explore advanced profiling techniques including memory profiling, performance analysis, and dashboard integration for comprehensive monitoring. 
+1. Start with a basic single machine PyTorch example and learn profiling fundamentals.
+2. Distribute it to multiple GPUs on multiple machines with [Ray Train](https://docs.ray.io/en/latest/train/train.html) and profile the distributed training workload.
+3. Explore advanced profiling techniques including memory profiling, performance analysis, and dashboard integration for comprehensive monitoring. 
+
+
+With Ray Train, you can profile distributed training workloads across multiple workers, enabling you to identify communication bottlenecks, load balancing issues, and resource utilization patterns that are critical for optimizing large-scale training jobs.
 
 <div id="anyscale-note" class="alert alert-block alert-warning">
 
-  <strong>Anyscale Specific Configuration</strong>
+  <strong>Anyscale specific configuration</strong>
 
-  <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you would need to manually:</p>
+  <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you need to manually:</p>
 
   <ul>
-    <li><strong>Configure your Ray Cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
-    <li><strong>Manage Dependencies</strong>: Manually install and manage dependencies on each node.</li>
-    <li><strong>Set Up Storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+    <li><strong>Configure your Ray cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
+    <li><strong>Manage dependencies</strong>: Manually install and manage dependencies on each node.</li>
+    <li><strong>Set up storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
   </ul>
 </div>
 
@@ -46,9 +50,9 @@ In this tutorial, you will:
 pip install torch torchvision matplotlib
 ```
 
-## Distributed Training with Ray Train and PyTorch Profiler
+## Distributed training with Ray Train and PyTorch Profiler
 
-This example demonstrates how to run PyTorch training with Ray Train with PyTorch profiler. In this section, we will use a simple Resnet model to demonstrate how to use Pytorch Profiler and Ray Train together to analyze model performance.
+This example demonstrates how to run PyTorch training with Ray Train with PyTorch profiler. This section uses a simple ResNet model to demonstrate how to use Pytorch Profiler and Ray Train together to analyze model performance.
 
 With Ray Train, you can profile distributed training workloads across multiple workers, enabling you to identify communication bottlenecks, load balancing issues, and resource utilization patterns that are critical for optimizing large-scale training jobs.
 
@@ -57,7 +61,7 @@ First, set some environment variables and import Ray Train modules.
 
 
 ```python
-# Enable Ray Train V2 for the latest train API
+# Enable Ray Train V2 for the latest train API.
 # V2 will be the default in an upcoming release.
 import os
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -83,17 +87,17 @@ import tempfile
 import uuid
 ```
 
- Next, create a distributed training function to be launched by Ray Train. Each numbered comment in the below training function indicate the steps necessary for distributed training and profiling with Ray Train and Pytorch Profiler.
+ Next, create a distributed training function for Ray Train to launch. Each numbered comment in the below training function indicates the steps necessary for distributed training and profiling with Ray Train and Pytorch Profiler.
 
 
- This demo uses cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In those cases, you should use object storage instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage). The output of the script will be available in the `Files` tab in Anyscale workspace. For those who don't use Anyscale platform, you can view the logs and profiling output from the configuration location specified in RunConfig and Profiler.
+ This tutorial uses cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In those cases, you should use object storage instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage). The output of the script is available in the `Files` tab in Anyscale workspace. For those who don't use Anyscale platform, you can view the logs and profiling output from the configuration location specified in `RunConfig` and `Profiler`.
 
 
 ```python
 def train_func_distributed():
     """Distributed training function with enhanced profiling for Ray Train."""
     
-    # Model, Loss, Optimizer
+    # Model, loss, optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
         1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
@@ -126,7 +130,7 @@ def train_func_distributed():
     # [3] Configure enhanced profiling for distributed training.
     # This includes TensorBoard integration and memory timeline export
     # for comprehensive performance analysis across workers.
-    # See more details in https://docs.pytorch.org/docs/stable/profiler.html
+    # See more details at https://docs.pytorch.org/docs/stable/profiler.html
     # =============================================================
     activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
 
@@ -199,7 +203,7 @@ Finally, run the distributed training function with Ray Train. The `TorchTrainer
 # Configure scaling and resource requirements for distributed training
 scaling_config = ray.train.ScalingConfig(num_workers=1, use_gpu=True)
 
-# Create unique experiment name for this profiling run
+# Create a unique experiment name for this profiling run
 experiment_name = f"profiling_run_{uuid.uuid4().hex[:8]}"
 
 # Configure run settings with persistent storage for profiling outputs
@@ -224,13 +228,13 @@ print(f"Check '/mnt/cluster_storage/{experiment_name}/' for profiling results.")
 
 ## Advanced profiling techniques and dashboard integration
 
-In this section, you'll explore advanced profiling techniques including custom profiling schedules, performance analysis, and integration with Ray Train's monitoring capabilities. These techniques help you gain deeper insights into your training workload performance and identify optimization opportunities.
+This section explores advanced profiling techniques including custom profiling schedules, performance analysis, and integration with Ray Train's monitoring capabilities. These techniques help you gain deeper insights into your training workload performance and identify optimization opportunities.
 
 ### Custom profiling schedules and performance analysis
 
-PyTorch Profiler offers flexible scheduling options to capture different phases of training. You can customize when profiling occurs to focus on specific operations or phases of your training loop.
+PyTorch Profiler offers flexible scheduling options to capture different phases of training. You can configure when profiling occurs to focus on specific operations or phases of your training loop.
 
-In this following code section, we adapt the previous training function with `torch.profile.record_function` to record some specific operations.
+The following code section adapts the previous training function with `torch.profile.record_function` to record some specific operations.
 
 
 
@@ -264,8 +268,8 @@ def train_func_advanced_profiling():
     activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
     
     # Custom schedule: wait=1, warmup=1, active=3, repeat=1
-    # This means the profiler will skip 1 step, then warmup for 1 step, then do the active profiling for 3 steps, then repeat
-    # See more details in https://docs.pytorch.org/docs/stable/profiler.html#torch.profiler.schedule
+    # This means the profiler skips 1 step, then warmups for 1 step, then does the active profiling for 3 steps, then repeats.
+    # See more details at https://docs.pytorch.org/docs/stable/profiler.html#torch.profiler.schedule
     schedule = torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1)
     
     with torch.profiler.profile(
@@ -277,7 +281,7 @@ def train_func_advanced_profiling():
         with_stack=True,
         # [2] Enable experimental Kineto library features for enhanced analysis.
         # Kineto is a library that provides performance observability and diagnostic to deprecate TensorBoard.
-        # See more details in https://github.com/pytorch/kineto.
+        # See more details at https://github.com/pytorch/kineto.
         # ======================================================
         experimental_config=torch.profiler._ExperimentalConfig(verbose=True),
     ) as prof:
@@ -357,14 +361,14 @@ def train_func_advanced_profiling():
 
 ```
 
-Kick off the Ray Train Job similar to previous step.
+Kick off the Ray Train job similarly to the previous step.
 
 
 ```python
 # Run the advanced profiling example
 scaling_config = ray.train.ScalingConfig(num_workers=1, use_gpu=True)
 
-# Create unique experiment name for advanced profiling
+# Create a unique experiment name for advanced profiling
 advanced_experiment_name = f"advanced_profiling_{uuid.uuid4().hex[:8]}"
 
 # Configure run settings
@@ -389,60 +393,57 @@ print(f"Check '/mnt/cluster_storage/{advanced_experiment_name}/' for comprehensi
 
 ### Analyzing profiling results
 
-After running the profiling examples, you'll have access to several types of profiling data:
+After running the profiling examples, you have access to several types of profiling data:
 
-1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` (Or the persistent storage configured by user.) - Use these to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
+1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` or the persistent storage that configured. - Use these traces to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
 
 2. **Memory timeline HTML files**: Worker-specific memory profiles showing memory usage over time, helping identify memory leaks and optimization opportunities.
 
 
-3. **Ray Train dashboard**: If using Anyscale Workspace, access the Ray Train dashboard to monitor real-time metrics, worker status, and resource utilization.
+3. **Ray Train dashboard**: If using Anyscale workspace, access the Ray Train dashboard to monitor real-time metrics, worker status, and resource utilization.
 
 ### Key profiling insights to look for:
 
-- **GPU utilization**: Ensure GPUs are being used efficiently (high utilization percentage)
+- **GPU utilization**: Ensure your workload is using GPUs efficiently (high utilization percentage)
 - **Memory usage patterns**: Look for memory spikes, leaks, or inefficient allocation patterns
 - **Communication overhead**: Monitor time spent on gradient synchronization
 - **Data loading bottlenecks**: Identify if data loading is limiting training throughput
 - **Kernel efficiency**: Analyze which operations are taking the most time and optimize accordingly
 
 
-### Tensorboard Plugin with PyTorch Profiler and tracing.
+### Tensorboard plugin with PyTorch Profiler and tracing.
 
-After generating the `trace.json` files, you can use tensorboard, or simply drag the `trace.json` into Perfetto UI or `chrome://tracing` to visualize your profile.
+After generating the `trace.json` files, you can use Tensorboard, or drag the `trace.json` into Perfetto UI or `chrome://tracing` to visualize your profile.
 
-Use the below script to start the tensorboard.
+Use the script below to start the Tensorboard.
 ```
 pip install torch_tb_profiler
 
-# Once run the above code, the profiling result will be saved under `/mnt/cluster_storage/logs/`
+# Once you run the above code, the profiling result is saved under `/mnt/cluster_storage/logs/`
 tensorboard --logdir=/mnt/cluster_storage/logs/
 ```
 
-Open the TensorBoard profile URL in browser and you could see Profiler plugin page as shown below.
+Open the TensorBoard profile URL in a browser and you can see the Profiler plugin page as shown below.
 
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Tensorboard Overview</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-profiling/images/tensorboard_overview.png" width="600"/>
   </div>
 </div>
 
 
-The Worker-specific memory profiles showing memory usage over time, helping identify memory leaks and optimization opportunities.
+The following page shows worker-specific memory profiles showing memory usage over time, helping identify memory leaks and optimization opportunities.
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Memory Profiles</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-profiling/images/memory_html.png" width="600"/>
   </div>
 </div>
 
-In the advanced section, we use `record_function` context to profile individual operations, which can be viewed in the trace section:
+The advanced section uses `record_function` context to profile individual operations, which you can view in the trace section:
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
-    <h3>Trace annotation</h3>
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-profiling/images/trace_annotation.png" width="600"/>
   </div>
 </div>
@@ -460,13 +461,5 @@ In this notebook, you learned how to profile Ray Train workloads using PyTorch P
 
 - **Performance optimization**: Gained insights into GPU utilization, memory usage patterns, and training efficiency through detailed profiling analysis.
 
-### Key benefits of profiling Ray Train workloads:
 
-1. **Performance optimization**: Identify bottlenecks and optimize training speed
-2. **Memory efficiency**: Detect memory leaks and optimize memory usage
-3. **Resource utilization**: Ensure efficient use of GPU and CPU resources
-4. **Distributed training insights**: Monitor communication overhead and load balancing
-5. **Debugging capabilities**: Diagnose performance issues and training problems
-
-By integrating PyTorch Profiler with Ray Train, you can build more efficient, scalable, and maintainable machine learning training pipelines while gaining deep insights into their performance characteristics.
 
