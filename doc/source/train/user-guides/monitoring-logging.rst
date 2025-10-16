@@ -6,9 +6,12 @@ Monitoring and Logging Metrics
 Ray Train provides an API for attaching metrics to :ref:`checkpoints <train-checkpointing>` from the training function by calling :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`.
 The results will be collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
 
-The primary use-case for reporting is for metrics (accuracy, loss, etc.) at the end of each training epoch. See :ref:`train-dl-saving-checkpoints` for usage examples.
+The primary use cases for reporting are:
 
-Only the result reported by the rank 0 worker will be attached to the checkpoint.
+* metrics (accuracy, loss, etc.) at the end of each training epoch. See :ref:`train-dl-saving-checkpoints` for usage examples.
+* validating checkpoints on a validation set with a user-defined validation function. See :ref:`train-validating-checkpoints` for usage examples.
+
+Only the result reported by the rank 0 worker is attached to the checkpoint.
 However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
 To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 

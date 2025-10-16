@@ -10,17 +10,16 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-)
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
 )
+from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
 from ray.serve.config import AutoscalingConfig
 
 
@@ -78,14 +77,114 @@ def serve_config_separate_model_config_files():
     yield serve_config_dst
 
 
+class TestLLMServingArgs:
+    """Test suite for LLMServingArgs data model."""
+
+    @pytest.fixture
+    def llm_config(self):
+        """Basic LLMConfig for testing."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
+    def test_basic_creation_and_defaults(self, llm_config):
+        """Test creation with minimal config and verify defaults."""
+        args = LLMServingArgs(llm_configs=[llm_config])
+
+        # Verify llm_configs
+        assert len(args.llm_configs) == 1
+        assert isinstance(args.llm_configs[0], LLMConfig)
+
+        # Verify defaults
+        assert isinstance(args.ingress_cls_config, IngressClsConfig)
+        assert args.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args.ingress_deployment_config == {}
+
+    def test_flexible_input_types(self, llm_config):
+        """Test accepts dicts, objects, and mixed types for llm_configs."""
+        config_dict = {
+            "model_loading_config": {
+                "model_id": "test-model-2",
+                "model_source": "test-source-2",
+            }
+        }
+        args = LLMServingArgs(llm_configs=[llm_config, config_dict])
+        assert len(args.llm_configs) == 2
+        assert all(isinstance(c, LLMConfig) for c in args.llm_configs)
+
+    def test_ingress_config_flexibility(self, llm_config):
+        """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
+        # Test defaults
+        args_default = LLMServingArgs(llm_configs=[llm_config])
+        assert isinstance(args_default.ingress_cls_config, IngressClsConfig)
+        assert args_default.ingress_cls_config.ingress_cls == OpenAiIngress
+        assert args_default.ingress_cls_config.ingress_extra_kwargs == {}
+
+        # Test as dict with custom kwargs
+        args_dict = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config={"ingress_extra_kwargs": {"key": "value"}},
+        )
+        assert isinstance(args_dict.ingress_cls_config, IngressClsConfig)
+        assert args_dict.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+
+        # Test as object
+        args_obj = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config=IngressClsConfig(ingress_extra_kwargs={"key": "value"}),
+        )
+        assert isinstance(args_obj.ingress_cls_config, IngressClsConfig)
+        assert args_obj.ingress_cls_config.ingress_extra_kwargs == {"key": "value"}
+
+        # Test class loading from string
+        args_str = LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_cls_config={
+                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+            },
+        )
+        assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress
+
+    def test_validation_rules(self):
+        """Test validation: unique model IDs and non-empty list."""
+        # Duplicate model IDs
+        config1 = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="same-id", model_source="source1"
+            )
+        )
+        config2 = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="same-id", model_source="source2"
+            )
+        )
+        with pytest.raises(ValueError, match="Duplicate models found"):
+            LLMServingArgs(llm_configs=[config1, config2])
+
+        # Empty list
+        with pytest.raises(ValueError, match="List of models is empty"):
+            LLMServingArgs(llm_configs=[])
+
+
 class TestBuildOpenaiApp:
+    @pytest.fixture
+    def llm_config(self):
+        """Basic LLMConfig for testing."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
     def test_build_openai_app(
         self, get_llm_serve_args, shutdown_ray_and_serve, disable_placement_bundles
     ):
         """Test `build_openai_app` can build app and run it with Serve."""
 
         app = build_openai_app(
-            llm_serving_args=get_llm_serve_args,
+            get_llm_serve_args,
         )
         assert isinstance(app, serve.Application)
         serve.run(app)
@@ -159,7 +258,15 @@ class TestBuildOpenaiApp:
                     llm_config_no_autoscaling_configured,
                     llm_config_autoscaling_default,
                     llm_config_autoscaling_non_default,
-                ]
+                ],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": 8,
+                        "initial_replicas": 10,
+                        "max_replicas": 12,
+                        "target_ongoing_requests": 10,
+                    }
+                },
             )
         )
         router_autoscaling_config = (
@@ -168,10 +275,37 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.min_replicas == 8  # (1 + 1 + 2) * 2
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
-        assert (
-            router_autoscaling_config.target_ongoing_requests
-            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
+        assert router_autoscaling_config.target_ongoing_requests == 10
+
+    def test_ingress_deployment_config_merging(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that ingress_deployment_config is properly merged with default options.
+
+        This test ensures that deep_merge_dicts return value is properly assigned
+        and that nested dictionaries are properly deep-merged without losing default values.
+        """
+        # Build app with custom ingress deployment config including nested options
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "num_replicas": 3,
+                    "ray_actor_options": {
+                        "num_cpus": 4,
+                        "memory": 1024,
+                    },
+                    "max_ongoing_requests": 200,  # Override default
+                },
+            )
         )
+
+        # Verify the custom config was applied
+        deployment = app._bound_deployment
+        assert deployment._deployment_config.num_replicas == 3
+        assert deployment.ray_actor_options["num_cpus"] == 4
+        assert deployment.ray_actor_options["memory"] == 1024
+        assert deployment._deployment_config.max_ongoing_requests == 200
 
 
 def extract_applications_from_output(output: bytes) -> dict:
