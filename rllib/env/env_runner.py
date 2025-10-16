@@ -66,7 +66,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
         self.env = None
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.custom_stats_cls_lookup
+        )
 
         super().__init__()
 

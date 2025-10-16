@@ -87,7 +87,9 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         self.client_socket = None
         self.address = None
 
-        self.metrics = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.custom_stats_cls_lookup
+        )
 
         self._episode_chunks_to_return: Optional[List[SingleAgentEpisode]] = None
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []

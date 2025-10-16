@@ -32,6 +32,12 @@ class LifetimeSumStats(StatsBase):
         self._last_reduce_time = time.perf_counter()
         self._last_restore_time = time.perf_counter()
 
+    def __len__(self) -> int:
+        return 1
+
+    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+        return self._item if compile else [self._item]
+
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
         state = super().get_state()
@@ -89,24 +95,23 @@ class LifetimeSumStats(StatsBase):
                 If it is not possible, the result is a list of values.
                 If False, the result is a list of one or more values.
         """
+        value = self._item
+
         if not self._is_root_stats:
             # On leaves, we need to return the current value and reset it to 0
             # Otherwise, we would be adding accumulated values at the root multiple times
-            value = self._item
             if self._is_tensor:
                 self._item = torch.tensor(0.0)
             else:
                 self._item = 0.0
 
         if self._is_tensor:
-            item = value.item()
-        else:
-            item = value
+            value = value.item()
 
         if compile:
-            return item
+            return value
         else:
-            return [item]
+            return [value]
 
     def merge(
         self: "LifetimeSumStats", incoming_stats: List["LifetimeSumStats"]

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List, Union
 
 import numpy as np
 
@@ -18,7 +18,7 @@ class EmaStats(StatsBase):
 
     def __init__(
         self,
-        ema_coeff: Optional[float] = None,
+        ema_coeff: float = 0.01,
         clear_on_reduce: bool = False,
         *args,
         **kwargs,

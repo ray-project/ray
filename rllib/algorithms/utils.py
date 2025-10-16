@@ -49,7 +49,9 @@ class AggregatorActor(FaultAwareApply):
         # Set device and node.
         self._node = platform.node()
         self._device = torch.device("cpu")
-        self.metrics = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.custom_stats_cls_lookup
+        )
 
         # Create the RLModule.
         # TODO (sven): For now, this RLModule (its weights) never gets updated.

@@ -28,23 +28,21 @@ def test_log_value(logger):
 
 
 @pytest.mark.parametrize(
-    "reduce_method,values,expected",
+    "reduce_method,kwargs,values,expected",
     [
-        ("mean", [0.1, 0.2], 0.101),
-        ("min", [0.3, 0.1, 0.2], 0.1),
-        ("sum", [10, 20], 30),
+        ("mean", {"clear_on_reduce": True}, [0.1, 0.2], 0.101),
+        ("min", {"clear_on_reduce": True}, [0.3, 0.1, 0.2], 0.1),
+        ("sum", {"clear_on_reduce": True}, [10, 20], 30),
+        ("lifetime_sum", {}, [10, 20], 30),
+        ("ema", {"clear_on_reduce": True}, [1.0, 2.0], 1.01),
     ],
 )
-def test_basic_reduction_methods(logger, reduce_method, values, expected):
+def test_basic_reduction_methods(logger, reduce_method, kwargs, values, expected):
     """Test different reduction methods (mean, min, sum) with parameterization."""
     key = f"{reduce_method}_metric"
 
-    # Log the first value with the reduction method specified
-    logger.log_value(key, values[0], reduce=reduce_method)
-
-    # Log remaining values
-    for val in values[1:]:
-        logger.log_value(key, val)
+    for val in values:
+        logger.log_value(key, val, reduce=reduce_method, **kwargs)
 
     # Check the result
     check(logger.peek(key), expected)
@@ -57,13 +55,13 @@ def test_basic_reduction_methods(logger, reduce_method, values, expected):
 def test_ema(logger):
     """Comprehensive test of EMA behavior for mean reduction."""
     # Test default EMA coefficient (0.01)
-    logger.log_value("default_ema", 1.0, reduce="mean")
+    logger.log_value("default_ema", 1.0, reduce="ema")
     logger.log_value("default_ema", 2.0)
     # Expected: 0.99 * 1.0 + 0.01 * 2.0 = 1.01
     check(logger.peek("default_ema"), 1.01)
 
     ema_coeff = 0.2
-    logger.log_value("custom_ema", 1.0, ema_coeff=ema_coeff)
+    logger.log_value("custom_ema", 1.0, reduce="ema", ema_coeff=ema_coeff)
 
     # Log a series of values and check if EMA approaches the expected value
     values = [5.0] * 100  # Actual mean is 5.0
@@ -79,7 +77,7 @@ def test_ema(logger):
     assert abs(expected - 5.0) < 1e-9, f"EMA {expected} should be approaching 5.0"
 
     # Test EMA with larger coefficient (faster adaptation)
-    logger.log_value("fast_ema", 0.1, ema_coeff=0.5)
+    logger.log_value("fast_ema", 0.1, reduce="ema", ema_coeff=0.5)
     logger.log_value("fast_ema", 0.2)
     logger.log_value("fast_ema", 0.3)
     # Expected: first update = 0.5*0.1 + 0.5*0.2 = 0.15

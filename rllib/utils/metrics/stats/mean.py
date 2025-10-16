@@ -15,6 +15,11 @@ class MeanStats(SeriesStats):
     _torch_reduce_fn = torch.nanmean
     _np_reduce_fn = np.nanmean
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self._window is None:
+            raise ValueError("window=None is not supported for mean reduction.")
+
     def __repr__(self) -> str:
         return (
             f"MeanStats({self.peek()}; window={self._window}; len={len(self)}; "
