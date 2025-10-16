@@ -298,10 +298,10 @@ you have the following options:
 
     .. tab-item:: Asynchronous
 
-         If you want to upload the checkpoint asynchronously, you can set ``checkpoint_upload_mode``
-         to ``ray.train.CheckpointUploadMode.ASYNC`` and pass a ``checkpoint_upload_fn`` to
-         ``ray.train.report``. This function takes the ``Checkpoint`` and ``checkpoint_dir_name``
-         passed to ``ray.train.report`` and returns the persisted ``Checkpoint``.
+        If you want to upload the checkpoint asynchronously, you can set ``checkpoint_upload_mode``
+        to ``ray.train.CheckpointUploadMode.ASYNC`` and pass a ``checkpoint_upload_fn`` to
+        ``ray.train.report``. This function takes the ``Checkpoint`` and ``checkpoint_dir_name``
+        passed to ``ray.train.report`` and returns the persisted ``Checkpoint``.
 
         .. literalinclude:: ../doc_code/checkpoints.py
             :language: python
