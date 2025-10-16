@@ -25,7 +25,7 @@ The primary advantage of TPUs is performance at scale, as they are designed to b
 configurations called “PodSlices” via a high-speed ICI interconnect, making them ideal for training large models
 that are unable to fit on a single node.
 
-To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
+To learn more about configuring TPUs with KubeRay, see :ref:`kuberay-tpu`.
 
 JaxTrainer API
 --------------
