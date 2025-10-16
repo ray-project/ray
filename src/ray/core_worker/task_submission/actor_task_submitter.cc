@@ -272,6 +272,7 @@ void ActorTaskSubmitter::CancelDependencyResolution(const TaskID &task_id) {
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.client_address_ = std::nullopt;
+  // If the actor on the worker is dead, the worker is also dead.
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id_));
   queue.worker_id_.clear();
 }
@@ -593,8 +594,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       << "Pushing task to actor, actor id " << actor_id << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
-    // TODO(ekl) add more debug info about the actor name, etc.
-    warn_excess_queueing_(actor_id, num_queued);
+    on_excess_queueing_(
+        actor_id, task_spec.FunctionDescriptor()->ClassName(), num_queued);
     next_queueing_warn_threshold_ *= 2;
   }
 
@@ -662,23 +663,13 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
-  if (status.ok() && !is_retryable_exception) {
+  if ((status.ok() && reply.was_cancelled_before_running()) ||
+      status.IsSchedulingCancelled()) {
+    HandleTaskCancelledBeforeExecution(status, reply, task_spec);
+  } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_manager_.CompletePendingTask(task_id, reply, addr, reply.is_application_error());
-  } else if (status.IsSchedulingCancelled()) {
-    std::ostringstream stream;
-    stream << "The task " << task_id << " is canceled from an actor " << actor_id
-           << " before it executes.";
-    const auto &msg = stream.str();
-    RAY_LOG(DEBUG) << msg;
-    rpc::RayErrorInfo error_info;
-    error_info.set_error_message(msg);
-    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    task_manager_.FailPendingTask(task_spec.TaskId(),
-                                  rpc::ErrorType::TASK_CANCELLED,
-                                  /*status*/ nullptr,
-                                  &error_info);
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
@@ -777,6 +768,88 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
     queue.cur_pending_calls_--;
+  }
+}
+
+void ActorTaskSubmitter::HandleTaskCancelledBeforeExecution(
+    const Status &status,
+    const rpc::PushTaskReply &reply,
+    const TaskSpecification &task_spec) {
+  const auto task_id = task_spec.TaskId();
+  const auto actor_id = task_spec.ActorId();
+
+  if (reply.worker_exiting()) {
+    // Task cancelled due to actor shutdown - use ACTOR_DIED error.
+    // If we have the death cause, use it immediately. Otherwise,
+    // wait for it from GCS to provide an accurate error message.
+    bool is_actor_dead = false;
+    rpc::RayErrorInfo error_info;
+    {
+      absl::MutexLock lock(&mu_);
+      auto queue_pair = client_queues_.find(actor_id);
+      if (queue_pair != client_queues_.end()) {
+        is_actor_dead = queue_pair->second.state_ == rpc::ActorTableData::DEAD;
+        if (is_actor_dead) {
+          const auto &death_cause = queue_pair->second.death_cause_;
+          error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
+        }
+      }
+    }
+
+    if (is_actor_dead) {
+      CancelDependencyResolution(task_id);
+      RAY_LOG(DEBUG) << "Task " << task_id << " cancelled due to actor " << actor_id
+                     << " death";
+      task_manager_.FailPendingTask(task_spec.TaskId(),
+                                    error_info.error_type(),
+                                    /*status*/ nullptr,
+                                    &error_info);
+    } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+      CancelDependencyResolution(task_id);
+
+      int64_t death_info_grace_period_ms =
+          current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
+
+      error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+      error_info.set_error_message(
+          "The actor is dead because its worker process has died.");
+
+      {
+        absl::MutexLock lock(&mu_);
+        auto queue_pair = client_queues_.find(actor_id);
+        RAY_CHECK(queue_pair != client_queues_.end());
+        auto &queue = queue_pair->second;
+        queue.wait_for_death_info_tasks_.push_back(
+            std::make_shared<PendingTaskWaitingForDeathInfo>(
+                death_info_grace_period_ms, task_spec, status, error_info));
+        RAY_LOG(INFO).WithField(task_spec.TaskId())
+            << "Task cancelled during actor shutdown, waiting for death info from GCS"
+            << ", wait_queue_size=" << queue.wait_for_death_info_tasks_.size();
+      }
+    } else {
+      CancelDependencyResolution(task_id);
+      error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+      error_info.set_error_message(
+          "The actor is dead because its worker process has died.");
+      task_manager_.FailPendingTask(task_spec.TaskId(),
+                                    rpc::ErrorType::ACTOR_DIED,
+                                    /*status*/ nullptr,
+                                    &error_info);
+    }
+  } else {
+    // Explicit user cancellation - use TASK_CANCELLED error.
+    std::ostringstream stream;
+    stream << "The task " << task_id << " is canceled from an actor " << actor_id
+           << " before it executes.";
+    const auto &msg = stream.str();
+    RAY_LOG(DEBUG) << msg;
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_message(msg);
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+    task_manager_.FailPendingTask(task_spec.TaskId(),
+                                  rpc::ErrorType::TASK_CANCELLED,
+                                  /*status*/ nullptr,
+                                  &error_info);
   }
 }
 

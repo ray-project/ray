@@ -835,11 +835,9 @@ def test_logs_list(ray_start_with_dashboard):
         assert result["result"]
         logs = result["data"]["result"]
         assert "gcs_server" in logs
-        assert "internal" in logs
-        assert len(logs) == 2
+        assert len(logs) == 1
         assert "gcs_server.out" in logs["gcs_server"]
         assert "gcs_server.err" in logs["gcs_server"]
-        assert "debug_state_gcs.txt" in logs["internal"]
         return True
 
     wait_for_condition(verify_filter)

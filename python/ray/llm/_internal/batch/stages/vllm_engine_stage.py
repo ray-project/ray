@@ -1,11 +1,13 @@
 """The stage that runs vLLM engine."""
 
 import asyncio
+import copy
 import dataclasses
 import logging
 import math
 import time
 import uuid
+from collections import Counter
 from enum import Enum
 from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
@@ -22,6 +24,7 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
     download_model_files,
 )
@@ -183,13 +186,6 @@ class vLLMEngineWrapper:
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
-        # Determine the generate function based on vLLM v0 or v1.
-        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
-        if self.vllm_use_v1:
-            self._generate_async = self.generate_async_v1
-        else:
-            self._generate_async = self.generate_async_v0
-
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
         self.max_pending_requests = max_pending_requests
@@ -328,53 +324,7 @@ class vLLMEngineWrapper:
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
-    async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
-        """Process a single request.
-
-        Args:
-            request: The request.
-
-        Returns:
-            The output of the request.
-        """
-
-        import vllm
-
-        if request.images:
-            # FIXME: The latest vLLM does not support multi-modal inputs
-            # with tokenized prompt.
-            assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
-                prompt=request.prompt, multi_modal_data={"image": request.images}
-            )
-        else:
-            if request.prompt_token_ids is not None:
-                llm_prompt = vllm.inputs.data.TokensPrompt(
-                    prompt_token_ids=request.prompt_token_ids
-                )
-            else:
-                assert request.prompt
-                llm_prompt = vllm.inputs.data.TextPrompt(prompt=request.prompt)
-
-        # Send the request to the LLM engine.
-        stream = await self.engine.add_request(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            params=request.params,
-            lora_request=request.lora_request,
-        )
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
-                return request_output
-
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
-        )
-
-    async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:
@@ -471,13 +421,14 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") in [
-            "runai_streamer",
-            "tensorizer",
-        ]
+        exclude_safetensors = (
+            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        )
         if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
+            logger.info("Downloading model and tokenizer.")
             download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
@@ -488,10 +439,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             download_extra_files=False,
         )
 
-        # Create an LLM engine.
+        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
+        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=model_source,
+            model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
@@ -597,7 +549,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
-    resources_per_bundle: Optional[Dict[str, float]] = None,
+    placement_group_config: Optional[Dict[str, Any]] = None,
 ):
     """Create a Ray scheduling strategy for the engine.
 
@@ -606,31 +558,35 @@ def _ray_scheduling_strategy_fn(
             engine replica.
         accelerator_type: The accelerator type. If None, the
             accelerator_type label will not be set.
-        resources_per_bundle: The custom resources per bundle.
-            If None, we default to 1xGPU + 1xCPU bundle.
+        placement_group_config: The custom placement group configuration.
+            If None, we use the default placement group configuration.
 
     Returns:
         The Ray scheduling strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-        bundle = {}
-        # Custom resources
-        if resources_per_bundle:
-            bundle = resources_per_bundle
-        else:
-            # GPU bundles
-            bundle = {"GPU": 1, "CPU": 1}
+        # GPU bundles
+        bundle = {"GPU": 1, "CPU": 1}
 
         # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
-    pg = ray.util.placement_group(
-        [_get_bundle()] * num_bundles_per_replica,
-        strategy="STRICT_PACK",
-    )
+    if placement_group_config:
+        placement_group_config = copy.deepcopy(placement_group_config)
+
+        if accelerator_type:
+            for bundle in placement_group_config["bundles"]:
+                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
+
+        pg = ray.util.placement_group(**placement_group_config)
+    else:
+        pg = ray.util.placement_group(
+            [_get_bundle()] * num_bundles_per_replica,
+            strategy="PACK",
+        )
     return dict(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             pg, placement_group_capture_child_tasks=True
@@ -678,26 +634,42 @@ class vLLMEngineStage(StatefulStage):
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        resources_per_bundle = map_batches_kwargs.pop("resources", None)
-        if executor_backend == "ray" and num_bundles_per_replica > 1:
+        placement_group_config = fn_constructor_kwargs.pop(
+            "placement_group_config", None
+        )
+        if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 _ray_scheduling_strategy_fn,
                 num_bundles_per_replica,
                 accelerator_type,
-                resources_per_bundle,
+                placement_group_config,
             )
             ray_remote_args["num_gpus"] = 0
         else:
-            if not resources_per_bundle:
-                # Default to GPUs per bundle if custom resources are not specified.
+            if not placement_group_config:
+                # Default to GPUs per bundle if placement group is not specified.
                 ray_remote_args["num_gpus"] = num_bundles_per_replica
             else:
-                ray_remote_args["resources"] = {
-                    resource_key: resource_count * num_bundles_per_replica
-                    for resource_key, resource_count in resources_per_bundle.items()
-                }
+                bundles = placement_group_config["bundles"]
+                resource_counter = Counter()
+                for bundle in bundles:
+                    resource_counter.update(bundle)
+
+                total_cpus = resource_counter.pop("CPU", 0)
+                total_gpus = resource_counter.pop("GPU", 0)
+
+                # Ray Data expects CPU/GPU to be specified via num_cpus/num_gpus,
+                # not inside the resources dict.
+                if total_cpus:
+                    ray_remote_args["num_cpus"] = total_cpus
+                if total_gpus:
+                    ray_remote_args["num_gpus"] = total_gpus
+
+                # Keep only non-CPU/GPU custom resources, if any.
+                if resource_counter:
+                    ray_remote_args["resources"] = dict(resource_counter)
 
         map_batches_kwargs.update(ray_remote_args)
         return values

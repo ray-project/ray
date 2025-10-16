@@ -11,7 +11,6 @@ import ray
 from ray._common.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
-from ray.train._internal import session
 from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
@@ -20,7 +19,6 @@ from ray.train.v2._internal.execution.training_report import (
     _ValidationSpec,
 )
 from ray.train.v2._internal.util import (
-    _copy_doc,
     construct_user_exception_with_traceback,
     invoke_context_managers,
 )
@@ -126,31 +124,24 @@ class TrainContext:
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
-    @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
 
-    @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
         return self.distributed_context.world_size
 
-    @_copy_doc(session.get_world_rank)
     def get_world_rank(self) -> int:
         return self.distributed_context.world_rank
 
-    @_copy_doc(session.get_local_rank)
     def get_local_rank(self) -> int:
         return self.distributed_context.local_rank
 
-    @_copy_doc(session.get_local_world_size)
     def get_local_world_size(self) -> int:
         return self.distributed_context.local_world_size
 
-    @_copy_doc(session.get_node_rank)
     def get_node_rank(self) -> int:
         return self.distributed_context.node_rank
 
-    @_copy_doc(session.get_storage)
     def get_storage(self):
         return self.storage_context
 
@@ -228,6 +219,9 @@ class TrainContext:
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         delete_local_checkpoint_after_upload: bool = False,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
         validation_spec: Optional[_ValidationSpec] = None,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
@@ -237,6 +231,9 @@ class TrainContext:
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            checkpoint_upload_fn: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+                utility for copying to the destination `storage_path`.
             validation_spec: The validation specification.
 
         Returns:
@@ -250,9 +247,14 @@ class TrainContext:
 
         # Persist the checkpoint to the remote storage path.
         try:
-            persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-                checkpoint, checkpoint_dir_name
-            )
+            if checkpoint_upload_fn:
+                persisted_checkpoint = checkpoint_upload_fn(
+                    checkpoint, checkpoint_dir_name
+                )
+            else:
+                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
+                    checkpoint, checkpoint_dir_name
+                )
         except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
@@ -310,6 +312,9 @@ class TrainContext:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ) -> None:
@@ -362,6 +367,7 @@ class TrainContext:
                     metrics,
                     checkpoint,
                     delete_local_checkpoint_after_upload,
+                    checkpoint_upload_fn,
                     validation_spec,
                 )
                 self._wait_then_report(training_report, report_call_index)
@@ -388,6 +394,7 @@ class TrainContext:
                             metrics,
                             checkpoint,
                             delete_local_checkpoint_after_upload,
+                            checkpoint_upload_fn,
                             validation_spec,
                         )
                         self._wait_then_report(training_report, report_call_index)

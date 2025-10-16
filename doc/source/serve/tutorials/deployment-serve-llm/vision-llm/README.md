@@ -81,8 +81,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:   
 
 
-```bash
-%%bash
+```python
 serve run serve_qwen_VL:app --non-blocking
 ```
 
@@ -97,8 +96,7 @@ Your endpoint is available locally at `http://localhost:8000` and you can use a 
 Example curl with image URL:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -187,8 +185,7 @@ for chunk in response:
 Shutdown your LLM service:
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 

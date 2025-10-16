@@ -68,7 +68,6 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(Exit)
   RAY_CORE_WORKER_RPC_PROXY(AssignObjectOwner)
   RAY_CORE_WORKER_RPC_PROXY(NumPendingTasks)
-  RAY_CORE_WORKER_RPC_PROXY(FreeActorObject)
 
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {

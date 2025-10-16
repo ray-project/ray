@@ -19,6 +19,7 @@ from ray._common.pydantic_compat import (
 from ray._common.serialization import pickle_dumps
 from ray._common.utils import resources_from_ray_options
 from ray.serve._private.constants import (
+    DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -27,7 +28,7 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import AggregationFunction, AutoscalingConfig, RequestRouterConfig
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -123,6 +124,8 @@ class DeploymentConfig(BaseModel):
         user_configured_option_names: The names of options manually
             configured by the user.
         request_router_config: Configuration for deployment request router.
+        max_constructor_retry_count: Maximum number of times to retry the
+            deployment constructor. Defaults to 20.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -183,6 +186,11 @@ class DeploymentConfig(BaseModel):
     logging_config: Optional[dict] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
+    max_constructor_retry_count: PositiveInt = Field(
+        default=DEFAULT_CONSTRUCTOR_RETRY_COUNT,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
 
     # Contains the names of deployment options manually set by the user
@@ -328,6 +336,10 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["downscaling_factor"] = None
             if not data["autoscaling_config"].get("target_ongoing_requests"):
                 data["autoscaling_config"]["target_ongoing_requests"] = None
+            if not data["autoscaling_config"].get("aggregation_function"):
+                data["autoscaling_config"][
+                    "aggregation_function"
+                ] = AggregationFunction.MEAN
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":

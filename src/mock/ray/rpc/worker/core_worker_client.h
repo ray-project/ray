@@ -53,7 +53,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               WaitForActorRefDeleted,
-              (const WaitForActorRefDeletedRequest &request,
+              (WaitForActorRefDeletedRequest && request,
                const ClientCallback<WaitForActorRefDeletedReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -149,11 +149,6 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               RayletNotifyGCSRestart,
               (const RayletNotifyGCSRestartRequest &request,
                const ClientCallback<RayletNotifyGCSRestartReply> &callback),
-              (override));
-  MOCK_METHOD(void,
-              FreeActorObject,
-              (FreeActorObjectRequest && request,
-               const ClientCallback<FreeActorObjectReply> &callback),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };

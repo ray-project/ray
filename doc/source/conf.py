@@ -230,6 +230,8 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -737,3 +739,5 @@ assert (
 ), "If ray is already imported, we will not render documentation correctly!"
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

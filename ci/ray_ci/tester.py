@@ -6,12 +6,12 @@ import click
 import yaml
 from ray_release.test import Test, TestState
 
-from ci.ray_ci.builder_container import (
+from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.configs import (
     DEFAULT_ARCHITECTURE,
     DEFAULT_BUILD_TYPE,
     DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
-    BuilderContainer,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
@@ -256,6 +256,9 @@ def main(
     )
     if build_only:
         sys.exit(0)
+
+    print("--- Listing test targets")
+
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
     else:
@@ -274,6 +277,11 @@ def main(
             get_high_impact_tests=get_high_impact_tests,
             lookup_test_database=lookup_test_database,
         )
+    if not test_targets:
+        print("--- No tests to run")
+        sys.exit(0)
+
+    print(f"+++ Running {len(test_targets)} tests")
     success = container.run_tests(
         team,
         test_targets,
@@ -327,6 +335,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            python_version=python_version,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
             privileged=privileged,

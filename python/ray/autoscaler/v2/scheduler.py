@@ -1373,7 +1373,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         for gang_req in sorted(
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
-            requests = gang_req.requests
+            if gang_req.bundle_selectors:
+                # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
+                # for `fallback_strategy`.
+                requests = gang_req.bundle_selectors[0].resource_requests
+            else:
+                # Use legacy field if `bundle_selectors` not provided.
+                requests = gang_req.requests
             # Try to combine requests with affinity constraints into the same request.
             requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 

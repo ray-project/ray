@@ -11,7 +11,7 @@ import runfiles
 from dateutil import parser
 
 import docker
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,

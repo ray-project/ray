@@ -1752,7 +1752,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: Optional[Tuple[str]] = None,
+    frameworks: Optional[Tuple[str, ...]] = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.

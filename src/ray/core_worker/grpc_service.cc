@@ -108,10 +108,6 @@ void CoreWorkerGrpcService::InitServerCallFactories(
                                                           NumPendingTasks,
                                                           max_active_rpcs_per_handler_,
                                                           AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          FreeActorObject,
-                                                          max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
 }
 
 }  // namespace rpc

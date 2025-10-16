@@ -6,6 +6,7 @@ import platform
 from unittest import mock
 from typing import List
 
+
 import aioboto3
 import boto3
 import pytest
@@ -30,6 +31,7 @@ from ray_release.test import (
     WINDOWS_TEST_PREFIX,
     MACOS_BISECT_DAILY_RATE_LIMIT,
 )
+from ray_release.util import dict_hash
 
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
@@ -204,7 +206,7 @@ def test_get_anyscale_byod_image():
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
-        "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
+        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
     )
 
 
@@ -507,6 +509,28 @@ def test_gen_microcheck_tests() -> None:
                 )
                 == test["output"]
             )
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag(mock_get_byod_base_image_tag):
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "post_build_script": "test_post_build_script.sh",
+                    "python_depset": "test_python_depset.lock",
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_post_build_script.sh",
+        "python_depset": "test_python_depset.lock",
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ We have the following Mock:
 - An engine that returns a string of form "test_i" for i in range(max_tokens)
 """
 
+import sys
 from typing import Optional
 
 import pytest
@@ -96,3 +97,7 @@ class TestMockLLMEngine:
 
         async for response in engine.score(request):
             LLMResponseValidator.validate_score_response(response)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

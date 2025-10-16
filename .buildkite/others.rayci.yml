@@ -18,7 +18,10 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
-    depends_on: doctestbuild
+    depends_on:
+      - doctestbuild
+      - ray-core-build
+      - ray-dashboard-build
 
   # java
   - label: ":java: java tests"

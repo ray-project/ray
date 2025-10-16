@@ -40,6 +40,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.constants import CONSUMER_TAG_KEY
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
@@ -143,11 +144,15 @@ _DASHBOARD_METRICS = [
 ]
 
 _EVENT_AGGREGATOR_METRICS = [
-    "ray_event_aggregator_agent_events_received_total",
-    "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-    "ray_event_aggregator_agent_events_published_total",
-    "ray_event_aggregator_agent_events_filtered_out_total",
+    "ray_aggregator_agent_events_received_total",
+    "ray_aggregator_agent_published_events_total",
+    "ray_aggregator_agent_filtered_events_total",
+    "ray_aggregator_agent_queue_dropped_events_total",
+    "ray_aggregator_agent_consecutive_failures_since_last_success",
+    "ray_aggregator_agent_time_since_last_success_seconds",
+    "ray_aggregator_agent_publish_latency_seconds_bucket",
+    "ray_aggregator_agent_publish_latency_seconds_count",
+    "ray_aggregator_agent_publish_latency_seconds_sum",
 ]
 
 _NODE_METRICS = [
@@ -489,6 +494,7 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                "RAY_enable_open_telemetry": "true",
             },
         },
     ],
@@ -513,11 +519,15 @@ def test_metrics_export_event_aggregator_agent(
         metric_descriptors = timeseries.metric_descriptors
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
-            "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-            "ray_event_aggregator_agent_events_published_total",
-            "ray_event_aggregator_agent_events_filtered_out_total",
+            "ray_aggregator_agent_events_received_total",
+            "ray_aggregator_agent_published_events_total",
+            "ray_aggregator_agent_filtered_events_total",
+            "ray_aggregator_agent_queue_dropped_events_total",
+            "ray_aggregator_agent_consecutive_failures_since_last_success",
+            "ray_aggregator_agent_time_since_last_success_seconds",
+            "ray_aggregator_agent_publish_latency_seconds_bucket",
+            "ray_aggregator_agent_publish_latency_seconds_count",
+            "ray_aggregator_agent_publish_latency_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -525,11 +535,7 @@ def test_metrics_export_event_aggregator_agent(
         fetch_prometheus_timeseries(prom_addresses, timeseries)
         metric_samples = timeseries.metric_samples.values()
         expected_metrics_values = {
-            "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
-            "ray_event_aggregator_agent_events_published_total": 1.0,
-            "ray_event_aggregator_agent_events_filtered_out_total": 1.0,
+            "ray_aggregator_agent_events_received_total": 3.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
@@ -539,7 +545,24 @@ def test_metrics_export_event_aggregator_agent(
                 return False
         return True
 
-    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_samples = timeseries.metric_samples.values()
+        expected_metrics_values = {
+            "ray_aggregator_agent_published_events_total": 1.0,
+            "ray_aggregator_agent_filtered_events_total": 1.0,
+            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+        }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if (
+                samples[0].value != expected_value
+                or samples[0].labels[CONSUMER_TAG_KEY] != publisher_name
+            ):
+                return False
+        return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
@@ -586,7 +609,15 @@ def test_metrics_export_event_aggregator_agent(
     stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
+
+    wait_for_condition(
+        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 def test_operation_stats(monkeypatch, shutdown_only):

@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -19,16 +21,6 @@ from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
-
-try:
-    from pydantic import BaseModel
-    from pydantic_core import from_json
-except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`ray.train.v2` requires the pydantic package, which is missing. "
-        "Run the following command to fix this: `pip install pydantic`"
-    ) from exc
-
 
 logger = logging.getLogger(__name__)
 
@@ -235,14 +227,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
         )
-        return manager_snapshot.model_dump_json()
+        return manager_snapshot.json()
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
         try:
-            manager_snapshot = _CheckpointManagerState.model_validate(
-                from_json(json_state)
-            )
+            json_dict = json.loads(json_state)
+            manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
             raise CheckpointManagerInitializationError(repr(e)) from e
         self._assert_checkpoints_exist()
