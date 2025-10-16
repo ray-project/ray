@@ -4,7 +4,9 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from functools import reduce
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, \
+    Any, Tuple
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -18,6 +20,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle import HashShufflingOperatorBase
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
@@ -291,24 +294,32 @@ class ResourceManager:
         usage_str += (
             f", {self._op_running_usages[op].object_store_memory_str()} object store"
         )
+
         if self._debug:
             usage_str += (
                 f" (in={memory_string(self._mem_op_internal[op])},"
                 f"out={memory_string(self._mem_op_outputs[op])})"
             )
-            if (
-                isinstance(self._op_resource_allocator, ReservationOpResourceAllocator)
-                and op in self._op_resource_allocator._op_budgets
-            ):
-                budget = self._op_resource_allocator._op_budgets[op]
-                usage_str += f", budget=(cpu={budget.cpu:.1f}"
-                usage_str += f",gpu={budget.gpu:.1f}"
-                usage_str += f",obj_store={budget.object_store_memory_str()}"
-                # Remaining memory budget for producing new task outputs.
-                reserved_for_output = memory_string(
-                    self._op_resource_allocator._output_budgets.get(op, 0)
-                )
-                usage_str += f",out={reserved_for_output})"
+            if self._op_resource_allocator is not None:
+                allocation = self._op_resource_allocator.get_allocation(op)
+                if allocation:
+                    usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
+                    usage_str += f",gpu={allocation.gpu:.1f}"
+                    usage_str += f",obj_store={allocation.object_store_memory_str()})"
+
+                budget = self._op_resource_allocator.get_budget(op)
+                if budget:
+                    usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                    usage_str += f",gpu={budget.gpu:.1f}"
+                    usage_str += f",obj_store={budget.object_store_memory_str()}"
+
+                    # Remaining memory budget for producing new task outputs.
+                    if isinstance(self._op_resource_allocator, ReservationOpResourceAllocator):
+                        reserved_for_output = memory_string(
+                            self._op_resource_allocator._output_budgets.get(op, 0)
+                        )
+                        usage_str += f",out={reserved_for_output})"
+
         return usage_str
 
     def op_resource_allocator_enabled(self) -> bool:
