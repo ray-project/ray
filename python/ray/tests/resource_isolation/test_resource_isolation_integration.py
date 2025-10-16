@@ -16,7 +16,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 # These tests are intended to run in CI inside a container.
 #
 # If you want to run this test locally, you will need to create a cgroup that
-# the raylet can manage and delegate to the correct user.
+# the ray can manage and delegate to the correct user.
 #
 # Run these commands locally before running the test suite:
 #
@@ -44,13 +44,13 @@ _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #                       /           \
 #                 TEST_CGROUP   LEAF_CGROUP
 #                      |
-#               ray_node_<node_id>
-#               /               \
-#           system            application
-#             |                    |
-#           leaf                  leaf
+#               ray-node_<node_id>
+#              |                 |
+#           system             user
+#              |              |    |
+#            leaf        workers  non-ray
 #
-# NOTE: The test suite does not assume that ROOT_CGROUP is an actual root cgroup. Therefore,
+# NOTE: The test suite does not assume that ROOT_CGROUP is the OS's root cgroup. Therefore,
 #   1. setup will migrate all processes from the ROOT_CGROUP -> LEAF_CGROUP
 #   2. teardown will migrate all processes from the LEAF_CGROUP -> ROOT_CGROUP
 #
@@ -67,7 +67,7 @@ _BASE_CGROUP = _ROOT_CGROUP / ("testing_" + utils.get_random_alphanumeric_string
 _TEST_CGROUP = _BASE_CGROUP / "test"
 _LEAF_GROUP = _BASE_CGROUP / "leaf"
 
-_MOUNT_FILE_PATH = "/etc/mtab"
+_MOUNT_FILE_PATH = "/proc/mounts"
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -270,44 +270,42 @@ def assert_cgroup_hierarchy_exists_for_node(
 
     The cgroup hierarchy looks like:
 
-           _TEST_CGROUP
+            _TEST_CGROUP
                 |
-        ray_node_<node_id>
-          |            |
-        system     application
-          |            |
-        leaf         leaf
+        ray-node_<node_id>
+        |                |
+      system            user
+        |             |     |
+       leaf       workers  non-ray
 
     Args:
         node_id: used to find the path of the cgroup subtree
-        resource_isolation_config: used to verify constraints enabled on the system
-            and application cgroups
+        resource_isolation_config: used to verify constraints enabled on the system, workers, and user cgroups
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     system_cgroup = node_cgroup / "system"
     system_leaf_cgroup = system_cgroup / "leaf"
-    application_cgroup = node_cgroup / "application"
-    application_leaf_cgroup = application_cgroup / "leaf"
+    user_cgroup = node_cgroup / "user"
+    workers_cgroup = user_cgroup / "workers"
+    non_ray_cgroup = user_cgroup / "non-ray"
 
     # 1) Check that the cgroup hierarchy is created correctly for the node.
     assert node_cgroup.is_dir()
     assert system_cgroup.is_dir()
     assert system_leaf_cgroup.is_dir()
-    assert application_cgroup.is_dir()
-    assert application_leaf_cgroup.is_dir()
+    assert workers_cgroup.is_dir()
+    assert user_cgroup.is_dir()
+    assert non_ray_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
-    system_cgroup_memory_min = system_cgroup / "memory.min"
-    with open(system_cgroup_memory_min, "r") as memory_min_file:
+    with open(system_cgroup / "memory.min", "r") as memory_min_file:
         contents = memory_min_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_memory)
-    system_cgroup_cpu_weight = system_cgroup / "cpu.weight"
-    with open(system_cgroup_cpu_weight, "r") as cpu_weight_file:
+    with open(system_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_cpu_weight)
-    application_cgroup_cpu_weight = application_cgroup / "cpu.weight"
-    with open(application_cgroup_cpu_weight, "r") as cpu_weight_file:
+    with open(user_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
         assert contents == str(
             10000 - resource_isolation_config.system_reserved_cpu_weight
@@ -315,10 +313,21 @@ def assert_cgroup_hierarchy_exists_for_node(
 
 
 def assert_system_processes_are_in_system_cgroup(
-    node_id, resource_isolation_config, expected_count
+    node_id: str,
+    resource_isolation_config: ResourceIsolationConfig,
+    expected_count: int,
 ):
+    """Asserts that the system processes were created in the correct cgroup.
+
+    Args:
+        node_id: used to construct the path of the cgroup subtree
+        resource_isolation_config: used to construct the path of the cgroup
+            subtree
+        expected_count: the number of expected system processes.
+
+    """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     system_cgroup = node_cgroup / "system"
     system_leaf_cgroup = system_cgroup / "leaf"
 
@@ -330,26 +339,24 @@ def assert_system_processes_are_in_system_cgroup(
         ), f"Expected only system process passed into the raylet. Found {lines}"
 
 
-def assert_worker_processes_are_in_application_cgroup(
+def assert_worker_processes_are_in_workers_cgroup(
     node_id: str,
     resource_isolation_config: ResourceIsolationConfig,
     worker_pids: Set[str],
 ):
-    """Asserts that the cgroup hierarchy was deleted correctly for the node.
+    """Asserts that the worker processes were created in the correct cgroup.
 
     Args:
         node_id: used to construct the path of the cgroup subtree
         resource_isolation_config: used to construct the path of the cgroup
             subtree
-        worker_pids: a set of pids that are expected inside the application
+        worker_pids: a set of pids that are expected inside the workers
             leaf cgroup.
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
-    application_leaf_cgroup_procs = (
-        node_cgroup / "application" / "leaf" / "cgroup.procs"
-    )
-    with open(application_leaf_cgroup_procs, "r") as cgroup_procs_file:
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
+    workers_cgroup_procs = node_cgroup / "user" / "workers" / "cgroup.procs"
+    with open(workers_cgroup_procs, "r") as cgroup_procs_file:
         pids_in_cgroup = set()
         lines = cgroup_procs_file.readlines()
         for line in lines:
@@ -368,7 +375,7 @@ def assert_cgroup_hierarchy_cleaned_up_for_node(
             subtree
     """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
-    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     # If the root cgroup is deleted, there's no need to check anything else.
     assert (
         not node_cgroup.is_dir()
@@ -442,7 +449,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     worker_pids = set()
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
-    assert_worker_processes_are_in_application_cgroup(
+    assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
     runner.invoke(scripts.stop)
@@ -503,7 +510,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     worker_pids = set()
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
-    assert_worker_processes_are_in_application_cgroup(
+    assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
     ray.shutdown()

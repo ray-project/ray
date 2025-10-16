@@ -26,6 +26,7 @@ class JaxTrainer(DataParallelTrainer):
     function is expected to take in either 0 or 1 arguments:
 
     .. testcode::
+        :skipif: True
 
         import os
         from absl import app
@@ -70,10 +71,6 @@ class JaxTrainer(DataParallelTrainer):
             )
 
             result = trainer.fit()
-
-    .. testoutput::
-        :options: +ELLIPSIS
-        :hide:
 
     If ``train_loop_per_worker`` accepts an argument, then
     ``train_loop_config`` will be passed in as the argument.

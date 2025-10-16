@@ -621,7 +621,7 @@ class FaultTolerantActorManager:
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str], Tuple[str]] = (),
+        tags: Union[str, List[str], Tuple[str, ...]] = (),
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -1041,7 +1041,7 @@ class FaultTolerantActorManager:
         return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
-        self, tags: Optional[Union[str, List[str], Tuple[str]]] = None
+        self, tags: Optional[Union[str, List[str], Tuple[str, ...]]] = None
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
         """Return all the in flight requests that match the given tags, if any.
 

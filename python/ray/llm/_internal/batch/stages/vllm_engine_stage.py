@@ -24,6 +24,7 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
     download_model_files,
 )
@@ -185,13 +186,6 @@ class vLLMEngineWrapper:
         self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
-        # Determine the generate function based on vLLM v0 or v1.
-        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
-        if self.vllm_use_v1:
-            self._generate_async = self.generate_async_v1
-        else:
-            self._generate_async = self.generate_async_v0
-
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
         self.max_pending_requests = max_pending_requests
@@ -330,53 +324,7 @@ class vLLMEngineWrapper:
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
-    async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
-        """Process a single request.
-
-        Args:
-            request: The request.
-
-        Returns:
-            The output of the request.
-        """
-
-        import vllm
-
-        if request.images:
-            # FIXME: The latest vLLM does not support multi-modal inputs
-            # with tokenized prompt.
-            assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
-                prompt=request.prompt, multi_modal_data={"image": request.images}
-            )
-        else:
-            if request.prompt_token_ids is not None:
-                llm_prompt = vllm.inputs.data.TokensPrompt(
-                    prompt_token_ids=request.prompt_token_ids
-                )
-            else:
-                assert request.prompt
-                llm_prompt = vllm.inputs.data.TextPrompt(prompt=request.prompt)
-
-        # Send the request to the LLM engine.
-        stream = await self.engine.add_request(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            params=request.params,
-            lora_request=request.lora_request,
-        )
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
-                return request_output
-
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
-        )
-
-    async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:
@@ -473,13 +421,14 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
-        exclude_safetensors = self.engine_kwargs.get("load_format") in [
-            "runai_streamer",
-            "tensorizer",
-        ]
+        exclude_safetensors = (
+            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        )
         if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
+            logger.info("Downloading model and tokenizer.")
             download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
@@ -490,10 +439,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             download_extra_files=False,
         )
 
-        # Create an LLM engine.
+        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
+        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=model_source,
+            model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,

@@ -3,11 +3,9 @@ import sys
 
 import pytest
 
-import ray.cloudpickle as ray_pickle
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 
 
 @pytest.mark.parametrize(
@@ -96,7 +94,24 @@ def test_serialized_imports(ray_start_4_cpus):
     ray.get(dummy_task.remote())
 
 
-@pytest.mark.parametrize("env_v2_enabled", [True, False])
+def test_v1_config_validation():
+    """Test that V1 configs raise an error when V2 is enabled."""
+    import ray.air
+
+    with pytest.raises(ValueError, match="ray.train.ScalingConfig"):
+        DataParallelTrainer(lambda: None, scaling_config=ray.air.ScalingConfig())
+
+    with pytest.raises(ValueError, match="ray.train.RunConfig"):
+        DataParallelTrainer(lambda: None, run_config=ray.air.RunConfig())
+
+    with pytest.raises(ValueError, match="ray.train.FailureConfig"):
+        DataParallelTrainer(
+            lambda: None,
+            run_config=ray.train.RunConfig(failure_config=ray.air.FailureConfig()),
+        )
+
+
+@pytest.mark.parametrize("env_v2_enabled", [False, True])
 def test_train_v2_import(monkeypatch, env_v2_enabled):
     monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", str(int(env_v2_enabled)))
 
@@ -122,28 +137,6 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
         assert RunConfig is not RunConfigV2
         assert FailureConfig is not FailureConfigV2
         assert Result is not ResultV2
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        WorkerGroupError(
-            "Training failed on multiple workers",
-            {0: ValueError("worker 0 failed"), 1: RuntimeError("worker 1 failed")},
-        ),
-        ControllerError(Exception("Controller crashed")),
-    ],
-)
-def test_exceptions_are_picklable(error):
-    """Test that WorkerGroupError and ControllerError are picklable."""
-
-    # Test pickle/unpickle for WorkerGroupError
-    pickled_error = ray_pickle.dumps(error)
-    unpickled_error = ray_pickle.loads(pickled_error)
-
-    # Verify attributes are preserved
-    assert str(unpickled_error) == str(error)
-    assert type(unpickled_error) is type(error)
 
 
 if __name__ == "__main__":

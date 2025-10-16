@@ -16,7 +16,7 @@ _runfiles = runfiles.Create()
 
 _TESTS_YAML = """
 ci/pipeline/test_conditional_testing.py: lint tools
-python/ray/data/__init__.py: lint data linux_wheels ml train
+python/ray/data/__init__.py: lint data ml train
 doc/index.md: lint
 
 python/ray/air/__init__.py: lint ml train tune data linux_wheels

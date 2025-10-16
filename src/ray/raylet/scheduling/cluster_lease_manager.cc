@@ -451,14 +451,12 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_ptr)
-      << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
+  auto node_info = get_node_info_(spillback_to);
+  RAY_CHECK(node_info.has_value());
   auto reply = work->reply_;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
+      (*node_info).node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port((*node_info).node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();

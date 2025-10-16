@@ -154,7 +154,7 @@ def main():
     # Report the result.
     ray.get(monitor_actor.stop_run.remote())
 
-    result = {"success": 0}
+    result = {}
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps(result))
 

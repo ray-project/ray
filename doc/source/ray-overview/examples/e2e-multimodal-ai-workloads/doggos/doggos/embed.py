@@ -104,7 +104,7 @@ if __name__ == "__main__":
             "device": "cuda",
         },  # class kwargs
         fn_kwargs={},
-        concurrency=4,
+        compute=ray.data.ActorPoolStrategy(size=4),
         batch_size=64,
         num_gpus=1,
         accelerator_type="T4",

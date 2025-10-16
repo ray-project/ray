@@ -5,7 +5,7 @@ import sys
 import tempfile
 import pytest
 
-from ray_release.result import ExitCode
+from ray_release.exception import ExitCode
 
 
 @pytest.fixture

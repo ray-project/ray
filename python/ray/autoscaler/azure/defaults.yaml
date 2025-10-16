@@ -64,8 +64,8 @@ available_node_types:
                 vmSize: Standard_D2s_v3
                 # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
                 imagePublisher: microsoft-dsvm
-                imageOffer: ubuntu-1804
-                imageSku: 1804-gen2
+                imageOffer: ubuntu-2204
+                imageSku: 2204-gen2
                 imageVersion: latest
                 # Head node: explicitly disable availability zones
                 availability_zone: "none"
@@ -82,8 +82,8 @@ available_node_types:
                 vmSize: Standard_D2s_v3
                 # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
                 imagePublisher: microsoft-dsvm
-                imageOffer: ubuntu-1804
-                imageSku: 1804-gen2
+                imageOffer: ubuntu-2204
+                imageSku: 2204-gen2
                 imageVersion: latest
                 # comment lines below to not use Spot instances
                 priority: Spot
@@ -134,10 +134,13 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
+    # Note: The Ubuntu 22.04 dsvm image has a few venvs already configured but
+    # they all contain python modules that are not compatible with Ray at the moment.
     - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
-    # - (conda activate py38_pytorch &> /dev/null && echo 'conda activate py38_pytorch' >> ~/.bashrc) || true
-    - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+    - conda tos accept
+    - conda create -n ray-env python=3.10 -y
+    - conda activate ray-env && echo 'conda activate ray-env' >> ~/.bashrc
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -145,7 +148,7 @@ setup_commands:
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install -U azure-cli-core==2.29.1 azure-identity==1.7.0 azure-mgmt-compute==23.1.0 azure-mgmt-network==19.0.0 azure-mgmt-resource==20.0.0 msrestazure==0.6.4
+    - pip install -U azure-core==1.35.0 azure-identity==1.23.1 azure-mgmt-compute==35.0.0 azure-mgmt-network==29.0.0 azure-mgmt-resource==24.0.0 azure-common==1.1.28 msrest==0.7.1 msrestazure==0.6.4.post1
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

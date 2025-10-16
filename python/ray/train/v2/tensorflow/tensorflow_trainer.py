@@ -118,7 +118,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=True),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
