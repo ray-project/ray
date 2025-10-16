@@ -53,7 +53,9 @@ STATS_TEMPLATE = {
             "memory_info": Bunch(
                 rss=55934976, vms=7026937856, pfaults=15354, pageins=0
             ),
-            "memory_full_info": Bunch(uss=51428381),
+            "memory_full_info": Bunch(
+                uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+            ),
             "cpu_percent": 0.0,
             "num_fds": 10,
             "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
@@ -69,7 +71,9 @@ STATS_TEMPLATE = {
     ],
     "gcs": {
         "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
-        "memory_full_info": Bunch(uss=51428384),
+        "memory_full_info": Bunch(
+            uss=51428384, rss=18354171, vms=6921486336, pfaults=6203, pageins=2
+        ),
         "cpu_percent": 5.0,
         "num_fds": 14,
         "cmdline": ["fake gcs cmdline"],
@@ -127,6 +131,7 @@ STATS_TEMPLATE = {
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
+    "cmdline": ["fake raylet cmdline"],
 }
 
 
@@ -324,12 +329,14 @@ def test_report_stats(mock_raylet_client):
         }
     }
 
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    # Use a deep copy to avoid modifying the global template
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    records = agent._to_records(stats, cluster_stats)
     for record in records:
         name = record.gauge.name
         val = record.value
         if name == "node_mem_shared_bytes":
-            assert val == STATS_TEMPLATE["shm"]
+            assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
     assert len(records) == 41
@@ -341,15 +348,22 @@ def test_report_stats(mock_raylet_client):
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
-    STATS_TEMPLATE["raylet"] = {}
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    stats["raylet"] = None
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 37
     # Test stats with gpus
-    STATS_TEMPLATE["gpus"] = [
-        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
+    stats["gpus"] = [
+        {
+            "name": "foo",
+            "uuid": "gpu-12345",
+            "utilization_gpu": 1,
+            "memory_used": 100,
+            "memory_total": 1000,
+            "index": 0,
+        }
     ]
     # Test stats with tpus
-    STATS_TEMPLATE["tpus"] = [
+    stats["tpus"] = [
         {
             "index": 0,
             "name": "foo",
@@ -362,12 +376,16 @@ def test_report_stats(mock_raylet_client):
             "memory_total": 2000,
         }
     ]
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 46
     # Test stats without autoscaler report
     cluster_stats = {}
-    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(stats, cluster_stats)
     assert len(records) == 44
+
+    stats_payload = agent._generate_stats_payload(stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 @patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
@@ -388,7 +406,9 @@ def test_report_stats_gpu(mock_raylet_client):
     'processes': []}
     """
     GPU_MEMORY = 22731
-    STATS_TEMPLATE["gpus"] = [
+    # Use a deep copy to avoid modifying the global template
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
         {
             "index": 0,
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
@@ -416,22 +436,13 @@ def test_report_stats_gpu(mock_raylet_client):
             "memory_total": GPU_MEMORY,
             "processes": [],
         },
-        # No name.
         {
             "index": 3,
+            "name": "NVIDIA A10G",
             "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
-            "processes": [],
-        },
-        # No index
-        {
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 3,
-            "memory_used": 3,
-            "memory_total": 22731,
             "processes": [],
         },
     ]
@@ -441,7 +452,7 @@ def test_report_stats_gpu(mock_raylet_client):
         "node_gram_used": 0,
         "node_gram_available": 0,
     }
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(stats, {})
     # If index is not available, we don't emit metrics.
     num_gpu_records = 0
     for record in records:
@@ -449,7 +460,7 @@ def test_report_stats_gpu(mock_raylet_client):
             num_gpu_records += 1
     assert num_gpu_records == 16
 
-    ip = STATS_TEMPLATE["ip"]
+    ip = stats["ip"]
     gpu_records = defaultdict(list)
     for record in records:
         if record.gauge.name in gpu_metrics_aggregatd:
@@ -459,22 +470,14 @@ def test_report_stats_gpu(mock_raylet_client):
         records.sort(key=lambda e: e.tags["GpuIndex"])
         index = 0
         for record in records:
-            if record.tags["GpuIndex"] == "3":
-                assert record.tags == {
-                    "ip": ip,
-                    "GpuIndex": "3",
-                    "IsHeadNode": "true",
-                    "RayNodeType": "head",
-                }
-            else:
-                assert record.tags == {
-                    "ip": ip,
-                    # The tag value must be string for prometheus.
-                    "GpuIndex": str(index),
-                    "GpuDeviceName": "NVIDIA A10G",
-                    "RayNodeType": "head",
-                    "IsHeadNode": "true",
-                }
+            assert record.tags == {
+                "ip": ip,
+                # The tag value must be string for prometheus.
+                "GpuIndex": str(index),
+                "GpuDeviceName": "NVIDIA A10G",
+                "RayNodeType": "head",
+                "IsHeadNode": "true",
+            }
 
             if name == "node_gram_available":
                 assert record.value == GPU_MEMORY - index
@@ -490,6 +493,10 @@ def test_report_stats_gpu(mock_raylet_client):
     assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
     assert gpu_metrics_aggregatd["node_gram_used"] == 6
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
+
+    stats_payload = agent._generate_stats_payload(stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 @patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
@@ -556,7 +563,9 @@ def test_report_stats_tpu(mock_raylet_client):
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
-    STATS_TEMPLATE["tpus"] = [
+    stats = copy.deepcopy(STATS_TEMPLATE)
+
+    stats["tpus"] = [
         {
             "index": 0,
             "name": "tpu-0",
@@ -609,7 +618,7 @@ def test_report_stats_tpu(mock_raylet_client):
         "tpu_memory_used": 0,
         "tpu_memory_total": 0,
     }
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(stats, {})
     num_tpu_records = 0
     for record in records:
         if record.gauge.name in tpu_metrics_aggregated:
@@ -622,6 +631,10 @@ def test_report_stats_tpu(mock_raylet_client):
     assert tpu_metrics_aggregated["tpu_duty_cycle"] == 10
     assert tpu_metrics_aggregated["tpu_memory_used"] == 1400
     assert tpu_metrics_aggregated["tpu_memory_total"] == 8000
+
+    stats_payload = agent._generate_stats_payload(stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 @patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
@@ -638,7 +651,9 @@ def test_report_per_component_stats(mock_raylet_client):
         "memory_info": Bunch(
             rss=55934976, vms=7026937856, uss=1234567, pfaults=15354, pageins=0
         ),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(
+            uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+        ),
         "cpu_percent": 5.0,
         "num_fds": 11,
         "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
@@ -653,7 +668,9 @@ def test_report_per_component_stats(mock_raylet_client):
     }
     func_stats = {
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(
+            uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+        ),
         "cpu_percent": 6.0,
         "num_fds": 12,
         "cmdline": ["ray::func", "", "", "", "", "", "", "", "", "", "", ""],
@@ -668,7 +685,9 @@ def test_report_per_component_stats(mock_raylet_client):
     }
     gcs_stats = {
         "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
-        "memory_full_info": Bunch(uss=51428384),
+        "memory_full_info": Bunch(
+            uss=51428384, rss=18354171, vms=6921486336, pfaults=6203, pageins=2
+        ),
         "cpu_percent": 5.0,
         "num_fds": 14,
         "cmdline": ["fake gcs cmdline"],
@@ -683,7 +702,9 @@ def test_report_per_component_stats(mock_raylet_client):
     }
     raylet_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(
+            uss=51428381, rss=18354176, vms=6921486336, pfaults=6206, pageins=3
+        ),
         "cpu_percent": 4.0,
         "num_fds": 13,
         "cmdline": ["fake raylet cmdline"],
@@ -698,7 +719,9 @@ def test_report_per_component_stats(mock_raylet_client):
     }
     agent_stats = {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(
+            uss=51428381, rss=18354176, vms=6921486336, pfaults=6206, pageins=3
+        ),
         "cpu_percent": 6.0,
         "num_fds": 14,
         "cmdline": ["fake raylet cmdline"],
@@ -827,7 +850,9 @@ def test_report_per_component_stats(mock_raylet_client):
     # Verify if the command doesn't start with ray::, metrics are not reported.
     unknown_stats = {
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-        "memory_full_info": Bunch(uss=51428381),
+        "memory_full_info": Bunch(
+            uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+        ),
         "cpu_percent": 6.0,
         "num_fds": 8,
         "cmdline": ["python mock", "", "", "", "", "", "", "", "", "", "", ""],
@@ -849,6 +874,10 @@ def test_report_per_component_stats(mock_raylet_client):
     assert "python mock" not in uss_records
     assert "python mock" not in cpu_records
     assert "python mock" not in num_fds_records
+
+    stats_payload = agent._generate_stats_payload(test_stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
