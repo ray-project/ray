@@ -44,7 +44,7 @@ ddp_timeout: 180000000
 ### ray
 ray_run_name: qwen2.5_32b_lora_sft
 ray_storage_path: /mnt/cluster_storage/
-ray_num_workers: 4  # Number of GPUs to use.
+ray_num_workers: 4  # Number of GPUs to use
 resources_per_worker:
   GPU: 1
   accelerator_type:L40S: 0.001            # Use this to simply specify a GPU type (not guaranteed on the same node). You can use A100-40G if L40S is not available. 
