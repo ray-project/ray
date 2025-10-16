@@ -486,6 +486,7 @@ class SharedHandleMetricsPusher:
     def get_or_create(cls, controller_handle: ActorHandle) -> SharedHandleMetricsPusher:
         pusher = cls(controller_handle=controller_handle)
         pusher.start()
+        logger.info(f"Created {pusher} for Serve Controller {controller_handle}.")
         return pusher
 
     def register(self, router_metrics_manager: RouterMetricsManager) -> None:
@@ -511,8 +512,16 @@ class SharedHandleMetricsPusher:
                 reports.append(m._get_metrics_report())
             except Exception as e:
                 logger.exception(f"Error getting handle metrics report: {e!r}")
-        logger.debug("Pushing handle metrics to controller...")
-        self._controller_handler.record_autoscaling_metrics_from_handles.remote(reports)
+
+        if reports:
+            logger.debug(
+                f"Pushing metrics from {len(reports)} handles to Serve Controller {self._controller_handler}..."
+            )
+            self._controller_handler.record_autoscaling_metrics_from_handles.remote(
+                reports
+            )
+        else:
+            logger.debug("No handle metrics reports to push.")
 
 
 class Router(ABC):
@@ -1115,7 +1124,7 @@ class SharedRouterLongPollClient:
         cls, controller_handle: ActorHandle, event_loop: AbstractEventLoop
     ) -> SharedRouterLongPollClient:
         shared = cls(controller_handle=controller_handle, event_loop=event_loop)
-        logger.info(f"Started {shared}.")
+        logger.info(f"Started {shared} for Serve Controller {controller_handle}.")
         return shared
 
     def update_deployment_targets(
