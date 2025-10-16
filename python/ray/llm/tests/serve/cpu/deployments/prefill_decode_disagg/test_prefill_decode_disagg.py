@@ -8,7 +8,9 @@ from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import
     ProxyClsConfig,
     build_pd_openai_app,
 )
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import PDProxyServer
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
+    PDProxyServer,
+)
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     IngressClsConfig,
 )
@@ -106,7 +108,7 @@ class TestPDServingArgs:
             prefill_config=prefill,
             decode_config=decode,
             proxy_cls_config={
-                "proxy_cls": "ray.llm._internal.serve.deployments.prefill_decode_disagg.pd:PDProxyServer"
+                "proxy_cls": "ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server:PDProxyServer"
             },
         )
         assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
