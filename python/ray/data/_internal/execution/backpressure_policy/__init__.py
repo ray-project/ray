@@ -5,6 +5,9 @@ from .concurrency_cap_backpressure_policy import ConcurrencyCapBackpressurePolic
 from .downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from .downstream_output_capacity_backpressure_policy import (
+    DownstreamOutputCapacityBackpressurePolicy,
+)
 from .resource_budget_backpressure_policy import ResourceBudgetBackpressurePolicy
 from ray.data.context import DataContext
 
@@ -18,6 +21,7 @@ ENABLED_BACKPRESSURE_POLICIES = [
     ConcurrencyCapBackpressurePolicy,
     ResourceBudgetBackpressurePolicy,
     DownstreamCapacityBackpressurePolicy,
+    DownstreamOutputCapacityBackpressurePolicy,
 ]
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
@@ -38,6 +42,7 @@ __all__ = [
     "BackpressurePolicy",
     "ConcurrencyCapBackpressurePolicy",
     "DownstreamCapacityBackpressurePolicy",
+    "DownstreamOutputCapacityBackpressurePolicy",
     "ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY",
     "get_backpressure_policies",
 ]
