@@ -278,10 +278,16 @@ class PartitionActor:
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
         avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
+        if avg_nbytes_per_row == 0:
+            logger.warning(
+                "Estimated average row size is 0. Falling back to using the number of "
+                "rows in the block as the partition size."
+            )
+            return len(block)
+
         nrows_per_partition = math.floor(
             target_nbytes_per_partition / avg_nbytes_per_row
         )
-
         return nrows_per_partition
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
