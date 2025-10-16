@@ -1,13 +1,14 @@
 import os
 import pprint
-from typing import Any, Dict, List, Optional, Sequence, Type, Union, overload
+from typing import Any, Dict, List, Optional, Type, Union
 
-import pydantic
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
+from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
     build_llm_deployment,
 )
@@ -17,171 +18,133 @@ from ray.llm._internal.serve.deployments.routers.router import (
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
-from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
-
-def _is_yaml_file(filename: str) -> bool:
-    yaml_extensions = [".yml", ".yaml", ".json"]
-    for s in yaml_extensions:
-        if filename.endswith(s):
-            return True
-    return False
-
-
-def _parse_path_args(path: str) -> List[LLMConfig]:
-    assert os.path.exists(
-        path
-    ), f"Could not load model from {path}, as it does not exist."
-    if os.path.isfile(path):
-        with open(path, "r") as f:
-            llm_config = LLMConfig.parse_yaml(f)
-            return [llm_config]
-    elif os.path.isdir(path):
-        apps = []
-        for root, _dirs, files in os.walk(path):
-            for p in files:
-                if _is_yaml_file(p):
-                    with open(os.path.join(root, p), "r") as f:
-                        llm_config = LLMConfig.parse_yaml(f)
-                        apps.append(llm_config)
-        return apps
+# TODO: Remove this once we have https://github.com/ray-project/ray/pull/57257
+# merged
+def load_class(path: str) -> Type[Any]:
+    """Load class from string path."""
+    if ":" in path:
+        module_path, class_name = path.rsplit(":", 1)
     else:
-        raise ValueError(
-            f"Could not load model from {path}, as it is not a file or directory."
-        )
+        module_path, class_name = path.rsplit(".", 1)
+
+    module = try_import(module_path, warning=False, error=True)
+    callback_class = getattr(module, class_name)
+
+    return callback_class
 
 
-def parse_args(
-    args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
-) -> List[LLMConfig]:
-    """Parse the input args and return a standardized list of LLMConfig objects
+class IngressClsConfig(BaseModelExtended):
+    ingress_cls: Union[str, Type[OpenAiIngress]] = Field(
+        default=OpenAiIngress,
+        description="The class name of the ingress to use. It can be in form of `module_name.class_name` or `module_name:class_name` or the class itself. The class constructor should take the following arguments: `(llm_deployments: List[DeploymentHandle], **extra_kwargs)` where `llm_deployments` is a list of DeploymentHandle objects from `LLMServer` deployments.",
+    )
 
-    Supported args format:
-    1. The path to a yaml file defining your LLMConfig
-    2. The path to a folder containing yaml files, which define your LLMConfigs
-    3. A list of yaml files defining multiple LLMConfigs
-    4. A dict or LLMConfig object
-    5. A list of dicts or LLMConfig objects
-    """
+    ingress_extra_kwargs: Optional[dict] = Field(
+        default_factory=dict,
+        description="""The kwargs to bind to the ingress deployment. This will be passed to the ingress class constructor.""",
+    )
 
-    raw_models = [args]
-    if isinstance(args, list):
-        raw_models = args
-
-    # For each
-    models: List[LLMConfig] = []
-    for raw_model in raw_models:
-        if isinstance(raw_model, str):
-            if os.path.exists(raw_model):
-                parsed_models = _parse_path_args(raw_model)
-            else:
-                try:
-                    llm_config = LLMConfig.parse_yaml(raw_model)
-                    parsed_models = [llm_config]
-                except pydantic.ValidationError as e:
-                    raise ValueError(
-                        f"Could not parse string as yaml. If you are "
-                        "specifying a path, make sure it exists and can be "
-                        f"reached. raw_model: {raw_model}"
-                    ) from e
-        else:
-            try:
-                llm_config = LLMConfig.model_validate(raw_model)
-                parsed_models = [llm_config]
-            except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
-        models += parsed_models
-
-    return models
+    @field_validator("ingress_cls")
+    @classmethod
+    def validate_class(
+        cls, value: Union[str, Type[OpenAiIngress]]
+    ) -> Type[OpenAiIngress]:
+        if isinstance(value, str):
+            return load_class(value)
+        return value
 
 
 class LLMServingArgs(BaseModelExtended):
-    llm_configs: List[Union[str, LLMConfig]] = Field(
-        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
+    llm_configs: List[Union[str, dict, LLMConfig]] = Field(
+        description="A list of LLMConfigs, or dicts representing LLMConfigs, or paths to yaml files defining LLMConfigs.",
+    )
+    ingress_cls_config: Union[dict, IngressClsConfig] = Field(
+        default_factory=IngressClsConfig,
+        description="The configuration for the ingress class. It can be a dict representing the ingress class configuration, or an IngressClsConfig object.",
+    )
+    ingress_deployment_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="""
+            The Ray @server.deployment options for the ingress server.
+        """,
     )
 
-    def parse_args(self) -> "LLMServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
+    @field_validator("ingress_cls_config")
+    @classmethod
+    def _validate_ingress_cls_config(
+        cls, value: Union[dict, IngressClsConfig]
+    ) -> IngressClsConfig:
+        if isinstance(value, dict):
+            return IngressClsConfig.model_validate(value)
+        return value
 
+    @field_validator("llm_configs")
+    @classmethod
+    def _validate_llm_configs(
+        cls, value: List[Union[str, dict, LLMConfig]]
+    ) -> List[LLMConfig]:
         llm_configs = []
-        for config in self.llm_configs:
-            parsed_config = parse_args(config)[0]
-            if not isinstance(parsed_config, LLMConfig):
-                raise ValueError(
-                    "When using the new Serve config format, all model "
-                    "configs must also use the new model config format. Got "
-                    "a model config that doesn't match new format. Type: "
-                    f"{type(parsed_config)}. Contents: {parsed_config}."
-                )
-            llm_configs.append(parsed_config)
+        for config in value:
+            if isinstance(config, str):
+                if not os.path.exists(config):
+                    raise ValueError(
+                        f"Could not load model config from {config}, as the file does not exist."
+                    )
+                llm_configs.append(LLMConfig.from_file(config))
+            elif isinstance(config, dict):
+                llm_configs.append(LLMConfig.model_validate(config))
+            elif isinstance(config, LLMConfig):
+                llm_configs.append(config)
+            else:
+                raise TypeError(f"Invalid LLMConfig type: {type(config)}")
+        return llm_configs
 
-        return LLMServingArgs(llm_configs=llm_configs)
+    @model_validator(mode="after")
+    def _validate_model_ids(self):
+        """Validate that model IDs are unique and at least one model is configured."""
+        if len({m.model_id for m in self.llm_configs}) != len(self.llm_configs):
+            raise ValueError("Duplicate models found. Make sure model ids are unique.")
 
-
-def _get_llm_deployments(
-    llm_base_models: Sequence[LLMConfig],
-    bind_kwargs: Optional[dict] = None,
-) -> List[DeploymentHandle]:
-    llm_deployments = []
-    for llm_config in llm_base_models:
-        if llm_config.llm_engine == LLMEngine.vLLM:
-            llm_deployments.append(
-                build_llm_deployment(llm_config, bind_kwargs=bind_kwargs)
+        if len(self.llm_configs) == 0:
+            raise ValueError(
+                "List of models is empty. Maybe some parameters cannot be parsed into the LLMConfig config."
             )
-        else:
-            # Note (genesu): This should never happen because we validate the engine
-            # in the config.
-            raise ValueError(f"Unsupported engine: {llm_config.llm_engine}")
-
-    return llm_deployments
+        return self
 
 
-@overload
-def build_openai_app(
-    llm_serving_args: Dict[str, Any],
-    *,
-    bind_kwargs: Optional[dict] = None,
-    override_serve_options: Optional[dict] = None,
-    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress,
-) -> Application:
-    ...
+def build_openai_app(builder_config: dict) -> Application:
+    """Build an OpenAI compatible app with the llm deployment setup from
+    the given builder configuration.
 
+    Args:
+        builder_config: The configuration for the builder. It has to conform
+            to the LLMServingArgs pydantic model.
 
-def build_openai_app(
-    llm_serving_args: LLMServingArgs,
-    *,
-    bind_kwargs: Optional[dict] = None,
-    override_serve_options: Optional[dict] = None,
-    ingress_cls: Optional[Type[OpenAiIngress]] = OpenAiIngress,
-) -> Application:
+    Returns:
+        The configured Ray Serve Application router.
+    """
 
-    bind_kwargs = bind_kwargs or {}
-    rayllm_args = LLMServingArgs.model_validate(llm_serving_args).parse_args()
+    builder_config = LLMServingArgs.model_validate(builder_config)
+    llm_configs = builder_config.llm_configs
 
-    llm_configs = rayllm_args.llm_configs
-    model_ids = {m.model_id for m in llm_configs}
-    if len(model_ids) != len(llm_configs):
-        raise ValueError("Duplicate models found. Make sure model ids are unique.")
+    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
 
-    if len(llm_configs) == 0:
-        logger.error(
-            "List of models is empty. Maybe some parameters cannot be parsed into the LLMConfig config."
+    ingress_cls_config = builder_config.ingress_cls_config
+    ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
+
+    if builder_config.ingress_deployment_config:
+        ingress_options = deep_merge_dicts(
+            ingress_options, builder_config.ingress_deployment_config
         )
 
-    llm_deployments = _get_llm_deployments(llm_configs)
-
-    ingress_options = OpenAiIngress.get_deployment_options(llm_configs)
-
-    if override_serve_options:
-        ingress_options.update(override_serve_options)
-
-    ingress_cls = make_fastapi_ingress(ingress_cls)
+    ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=llm_deployments, **bind_kwargs
+        llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
