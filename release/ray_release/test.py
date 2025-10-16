@@ -581,7 +581,7 @@ class Test(dict):
         tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
         ray_version = self.get_ray_version()
         if ray_version:
-            tag = f"{ray_version}-{tag}"
+            tag = f"{tag}-{ray_version}"
         return tag
 
     def use_byod_ml_image(self) -> bool:
