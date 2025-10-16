@@ -1388,17 +1388,17 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         num_ingress_deployments = 0
+        application_serialized_autoscaling_policy_def = None
+        if application_autoscaling_policy_function is not None:
+            application_serialized_autoscaling_policy_def = cloudpickle.dumps(
+                import_attr(application_autoscaling_policy_function)
+            )
         for deployment in built_app.deployments:
             if inspect.isclass(deployment.func_or_class) and issubclass(
                 deployment.func_or_class, ASGIAppReplicaWrapper
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
-            application_serialized_autoscaling_policy_def = None
-            if application_autoscaling_policy_function is not None:
-                application_serialized_autoscaling_policy_def = cloudpickle.dumps(
-                    import_attr(application_autoscaling_policy_function)
-                )
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
             if deployment.name in deployment_to_autoscaling_policy_function:

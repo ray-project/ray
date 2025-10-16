@@ -192,7 +192,7 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
-        serialized_request_router_cls = kwargs.get(
+        serialized_request_router_cls = kwargs.pop(
             "_serialized_request_router_cls", None
         )
         super().__init__(**kwargs)
@@ -210,11 +210,9 @@ class RequestRouterConfig(BaseModel):
     def from_serialized_request_router_cls(
         cls, request_router_config: dict, serialized_request_router_cls: bytes
     ) -> "RequestRouterConfig":
-        request_router_config[
-            "_serialized_request_router_cls"
-        ] = serialized_request_router_cls
-        request_router_config = cls(**request_router_config)
-        return request_router_config
+        config = request_router_config.copy()
+        config["_serialized_request_router_cls"] = serialized_request_router_cls
+        return cls(**config)
 
     def get_serialized_request_router_cls(self) -> Optional[bytes]:
         return self._serialized_request_router_cls
@@ -266,7 +264,7 @@ class AutoscalingPolicy(BaseModel):
     )
 
     def __init__(self, **kwargs):
-        serialized_policy_def = kwargs.get("_serialized_policy_def", None)
+        serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
         super().__init__(**kwargs)
         if serialized_policy_def:
             self._serialized_policy_def = serialized_policy_def
@@ -280,8 +278,9 @@ class AutoscalingPolicy(BaseModel):
     def from_serialized_policy_def(
         cls, policy_config: dict, serialized_policy_def: bytes
     ) -> "AutoscalingPolicy":
-        policy_config["_serialized_policy_def"] = serialized_policy_def
-        return cls(**policy_config)
+        config = policy_config.copy()
+        config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**config)
 
     def get_serialized_policy_def(self) -> Optional[bytes]:
         return self._serialized_policy_def
