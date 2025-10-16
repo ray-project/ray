@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.utils import run_background_task
+from ray._common.utils import Timer, run_background_task
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
 from ray._raylet import GcsClient
@@ -35,7 +35,6 @@ from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
-from ray.serve._private.utils import Timer
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
@@ -71,7 +70,9 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_client: GcsClient, logs_dir: str, timer: Timer = None):
+    def __init__(
+        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+    ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
@@ -79,7 +80,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
-        self._timer = timer or Timer()
+        self._timer = timeout_check_timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)

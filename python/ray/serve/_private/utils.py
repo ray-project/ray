@@ -8,7 +8,6 @@ import random
 import re
 import time
 import uuid
-from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -508,18 +507,6 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
-
-
-class TimerBase(ABC):
-    @abstractmethod
-    def time(self) -> float:
-        """Return the current time."""
-        raise NotImplementedError
-
-
-class Timer(TimerBase):
-    def time(self) -> float:
-        return time.time()
 
 
 def get_capacity_adjusted_num_replicas(

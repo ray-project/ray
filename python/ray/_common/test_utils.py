@@ -256,9 +256,10 @@ class FakeTimer:
         self.reset(start_time=start_time)
 
     def reset(self, start_time: Optional[float] = None):
-        if start_time is None:
-            start_time = time.time()
-        self._curr = start_time
+        with self._lock:
+            if start_time is None:
+                start_time = time.time()
+            self._curr = start_time
 
     def time(self) -> float:
         return self._curr

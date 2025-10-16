@@ -372,21 +372,26 @@ async def test_pending_job_timeout_during_new_head_creation(
     # Submit a job with unsatisfied resource.
     start_timer = FakeTimer()
 
-    job_manager = JobManager(gcs_client, tmp_path, timer=start_timer)
+    job_manager = JobManager(gcs_client, tmp_path, timeout_check_timer=start_timer)
     job_id = "test_job_1"
     await job_manager.submit_job(
         submission_id=job_id,
         entrypoint="echo 'hello world'",
         entrypoint_num_cpus=2,
     )
-    await asyncio.sleep(0.1)
+    await async_wait_for_condition(
+        check_job_pending, job_manager=job_manager, job_id=job_id
+    )
 
     # New head node created.
     timeout = DEFAULT_JOB_START_TIMEOUT_SECONDS
     start_timer.advance(timeout + 1)
 
-    new_job_manager = JobManager(gcs_client, tmp_path, timer=start_timer)
-    await asyncio.sleep(0.1)
+    new_job_manager = JobManager(gcs_client, tmp_path, timeout_check_timer=start_timer)
+    # wait for the new jobmanager to be initialized
+    await async_wait_for_condition(
+        lambda: new_job_manager._recover_running_jobs_event.is_set(), timeout=5
+    )
 
     # Wait for the job to timeout.
     await async_wait_for_condition(
@@ -539,6 +544,11 @@ async def check_job_running(job_manager, job_id):
     assert status in {JobStatus.PENDING, JobStatus.RUNNING}
     assert data.driver_exit_code is None
     return status == JobStatus.RUNNING
+
+
+async def check_job_pending(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
+    return status == JobStatus.PENDING
 
 
 def check_subprocess_cleaned(pid):
