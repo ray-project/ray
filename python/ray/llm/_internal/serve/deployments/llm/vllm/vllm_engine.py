@@ -9,6 +9,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
+from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -31,7 +32,6 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
     initialize_node,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -162,27 +162,31 @@ class VLLMEngine(LLMEngine):
 
         from vllm.entrypoints.openai.api_server import init_app_state
 
-        node_initialization = await initialize_node(self.llm_config)
+        callback = self.llm_config.get_or_create_callback()
+        await callback.run_callback("on_before_node_init")
+        if callback.ctx.run_init_node:
+            await initialize_node(self.llm_config)
+        await callback.run_callback("on_after_node_init")
 
         (
             vllm_engine_args,
             vllm_frontend_args,
             vllm_engine_config,
-        ) = self._prepare_engine_config(node_initialization)
+        ) = self._prepare_engine_config(callback.ctx)
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
         # (e.g. supports vision, etc.) on the llm_config.
         config = self.llm_config.get_engine_config()
         self.llm_config.apply_checkpoint_info(
-            config.actual_hf_model_id,
+            vllm_engine_config.model_config.model,
             trust_remote_code=config.trust_remote_code,
         )
 
         self._engine_client = self._start_async_llm_engine(
             vllm_engine_args,
             vllm_engine_config,
-            node_initialization.placement_group,
+            callback.ctx.placement_group,
         )
 
         state = State()
@@ -194,6 +198,7 @@ class VLLMEngine(LLMEngine):
 
         await init_app_state(
             engine_client=self._engine_client,
+            # TODO (ahao): remove vllm_config for vllm v1.12
             vllm_config=vllm_engine_config,
             state=state,
             args=args,
@@ -247,12 +252,12 @@ class VLLMEngine(LLMEngine):
         ), "engine_client must have a check_health attribute"
 
     def _prepare_engine_config(
-        self, node_initialization: InitializeNodeOutput
+        self, callback_ctx: CallbackCtx
     ) -> Tuple["AsyncEngineArgs", "FrontendArgs", "VllmConfig"]:
         """Prepare the engine config to start the engine.
 
         Args:
-            node_initialization: The node initialization output.
+            callback_ctx: The callback context.
 
         Returns:
             A tuple of:
@@ -273,9 +278,9 @@ class VLLMEngine(LLMEngine):
                     accelerator_type=self.llm_config.accelerator_type,
                 )(_get_vllm_engine_config)
                 .options(
-                    runtime_env=node_initialization.runtime_env,
+                    runtime_env=callback_ctx.runtime_env,
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=node_initialization.placement_group,
+                        placement_group=callback_ctx.placement_group,
                     ),
                 )
                 .remote(self.llm_config)
