@@ -322,7 +322,7 @@ Limitations
 
 Local mode has the following limitations:
 
-* **No Ray Train fault tolerance**: Worker-level fault tolerance doesn't apply in local mode.
+* **No Ray Train**: Local mode does not come with the benefits of Ray Train, such as worker-level fault tolerance.
 * **Ray Data limitations**: Ray Data isn't supported when using torchrun with local mode for multi-process training.
 * **Different behavior**: Some framework-specific behaviors might differ slightly from Ray Train's distributed mode.
 
