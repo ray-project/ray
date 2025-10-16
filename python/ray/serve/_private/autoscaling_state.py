@@ -586,9 +586,6 @@ class DeploymentAutoscalingState:
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:
         """Aggregate custom metrics from replica metric reports.
 
-        Custom metrics are all metrics except RUNNING_REQUESTS_KEY. These are metrics
-        emitted by the deployment using the `record_autoscaling_stats` method.
-
         This method aggregates raw timeseries data from replicas on the controller,
         similar to how ongoing requests are aggregated.
 
@@ -613,9 +610,6 @@ class DeploymentAutoscalingState:
         self,
     ) -> Dict[str, Dict[ReplicaID, TimeSeries]]:
         """Extract raw custom metric values from replica metric reports.
-
-        Custom metrics are all metrics except RUNNING_REQUESTS_KEY. These are metrics
-        emitted by the deployment using the `record_autoscaling_stats` method.
 
         Returns:
             Dict mapping metric name to dict of replica ID to raw metric timeseries.
