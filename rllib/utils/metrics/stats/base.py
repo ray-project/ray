@@ -24,7 +24,6 @@ class StatsBase(metaclass=ABCMeta):
     def __init__(self, _is_root_stats: bool = False, clear_on_reduce: bool = False):
         self._is_root_stats = _is_root_stats
         self._is_tensor = False
-        self._clear_on_reduce = clear_on_reduce
 
         assert (
             self.stats_cls_identifier is not None
@@ -78,15 +77,6 @@ class StatsBase(metaclass=ABCMeta):
 
     def __format__(self, fmt):
         return f"{float(self):{fmt}}"
-
-    @property
-    def has_throughput(self) -> bool:
-        """Returns whether this Stats object tracks throughput.
-
-        Returns:
-            True if this Stats object has throughput tracking enabled, False otherwise.
-        """
-        return hasattr(self, "_throughput_stats") and self._throughput_stats is not None
 
     def __enter__(self) -> "StatsBase":
         """Called when entering a context (with which users can measure a time delta).
@@ -151,7 +141,6 @@ class StatsBase(metaclass=ABCMeta):
         """Returns the state of the stats object."""
         return {
             "stats_cls_identifier": self.stats_cls_identifier,
-            "clear_on_reduce": self._clear_on_reduce,
             "_is_root_stats": self._is_root_stats,
         }
 
@@ -159,17 +148,9 @@ class StatsBase(metaclass=ABCMeta):
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of the stats object."""
 
-        self._clear_on_reduce = state["clear_on_reduce"]
         self._is_root_stats = state["_is_root_stats"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
-
-        if "throughput_stats" in state:
-            from ray.rllib.utils.metrics.stats import MeanStats
-
-            self._throughput_stats = MeanStats.from_state(state["throughput_stats"])
-        else:
-            self._throughput_stats = None
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @staticmethod
@@ -178,12 +159,10 @@ class StatsBase(metaclass=ABCMeta):
         if state is not None:
             return {
                 "_is_root_stats": state["_is_root_stats"],
-                "clear_on_reduce": state["clear_on_reduce"],
             }
         elif stats_object is not None:
             return {
                 "_is_root_stats": stats_object._is_root_stats,
-                "clear_on_reduce": stats_object._clear_on_reduce,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
@@ -193,9 +172,7 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def merge(
-        root_stats: "StatsBase", incoming_stats: List["StatsBase"]
-    ) -> "StatsBase":
+    def merge(self, incoming_stats: List["StatsBase"]):
         """Merges stats objects."""
         ...
 

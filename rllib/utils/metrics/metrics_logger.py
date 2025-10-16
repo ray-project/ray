@@ -817,13 +817,12 @@ class MetricsLogger:
                 None if isinstance(structure_under_key, dict) else structure_under_key
             )
 
-            # We need a merge method for the Stats objects.
-            if own_stats is not None:
-                merge_method = own_stats.merge
-            else:
-                merge_method = incoming_stats[0].merge
+            if own_stats is None:
+                # This should happen the first time we reduce this stat to the root logger
+                own_stats = incoming_stats[0].similar_to(incoming_stats[0])
+                own_stats._is_root_stats = True
 
-            merged_stats = merge_method(own_stats, incoming_stats)
+            merged_stats = own_stats.merge(incoming_stats=incoming_stats)
 
             self._set_key(key, merged_stats)
 

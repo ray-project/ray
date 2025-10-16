@@ -1,5 +1,3 @@
-from typing import Any, List, Union, Tuple
-
 import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
@@ -15,31 +13,8 @@ class MinStats(SeriesStats):
 
     stats_cls_identifier = "min"
 
-    @property
-    def reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """A non-committed reduction procedure on given values (or `self.values`).
-
-        Note that this method does NOT alter any state of `self` or the possibly
-        provided list of `values`. It only returns new values as they should be
-        adopted after a possible, actual reduction step.
-
-        Args:
-            values: The list of values to reduce. If not None, use `self.values`
-
-        Returns:
-            A tuple containing 1) the reduced values and 2) the new internal values list
-            to be used. If there is no reduciton method, the reduced values will be the same as the values.
-        """
-        values = values if values is not None else self.values
-
-        # Special case: Internal values list is empty -> return NaN or 0.0 for min.
-        if len(values) == 0:
-            return [np.nan], []
-
-        return self._torch_or_numpy_reduce(values, torch.fmin, np.nanmin)
-
-    def _merge_in_parallel(self, *stats: "MinStats") -> List[Union[int, float]]:
-        return np.nanmin([s.reduced_values[0] for s in stats])
+    _torch_reduce_fn = torch.fmin
+    _np_reduce_fn = np.nanmin
 
     def __repr__(self) -> str:
         return (

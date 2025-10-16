@@ -3,7 +3,7 @@ from typing import Any, List, Union, Dict
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.stats_base import StatsBase
+from ray.rllib.utils.metrics.stats.base import StatsBase
 import numpy as np
 
 torch, _ = try_import_torch()
@@ -22,6 +22,7 @@ class ItemStats(StatsBase):
     def __init__(self, **kwargs):
         """Initializes a ItemStats instance."""
         self._item = np.nan
+
         super().__init__(**kwargs)
 
     def get_state(self) -> Dict[str, Any]:

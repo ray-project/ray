@@ -1,7 +1,6 @@
-from collections import defaultdict
 from typing import Any, Dict, List, Union, Tuple
 import uuid
-
+import time
 import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
@@ -17,24 +16,35 @@ class SumStats(SeriesStats):
 
     stats_cls_identifier = "sum"
 
-    def __init__(self, **kwargs):
-        """Initializes a SumStats instance."""
+    def __init__(self, throughput: bool = False, **kwargs):
+        """Initializes a SumStats instance.
+
+        Args:
+            throughput: If True, track a throughput estimate based on the time between consecutive calls to reduce().
+        """
         super().__init__(**kwargs)
 
         if not self._clear_on_reduce:
             assert (
-                self._window is None
-            ), "Lifetime sum must be used with an infinite window"
+                self._window is not None
+            ), "For lifetime sum, use LifetimeSumStats class."
+
+        self.track_throughput = throughput
+        # We need to initialize this to None becasue if we restart from a checkpoint, we should start over with througput calculation
+        self._value_at_last_reduce = None
+        # We initialize this to the current time which may result in a low first throughput value
+        # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
+        self._last_throughput_measure_time = time.perf_counter()
 
         # The ID of this Stats instance.
         self._id = str(uuid.uuid4())
-        self._prev_merge_values = defaultdict(int)
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
         state = super().get_state()
         state["id"] = self._id
-        state["prev_merge_values"] = self._prev_merge_values
+        state["value_at_last_reduce"] = self._value_at_last_reduce
+        state["track_throughput"] = self.track_throughput
         return state
 
     @property
@@ -61,28 +71,7 @@ class SumStats(SeriesStats):
         return self._torch_or_numpy_reduce(values, torch.nansum, np.nansum)
 
     def _merge_in_parallel(self, *stats: "SumStats") -> List[Union[int, float]]:
-        if not self._clear_on_reduce:
-            # For a lifetime sum, we need to subtract the previous merge values to not count
-            # older "lifetime counts" more than once.
-            merged_sum = 0.0
-            for stat in stats:
-                if stat._id in self._prev_merge_values:
-                    # Subtract "lifetime counts" from the Stat's values to not count
-                    # older "lifetime counts" more than once.
-                    prev_reduction = self._prev_merge_values[stat._id]
-                    new_reduction = stat.peek(compile=True)
-                    self.values[-1] -= prev_reduction
-                    # Keep track of how many counts we actually gained (for throughput
-                    # recomputation).
-                    merged_sum += new_reduction - prev_reduction
-                    self._prev_merge_values[stat._id] = new_reduction
-                else:
-                    stat_peek = stat.peek()
-                    merged_sum += stat_peek
-                    self._prev_merge_values[stat._id] = stat_peek
-            return [merged_sum]
-        else:
-            return [np.nansum([s.reduced_values[0] for s in stats])]
+        return [np.nansum([s.stats[0] for s in stats])]
 
     def __repr__(self) -> str:
         return f"SumStats({self.peek()}; window={self._window}; len={len(self)}"
