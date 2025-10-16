@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class JaxConfig(BackendConfig):
     use_tpu: bool = False
+    use_gpu: bool = False
 
     @property
     def backend_cls(self):
@@ -79,7 +80,6 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
 
         # Set up JAX distributed environment on all workers
-        # This sets JAX_PLATFORMS env var and initializes JAX distributed
         setup_futures = []
         for i in range(len(worker_group)):
             setup_futures.append(
@@ -90,6 +90,7 @@ class _JaxBackend(Backend):
                     num_workers=len(worker_group),
                     index=i,
                     use_tpu=backend_config.use_tpu,
+                    use_gpu=backend_config.use_gpu,
                 )
             )
         ray.get(setup_futures)
