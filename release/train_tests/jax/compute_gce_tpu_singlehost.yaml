@@ -15,3 +15,6 @@ worker_node_types:
       max_workers: 1
       min_workers: 1
       use_spot: false
+      tpu_type:
+        name: v6e-8
+        runtime_version: tpu-v6e

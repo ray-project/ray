@@ -1974,7 +1974,7 @@
 
   run:
     timeout: 1800
-    script: RAY_TRAIN_V2_ENABLED=1 python minimal_jax_trainer.py --num-workers=1 --use-tpu
+    script: RAY_TRAIN_V2_ENABLED=1 python train_jax.py --num-workers=1 --use-tpu=True
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   python: "3.10"
