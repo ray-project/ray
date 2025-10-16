@@ -810,20 +810,21 @@ def install_driver_signal_handlers() -> None:
     - First SIGTERM: trigger graceful shutdown via sys.exit() (allows atexit handlers)
     - Second SIGTERM: escalate to immediate forced shutdown via os._exit(1)
 
-    Only installs on the main thread; logs a warning otherwise.
-    Python signal handlers are always executed in the main Python thread of the main
-    interpreter, even if the signal was received in another thread.
-    See https://docs.python.org/3/library/signal.html#signals-and-threads
+    Must be called from the main thread (Python signal handlers requirement).
+    Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details.
+
+    Raises:
+        RuntimeError: If called from a non-main thread.
     """
     global _signal_handler_installed, _graceful_shutdown_in_progress
     if _signal_handler_installed:
         return
 
     if threading.current_thread() is not threading.main_thread():
-        logger.warning(
-            "Signal handlers not installed because current thread is not the main thread."
+        raise RuntimeError(
+            "Signal handlers must be installed from the main thread. "
+            f"Current thread: {threading.current_thread().name}"
         )
-        return
 
     def _handler(signum, _frame):
         global _graceful_shutdown_in_progress
@@ -847,14 +848,16 @@ def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> 
     during blocking operations like ray.get()/wait(). This is different from
     driver semantics where the first signal is graceful.
 
+    Must be called from the main thread (Python signal handlers requirement).
+    Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details.
+
     Args:
         force_shutdown_fn: Function to call for forced shutdown. Should accept a
             single string argument (detail message).
 
     Raises:
         AssertionError: If force_shutdown_fn is None.
-
-    Only installs on the main thread; logs a warning otherwise.
+        RuntimeError: If called from a non-main thread.
     """
     global _signal_handler_installed
     assert (
@@ -865,10 +868,10 @@ def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> 
         return
 
     if threading.current_thread() is not threading.main_thread():
-        logger.warning(
-            "Signal handlers not installed because current thread is not the main thread."
+        raise RuntimeError(
+            "Signal handlers must be installed from the main thread. "
+            f"Current thread: {threading.current_thread().name}"
         )
-        return
 
     def _handler(signum, _frame):
         # Workers treat external SIGTERM as immediate forced exit to avoid hangs.
