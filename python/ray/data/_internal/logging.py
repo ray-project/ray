@@ -244,10 +244,15 @@ def _create_handlers(config: dict, formatters: dict, filters: dict) -> dict:
     """Create and configure handler instances from config."""
     handlers = {}
 
+    # Keys that are not passed to handler constructor
+    HANDLER_CONFIG_KEYS = {"class", "level", "formatter", "filters"}
+
     for name, handler_config in config.get("handlers", {}).items():
-        # Instantiate handler
+        # Instantiate handler with all keys except config-only keys
         handler_class = _import_class(handler_config["class"])
-        handler_kwargs = {k: v for k, v in handler_config.items() if k in ("filename",)}
+        handler_kwargs = {
+            k: v for k, v in handler_config.items() if k not in HANDLER_CONFIG_KEYS
+        }
         handler = handler_class(**handler_kwargs)
         handler.name = name
 
