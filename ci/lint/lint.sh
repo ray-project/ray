@@ -70,7 +70,7 @@ banned_words() {
 }
 
 doc_readme() {
-  pip install -c python/requirements_compiled.txt docutils
+  uv pip install -c python/requirements_compiled.txt docutils
   cd python && python setup.py check --restructuredtext --strict --metadata
 }
 
