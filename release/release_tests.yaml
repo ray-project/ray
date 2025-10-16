@@ -1911,6 +1911,55 @@
     timeout: 1800
     script: python torch_local_mode_launcher.py
 
+- name: torch_lightning
+  group: Train tests
+  working_dir: train_tests/pytorch_lightning
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_pytorch_lightning_test.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
+
+- name: huggingface_transformers
+  group: Train tests
+  working_dir: train_tests/huggingface_transformers
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
+
+- name: huggingface_accelerate
+  group: Train tests
+  working_dir: train_tests/huggingface_accelerate
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
+
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   python: "3.10"
   group: Train tests
