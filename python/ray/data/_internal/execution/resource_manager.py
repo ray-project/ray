@@ -331,6 +331,18 @@ class ResourceManager:
         return self._op_resource_allocator.get_budget(op)
 
 
+def _get_first_pending_shuffle_op(topology: "Topology") -> int:
+    for idx, op in enumerate(topology):
+        if _is_shuffle_op(op) and not op.completed():
+            return idx
+
+    return -1
+
+
+def _is_shuffle_op(op: PhysicalOperator) -> bool:
+    return isinstance(op, AllToAllOperator) or isinstance(op, HashShufflingOperatorBase)
+
+
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
 
