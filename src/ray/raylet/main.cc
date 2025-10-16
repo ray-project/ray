@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
-  std::unique_ptr<plasma::PlasmaClient> plasma_client;
+  std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -811,7 +811,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes().Get(ray::NodeID::FromBinary(id.Binary())) != nullptr;
+          return gcs_client->Nodes().GetNodeAddressAndLiveness(
+                     ray::NodeID::FromBinary(id.Binary())) != nullptr;
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -834,8 +835,10 @@ int main(int argc, char *argv[]) {
         /*labels*/
         node_manager_config.labels);
 
-    auto get_node_info_func = [&](const ray::NodeID &id) {
-      return gcs_client->Nodes().Get(id);
+    auto get_node_info_func =
+        [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
+      auto ptr = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
       /// Publish the infeasible lease error to GCS so that drivers can subscribe to it
@@ -905,14 +908,15 @@ int main(int argc, char *argv[]) {
                                                            *local_lease_manager);
 
     auto raylet_client_factory = [&](const ray::NodeID &id) {
-      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
+      const ray::rpc::GcsNodeAddressAndLiveness *node_info =
+          gcs_client->Nodes().GetNodeAddressAndLiveness(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
           id, node_info->node_manager_address(), node_info->node_manager_port());
       return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
-    plasma_client = std::make_unique<plasma::PlasmaClient>();
+    plasma_client = std::make_shared<plasma::PlasmaClient>();
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -932,9 +936,9 @@ int main(int argc, char *argv[]) {
         *lease_dependency_manager,
         *worker_pool,
         leased_workers,
-        *plasma_client,
+        plasma_client,
         std::make_unique<ray::core::experimental::MutableObjectProvider>(
-            *plasma_client,
+            plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,

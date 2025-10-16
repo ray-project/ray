@@ -172,7 +172,6 @@ class CgroupDriverInterface {
     supported or the value not correct.
    */
   virtual Status AddConstraint(const std::string &cgroup,
-                               const std::string &controller,
                                const std::string &constraint,
                                const std::string &value) = 0;
   /**
