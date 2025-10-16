@@ -194,15 +194,19 @@ def configure_logging() -> None:
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
+    # Grab the existing handlers that the logger has already registered
     existing_handlers_map = logging._handlers
 
+    # Create a new empty handlers map and list
     logging._acquireLock()
     logging._handlers = weakref.WeakValueDictionary()
     logging._handlerList = []
     logging._releaseLock()
 
+    # dictConfig closes all the handlers, and sets the target to `None`
     logging.config.dictConfig(config)
 
+    # After configure Ray data logger, add the existing handlers atop Ray Data's handlers
     logging._acquireLock()
     for name, handler in existing_handlers_map.items():
         if name not in logging._handlers:
