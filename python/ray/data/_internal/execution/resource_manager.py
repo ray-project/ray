@@ -316,12 +316,12 @@ class ResourceManager:
         assert self._op_resource_allocator is not None
         return self._op_resource_allocator
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit."""
-        if self._op_resource_allocator is None:
-            return None
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
+        return self._op_resource_allocator.max_task_output_bytes_to_read(
+            op,
+            task_resource_usage=self._op_usages,
+            output_object_store_usage=self._mem_op_outputs,
+        )
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Return the budget for the given operator, or None if the operator
@@ -461,6 +461,65 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
+    def _get_eligible_ops(self) -> List[PhysicalOperator]:
+        first_pending_shuffle_op_idx = _get_first_pending_shuffle_op(self._topology)
+        return [
+            op for idx, op in enumerate(self._topology)
+            if self._is_op_eligible(op) and (first_pending_shuffle_op_idx == -1 or idx <= first_pending_shuffle_op_idx)
+        ]
+
+    @staticmethod
+    def _is_op_eligible(op: PhysicalOperator) -> bool:
+        """Whether the op is eligible for memory reservation."""
+        return (
+            not op.throttling_disabled()
+            # As long as the op has finished execution, even if there are still
+            # non-taken outputs, we don't need to allocate resources for it.
+            and not op.execution_finished()
+        )
+
+    def _get_downstream_eligible_ops(
+        self, op: PhysicalOperator
+    ) -> Iterable[PhysicalOperator]:
+        """Get the downstream eligible operators of the given operator, ignoring
+        intermediate ineligible operators.
+
+        E.g.,
+          - "cur_map->downstream_map" will return [downstream_map].
+          - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
+        """
+        for next_op in op.output_dependencies:
+            if self._is_op_eligible(next_op):
+                yield next_op
+            else:
+                yield from self._get_downstream_eligible_ops(next_op)
+
+    def _should_unblock_streaming_output_backpressure(
+        self, op: PhysicalOperator
+    ) -> bool:
+        # TODO elaborate (outputs of the last operator should not be throttled)
+        if not op.output_dependencies:
+            return True
+
+        # In some edge cases, the downstream operators may have no enough resources to
+        # launch tasks. Then we should temporarily unblock the streaming output
+        # backpressure by allowing reading at least 1 block. So the current operator
+        # can finish at least one task and yield resources to the downstream operators.
+        for downstream_op in self._get_downstream_eligible_ops(op):
+            if not self.can_submit_new_task(downstream_op):
+                # Case 1: the downstream operator hasn't reserved the minimum resources
+                # to run at least one task.
+                return True
+
+            # Case 2: the downstream operator has reserved the minimum resources, but
+            # the resources are preempted by non-Data tasks or actors.
+            # We don't have a good way to detect this case, so we'll unblock
+            # backpressure when the downstream operator has been idle for a while.
+            if self._idle_detector.detect_idle(downstream_op):
+                return True
+
+        return False
+
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
@@ -515,22 +574,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # enough to run one task of each op.
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
-
-        self._idle_detector = self.IdleDetector()
-
-    def _is_op_eligible(self, op: PhysicalOperator) -> bool:
-        """Whether the op is eligible for memory reservation."""
-        return (
-            not op.throttling_disabled()
-            # As long as the op has finished execution, even if there are still
-            # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
-        )
-
-    def _get_eligible_ops(self) -> List[PhysicalOperator]:
-        return [
-            op for op in self._resource_manager._topology if self._is_op_eligible(op)
-        ]
 
     def _get_ineligible_ops_with_usage(self) -> List[PhysicalOperator]:
         """
