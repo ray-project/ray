@@ -339,53 +339,6 @@ class OpResourceAllocator(ABC):
     can read from its running tasks.
     """
 
-    def __init__(self, resource_manager: ResourceManager):
-        self._resource_manager = resource_manager
-
-    @abstractmethod
-    def update_usages(self):
-        """Callback to update resource usages."""
-        ...
-
-    @abstractmethod
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        """Return the maximum bytes of pending task outputs can be read for
-        the given operator. None means no limit."""
-        ...
-
-    @abstractmethod
-    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the budget for the given operator, or None if the operator
-        has unlimited budget."""
-        ...
-
-
-class ReservationOpResourceAllocator(OpResourceAllocator):
-    """An OpResourceAllocator implementation that reserves resources for each operator.
-
-    This class reserves memory and CPU resources for eligible operators, and considers
-    runtime resource usages to limit the resources that each operator can use.
-
-    It works in the following way:
-    1. An operator is eligible for resource reservation, if it has enabled throttling
-       and hasn't completed. Ineligible operators are not throttled, but
-       their usage will be accounted for their upstream eligible operators. E.g., for
-       such a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
-       a group and "map2->streaming_split" as another group.
-    2. For each eligible operator, we reserve `reservation_ratio * global_resources /
-        num_eligible_ops` resources, half of which is reserved only for the operator
-        outputs, excluding pending task outputs.
-    3. Non-reserved resources are shared among all operators.
-    4. In each scheduling iteration, each eligible operator will get "remaining of their
-       own reserved resources" + "remaining of shared resources / num_eligible_ops"
-       resources.
-
-    The `reservation_ratio` is set to 50% by default. Users can tune this value to
-    adjust how aggressive or conservative the resource allocation is. A higher value
-    will make the resource allocation more even, but may lead to underutilization and
-    worse performance. And vice versa.
-    """
-
     class IdleDetector:
         """Utility class for detecting idle operators.
 
@@ -426,6 +379,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         op, cur_time - self.last_output_time[op]
                     )
                     return True
+
             return False
 
         @classmethod
@@ -447,7 +401,92 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 " `DataContext.get_current().execution_options.exclude_resources`."
                 " This message will only print once."
             )
+
             logger.warning(msg)
+
+    def __init__(self, topology: "Topology"):
+        self._topology = topology
+        self._idle_detector = self.IdleDetector()
+        self._ticker = 0
+
+    @abstractmethod
+    def update_budgets(
+        self,
+        *,
+        limits: ExecutionResources,
+        task_resources_usage: Dict[PhysicalOperator, ExecutionResources],
+        internal_object_store_usage: Dict[PhysicalOperator, int],
+        outputs_object_store_usage: Dict[PhysicalOperator, int],
+
+    ):
+        """Callback to update resource usages."""
+        ...
+
+    @abstractmethod
+    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        """Return whether the given operator can submit a new task."""
+        ...
+
+    @abstractmethod
+    def max_task_output_bytes_to_read(
+        self,
+        op: PhysicalOperator,
+        *,
+        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
+        output_object_store_usage: Dict[PhysicalOperator, int],
+    ) -> Optional[int]:
+        """Return the maximum bytes of pending task outputs can be read for
+        the given operator. None means no limit."""
+        ...
+
+    @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Returns the budget for the given operator or `None` if the operator
+        has unlimited budget. Operator's budget is defined as:
+
+            Budget = Allocation - Usage
+        """
+        ...
+
+    @abstractmethod
+    def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
+        """Returns the budget for operator's outputs (in object store bytes) or
+        `None` if there's no limit.
+        """
+        ...
+
+    @abstractmethod
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Returns allocation for the given operator or `None` if operator's
+        allocation is unlimited."""
+        ...
+
+
+class ReservationOpResourceAllocator(OpResourceAllocator):
+    """An OpResourceAllocator implementation that reserves resources for each operator.
+
+    This class reserves memory and CPU resources for eligible operators, and considers
+    runtime resource usages to limit the resources that each operator can use.
+
+    It works in the following way:
+    1. An operator is eligible for resource reservation, if it has enabled throttling
+       and hasn't completed. Ineligible operators are not throttled, but
+       their usage will be accounted for their upstream eligible operators. E.g., for
+       such a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
+       a group and "map2->streaming_split" as another group.
+    2. For each eligible operator, we reserve `reservation_ratio * global_resources /
+        num_eligible_ops` resources, half of which is reserved only for the operator
+        outputs, excluding pending task outputs.
+    3. Non-reserved resources are shared among all operators.
+    4. In each scheduling iteration, each eligible operator will get "remaining of their
+       own reserved resources" + "remaining of shared resources / num_eligible_ops"
+       resources.
+
+    The `reservation_ratio` is set to 50% by default. Users can tune this value to
+    adjust how aggressive or conservative the resource allocation is. A higher value
+    will make the resource allocation more even, but may lead to underutilization and
+    worse performance. And vice versa.
+    """
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
         super().__init__(resource_manager)
