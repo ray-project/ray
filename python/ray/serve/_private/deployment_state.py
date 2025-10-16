@@ -2159,8 +2159,10 @@ class DeploymentState:
     def autoscale(self, decision_num_replicas: int) -> bool:
         """
         Apply the given scaling decision by updating the target replica count.
+
         Skips if deleting, if `decision_num_replicas` is None, or matches the
         current target. Otherwise updates the state and logs an up/down scaling.
+
         Args:
             decision_num_replicas: target replica count to apply.
 

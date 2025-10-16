@@ -919,10 +919,7 @@ class ApplicationState:
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            is_deleted = self.is_deleted()
-            if is_deleted:
-                self._autoscaling_state_manager.deregister_application(self._name)
-            return is_deleted, target_state_changed
+            return self.is_deleted(), target_state_changed
         return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
@@ -1221,6 +1218,7 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
