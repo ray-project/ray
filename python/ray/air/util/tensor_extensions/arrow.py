@@ -984,11 +984,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return str(self)
 
     def __eq__(self, other):
+        # NOTE: This check is deliberately not comparing the ``ndim`` since
+        #       we allow tensor types w/ varying ``ndim``s to be combined
         return (
             isinstance(other, ArrowVariableShapedTensorType)
             and other.extension_name == self.extension_name
             and other.scalar_type == self.scalar_type
-            and other.ndim == self.ndim
         )
 
     def __ne__(self, other):
@@ -996,7 +997,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        return hash((self.extension_name, self.scalar_type, self._ndim))
+        return hash((self.extension_name, self.scalar_type))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """

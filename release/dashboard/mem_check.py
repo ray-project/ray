@@ -79,7 +79,6 @@ if __name__ == "__main__":
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         results = {
             "memory_growth_gb": mem_growth,
-            "success": 1,
         }
         results["perf_metrics"] = [
             {

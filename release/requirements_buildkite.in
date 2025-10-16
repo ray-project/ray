@@ -2,12 +2,15 @@
 # Copy anyscale pin to requirements.txt and util.py
 aioboto3
 anyscale >= 0.26.14
+azure-identity
+azure-storage-blob
 bazel-runfiles
 boto3
 click
 freezegun
 google-cloud-storage
 jinja2
+msal
 protobuf >= 3.15.3, != 3.19.5
 pytest
 pyyaml
