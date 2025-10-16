@@ -1240,10 +1240,7 @@ class StandardAutoscaler:
             )
             # Can't figure out if we've received a heartbeat from this node
             # because the IP address is not available.
-            # Return True to be safe, so that the node does not get inadvertently
-            # terminated due to intermittent provider.internal_ip() failures.
-            # TODO: Return False if the provider.internal_ip() fails for too long.
-            return True
+            return False
 
         if key in self.load_metrics.last_heartbeat_time_by_ip:
             last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
