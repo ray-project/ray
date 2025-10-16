@@ -7,7 +7,9 @@ from pydantic import Field, field_validator, model_validator
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import PDProxyServer
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
+    PDProxyServer,
+)
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
     IngressClsConfig,
     load_class,
