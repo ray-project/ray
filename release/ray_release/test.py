@@ -473,7 +473,7 @@ class Test(dict):
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.
-        If set, this will use released Ray images like rayproject/ray:2.50.0-py39-cpu
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
         instead of building custom BYOD images.
         """
         return self["cluster"].get("ray_version", None)
@@ -634,7 +634,7 @@ class Test(dict):
         if ray_version:
             python_version = "py" + self.get_python_version().replace(".", "")
             tag_suffix = self.get_tag_suffix()
-            return f"rayproject/ray:{ray_version}-{python_version}-{tag_suffix}"
+            return f"anyscale/ray:{ray_version}-{python_version}-{tag_suffix}"
         return (
             f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
@@ -659,7 +659,7 @@ class Test(dict):
             # Use released Ray image from DockerHub
             python_version = "py" + self.get_python_version().replace(".", "")
             tag_suffix = self.get_tag_suffix()
-            return f"rayproject/ray:{ray_version}-{python_version}-{tag_suffix}"
+            return f"anyscale/ray:{ray_version}-{python_version}-{tag_suffix}"
 
         return (
             f"{self.get_byod_ecr()}/"
