@@ -155,7 +155,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
-      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager,
+      PlacementGroupResourceManager &placement_group_resource_manager);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -293,6 +294,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -605,11 +610,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReleaseUnusedBundles` request.
-  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
-                                  rpc::ReleaseUnusedBundlesReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `GetSystemConfig` request.
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
@@ -865,7 +865,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t number_workers_killed_ = 0;
 
   /// Managers all bundle-related operations.
-  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+  PlacementGroupResourceManager &placement_group_resource_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).

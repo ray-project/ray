@@ -1,0 +1,151 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "ray/raylet/worker.h"
+#include "ray/raylet_ipc_client/client_connection.h"
+
+namespace ray {
+namespace raylet {
+
+class FakeClientConnection {
+ public:
+  /// Create a FakeClientConnection with a dummy socket.
+  ///
+  /// \param io_context The IO context to create the socket with.
+  /// \return A shared pointer to a ClientConnection.
+  static std::shared_ptr<ClientConnection> Create(instrumented_io_context &io_context) {
+    local_stream_socket socket(io_context);
+    return ClientConnection::Create(
+        /*message_handler=*/
+        [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+        /*connection_error_handler=*/
+        [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+        std::move(socket),
+        /*debug_label=*/"fake_worker_connection",
+        /*message_type_enum_names=*/{});
+  }
+};
+
+/// A fake implementation of WorkerInterface for testing.
+/// This provides a minimal no-op implementation with only the essential fields needed
+/// for disconnect/cleanup paths. The key feature is providing a real ClientConnection
+/// to prevent segfaults in DestroyWorker callflow.
+class FakeWorker : public WorkerInterface {
+ public:
+  FakeWorker(WorkerID worker_id, int port, instrumented_io_context &io_context)
+      : worker_id_(worker_id),
+        port_(port),
+        proc_(Process::CreateNewDummy()),
+        connection_(FakeClientConnection::Create(io_context)) {}
+
+  WorkerID WorkerId() const override { return worker_id_; }
+  rpc::WorkerType GetWorkerType() const override { return rpc::WorkerType::WORKER; }
+  int Port() const override { return port_; }
+  void SetOwnerAddress(const rpc::Address &address) override {}
+  void GrantLease(const RayLease &granted_lease) override {}
+  void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
+  const RayLease &GetGrantedLease() const override {
+    static RayLease empty_lease;
+    return empty_lease;
+  }
+  absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
+  std::optional<bool> GetIsGpu() const override { return std::nullopt; }
+  std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
+  const std::string IpAddress() const override { return "127.0.0.1"; }
+  void AsyncNotifyGCSRestart() override {}
+  void SetAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+  void SetLifetimeAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
+    return nullptr;
+  }
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
+    return nullptr;
+  }
+  void MarkDead() override {}
+  bool IsDead() const override { return false; }
+  void KillAsync(instrumented_io_context &io_service, bool force) override {}
+  void MarkBlocked() override {}
+  void MarkUnblocked() override {}
+  bool IsBlocked() const override { return false; }
+  Process GetProcess() const override { return proc_; }
+  StartupToken GetStartupToken() const override { return 0; }
+  void SetProcess(Process proc) override {}
+  Language GetLanguage() const override { return Language::PYTHON; }
+  void Connect(int port) override {}
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {}
+  int AssignedPort() const override { return -1; }
+  void SetAssignedPort(int port) override {}
+  const LeaseID &GetGrantedLeaseId() const override { return lease_id_; }
+  const JobID &GetAssignedJobId() const override {
+    static JobID job_id = JobID::FromInt(1);
+    return job_id;
+  }
+  int GetRuntimeEnvHash() const override { return 0; }
+  void AssignActorId(const ActorID &actor_id) override {}
+  const ActorID &GetActorId() const override {
+    static ActorID actor_id;
+    return actor_id;
+  }
+  const std::string GetLeaseIdAsDebugString() const override { return ""; }
+  bool IsDetachedActor() const override { return false; }
+  const std::shared_ptr<ClientConnection> Connection() const override {
+    return connection_;
+  }
+  const rpc::Address &GetOwnerAddress() const override {
+    static rpc::Address address;
+    return address;
+  }
+  std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
+  void SetSavedProcessGroupId(pid_t pgid) override {}
+  void ActorCallArgWaitComplete(int64_t tag) override {}
+  void ClearAllocatedInstances() override {}
+  void ClearLifetimeAllocatedInstances() override {}
+  const BundleID &GetBundleId() const override { return bundle_id_; }
+  void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
+  RayLease &GetGrantedLease() override {
+    static RayLease empty_lease;
+    return empty_lease;
+  }
+  bool IsRegistered() override { return false; }
+  rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
+  bool IsAvailableForScheduling() const override { return true; }
+  void SetJobId(const JobID &job_id) override {}
+  const ActorID &GetRootDetachedActorId() const override {
+    static ActorID root_detached_actor_id;
+    return root_detached_actor_id;
+  }
+
+ protected:
+  void SetStartupToken(StartupToken startup_token) override {}
+
+ private:
+  WorkerID worker_id_;
+  int port_;
+  LeaseID lease_id_;
+  BundleID bundle_id_;
+  Process proc_;
+  std::shared_ptr<ClientConnection> connection_;
+};
+
+}  // namespace raylet
+}  // namespace ray

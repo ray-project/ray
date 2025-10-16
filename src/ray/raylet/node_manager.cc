@@ -146,7 +146,8 @@ NodeManager::NodeManager(
         mutable_object_provider,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
-    std::unique_ptr<CgroupManagerInterface> cgroup_manager)
+    std::unique_ptr<CgroupManagerInterface> cgroup_manager,
+    PlacementGroupResourceManager &placement_group_resource_manager)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -189,6 +190,7 @@ NodeManager::NodeManager(
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
+      placement_group_resource_manager_(placement_group_resource_manager),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
@@ -201,9 +203,6 @@ NodeManager::NodeManager(
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
-
-  placement_group_resource_manager_ =
-      std::make_unique<NewPlacementGroupResourceManager>(cluster_resource_scheduler_);
 
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },
@@ -572,7 +571,7 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   }
 
   // Return unused bundle resources.
-  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
+  placement_group_resource_manager_.ReturnUnusedBundle(in_use_bundles);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1824,7 +1823,7 @@ void NodeManager::HandlePrepareBundleResources(
   }
   RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
-  auto prepared = placement_group_resource_manager_->PrepareBundles(bundle_specs);
+  auto prepared = placement_group_resource_manager_.PrepareBundles(bundle_specs);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1840,7 +1839,7 @@ void NodeManager::HandleCommitBundleResources(
   }
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
-  placement_group_resource_manager_->CommitBundles(bundle_specs);
+  placement_group_resource_manager_.CommitBundles(bundle_specs);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_lease_manager_.ScheduleAndGrantLeases();
@@ -1894,7 +1893,7 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
+  RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
   cluster_lease_manager_.ScheduleAndGrantLeases();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

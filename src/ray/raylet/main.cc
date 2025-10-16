@@ -329,6 +329,8 @@ int main(int argc, char *argv[]) {
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
   std::unique_ptr<plasma::PlasmaClient> plasma_client;
+  std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
+      placement_group_resource_manager;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -913,6 +915,11 @@ int main(int argc, char *argv[]) {
     };
 
     plasma_client = std::make_unique<plasma::PlasmaClient>();
+
+    placement_group_resource_manager =
+        std::make_unique<ray::raylet::NewPlacementGroupResourceManager>(
+            *cluster_resource_scheduler);
+
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -939,7 +946,8 @@ int main(int argc, char *argv[]) {
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
         std::move(add_process_to_system_cgroup_hook),
-        std::move(cgroup_manager));
+        std::move(cgroup_manager),
+        *placement_group_resource_manager);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,
