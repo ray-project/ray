@@ -30,12 +30,9 @@ steps:
     label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      app:
-        - serve
-        - default
-      python:
-        - "3.9"
-        - "3.10"
+      setup:
+        app: ["serve", "default"]
+        python: ["3.9", "3.10"]
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       EXTRA_DEPENDENCY: "{{matrix.app}}"
