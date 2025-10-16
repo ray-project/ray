@@ -2,6 +2,8 @@ import copy
 import dataclasses
 from enum import Enum
 import logging
+
+import gymnasium
 import math
 import sys
 from typing import (
@@ -328,7 +330,7 @@ class AlgorithmConfig(_Config):
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
-        self.gym_env_vectorize_mode = "SYNC"
+        self.gym_env_vectorize_mode = "sync"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -1844,7 +1846,9 @@ class AlgorithmConfig(_Config):
         create_local_env_runner: Optional[bool] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
-        gym_env_vectorize_mode: Optional[Union[str, gym.envs.registration.VectorizeMode]] = NotProvided,
+        gym_env_vectorize_mode: Optional[
+            Union[str, gym.envs.registration.VectorizeMode]
+        ] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,

@@ -1,6 +1,8 @@
 from collections import defaultdict
 from functools import partial
 import logging
+
+import gymnasium
 import math
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
@@ -650,43 +652,36 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # No env provided -> Error.
         if not self.config.env:
             raise ValueError(
-                "`config.env` is not provided! You should provide a valid environment "
-                "to your config through `config.environment([env descriptor e.g. "
-                "'CartPole-v1'])`."
+                "`config.env` is not provided! "
+                "You should provide a valid environment to your config through "
+                "`config.environment(<env descriptor e.g. 'CartPole-v1'>)`."
             )
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
-        elif isinstance(self.config.env, str) and _global_registry.contains(
-            ENV_CREATOR, self.config.env
-        ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                env_ctx,
-            )
-        else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_descriptor=self.config.env,
-                env_context=env_ctx,
-            )
-        vectorize_mode = self.config.gym_env_vectorize_mode
-        vectorize_mode = (
-            vectorize_mode if isinstance(vectorize_mode, VectorizeMode)
-            else VectorizeMode(vectorize_mode.lower())
-        )
 
-        # User defined env is already vectorized.
-        if vectorize_mode is VectorizeMode.VECTOR_ENTRY_POINT:
-            gym.register("rllib-single-agent-env-v0", vector_entry_point=entry_point)
-        # User defined env is a single, non-vectorized env.
+        if isinstance(self.config.env, str):
+            env_name = self.config.env
+            if self.config.env not in gymnasium.registry:
+                if _global_registry.contains(ENV_CREATOR, self.config.env):
+                    env_entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
+                    # we don't know if the entry-point is for a single or vector env so we register for both and let the user choose the vectorize mode
+                    gymnasium.register(self.config.env, entry_point=env_entry_point, vector_entry_point=env_entry_point)
+                elif ":" in self.config.env:
+                    if len(self.config.env.split(":")) == 2:
+                        importlib, env_name = self.config.env.split(":")
+                        assert env_name in gymnasium.registry
+                else:
+                    raise ValueError("`config.env` is a string but not contained in the `gymnasium.registry` or `tune._global_registry`")
         else:
-            gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
+            env_name = "rllib-env-v0"
+            # we don't know if the entry-point is for a single or vector env so we register for both and let the user choose the vectorize mode
+            gymnasium.register(env_name, entry_point=self.config.env, vector_entry_point=self.config.env)
 
+        vectorize_mode = VectorizeMode(self.config.gym_env_vectorize_mode)
         self.env = DictInfoToList(
             gym.make_vec(
-                "rllib-single-agent-env-v0",
+                env_name,
                 num_envs=self.config.num_envs_per_env_runner,
                 vectorization_mode=vectorize_mode,
+                **self.config.env_config
             )
         )
 

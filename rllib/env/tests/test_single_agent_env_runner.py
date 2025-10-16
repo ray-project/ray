@@ -1,15 +1,15 @@
 import unittest
-from functools import partial
 from unittest.mock import patch
 
 import gymnasium as gym
+from gymnasium.vector import SyncVectorEnv
+from gymnasium.envs.classic_control.cartpole import CartPoleVectorEnv, CartPoleEnv
 
 import ray
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check
 
@@ -21,16 +21,17 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         tune.register_env(
             "tune-registered",
-            lambda cfg: SimpleCorridor({"corridor_length": 10}),
+            lambda **cfg: CartPoleEnv(**cfg),
         )
+        tune.register_env("tune-registered-vec", lambda num_envs, **cfg: CartPoleVectorEnv(num_envs=num_envs, **cfg))
 
         gym.register(
             "TestEnv-v0",
-            partial(
-                _gym_env_creator,
-                env_context={"corridor_length": 10},
-                env_descriptor=SimpleCorridor,
-            ),
+            entry_point=CartPoleEnv,
+        )
+        gym.register(
+            "TestVecEnv-v0",
+            vector_entry_point=CartPoleVectorEnv,
         )
 
     @classmethod
@@ -130,12 +131,12 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         # Define an env that raises StepFailedResetRequired
         class ErrorRaisingEnv(gym.Env):
-            def __init__(self, config=None):
+            def __init__(self, exception_type):
                 # As per gymnasium standard, provide observation and action spaces in your
                 # constructor.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
-                self.exception_type = config["exception_type"]
+                self.exception_type = exception_type
 
             def reset(self, *, seed=None, options=None):
                 return self.observation_space.sample(), {}
@@ -172,10 +173,10 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         assert mock_logger.exception.call_count == 1
 
-    def test_vector_env(self):
+    def test_env_vectorizer(self):
         """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
 
-        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
+        for env in ["CartPole-v1", CartPoleEnv, "tune-registered", "TestEnv-v0"]:
             config = (
                 AlgorithmConfig()
                 .environment(env)
@@ -186,6 +187,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             )
 
             env_runner = SingleAgentEnvRunner(config=config)
+            assert isinstance(env_runner.env.env, SyncVectorEnv)
 
             # Sample with the async-vectorized env.
             episodes = env_runner.sample(random_actions=True)
@@ -194,6 +196,84 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 config.num_envs_per_env_runner * config.rollout_fragment_length,
             )
             env_runner.stop()
+
+    def test_self_vectorized_env(self):
+        """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
+
+        for env in [
+            "CartPole-v1",
+            CartPoleVectorEnv,
+            "tune-registered-vec",
+            "TestVecEnv-v0",
+        ]:
+            config = (
+                AlgorithmConfig()
+                .environment(env)
+                .env_runners(
+                    num_envs_per_env_runner=5,
+                    rollout_fragment_length=10,
+                    gym_env_vectorize_mode=gym.VectorizeMode.VECTOR_ENTRY_POINT,
+                )
+            )
+
+            env_runner = SingleAgentEnvRunner(config=config)
+            assert isinstance(env_runner.env.env, CartPoleVectorEnv)
+
+            # Sample with the async-vectorized env.
+            episodes = env_runner.sample(random_actions=True)
+            self.assertEqual(
+                sum(len(e) for e in episodes),
+                config.num_envs_per_env_runner * config.rollout_fragment_length,
+            )
+            env_runner.stop()
+
+    def test_env_context(self):
+        """Tests, whether SingleAgentEnvRunner can pass kwargs to the environments correctly."""
+
+        # Test gymnasium.Env
+        for env in ["CartPole-v1", CartPoleEnv, "tune-registered", "TestEnv-v0"]:
+            config = AlgorithmConfig().environment(
+                env, env_config={"sutton_barto_reward": True}
+            )
+            env_runner = SingleAgentEnvRunner(config=config)
+            assert env_runner.env.env.get_attr("_sutton_barto_reward") == (True,)
+
+        # Test gymnasium.vector.VectorEnv
+        for env in [
+            "CartPole-v1",
+            CartPoleVectorEnv,
+            "tune-registered-vec",
+            "TestVecEnv-v0",
+        ]:
+            config = (
+                AlgorithmConfig()
+                .environment(env, env_config={"sutton_barto_reward": True})
+                .env_runners(
+                    gym_env_vectorize_mode=gym.VectorizeMode.VECTOR_ENTRY_POINT
+                )
+            )
+            env_runner = SingleAgentEnvRunner(config=config)
+
+            assert env_runner.env.env._sutton_barto_reward is True
+
+        # Test registered environment and vector env with pre-set kwargs
+        gym.register(
+            "TestEnv-v1",
+            entry_point=CartPoleEnv,
+            vector_entry_point=CartPoleVectorEnv,
+            kwargs={"sutton_barto_reward": True},
+        )
+        config = AlgorithmConfig().environment("TestEnv-v1")
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_sutton_barto_reward") == (True,)
+
+        config = (
+            AlgorithmConfig()
+            .environment("TestEnv-v1")
+            .env_runners(gym_env_vectorize_mode="vector_entry_point")
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env._sutton_barto_reward is True
 
 
 if __name__ == "__main__":
