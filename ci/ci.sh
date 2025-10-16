@@ -120,11 +120,11 @@ test_cpp() {
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
-  bazel build --config=ci //cpp:all
   bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
+  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive --build_tests_only \
+    --test_tag_filters=-no_macos //cpp:all
   # run cluster mode test with external cluster
   bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
