@@ -3009,11 +3009,11 @@ cdef class CoreWorker:
             CWorkerExitType c_exit_type
             cdef const shared_ptr[LocalMemoryBuffer] null_ptr
 
-        if exit_type == "user":
+        if exit_type == ray_constants.WORKER_EXIT_TYPE_USER:
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
-        elif exit_type == "system":
+        elif exit_type == ray_constants.WORKER_EXIT_TYPE_SYSTEM:
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
-        elif exit_type == "intentional_system_exit":
+        elif exit_type == ray_constants.WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM:
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
         else:
             raise ValueError(f"Invalid exit type: {exit_type}")
@@ -3022,20 +3022,40 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
     def force_exit_worker(self, exit_type: str, c_string detail):
+        """Force exit the current worker process immediately without draining.
+
+        Terminates the worker process via CoreWorker.ForceExit, bypassing graceful
+        shutdown (no task draining). Used for forced shutdowns triggered by signals
+        or other immediate termination scenarios.
+
+        Args:
+            exit_type: Type of exit. Must be one of:
+                - "user": User-initiated forced exit (INTENDED_USER_EXIT)
+                - "system": System error forced exit (SYSTEM_ERROR)
+                - "intentional_system_exit": Intentional system-initiated exit
+            detail: Human-readable detail string describing the exit reason.
+
+        Raises:
+            AssertionError: If called from a driver process (must be worker-only).
+            ValueError: If exit_type is not one of the valid options.
         """
-        Force exit the current worker process immediately (no draining).
-        Should only be used by a worker (not driver).
-        """
+        assert not self.is_driver, (
+            "force_exit_worker must only be called by workers, not drivers"
+        )
         cdef CWorkerExitType c_exit_type
-        if exit_type == "user":
+        if exit_type == ray_constants.WORKER_EXIT_TYPE_USER:
             c_exit_type = WORKER_EXIT_TYPE_INTENDED_USER_EXIT
-        elif exit_type == "system":
+        elif exit_type == ray_constants.WORKER_EXIT_TYPE_SYSTEM:
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
-        elif exit_type == "intentional_system_exit":
+        elif exit_type == ray_constants.WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM:
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
         else:
-            raise ValueError(f"Invalid exit type: {exit_type}")
-        assert not self.is_driver
+            raise ValueError(
+                f"Invalid exit_type '{exit_type}'; expected "
+                f"'{ray_constants.WORKER_EXIT_TYPE_USER}', "
+                f"'{ray_constants.WORKER_EXIT_TYPE_SYSTEM}', or "
+                f"'{ray_constants.WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM}'"
+            )
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().ForceExit(c_exit_type, detail)
 

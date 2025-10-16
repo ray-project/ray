@@ -1030,15 +1030,13 @@ class Worker:
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-        ray._private.utils.install_unified_signal_handlers(
-            is_driver=False,
-            worker_graceful_cb=lambda: self.core_worker.drain_and_exit_worker(
-                "intentional_system_exit", b"signal: first"
-            ),
-            worker_force_cb=lambda detail: self.core_worker.force_exit_worker(
-                "system", detail.encode("utf-8")
-            ),
-        )
+
+        def force_shutdown(detail: str):
+            self.core_worker.force_exit_worker(
+                ray_constants.WORKER_EXIT_TYPE_SYSTEM, detail.encode("utf-8")
+            )
+
+        ray._private.utils.install_worker_signal_handlers(force_shutdown)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -1672,8 +1670,8 @@ def init(
         system_reserved_memory=system_reserved_memory,
     )
 
-    # Install unified signal handlers for the driver process.
-    ray._private.utils.install_unified_signal_handlers(is_driver=True)
+    # Install signal handlers for the driver process.
+    ray._private.utils.install_driver_signal_handlers()
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2082,7 +2080,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
-    ray._private.utils.reset_unified_signal_handlers_state()
+    ray._private.utils.reset_signal_handlers_state()
     global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:

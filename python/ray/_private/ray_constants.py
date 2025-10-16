@@ -591,3 +591,9 @@ FETCH_FAIL_TIMEOUT_SECONDS = (
 )
 
 RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)
+
+# Worker exit type constants for signal handling and shutdown
+# These correspond to the WorkerExitType enum in common.proto
+WORKER_EXIT_TYPE_USER = "user"
+WORKER_EXIT_TYPE_SYSTEM = "system"
+WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM = "intentional_system_exit"
