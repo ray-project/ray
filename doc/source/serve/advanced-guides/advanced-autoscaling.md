@@ -668,3 +668,45 @@ In your policy, access custom metrics via:
 * **`ctx.raw_metrics[metric_name]`** — A mapping of replica IDs to lists of raw metric values.
   The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
+
+
+### Application level autoscaling
+
+By default, each deployment in Ray Serve autoscales independently. When you have multiple deployments that need to scale in a coordinated way—such as deployments that share backend resources, have dependencies on each other, or need load-aware routing—you can define an **application-level autoscaling policy**. This policy makes scaling decisions for all deployments within an application simultaneously.
+
+#### Define an application level policy
+
+An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+
+The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_application_level_autoscaling_policy__
+:end-before: __end_application_level_autoscaling_policy__
+```
+
+#### Configure application level autoscaling
+
+To use an application-level policy, you need to define your deployments:
+
+```{literalinclude} ../doc_code/application_level_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+Then specify the application-level policy in your application config:
+
+```{literalinclude} ../doc_code/application_level_autoscaling.yaml
+:language: yaml
+:emphasize-lines: 4-5
+```
+
+:::{note}
+Programmatic configuration of application-level autoscaling policies through `serve.run()` will be supported in a future release.
+:::
+
+:::{note}
+When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
+:::
