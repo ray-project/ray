@@ -233,7 +233,7 @@ cc_test(
             "src/ray/test/cluster/*.h",
         ],
         exclude = [
-            "src/ray/test/cluster/cluster_mode_xlang*_test.cc",
+            "src/ray/test/cluster/cluster_mode_xlang_test.cc",
         ],
     ),
     args = [
@@ -258,30 +258,25 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_xlang_test",
-    srcs = select({
-        "//conditions:default": [
-            "src/ray/test/cluster/cluster_mode_xlang_test.cc",
-        ],
-        "//bazel:osx_arm64_config": [
-            "src/ray/test/cluster/cluster_mode_xlang_osx_test.cc",
-        ],
-    }) + glob([
+    srcs = [
+        "src/ray/test/cluster/cluster_mode_xlang_test.cc",
+    ] + glob([
         "src/ray/test/cluster/*.h",
     ]),
-    args = select({
-        "//conditions:default": [
-            "--ray_code_search_path=$(location //java:libio_ray_ray_test.jar)",
-        ],
-        "//bazel:osx_arm64_config": [],
-    }) + ["--ray_head_args '--include-dashboard false'"],
+    args = [
+        "--ray_code_search_path=$(location //java:libio_ray_ray_test.jar)",
+        "--ray_head_args '--include-dashboard false'",
+    ],
     copts = COPTS,
-    data = [":ray_cpp_pkg_files"] + select({
-        "//conditions:default": ["//java:libio_ray_ray_test.jar"],
-        # Java not supported on Apple silicon.
-        "//bazel:osx_arm64_config": [],
-    }),
+    data = [
+        ":ray_cpp_pkg_files",
+        "//java:libio_ray_ray_test.jar",
+    ],
     linkstatic = True,
-    tags = ["team:core"],
+    tags = [
+        "team:core",
+        "no_macos",
+    ],
     deps = [
         "ray_api_lib",
         "@com_google_googletest//:gtest_main",
