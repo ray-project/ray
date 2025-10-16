@@ -40,8 +40,8 @@ accelerator types.
 
 For TPU training, the `ScalingConfig` is where you define the specifics of your hardware slice. Key fields include:
 
-* `use_tpu`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. This boolean flag explicitly tells Ray Train to initialize the JAX backend for TPU execution.
-* `topology`: This is a new field added in Ray 2.49.1 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
+* `use_tpu`: This is a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. This boolean flag explicitly tells Ray Train to initialize the JAX backend for TPU execution.
+* `topology`: This is a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
   see the `GKE documentation <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology>`_.
 * `num_workers`: Set to the number of VMs in your TPU slice. For a v4-32 slice with a 2x2x4 topology, this would be 4.
 * `resources_per_worker`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM (Ex: {"TPU": 4}).
