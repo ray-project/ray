@@ -23,6 +23,7 @@ from ray_release.result import (
 )
 from ray_release.logger import logger
 from ray_release.util import (
+    ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
     get_read_state_machine_aws_bucket,
     get_write_state_machine_aws_bucket,
@@ -636,7 +637,7 @@ class Test(dict):
             tag_suffix = self.get_tag_suffix()
             if tag_suffix == "gpu":
                 tag_suffix = "cu121"
-            return f"anyscale/ray:{ray_version}-{python_version}-{tag_suffix}"
+            return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         return (
             f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
@@ -663,7 +664,7 @@ class Test(dict):
             tag_suffix = self.get_tag_suffix()
             if tag_suffix == "gpu":
                 tag_suffix = "cu121"
-            return f"anyscale/ray:{ray_version}-{python_version}-{tag_suffix}"
+            return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
 
         return (
             f"{self.get_byod_ecr()}/"

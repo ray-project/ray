@@ -4,7 +4,7 @@ import os
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
-from ray_release.util import AZURE_REGISTRY_NAME
+from ray_release.util import AZURE_REGISTRY_NAME, ANYSCALE_RAY_IMAGE_PREFIX
 import hashlib
 
 
@@ -92,7 +92,7 @@ def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
-    if base_image.startswith("rayproject/ray:"):
+    if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return None
     if image_name == "ray-ml":
         return config["release_image_step_ray_ml"]

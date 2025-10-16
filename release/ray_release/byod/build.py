@@ -9,7 +9,7 @@ from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
-from ray_release.util import AZURE_REGISTRY_NAME
+from ray_release.util import AZURE_REGISTRY_NAME, ANYSCALE_RAY_IMAGE_PREFIX
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -60,7 +60,7 @@ def build_anyscale_custom_byod_image(
         stdout=sys.stderr,
         env=env,
     )
-    if not base_image.startswith("anyscale/ray"):
+    if not base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         _validate_image(image)
     _push_image(image)
     if os.environ.get("BUILDKITE"):
