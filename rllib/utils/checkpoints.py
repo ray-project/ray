@@ -196,6 +196,8 @@ class Checkpointable(abc.ABC):
 
         # Get the entire state of this Checkpointable, or use provided `state`.
         _state_provided = state is not None
+        # Get only the non-checkpointable components of the state. Checkpointable
+        # components are saved to path by their own `save_to_path` in the loop below.
         state = state or self.get_state(
             not_components=[c[0] for c in self.get_checkpointable_components()]
         )
@@ -583,6 +585,16 @@ class Checkpointable(abc.ABC):
         return []
 
     def _check_component(self, name, components, not_components) -> bool:
+        """Returns True if a component should be checkpointed.
+
+        Args:
+            name: The checkpoint name.
+            components: A list of components that should be checkpointed.
+            non_components: A list of components that should not be checkpointed.
+
+        Returns:
+            True, if the component should be checkpointed and otherwise False.
+        """
         comp_list = force_list(components)
         not_comp_list = force_list(not_components)
         if (
@@ -1024,7 +1036,8 @@ def try_import_msgpack(error: bool = False):
         error: Whether to raise an error if msgpack/msgpack_numpy cannot be imported.
 
     Returns:
-        The `msgpack` module.
+        The `msgpack` module, with the msgpack_numpy module already patched in. This
+        means you can already encde and decode numpy arrays with the returned module.
 
     Raises:
         ImportError: If error=True and msgpack/msgpack_numpy is not installed.

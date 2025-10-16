@@ -17,6 +17,8 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
+    generate_serve_llm_grafana_dashboard,
+    generate_train_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.templates import (
     DASHBOARD_PROVISIONING_TEMPLATE,
@@ -24,8 +26,8 @@ from ray.dashboard.modules.metrics.templates import (
     GRAFANA_INI_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
 )
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -42,6 +44,9 @@ PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
+GRAFANA_ORG_ID_ENV_VAR = "RAY_GRAFANA_ORG_ID"
+DEFAULT_GRAFANA_ORG_ID = "1"
+GRAFANA_CLUSTER_FILTER_ENV_VAR = "RAY_GRAFANA_CLUSTER_FILTER"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
@@ -112,6 +117,10 @@ class MetricsHead(SubprocessModule):
         self._prometheus_name = os.environ.get(
             PROMETHEUS_NAME_ENV_VAR, DEFAULT_PROMETHEUS_NAME
         )
+        self._grafana_org_id = os.environ.get(
+            GRAFANA_ORG_ID_ENV_VAR, DEFAULT_GRAFANA_ORG_ID
+        )
+        self._grafana_cluster_filter = os.environ.get(GRAFANA_CLUSTER_FILTER_ENV_VAR)
 
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
@@ -138,7 +147,7 @@ class MetricsHead(SubprocessModule):
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed",
+                        message="Grafana healthcheck failed",
                         status=resp.status,
                     )
                 json = await resp.json()
@@ -146,7 +155,7 @@ class MetricsHead(SubprocessModule):
                 if json["database"] != "ok":
                     return dashboard_optional_utils.rest_response(
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                        message="Grafana healtcheck failed. Database not ok.",
+                        message="Grafana healthcheck failed. Database not ok.",
                         status=resp.status,
                         json=json,
                     )
@@ -155,9 +164,11 @@ class MetricsHead(SubprocessModule):
                     status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
+                    grafana_org_id=self._grafana_org_id,
                     session_name=self.session_name,
                     dashboard_uids=self._dashboard_uids,
                     dashboard_datasource=self._prometheus_name,
+                    grafana_cluster_filter=self._grafana_cluster_filter,
                 )
 
         except Exception as e:
@@ -167,7 +178,7 @@ class MetricsHead(SubprocessModule):
 
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
-                message="Grafana healtcheck failed",
+                message="Grafana healthcheck failed",
                 exception=str(e),
             )
 
@@ -332,6 +343,18 @@ class MetricsHead(SubprocessModule):
         with open(
             os.path.join(
                 self._grafana_dashboard_output_dir,
+                "serve_llm_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_llm"],
+            ) = generate_serve_llm_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
                 "data_grafana_dashboard.json",
             ),
             "w",
@@ -340,6 +363,18 @@ class MetricsHead(SubprocessModule):
                 content,
                 self._dashboard_uids["data"],
             ) = generate_data_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "train_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["train"],
+            ) = generate_train_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):
@@ -375,10 +410,6 @@ class MetricsHead(SubprocessModule):
         await super().run()
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-
-        logger.info(
-            f"Generated prometheus and grafana configurations in: {self._metrics_root}"
-        )
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(

@@ -1,18 +1,20 @@
-from copy import copy
-import numpy as np
-import unittest
 import math
+import unittest
+from copy import copy
 
-from ray.rllib.models.torch.torch_distributions import (
+import numpy as np
+
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
-    TorchDiagGaussian,
     TorchDeterministic,
+    TorchDiagGaussian,
+    TorchMultiCategorical,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import (
-    softmax,
-    SMALL_NUMBER,
     LARGE_INTEGER,
+    SMALL_NUMBER,
+    softmax,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -129,6 +131,55 @@ class TestDistributions(unittest.TestCase):
         expected = (probs * (probs / probs2).log()).sum(dim=-1)
         check(dist_with_probs.kl(dist2), expected)
 
+    def test_multi_categorical_with_different_categories(self):
+        # MLP networks.
+        batch_size = 128
+        ndims = [4, 8]
+
+        logits_1 = torch.from_numpy(np.random.randn(batch_size, ndims[0]))
+        logits_2 = torch.from_numpy(np.random.randn(batch_size, ndims[1]))
+
+        dist = TorchMultiCategorical(
+            [
+                TorchCategorical.from_logits(logits_1),
+                TorchCategorical.from_logits(logits_2),
+            ]
+        )
+
+        sample = dist.sample()
+
+        self.assertEqual(sample.shape, (batch_size, len(ndims)))
+        self.assertEqual(sample.dtype, torch.int64)
+        # Convert to a deterministic distribution.
+        det_dist = dist.to_deterministic()
+        det_sample = det_dist.sample()
+
+        self.assertEqual(det_sample.shape, (batch_size, len(ndims)))
+        self.assertEqual(det_sample.dtype, torch.int64)
+
+        # LSTM networks.
+        seq_lens = 1
+        logits_1 = torch.from_numpy(np.random.randn(batch_size, seq_lens, ndims[0]))
+        logits_2 = torch.from_numpy(np.random.randn(batch_size, seq_lens, ndims[1]))
+
+        dist = TorchMultiCategorical(
+            [
+                TorchCategorical.from_logits(logits_1),
+                TorchCategorical.from_logits(logits_2),
+            ]
+        )
+
+        sample = dist.sample()
+
+        self.assertEqual(sample.shape, (batch_size, seq_lens, len(ndims)))
+        self.assertEqual(sample.dtype, torch.int64)
+        # Convert to a deterministic distribution.
+        det_dist = dist.to_deterministic()
+        det_sample = det_dist.sample()
+
+        self.assertEqual(det_sample.shape, (batch_size, seq_lens, len(ndims)))
+        self.assertEqual(det_sample.dtype, torch.int64)
+
     def test_diag_gaussian(self):
         batch_size = 128
         ndim = 4
@@ -189,7 +240,7 @@ class TestDistributions(unittest.TestCase):
         )
         sample1.mean().backward(retain_graph=True)
 
-        # check stablity against skewed inputs
+        # check stability against skewed inputs
         check_stability(
             TorchDiagGaussian,
             sample_input={"loc": loc_tens, "scale": scale_tens},
@@ -218,7 +269,8 @@ class TestDistributions(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

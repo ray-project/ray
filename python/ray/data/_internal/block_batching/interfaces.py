@@ -7,30 +7,38 @@ from ray.types import ObjectRef
 
 
 @dataclass
-class Batch:
-    """A batch of data with a corresponding index.
+class BatchMetadata:
+    """Metadata associated with a batch.
 
     Attributes:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
-        data: The batch of data.
     """
 
     batch_idx: int
+
+
+@dataclass
+class Batch:
+    """A batch of data.
+
+    Attributes:
+        metadata: Metadata associated with this batch.
+        data: The batch of data.
+    """
+
+    metadata: BatchMetadata
     data: DataBatch
 
 
 class CollatedBatch(Batch):
-    """A batch of collated data with a corresponding index.
+    """A batch of collated data.
 
     Attributes:
-        batch_idx: The global index of this batch so that downstream operations can
-            maintain ordering.
         data: The batch of data which is the output of a user provided collate_fn
             Therefore, the type of this data can be Any.
     """
 
-    batch_idx: int
     data: Any
 
 

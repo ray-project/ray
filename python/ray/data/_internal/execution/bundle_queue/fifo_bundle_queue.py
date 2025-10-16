@@ -56,7 +56,7 @@ class FIFOBundleQueue(BundleQueue):
         self._nbytes += bundle.size_bytes()
         self._num_bundles += 1
 
-    def pop(self) -> "RefBundle":
+    def get_next(self) -> "RefBundle":
         """Return the first (left) bundle in the queue."""
         # Case 1: The queue is empty.
         if not self._head:
@@ -67,7 +67,10 @@ class FIFOBundleQueue(BundleQueue):
 
         return bundle
 
-    def peek(self) -> Optional["RefBundle"]:
+    def has_next(self) -> bool:
+        return self._num_bundles > 0
+
+    def peek_next(self) -> Optional["RefBundle"]:
         """Return the first (left) bundle in the queue without removing it."""
         if self._head is None:
             return None

@@ -44,10 +44,8 @@ cdef extern from * namespace "polyfill" nogil:
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    # TODO(ryw) in Cython 3.x we can directly use `cdef enum class CStatusCode`
-    cdef cppclass CStatusCode "ray::StatusCode":
+    cdef enum class CStatusCode "ray::StatusCode":
         pass
-    cdef CStatusCode CStatusCode_OK "ray::StatusCode::OK"
     c_bool operator==(CStatusCode lhs, CStatusCode rhs)
 
     cdef cppclass CRayStatus "ray::Status":
@@ -125,7 +123,6 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInvalidArgument()
         c_bool IsInterrupted()
-        c_bool ShouldExitWorker()
         c_bool IsObjectNotFound()
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()
@@ -148,6 +145,11 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
+cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
+    cdef cppclass CStatusOr "ray::StatusOr"[T]:
+        c_bool ok()
+        const CRayStatus &status() const
+        T &value()
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -156,13 +158,15 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef cppclass CLanguage "Language":
+    cdef cppclass CLanguage "ray::Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
     cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
         pass
     cdef cppclass CTaskType "ray::TaskType":
+        pass
+    cdef cppclass CTensorTransport "ray::rpc::TensorTransport":
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
@@ -200,6 +204,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress owner_address() const
         const c_string &object_id() const
         const c_string &call_site() const
+        CTensorTransport tensor_transport() const
     cdef cppclass CNodeLabelSchedulingStrategy "ray::rpc::NodeLabelSchedulingStrategy":  # noqa: E501
         CNodeLabelSchedulingStrategy()
         CLabelMatchExpressions* mutable_hard()
@@ -238,9 +243,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+    cdef CLanguage LANGUAGE_PYTHON "ray::Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "ray::Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "ray::Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
@@ -256,6 +261,12 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
     cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
+
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
+    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
+    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
+    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
@@ -295,6 +306,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
+        CTensorTransport GetTensorTransport() const
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":
@@ -310,7 +322,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
                             const CAddress &owner_address,
-                            const c_string &call_site)
+                            const c_string &call_site,
+                            const CTensorTransport &tensor_transport)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -321,8 +334,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events,
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
+                     const unordered_map[c_string, c_string] &label_selector,
+                     CTensorTransport tensor_transport,
                      int32_t priority)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
@@ -339,10 +355,12 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
-            c_bool execute_out_of_order,
+            c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
+            c_bool enable_tensor_transport,
             c_bool enable_task_events,
-            const unordered_map[c_string, c_string] &labels)
+            const unordered_map[c_string, c_string] &labels,
+            const unordered_map[c_string, c_string] &label_selector)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -352,8 +370,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
+            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
@@ -365,7 +383,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -384,16 +402,16 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
-        CRayStatus AsyncGetAllByFilter(
+        void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
             const optional[c_string] &actor_state_name,
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 
-        CRayStatus AsyncKillActor(const CActorID &actor_id,
+        void AsyncKillActor(const CActorID &actor_id,
                                   c_bool force_kill,
                                   c_bool no_restart,
                                   const StatusPyCallback &callback,
@@ -407,7 +425,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_vector[CJobTableData] &result,
             int64_t timeout_ms)
 
-        CRayStatus AsyncGetAll(
+        void AsyncGetAll(
             const optional[c_string] &job_or_submission_id,
             c_bool skip_submission_job_info_field,
             c_bool skip_is_running_tasks_field,
@@ -416,12 +434,12 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             c_vector[c_bool] &result)
 
-        CRayStatus AsyncCheckAlive(
-            const c_vector[c_string] &raylet_addresses,
+        void AsyncCheckAlive(
+            const c_vector[CNodeID] &node_ids,
             int64_t timeout_ms,
             const MultiItemPyCallback[c_bool] &callback)
 
@@ -430,14 +448,15 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[c_string] &drained_node_ids)
 
-        CRayStatus GetAllNoCache(
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
-            c_vector[CGcsNodeInfo] &result)
+            optional[CGcsNodeState] state_filter,
+            optional[CNodeSelector] node_selector)
 
-        CRayStatus AsyncGetAll(
+        void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms,
-            optional[CNodeID] node_id)
+            c_vector[CNodeID] node_ids)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -484,25 +503,25 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_bool &exists)
 
-        CRayStatus AsyncInternalKVKeys(
+        void AsyncInternalKVKeys(
             const c_string &ns,
             const c_string &prefix,
             int64_t timeout_ms,
             const OptionalItemPyCallback[c_vector[c_string]] &callback)
 
-        CRayStatus AsyncInternalKVGet(
+        void AsyncInternalKVGet(
             const c_string &ns,
             const c_string &key,
             int64_t timeout_ms,
             const OptionalItemPyCallback[c_string] &callback)
 
-        CRayStatus AsyncInternalKVMultiGet(
+        void AsyncInternalKVMultiGet(
             const c_string &ns,
             const c_vector[c_string] &keys,
             int64_t timeout_ms,
             const OptionalItemPyCallback[unordered_map[c_string, c_string]] &callback)
 
-        CRayStatus AsyncInternalKVPut(
+        void AsyncInternalKVPut(
             const c_string &ns,
             const c_string &key,
             const c_string &value,
@@ -510,13 +529,13 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             const OptionalItemPyCallback[c_bool] &callback)
 
-        CRayStatus AsyncInternalKVExists(
+        void AsyncInternalKVExists(
             const c_string &ns,
             const c_string &key,
             int64_t timeout_ms,
             const OptionalItemPyCallback[c_bool] &callback)
 
-        CRayStatus AsyncInternalKVDel(
+        void AsyncInternalKVDel(
             const c_string &ns,
             const c_string &key,
             c_bool del_by_prefix,
@@ -534,7 +553,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            const c_vector[int64_t] &count_array
+            const c_vector[unordered_map[c_string, c_string]] &label_selectors,
+            const c_vector[int64_t] &count_array,
         )
 
         CRayStatus GetClusterResourceState(
@@ -547,7 +567,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &serialized_reply
         )
 
-        CRayStatus AsyncGetClusterStatus(
+        void AsyncGetClusterStatus(
             int64_t timeout_ms,
             const OptionalItemPyCallback[CGetClusterStatusReply] &callback)
 
@@ -571,8 +591,25 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
+    cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
+        CRayStatus PublishError(
+            c_string key_id,
+            CErrorTableData data,
+            int64_t timeout_ms)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+        CRayStatus PublishLogs(
+            c_string key_id,
+            CLogBatch data,
+            int64_t timeout_ms)
+
+        void AsyncPublishNodeResourceUsage(
+            c_string key_id,
+            c_string node_resource_usage,
+            const StatusPyCallback &callback
+        )
+
+
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
@@ -582,11 +619,11 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(
-            const c_string &gcs_address, int port, CClusterID cluster_id,
+            c_string gcs_address, int port, CClusterID cluster_id,
             c_bool allow_cluster_id_nil, c_bool fetch_cluster_id_if_nil)
 
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
-        CGcsClient(const CGcsClientOptions &options)
+        CGcsClient(CGcsClientOptions options)
 
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
@@ -598,27 +635,16 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
+        CPublisherAccessor& Publisher()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
-cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-
-    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
-
-        CPythonGcsPublisher(const c_string& gcs_address)
-
-        CRayStatus Connect()
-
-        CRayStatus PublishError(
-            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
-
-        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
-    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
+    cdef cppclass CPythonGcsSubscriber "ray::pubsub::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
             const c_string& gcs_address, int gcs_port, CChannelType channel_type,
@@ -634,15 +660,12 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollLogs(
             c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollActor(
-            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
-
         CRayStatus Close()
 
-cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
-    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" nogil:
+    c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
 
@@ -678,6 +701,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
+
+    cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
+        pass
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const
@@ -733,9 +759,9 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
-            const c_string &name,
+            c_string name,
             uint32_t max_concurrency,
-            const c_vector[CFunctionDescriptor] &c_fds)
+            c_vector[CFunctionDescriptor] c_fds)
         CConcurrencyGroup()
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
@@ -749,3 +775,17 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerStateNamespace
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
+    cdef const char[] kGcsPidKey
+    cdef const char[] kNodeTypeNameEnv
+    cdef const char[] kNodeMarketTypeEnv
+    cdef const char[] kNodeRegionEnv
+    cdef const char[] kNodeZoneEnv
+    cdef const char[] kLabelKeyNodeAcceleratorType
+    cdef const char[] kLabelKeyNodeMarketType
+    cdef const char[] kLabelKeyNodeRegion
+    cdef const char[] kLabelKeyNodeZone
+    cdef const char[] kLabelKeyNodeGroup
+    cdef const char[] kLabelKeyTpuTopology
+    cdef const char[] kLabelKeyTpuSliceName
+    cdef const char[] kLabelKeyTpuWorkerId
+    cdef const char[] kLabelKeyTpuPodType

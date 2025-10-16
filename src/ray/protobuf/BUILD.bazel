@@ -1,0 +1,529 @@
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "common_proto",
+    srcs = ["common.proto"],
+    visibility = [
+        ":__subpackages__",
+        "//java:__subpackages__",
+    ],
+    deps = [
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "common_cc_proto",
+    deps = [":common_proto"],
+)
+
+proto_library(
+    name = "profile_events_proto",
+    srcs = ["profile_events.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "profile_events_cc_proto",
+    deps = [":profile_events_proto"],
+)
+
+proto_library(
+    name = "gcs_proto",
+    srcs = ["gcs.proto"],
+    visibility = ["//java:__subpackages__"],
+    deps = [
+        ":common_proto",
+        ":profile_events_proto",
+        ":runtime_env_common_proto",
+    ],
+)
+
+proto_library(
+    name = "instance_manager_proto",
+    srcs = ["instance_manager.proto"],
+)
+
+cc_proto_library(
+    name = "instance_manager_cc_proto",
+    deps = [":instance_manager_proto"],
+)
+
+proto_library(
+    name = "runtime_env_common_proto",
+    srcs = ["runtime_env_common.proto"],
+    visibility = [
+        ":__subpackages__",
+        "//java:__subpackages__",
+    ],
+)
+
+proto_library(
+    name = "ray_syncer_proto",
+    srcs = ["ray_syncer.proto"],
+)
+
+cc_proto_library(
+    name = "ray_syncer_cc_proto",
+    deps = [":ray_syncer_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_common_cc_proto",
+    deps = [":runtime_env_common_proto"],
+)
+
+cc_proto_library(
+    name = "gcs_cc_proto",
+    deps = [":gcs_proto"],
+)
+
+# Function and class dependencies.
+proto_library(
+    name = "dependency_proto",
+    srcs = ["dependency.proto"],
+)
+
+# Text logging.
+proto_library(
+    name = "logging_proto",
+    srcs = ["logging.proto"],
+)
+
+cc_proto_library(
+    name = "logging_cc_proto",
+    deps = [":logging_proto"],
+)
+
+proto_library(
+    name = "node_manager_proto",
+    srcs = ["node_manager.proto"],
+    deps = [
+        ":autoscaler_proto",
+        ":common_proto",
+        ":gcs_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "node_manager_cc_proto",
+    deps = [":node_manager_proto"],
+)
+
+cc_grpc_library(
+    name = "node_manager_cc_grpc",
+    srcs = [":node_manager_proto"],
+    grpc_only = True,
+    deps = [":node_manager_cc_proto"],
+)
+
+proto_library(
+    name = "reporter_proto",
+    srcs = ["reporter.proto"],
+    deps = [
+        ":common_proto",
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "reporter_cc_proto",
+    deps = [":reporter_proto"],
+)
+
+cc_grpc_library(
+    name = "reporter_cc_grpc",
+    srcs = ["//src/ray/protobuf:reporter_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:reporter_cc_proto"],
+)
+
+proto_library(
+    name = "gcs_service_proto",
+    srcs = ["gcs_service.proto"],
+    deps = [
+        ":common_proto",
+        ":events_event_aggregator_service_proto",
+        ":gcs_proto",
+        ":pubsub_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "gcs_service_cc_proto",
+    deps = [":gcs_service_proto"],
+)
+
+cc_grpc_library(
+    name = "gcs_service_cc_grpc",
+    srcs = [":gcs_service_proto"],
+    grpc_only = True,
+    deps = [":gcs_service_cc_proto"],
+)
+
+proto_library(
+    name = "test_service_proto",
+    srcs = ["test_service.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "test_service_cc_proto",
+    deps = [":test_service_proto"],
+)
+
+cc_grpc_library(
+    name = "test_service_cc_grpc",
+    srcs = [":test_service_proto"],
+    grpc_only = True,
+    deps = [":test_service_cc_proto"],
+)
+
+proto_library(
+    name = "object_manager_proto",
+    srcs = ["object_manager.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "object_manager_cc_proto",
+    deps = [":object_manager_proto"],
+)
+
+cc_grpc_library(
+    name = "object_manager_cc_grpc",
+    srcs = [":object_manager_proto"],
+    grpc_only = True,
+    deps = [":object_manager_cc_proto"],
+)
+
+proto_library(
+    name = "core_worker_proto",
+    srcs = ["core_worker.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_service_proto",
+        ":pubsub_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "core_worker_cc_proto",
+    deps = ["core_worker_proto"],
+)
+
+cc_grpc_library(
+    name = "core_worker_cc_grpc",
+    srcs = [":core_worker_proto"],
+    grpc_only = True,
+    deps = [":core_worker_cc_proto"],
+)
+
+proto_library(
+    name = "serialization_proto",
+    srcs = ["serialization.proto"],
+)
+
+cc_proto_library(
+    name = "serialization_cc_proto",
+    deps = ["serialization_proto"],
+)
+
+proto_library(
+    name = "event_proto",
+    srcs = ["event.proto"],
+)
+
+cc_proto_library(
+    name = "event_cc_proto",
+    deps = [":event_proto"],
+)
+
+proto_library(
+    name = "export_event_proto",
+    srcs = ["export_event.proto"],
+    deps = [
+        ":export_actor_event_proto",
+        ":export_dataset_metadata_proto",
+        ":export_dataset_operator_event_proto",
+        ":export_driver_job_event_proto",
+        ":export_node_event_proto",
+        ":export_submission_job_event_proto",
+        ":export_task_event_proto",
+        ":export_train_state_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_event_cc_proto",
+    deps = [":export_event_proto"],
+)
+
+proto_library(
+    name = "export_task_event_proto",
+    srcs = ["export_task_event.proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+        ":profile_events_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_task_event_cc_proto",
+    deps = [":export_task_event_proto"],
+)
+
+proto_library(
+    name = "export_runtime_env_proto",
+    srcs = ["export_runtime_env.proto"],
+)
+
+cc_proto_library(
+    name = "export_runtime_env_cc_proto",
+    deps = [":export_runtime_env_proto"],
+)
+
+proto_library(
+    name = "export_node_event_proto",
+    srcs = ["export_node_data.proto"],
+)
+
+cc_proto_library(
+    name = "export_node_event_cc_proto",
+    deps = [":export_node_event_proto"],
+)
+
+proto_library(
+    name = "export_actor_event_proto",
+    srcs = ["export_actor_data.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "export_actor_event_cc_proto",
+    deps = [":export_actor_event_proto"],
+)
+
+proto_library(
+    name = "export_driver_job_event_proto",
+    srcs = ["export_driver_job_event.proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_driver_job_event_cc_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
+proto_library(
+    name = "export_submission_job_event_proto",
+    srcs = ["export_submission_job_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_submission_job_event_cc_proto",
+    deps = [":export_submission_job_event_proto"],
+)
+
+proto_library(
+    name = "export_train_state_proto",
+    srcs = ["export_train_state.proto"],
+)
+
+cc_proto_library(
+    name = "export_train_state_cc_proto",
+    deps = [":export_train_state_proto"],
+)
+
+proto_library(
+    name = "export_dataset_operator_event_proto",
+    srcs = ["export_dataset_operator_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_dataset_operator_event_cc_proto",
+    deps = [":export_dataset_operator_event_proto"],
+)
+
+proto_library(
+    name = "export_dataset_metadata_proto",
+    srcs = ["export_dataset_metadata.proto"],
+    deps = [
+        "@com_google_protobuf//:struct_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_dataset_metadata_cc_proto",
+    deps = [":export_dataset_metadata_proto"],
+)
+
+# Ray Client gRPC lib
+proto_library(
+    name = "ray_client_proto",
+    srcs = ["ray_client.proto"],
+    deps = [":common_proto"],
+)
+
+proto_library(
+    name = "pubsub_proto",
+    srcs = ["pubsub.proto"],
+    deps = [
+        ":common_proto",
+        ":dependency_proto",
+        ":gcs_proto",
+        ":logging_proto",
+        ":reporter_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "pubsub_cc_proto",
+    deps = [":pubsub_proto"],
+)
+
+cc_grpc_library(
+    name = "pubsub_cc_grpc",
+    srcs = [":pubsub_proto"],
+    grpc_only = True,
+    deps = [
+        ":common_cc_proto",
+        ":gcs_cc_proto",
+        ":pubsub_cc_proto",
+    ],
+)
+
+# runtime env agent gRPC lib.
+proto_library(
+    name = "runtime_env_agent_proto",
+    srcs = ["runtime_env_agent.proto"],
+    deps = [
+        ":common_proto",
+        ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "runtime_env_agent_cc_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+proto_library(
+    name = "usage_proto",
+    srcs = ["usage.proto"],
+)
+
+cc_proto_library(
+    name = "usage_cc_proto",
+    deps = [":usage_proto"],
+)
+
+proto_library(
+    name = "autoscaler_proto",
+    srcs = ["autoscaler.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "autoscaler_cc_proto",
+    deps = [":autoscaler_proto"],
+)
+
+cc_grpc_library(
+    name = "autoscaler_cc_grpc",
+    srcs = ["//src/ray/protobuf:autoscaler_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+    ],
+)
+
+proto_library(
+    name = "events_task_profile_events_proto",
+    srcs = ["events_task_profile_events.proto"],
+    deps = [
+        ":profile_events_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_task_profile_events_cc_proto",
+    deps = [":events_task_profile_events_proto"],
+)
+
+proto_library(
+    name = "events_event_aggregator_service_proto",
+    srcs = ["events_event_aggregator_service.proto"],
+    deps = [
+        ":common_proto",
+        "//src/ray/protobuf/public:events_base_event_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_event_aggregator_service_cc_proto",
+    deps = [":events_event_aggregator_service_proto"],
+)
+
+cc_grpc_library(
+    name = "events_event_aggregator_service_cc_grpc",
+    srcs = [":events_event_aggregator_service_proto"],
+    grpc_only = True,
+    deps = [":events_event_aggregator_service_cc_proto"],
+)
+
+# All core python protos are compiled in this single rule.
+# They will be copied into ray/core/generated directory
+# on ray wheel building.
+python_grpc_compile(
+    name = "core_py_proto",
+    deps = [
+        ":autoscaler_proto",
+        ":common_proto",
+        ":core_worker_proto",
+        ":event_proto",
+        ":events_event_aggregator_service_proto",
+        ":export_event_proto",
+        ":gcs_proto",
+        ":gcs_service_proto",
+        ":instance_manager_proto",
+        ":node_manager_proto",
+        ":ray_client_proto",
+        ":reporter_proto",
+        ":runtime_env_agent_proto",
+        ":runtime_env_common_proto",
+        ":usage_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
+# Below is the serve proto
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+# These files will be copied into ray/serve/generated directory.
+# on ray wheel building.
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
+)

@@ -1,6 +1,7 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from typing_extensions import Hashable
@@ -8,6 +9,11 @@ from typing_extensions import Hashable
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.util import (
+    _op_name_white_list,
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -17,11 +23,28 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    _check_pyarrow_version,
     find_partition_index,
     iterate_with_retry,
+    merge_resources_to_ray_remote_args,
+    rows_same,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
+    """Check if operators with given names in `op_names` have been used.
+    If `clear_after_check` is True, we clear the list of recorded operators
+    (so that subsequent checks do not use existing records of operator usage)."""
+    for op_name in op_names:
+        assert op_name in _op_name_white_list
+        with _recorded_operators_lock:
+            assert _recorded_operators.get(op_name, 0) > 0, (
+                op_name,
+                _recorded_operators,
+            )
+    if clear_after_check:
+        with _recorded_operators_lock:
+            _recorded_operators.clear()
 
 
 def test_cached_remote_fn():
@@ -113,36 +136,6 @@ def test_make_hashable():
     )
 
 
-def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
-    # Test that pyarrow versions outside of the defined bounds cause an ImportError to
-    # be raised.
-    with pytest.raises(ImportError):
-        _check_pyarrow_version()
-
-
-def test_check_pyarrow_version_bounds_disabled(
-    unsupported_pyarrow_version,
-    disable_pyarrow_version_check,
-):
-    # Test that pyarrow versions outside of the defined bounds DO NOT cause an
-    # ImportError to be raised if the environment variable disabling the check is set.
-
-    # Confirm that ImportError is not raised.
-    try:
-        _check_pyarrow_version()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-
-def test_check_pyarrow_version_supported():
-    # Test that the pyarrow installed in this testing environment satisfies the pyarrow
-    # version bounds.
-    try:
-        _check_pyarrow_version()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
     ctx = ray.data.context.DataContext.get_current()
@@ -181,13 +174,9 @@ def get_parquet_read_logical_op(
     datasource = ParquetDatasource(paths="example://iris.parquet")
     if "parallelism" not in read_kwargs:
         read_kwargs["parallelism"] = 10
-    mem_size = None
-    if "mem_size" in read_kwargs:
-        mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
         datasource_or_legacy_reader=datasource,
-        mem_size=mem_size,
         ray_remote_args=ray_remote_args,
         **read_kwargs,
     )
@@ -320,6 +309,39 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+def test_merge_resources_to_ray_remote_args():
+    ray_remote_args = {}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
+    assert ray_remote_args == {"num_cpus": 1, "num_gpus": 1, "memory": 1}
+
+    ray_remote_args = {"other_resource": 1}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
+    assert ray_remote_args == {
+        "num_cpus": 1,
+        "num_gpus": 1,
+        "memory": 1,
+        "other_resource": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "actual, expected, expected_equal",
+    [
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1]}), True),
+        # Different value.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [2]}), False),
+        # Extra column.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1], "b": [2]}), False),
+        # Different number of rows.
+        (pd.DataFrame({"a": [1]}), pd.DataFrame({"a": [1, 1]}), False),
+        # Same rows, but different order.
+        (pd.DataFrame({"a": [1, 2]}), pd.DataFrame({"a": [2, 1]}), True),
+    ],
+)
+def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal: bool):
+    assert rows_same(actual, expected) == expected_equal
 
 
 if __name__ == "__main__":

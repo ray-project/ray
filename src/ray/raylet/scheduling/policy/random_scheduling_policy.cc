@@ -22,15 +22,15 @@ namespace raylet_scheduling_policy {
 
 scheduling::NodeID RandomSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::RANDOM)
+  RAY_CHECK(options.scheduling_type_ == SchedulingType::RANDOM)
       << "HybridPolicy policy requires type = RANDOM";
   scheduling::NodeID best_node = scheduling::NodeID::Nil();
   if (nodes_.empty()) {
     return best_node;
   }
 
-  RAY_CHECK(options.spread_threshold == 0 && !options.avoid_local_node &&
-            options.require_node_available && !options.avoid_gpu_nodes)
+  RAY_CHECK(options.spread_threshold_ == 0 && !options.avoid_local_node_ &&
+            options.require_node_available_ && !options.avoid_gpu_nodes_)
       << "Random policy requires spread_threshold = 0, "
       << "avoid_local_node = false, "
       << "require_node_available = true, "

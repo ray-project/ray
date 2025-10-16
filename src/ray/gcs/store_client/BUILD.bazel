@@ -1,0 +1,61 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "store_client",
+    hdrs = ["store_client.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "redis_store_client",
+    srcs = [
+        "redis_async_context.cc",
+        "redis_context.cc",
+        "redis_store_client.cc",
+    ],
+    hdrs = [
+        "redis_async_context.h",
+        "redis_context.h",
+        "redis_store_client.h",
+    ],
+    deps = [
+        ":store_client",
+        "//:hiredis",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util:container_util",
+        "//src/ray/util:exponential_backoff",
+        "//src/ray/util:network_util",
+        "@boost//:asio",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "in_memory_store_client",
+    srcs = ["in_memory_store_client.cc"],
+    hdrs = ["in_memory_store_client.h"],
+    deps = [
+        ":store_client",
+        "//src/ray/common:asio",
+        "//src/ray/util:concurrent_flat_map",
+        "@com_google_absl//absl/container:node_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "observable_store_client",
+    srcs = ["observable_store_client.cc"],
+    hdrs = ["observable_store_client.h"],
+    deps = [
+        ":store_client",
+    ],
+)

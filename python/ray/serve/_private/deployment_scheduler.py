@@ -17,6 +17,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
@@ -38,6 +39,10 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    # Custom resource priority from environment variable
+    CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
+    EPSILON = 1e-9
+
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
@@ -52,7 +57,8 @@ class Resources(dict):
 
     def can_fit(self, other):
         keys = set(self.keys()) | set(other.keys())
-        return all(self.get(k) >= other.get(k) for k in keys)
+        # We add a small epsilon to avoid floating point precision issues.
+        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())
@@ -77,18 +83,23 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. GPU
-        2. CPU
-        3. memory
-        4. custom resources
-        This means a resource with a larger number of GPUs is always
-        sorted higher than a resource with a smaller number of GPUs,
-        regardless of the values of the other resource types. Similarly
-        for CPU next, memory next, etc.
+        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (sorted by priority)
+        2. GPU
+        3. CPU
+        4. memory
+        5. Other custom resources
+        This means a resource with a larger number of high-priority resources is always
+        sorted higher than one with fewer, regardless of other types.
         """
 
         keys = set(self.keys()) | set(other.keys())
-        keys = keys - {"GPU", "CPU", "memory"}
+        custom_keys = keys - {"GPU", "CPU", "memory"}
+
+        for key in self.CUSTOM_PRIORITY:
+            if self.get(key) < other.get(key):
+                return True
+            elif self.get(key) > other.get(key):
+                return False
 
         if self.get("GPU") < other.get("GPU"):
             return True
@@ -105,7 +116,7 @@ class Resources(dict):
         elif self.get("memory") > other.get("memory"):
             return False
 
-        for key in keys:
+        for key in custom_keys - set(self.CUSTOM_PRIORITY):
             if self.get(key) < other.get(key):
                 return True
             elif self.get(key) > other.get(key):

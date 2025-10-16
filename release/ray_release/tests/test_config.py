@@ -1,5 +1,5 @@
 import sys
-
+import copy
 import pytest
 import yaml
 from ray_release.config import (
@@ -16,32 +16,31 @@ from ray_release.test import Test
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
     "release/release_data_tests.yaml",
+    "release/release_multimodal_inference_benchmarks_tests.yaml",
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
-VALID_TEST = Test(
-    **{
-        "name": "validation_test",
-        "group": "validation_group",
-        "working_dir": "validation_dir",
-        "python": "3.9",
-        "frequency": "nightly",
-        "team": "release",
-        "cluster": {
-            "byod": {"type": "gpu"},
-            "cluster_compute": "tpl_cpu_small.yaml",
-            "autosuspend_mins": 10,
-        },
-        "run": {
-            "timeout": 100,
-            "script": "python validate.py",
-            "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
-            "type": "client",
-        },
-        "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
-        "alert": "default",
-    }
-)
+VALID_TEST = {
+    "name": "validation_test",
+    "group": "validation_group",
+    "working_dir": "validation_dir",
+    "python": "3.9",
+    "frequency": "nightly",
+    "team": "release",
+    "cluster": {
+        "byod": {"type": "gpu"},
+        "cluster_compute": "tpl_cpu_small.yaml",
+        "autosuspend_mins": 10,
+    },
+    "run": {
+        "timeout": 100,
+        "script": "python validate.py",
+        "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
+        "type": "client",
+    },
+    "smoke_test": {"run": {"timeout": 20}, "frequency": "nightly"},
+    "alert": "default",
+}
 
 
 def test_parse_test_definition():
@@ -56,6 +55,57 @@ def test_parse_test_definition():
           working_dir: sample_dir
           frequency: nightly
           team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_compute: compute_gce.yaml
+    """
+    )
+    # Check that parsing returns two tests, one for each variation (aws and gce). Check
+    # that both tests are valid, and their fields are populated correctly
+    tests = parse_test_definition(test_definitions)
+    aws_test = tests[0]
+    gce_test = tests[1]
+    schema = load_schema_file()
+    assert not validate_test(aws_test, schema)
+    assert not validate_test(gce_test, schema)
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    invalid_test_definition = test_definitions[0]
+    # Intentionally make the test definition invalid by create an empty 'variations'
+    # field. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = []
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+    # Intentionally make the test definition invalid by making one 'variation' entry
+    # missing the __suffix__ entry. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = [{"__suffix__": "aws"}, {}]
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+
+
+def test_parse_test_definition_with_python_version():
+    """
+    Unit test for the ray_release.config.parse_test_definition function. In particular,
+    we check that the code correctly parse a test definition that have the 'variations' & 'python'
+    field.
+    """
+    test_definitions = yaml.safe_load(
+        """
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          python: "3.10"
           cluster:
             byod:
               type: gpu
@@ -239,7 +289,7 @@ def test_schema_validation():
 
     schema = load_schema_file()
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Remove some optional arguments
     del test["alert"]
@@ -247,38 +297,50 @@ def test_schema_validation():
     del test["run"]["wait_for_nodes"]
     del test["cluster"]["autosuspend_mins"]
 
-    assert not validate_test(test, schema)
+    assert not validate_test(Test(**test), schema)
 
     # Add some faulty arguments
 
     # Faulty frequency
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["frequency"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty job type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["type"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty file manager type
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["run"]["file_manager"] = "invalid"
 
     assert validate_test(invalid_test, schema)
 
     # Faulty smoke test
-    invalid_test = test.copy()
+
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     del invalid_test["smoke_test"]["frequency"]
 
     assert validate_test(invalid_test, schema)
 
     # Faulty Python version
-    invalid_test = test.copy()
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["python"] = "invalid"
 
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD type
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "invalid"
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD and Python version match
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "gpu"
+    invalid_test["python"] = "3.11"
     assert validate_test(invalid_test, schema)
 
 

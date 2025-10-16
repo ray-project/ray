@@ -19,6 +19,7 @@
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "ray/common/grpc_util.h"
@@ -27,6 +28,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
 #include "ray/rpc/rpc_chaos.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace rpc {
@@ -82,12 +84,11 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     ssl_opts.pem_private_key = private_key;
     ssl_opts.pem_cert_chain = server_cert_chain;
     auto ssl_creds = grpc::SslCredentials(ssl_opts);
-    channel = grpc::CreateCustomChannel(
-        address + ":" + std::to_string(port), ssl_creds, *arguments);
+    channel =
+        grpc::CreateCustomChannel(BuildAddress(address, port), ssl_creds, *arguments);
   } else {
-    channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                        grpc::InsecureChannelCredentials(),
-                                        *arguments);
+    channel = grpc::CreateCustomChannel(
+        BuildAddress(address, port), grpc::InsecureChannelCredentials(), *arguments);
   }
   return channel;
 }
@@ -97,20 +98,24 @@ class GrpcClient {
  public:
   GrpcClient(std::shared_ptr<grpc::Channel> channel,
              ClientCallManager &call_manager,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = std::move(channel);
-    stub_ = GrpcService::NewStub(channel_);
-  }
+             std::string_view server_address)
+      : client_call_manager_(call_manager),
+        channel_(std::move(channel)),
+        stub_(GrpcService::NewStub(channel_)),
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(server_address, call_manager.GetLocalAddress())) {}
 
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
-    stub_ = GrpcService::NewStub(channel_);
-  }
+             grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments())
+      : client_call_manager_(call_manager),
+        channel_(BuildChannel(address, port, std::move(channel_arguments))),
+        stub_(GrpcService::NewStub(channel_)),
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(address, call_manager.GetLocalAddress())) {}
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -133,7 +138,9 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    testing::RpcFailure failure = testing::GetRpcFailure(call_name);
+    testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
+                                      ? testing::RpcFailure::None
+                                      : testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
@@ -152,7 +159,7 @@ class GrpcClient {
           *stub_,
           prepare_async_function,
           request,
-          [callback](const Status &status, Reply &&reply) {
+          [callback](const Status &status, const Reply &) {
             callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
                      Reply());
           },
@@ -186,14 +193,13 @@ class GrpcClient {
 
  private:
   ClientCallManager &client_call_manager_;
-  /// The gRPC-generated stub.
-  std::unique_ptr<typename GrpcService::Stub> stub_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
+  /// The gRPC-generated stub.
+  std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
-  /// Whether to use TLS.
-  bool use_tls_;
+  bool skip_testing_intra_node_rpc_failure_ = false;
 };
 
 }  // namespace rpc

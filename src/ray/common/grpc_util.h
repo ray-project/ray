@@ -16,6 +16,7 @@
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
+#include <google/protobuf/timestamp.pb.h>
 #include <google/protobuf/util/message_differencer.h>
 #include <grpcpp/grpcpp.h>
 
@@ -31,6 +32,7 @@ namespace ray {
 
 /// Wrap a protobuf message.
 template <class Message>
+// TODO(#55921): Remove MessageWrapper class and clean up LeaseSpec/TaskSpec classes
 class MessageWrapper {
  public:
   /// Construct an empty message wrapper. This should not be used directly.
@@ -229,6 +231,24 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());
   return arguments;
+}
+
+// Convert an epoch time in nanoseconds to a protobuf timestamp
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
+inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) {
+  google::protobuf::Timestamp timestamp;
+
+  // Extract the seconds and the fractional nanoseconds from the epoch time
+  timestamp.set_seconds(nanos / 1000000000);
+  timestamp.set_nanos(nanos % 1000000000);
+  return timestamp;
+}
+
+// Conver a protobuf timestamp to an epoch time in nanoseconds
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
+inline int64_t ProtoTimestampToAbslTimeNanos(
+    const google::protobuf::Timestamp &timestamp) {
+  return timestamp.seconds() * 1000000000LL + timestamp.nanos();
 }
 
 }  // namespace ray

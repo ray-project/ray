@@ -12,7 +12,6 @@ from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=500000)
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 # Use `parser` to add your own custom command line options to this script
@@ -25,7 +24,9 @@ config = (
     PPOConfig()
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(
+            multi_agent=True
+        ),
     )
     .training(
         train_batch_size_per_learner=1024,

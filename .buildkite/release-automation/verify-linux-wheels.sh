@@ -14,8 +14,8 @@ fi
 
 export PYTHON_VERSION
 
-export PATH="/usr/local/bin/miniconda3/bin:${PATH}"
-source "/usr/local/bin/miniconda3/etc/profile.d/conda.sh"
+export PATH="/usr/local/bin/miniforge3/bin:${PATH}"
+source "/usr/local/bin/miniforge3/etc/profile.d/conda.sh"
 
 conda create -n rayio python="${PYTHON_VERSION}" -y
 

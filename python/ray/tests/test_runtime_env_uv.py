@@ -3,13 +3,14 @@
 # 2. Options for `uv install`.
 
 import os
-import pytest
 import sys
 import tempfile
 from pathlib import Path
 
-from ray._private.runtime_env import virtualenv_utils
+import pytest
+
 import ray
+from ray._private.runtime_env import virtualenv_utils
 
 
 @pytest.fixture(scope="function")
@@ -186,7 +187,4 @@ def test_package_install_with_multiple_options(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

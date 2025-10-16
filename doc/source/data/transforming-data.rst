@@ -14,9 +14,10 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
-* :ref:`Ordering of rows <ordering_of_rows>`
-* :ref:`Stateful transforms <stateful_transforms>`
-* :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Order rows <ordering_of_rows>`
+* :ref:`Perform stateful transformations <stateful_transforms>`
+* :ref:`Perform Aggregations <aggregations>`
+* :ref:`Transform groups <transforming_groupby>`
 
 .. _transforming_rows:
 
@@ -258,9 +259,11 @@ To transform data with a Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
-   :meth:`~ray.data.Dataset.flat_map`. Pass the number of concurrent workers to use with the ``concurrency`` argument. Each worker transforms a partition of data in parallel.
-   Fixing the number of concurrent workers gives the most predictable performance, but you can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
-   scale the number of concurrent workers.
+   :meth:`~ray.data.Dataset.flat_map`. Pass a compute strategy with the ``compute``
+   argument to control how many workers Ray uses. Each worker transforms a partition
+   of data in parallel. Use ``ray.data.TaskPoolStrategy(size=n)`` to cap the number of
+   concurrent tasks, or ``ray.data.ActorPoolStrategy(...)`` to run callable classes on
+   a fixed or autoscaling actor pool.
 
 .. tab-set::
 
@@ -287,7 +290,10 @@ To transform data with a Python class, complete these steps:
 
             ds = (
                 ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, concurrency=2)
+                .map_batches(
+                    TorchPredictor,
+                    compute=ray.data.ActorPoolStrategy(size=2),
+                )
             )
 
         .. testcode::
@@ -321,7 +327,7 @@ To transform data with a Python class, complete these steps:
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
-                    concurrency=2,
+                    compute=ray.data.ActorPoolStrategy(size=2),
                     # Batch size is required if you're using GPUs.
                     batch_size=4,
                     num_gpus=1
@@ -355,13 +361,14 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
     # Tell Ray that the function uses 1 GiB of memory
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
+
 .. _transforming_groupby:
 
-Groupby and transforming groups
-===============================
+Group-by and transforming groups
+================================
 
-To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then, call
-:meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
+To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows based on provided ``key`` column values.
+Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 .. tab-set::
 

@@ -334,6 +334,11 @@ class _LearnerThread(threading.Thread):
                 # grabbing older batches (right area of deque).
                 ma_batch_on_gpu = self._in_queue.popleft()
 
+        # Add this check here in case thread has been stopped while we were waiting for
+        # a batch from the queue/buffer.
+        if self.stopped:
+            return
+
         # Call the update method on the batch.
         with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
             # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure

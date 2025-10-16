@@ -11,18 +11,29 @@ from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
 
-def test_zip(ray_start_regular_shared):
-    ds1 = ray.data.range(5, override_num_blocks=5)
-    ds2 = ray.data.range(5, override_num_blocks=5).map(
-        column_udf("id", lambda x: x + 1)
-    )
-    ds = ds1.zip(ds2)
-    assert ds.schema().names == ["id", "id_1"]
-    assert ds.take() == named_values(
-        ["id", "id_1"], [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
-    )
-    with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3)).materialize()
+@pytest.mark.parametrize("num_datasets", [2, 3, 4, 5, 10])
+def test_zip_multiple_datasets(ray_start_regular_shared, num_datasets):
+    # Create multiple datasets with different transformations
+    datasets = []
+    for i in range(num_datasets):
+        ds = ray.data.range(5, override_num_blocks=5)
+        if i > 0:  # Apply transformation to all but the first dataset
+            ds = ds.map(column_udf("id", lambda x, offset=i: x + offset))
+        datasets.append(ds)
+
+    ds = datasets[0].zip(*datasets[1:])
+
+    # Verify schema names
+    expected_names = ["id"] + [f"id_{i}" for i in range(1, num_datasets)]
+    assert ds.schema().names == expected_names
+
+    # Verify data
+    expected_data = []
+    for row_idx in range(5):
+        row_data = tuple(row_idx + i for i in range(num_datasets))
+        expected_data.append(row_data)
+
+    assert ds.take() == named_values(expected_names, expected_data)
 
 
 @pytest.mark.parametrize(

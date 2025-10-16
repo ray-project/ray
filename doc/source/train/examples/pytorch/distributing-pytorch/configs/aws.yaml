@@ -1,0 +1,12 @@
+# Head node
+head_node_type:
+  name: head
+  instance_type: g4dn.12xlarge
+
+# Worker nodes
+worker_node_types:
+  - name: gpu-worker
+    instance_type: g4dn.12xlarge  # 4x T4 GPUs
+    min_workers: 2
+    max_workers: 2
+    use_spot: false

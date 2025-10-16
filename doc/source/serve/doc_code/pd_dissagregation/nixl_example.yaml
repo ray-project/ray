@@ -1,0 +1,33 @@
+# Example: Basic NIXLConnector configuration for prefill/decode disaggregation
+
+applications:
+  - args:
+      prefill_config:
+        model_loading_config:
+          model_id: meta-llama/Llama-3.1-8B-Instruct
+        engine_kwargs:
+          kv_transfer_config:
+            kv_connector: NixlConnector
+            kv_role: kv_producer
+            engine_id: engine1
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 2
+            max_replicas: 4
+      
+      decode_config:
+        model_loading_config:
+          model_id: meta-llama/Llama-3.1-8B-Instruct
+        engine_kwargs:
+          kv_transfer_config:
+            kv_connector: NixlConnector
+            kv_role: kv_consumer
+            engine_id: engine2
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 6
+            max_replicas: 10
+
+    import_path: ray.serve.llm:build_pd_openai_app
+    name: pd-disaggregation-nixl
+    route_prefix: "/"

@@ -1,29 +1,27 @@
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
-import re
-import json
-
-from subprocess import Popen, PIPE, STDOUT, list2cmdline
+from subprocess import PIPE, STDOUT, Popen, list2cmdline
 from typing import List
-from pathlib import Path
+
 import pytest
 
-import ray.cloudpickle as pickle
-
 import ray
+import ray.cloudpickle as pickle
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
+    format_web_url,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
-    format_web_url,
     wait_for_pid_to_exit,
 )
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 
 
 def execute_driver(commands: List[str], input: bytes = None):
@@ -84,7 +82,7 @@ sys.path.insert(0, current_dir)
 
 import lib
 
-ray.init(address="{}")
+ray.init(address="{}", include_dashboard=True)
 assert ray.get(lib.task.remote()) == {}
 """
 
@@ -130,7 +128,7 @@ def test_job_observability(ray_start_regular):
 import ray
 from time import sleep
 
-ray.init(address="{}")
+ray.init(address="{}", include_dashboard=True)
 open("{}", "w+").close()
 
 print("My job id: ", str(ray.get_runtime_context().get_job_id()))
@@ -210,7 +208,7 @@ def test_config_metadata(shutdown_only):
     job_config = JobConfig(metadata={"abc": "xyz"})
     job_config.set_metadata("xyz", "abc")
 
-    ray.init(job_config=job_config)
+    ray.init(job_config=job_config, include_dashboard=True)
 
     from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
@@ -226,7 +224,7 @@ def test_logging_config_serialization():
     assert pb.serialized_py_logging_config == serialized_py_logging_config
 
 
-def test_get_entrypoint():
+def test_get_entrypoint(tmp_path):
     get_entrypoint = """
 from ray._private.utils import get_entrypoint_name
 print("result:", get_entrypoint_name())
@@ -242,16 +240,16 @@ print("result:", get_entrypoint_name())
         return False
 
     # Test a regular script.
-    with tempfile.NamedTemporaryFile() as fp:
-        fp.write(get_entrypoint.encode())
-        fp.seek(0)
-        path = Path(fp.name)
-        outputs = execute_driver(["python", str(path), "--flag"])
-        assert line_exists(outputs, f"result: python {path} --flag")
+    fp = tmp_path / "test.py"
+    fp.write_text(get_entrypoint)
+    outputs = execute_driver([sys.executable, str(fp), "--flag"])
+    assert line_exists(outputs, f"result: {sys.executable} {fp} --flag")
 
     # Test python shell
-    outputs = execute_driver(["python", "-i"], input=get_entrypoint)
-    assert line_exists(outputs, r".*result: \(interactive_shell\) python -i.*")
+    outputs = execute_driver([sys.executable, "-i"], input=get_entrypoint)
+    assert line_exists(
+        outputs, rf".*result: \(interactive_shell\) {re.escape(sys.executable)} -i.*"
+    )
 
     # Test IPython shell
     outputs = execute_driver(["ipython"], input=get_entrypoint)
@@ -259,7 +257,7 @@ print("result:", get_entrypoint_name())
 
 
 def test_removed_internal_flags(shutdown_only):
-    ray.init()
+    ray.init(include_dashboard=True)
     address = ray._private.worker._global_node.webui_url
     address = format_web_url(address)
     client = JobSubmissionClient(address)
@@ -282,11 +280,11 @@ def test_removed_internal_flags(shutdown_only):
     assert "RAY_JOB_ID is not set" in all_logs
 
 
-def test_entrypoint_field(shutdown_only):
+def test_entrypoint_field(shutdown_only, tmp_path):
     """Make sure the entrypoint field is correctly set for jobs."""
     driver = """
 import ray
-ray.init("auto")
+ray.init("auto", include_dashboard=True)
 
 @ray.remote
 def f():
@@ -294,68 +292,66 @@ def f():
 
 ray.get(f.remote())
 """
-    ray.init()
+    ray.init(include_dashboard=True)
     address = ray._private.worker._global_node.webui_url
     address = format_web_url(address)
     client = JobSubmissionClient(address)
 
     # Test a regular script.
-    with tempfile.NamedTemporaryFile() as fp:
-        fp.write(driver.encode())
-        fp.seek(0)
-        path = Path(fp.name)
+    fp = tmp_path / "driver.py"
+    fp.write_text(driver)
 
-        """
-        Test driver.
-        """
-        commands = ["python", str(path), "--flag"]
-        print(execute_driver(commands))
+    """
+    Test driver.
+    """
+    commands = [sys.executable, str(fp), "--flag"]
+    print(execute_driver(commands))
 
+    jobs = ray.state.jobs()
+    assert len(jobs) == 2
+    jobs = list(jobs)
+    jobs.sort(key=lambda j: j["JobID"])
+
+    # The first job is the test job.
+
+    driver_job = jobs[1]
+    assert driver_job["Entrypoint"] == list2cmdline(commands)
+
+    # Make sure the Dashboard endpoint works
+    r = client._do_request(
+        "GET",
+        "/api/jobs/",
+    )
+
+    assert r.status_code == 200, r.text
+    jobs_info_json = json.loads(r.text)
+    jobs_info_json.sort(key=lambda j: j["job_id"])
+    info_json = jobs_info_json[1]
+    info = JobDetails(**info_json)
+    assert info.entrypoint == list2cmdline(commands)
+
+    """
+    Test job submission
+    """
+    client.submit_job(entrypoint=list2cmdline(commands))
+
+    def verify():
         jobs = ray.state.jobs()
-        assert len(jobs) == 2
+        # Test, first job, agent, submission job
+        assert len(jobs) == 4
         jobs = list(jobs)
         jobs.sort(key=lambda j: j["JobID"])
 
         # The first job is the test job.
 
-        driver_job = jobs[1]
-        assert driver_job["Entrypoint"] == list2cmdline(commands)
+        submission_job = jobs[3]
+        assert submission_job["Entrypoint"] == list2cmdline(commands)
+        return True
 
-        # Make sure the Dashboard endpoint works
-        r = client._do_request(
-            "GET",
-            "/api/jobs/",
-        )
+    wait_for_condition(verify)
 
-        assert r.status_code == 200, r.text
-        jobs_info_json = json.loads(r.text)
-        jobs_info_json.sort(key=lambda j: j["job_id"])
-        info_json = jobs_info_json[1]
-        info = JobDetails(**info_json)
-        assert info.entrypoint == list2cmdline(commands)
-
-        """
-        Test job submission
-        """
-        client.submit_job(entrypoint=list2cmdline(commands))
-
-        def verify():
-            jobs = ray.state.jobs()
-            # Test, first job, agent, submission job
-            assert len(jobs) == 4
-            jobs = list(jobs)
-            jobs.sort(key=lambda j: j["JobID"])
-
-            # The first job is the test job.
-
-            submission_job = jobs[3]
-            assert submission_job["Entrypoint"] == list2cmdline(commands)
-            return True
-
-        wait_for_condition(verify)
-
-        # Test client
-        # TODO(sang): Client entrypoint not supported yet.
+    # Test client
+    # TODO(sang): Client entrypoint not supported yet.
 
 
 def test_task_spec_root_detached_actor_id(shutdown_only):
@@ -363,7 +359,7 @@ def test_task_spec_root_detached_actor_id(shutdown_only):
     for task spec of submitted task or actor.
     """
 
-    ray.init()
+    ray.init(include_dashboard=True)
 
     @ray.remote
     def get_task_root_detached_actor_id():
@@ -411,7 +407,7 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8)
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, include_dashboard=True)
 
     @ray.remote(num_cpus=0)
     class PidActor:
@@ -456,7 +452,4 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

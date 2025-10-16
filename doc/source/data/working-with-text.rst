@@ -23,7 +23,7 @@ files and manually decode data.
     .. tab-item:: Text lines
 
         To read lines of text, call :func:`~ray.data.read_text`. Ray Data creates a
-        row for each line of text.
+        row for each line of text. In the schema, the column name defaults to "text". 
 
         .. testcode::
 
@@ -156,7 +156,7 @@ that sets up and invokes a model. Then, call
 
     ds = (
         ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-        .map_batches(TextClassifier, concurrency=2)
+        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2))
     )
 
     ds.show(3)

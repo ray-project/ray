@@ -1,14 +1,15 @@
 import contextlib
-import gymnasium as gym
 import re
 from typing import Dict, List, Union
 
-from ray.util import log_once
+import gymnasium as gym
+
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 

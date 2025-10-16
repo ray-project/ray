@@ -1,21 +1,24 @@
 import copy
+import platform
+import sys
 from pathlib import Path
-import requests
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type
 from unittest import mock
 
-import platform
 import pytest
+import requests
 import yaml
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
-    _derive_autoscaling_config_from_ray_cr,
+    GKE_TPU_ACCELERATOR_LABEL,
+    GKE_TPU_TOPOLOGY_LABEL,
     AutoscalingConfigProducer,
-    _round_up_k8s_quantity,
-    _get_num_tpus,
+    _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
+    _get_num_tpus,
+    _get_ray_resources_from_group_spec,
+    _round_up_k8s_quantity,
 )
-
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -71,6 +74,7 @@ def _get_basic_autoscaling_config() -> dict:
         },
         "available_node_types": {
             "headgroup": {
+                "labels": {},
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -82,6 +86,7 @@ def _get_basic_autoscaling_config() -> dict:
                 },
             },
             "small-group": {
+                "labels": {},
                 "max_workers": 300,
                 "min_workers": 0,
                 "node_config": {},
@@ -95,6 +100,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a GPU resource entry added
             # and modified max_workers.
             "gpu-group": {
+                "labels": {},
                 "max_workers": 200,
                 "min_workers": 0,
                 "node_config": {},
@@ -109,6 +115,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
+                "labels": {},
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -235,11 +242,71 @@ def _get_ray_cr_with_only_requests() -> dict:
     return cr
 
 
+def _get_ray_cr_with_labels() -> dict:
+    """CR with labels in rayStartParams of head and worker groups."""
+    cr = get_basic_ray_cr()
+
+    # Pass invalid labels to the head group to test error handling.
+    cr["spec"]["headGroupSpec"]["rayStartParams"]["labels"] = "!!ray.io/node-group=,"
+    # Pass valid labels to each of the worker groups.
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"][
+        "labels"
+    ] = "ray.io/availability-region=us-central2, ray.io/market-type=spot"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=A100"
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=TPU-V4"
+    return cr
+
+
+def _get_autoscaling_config_with_labels() -> dict:
+    """Autoscaling config with parsed labels for each group."""
+    config = _get_basic_autoscaling_config()
+
+    # Since we passed invalid labels to the head group `rayStartParams`,
+    # we expect an empty dictionary in the autoscaling config.
+    config["available_node_types"]["headgroup"]["labels"] = {}
+    config["available_node_types"]["small-group"]["labels"] = {
+        "ray.io/availability-region": "us-central2",
+        "ray.io/market-type": "spot",
+    }
+    config["available_node_types"]["gpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "A100"
+    }
+    config["available_node_types"]["tpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "TPU-V4"
+    }
+    return config
+
+
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
     config["idle_timeout_minutes"] = 5.0
     return config
+
+
+def _get_tpu_group_with_no_node_selectors() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"].pop("nodeSelector", None)
+    return tpu_group
+
+
+def _get_tpu_group_without_accelerator_node_selector() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"].pop(GKE_TPU_ACCELERATOR_LABEL, None)
+    return tpu_group
+
+
+def _get_tpu_group_without_topology_node_selector() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"].pop(GKE_TPU_TOPOLOGY_LABEL, None)
+    return tpu_group
 
 
 @pytest.mark.parametrize(
@@ -335,6 +402,14 @@ TEST_DATA = (
             None,
             id="tpu-k8s-resource-limit-and-custom-resource",
         ),
+        pytest.param(
+            _get_ray_cr_with_labels(),
+            _get_autoscaling_config_with_labels(),
+            None,
+            None,
+            None,
+            id="groups-with-labels",
+        ),
     ]
 )
 
@@ -344,7 +419,7 @@ TEST_DATA = (
 def test_autoscaling_config(
     ray_cr_in: Dict[str, Any],
     expected_config_out: Optional[Dict[str, Any]],
-    expected_error: Optional[Exception],
+    expected_error: Optional[Type[Exception]],
     expected_error_message: Optional[str],
     expected_log_warning: Optional[str],
 ):
@@ -552,7 +627,113 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
             assert num_tpus is None
 
 
-if __name__ == "__main__":
-    import sys
+RAY_RESOURCES_PARAM_ARGS = ",".join(
+    [
+        "group_spec",
+        "is_head",
+        "expected_resources",
+    ]
+)
+RAY_RESOURCES_TEST_DATA = (
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            get_basic_ray_cr()["spec"]["headGroupSpec"],
+            True,
+            {
+                "CPU": 1,
+                "memory": 1000000000,
+                "Custom1": 1,
+                "Custom2": 5,
+            },
+            id="head-group",
+        ),
+        pytest.param(
+            get_basic_ray_cr()["spec"]["workerGroupSpecs"][0],
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+            },
+            id="cpu-group",
+        ),
+        pytest.param(
+            get_basic_ray_cr()["spec"]["workerGroupSpecs"][1],
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "GPU": 3,
+            },
+            id="gpu-group",
+        ),
+        pytest.param(
+            get_basic_ray_cr()["spec"]["workerGroupSpecs"][2],
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+                "TPU-v4-16-head": 1,
+            },
+            id="tpu-group",
+        ),
+        pytest.param(
+            _get_tpu_group_with_no_node_selectors(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+            },
+            id="tpu-group-no-node-selectors",
+        ),
+        pytest.param(
+            _get_tpu_group_without_accelerator_node_selector(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+            },
+            id="tpu-group-no-accelerator-node-selector",
+        ),
+        pytest.param(
+            _get_tpu_group_without_topology_node_selector(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+            },
+            id="tpu-group-no-topology-node-selector",
+        ),
+    ]
+)
 
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(RAY_RESOURCES_PARAM_ARGS, RAY_RESOURCES_TEST_DATA)
+def test_get_ray_resources_from_group_spec(
+    group_spec: Dict[str, Any],
+    is_head: bool,
+    expected_resources: Dict[str, Any],
+):
+    assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

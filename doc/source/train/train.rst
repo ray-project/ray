@@ -10,6 +10,7 @@ Ray Train: Scalable Model Training
     PyTorch Guide <getting-started-pytorch>
     PyTorch Lightning Guide <getting-started-pytorch-lightning>
     Hugging Face Transformers Guide <getting-started-transformers>
+    XGBoost Guide <getting-started-xgboost>
     more-frameworks
     User Guides <user-guides>
     Examples <examples>

@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -16,14 +16,13 @@ from torch.utils.data import (
 )
 
 import ray.train.torch
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.train.torch.train_loop_utils import _WrappedDataLoader
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.torch.train_loop_utils import (
+    _WrappedDataLoader,
+    get_devices as get_devices_distributed,
+)
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.util.annotations import Deprecated, PublicAPI
-
-if Version(torch.__version__) < Version("1.11.0"):
-    FullyShardedDataParallel = None
-else:
-    from torch.distributed.fsdp import FullyShardedDataParallel
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +36,22 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/49454"
 )
+
+
+def get_device() -> torch.device:
+    return get_devices()[0]
+
+
+def get_devices() -> List[torch.device]:
+    if get_train_fn_utils().is_distributed():
+        return get_devices_distributed()
+    else:
+        # Local mode, we defer to torch.cuda
+        # TODO(xgui): Use `ScalingConfig.use_gpu` instead
+        if torch.cuda.is_available():
+            return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+        else:
+            return [torch.device("cpu")]
 
 
 def prepare_model(
@@ -64,7 +79,7 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-    if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
+    if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
             "FullyShardedDataParallel requires torch>=1.11.0. "
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
@@ -112,6 +127,8 @@ def prepare_model(
                     "`use_gpu=True` in your Trainer to train with "
                     "GPUs."
                 )
+            from torch.distributed.fsdp import FullyShardedDataParallel
+
             DataParallel = FullyShardedDataParallel
         if rank == 0:
             logger.info(f"Wrapping provided model in {DataParallel.__name__}.")

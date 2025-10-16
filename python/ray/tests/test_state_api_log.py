@@ -1,50 +1,47 @@
+import asyncio
 import json
 import os
 import sys
-import asyncio
-from typing import List
 import urllib
-from unittest.mock import MagicMock, AsyncMock
+from pathlib import Path
+from typing import List
+from unittest.mock import AsyncMock, MagicMock
 
+import grpc
 import pytest
-from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state import list_jobs
 import requests
 from click.testing import CliRunner
-import grpc
-
-from pathlib import Path
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
-
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
-from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
-from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     TaskEvents,
-    TaskStateUpdate,
     TaskLogInfo,
+    TaskStateUpdate,
 )
+from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.dashboard.modules.log.log_agent import (
-    find_offset_of_content_in_file,
+    LogAgentV1Grpc,
+    _stream_log_in_chunk,
     find_end_offset_file,
     find_end_offset_next_n_lines_from_offset,
+    find_offset_of_content_in_file,
     find_start_offset_last_n_lines_from_offset,
-    LogAgentV1Grpc,
 )
-from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.util.state import get_log, list_logs, list_nodes, list_workers
+from ray.util.state import get_log, list_jobs, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import RayStateApiException
+from ray.util.state.state_cli import logs_state_cli_group
 from ray.util.state.state_manager import StateDataSourceClient
 
 
@@ -91,7 +88,7 @@ async def generate_actor_data(id, node_id, worker_id):
         pid=1234,
         class_name="class",
         address=Address(
-            raylet_id=node_id.binary(),
+            node_id=node_id.binary(),
             ip_address="127.0.0.1",
             port=1234,
             worker_id=worker_id,
@@ -838,11 +835,9 @@ def test_logs_list(ray_start_with_dashboard):
         assert result["result"]
         logs = result["data"]["result"]
         assert "gcs_server" in logs
-        assert "internal" in logs
-        assert len(logs) == 2
+        assert len(logs) == 1
         assert "gcs_server.out" in logs["gcs_server"]
         assert "gcs_server.err" in logs["gcs_server"]
-        assert "debug_state_gcs.txt" in logs["internal"]
         return True
 
     wait_for_condition(verify_filter)
@@ -967,6 +962,41 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # NOTE: Prefix 1 indicates the stream has succeeded.
     for line in streamed_string.split("\n")[-(LINES + 1) :]:
         assert line in file_response
+
+
+def test_log_download_filename(ray_start_with_dashboard):
+    """Test that the download filename can be specified when downloading a log."""
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    download_filename = "dummy.out"
+
+    def verify():
+        stream_response = requests.get(
+            webui_url
+            + (
+                f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
+                f"&lines=5&download_filename={download_filename}"
+            ),
+            stream=True,
+        )
+        if stream_response.status_code != 200:
+            raise ValueError(stream_response.content.decode("utf-8"))
+
+        assert (
+            stream_response.headers["Content-Disposition"]
+            == f'attachment; filename="{download_filename}"'
+        )
+        return True
+
+    # Node ID may not be found immediately, so may need to retry the check a few times.
+    wait_for_condition(verify)
 
 
 def test_log_list(ray_start_cluster):
@@ -1560,9 +1590,4 @@ def test_log_cli(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

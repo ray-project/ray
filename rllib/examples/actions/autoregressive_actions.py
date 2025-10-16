@@ -17,7 +17,7 @@ its actions.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env-runners 2`
+`python [script file name].py --num-env-runners 2`
 
 Control the number of `EnvRunner`s with the `--num-env-runners` flag. This
 will increase the sampling speed.
@@ -78,7 +78,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=2000000,
     default_reward=-0.45,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

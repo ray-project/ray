@@ -1,0 +1,196 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// raylet protocol specification
+
+// TODO(swang): We put the flatbuffer types in a separate namespace for now to
+// avoid conflicts with legacy Ray types.
+namespace ray.protocol;
+
+enum MessageType:int {
+  // Notify the raylet that a task has finished. This is sent from a
+  // worker to a raylet.
+  ActorCreationTaskDone,
+  // Send an initial connection message to the raylet. This is sent
+  // from a worker or driver to a raylet.
+  RegisterClientRequest,
+  // Send a reply confirming the successful registration of a worker or driver.
+  // This is sent from the raylet to a worker or driver.
+  RegisterClientReply,
+  // Send the worker's gRPC port to the raylet.
+  AnnounceWorkerPort,
+  // Ack that the raylet has finished handling AnnounceWorkerPort.
+  AnnounceWorkerPortReply,
+  // Notify the raylet that this client is disconnecting.
+  // This is sent from a worker to a raylet.
+  DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
+  DisconnectClientReply,
+  // Request the Raylet to pull a set of objects to the local node.
+  // a raylet.
+  AsyncGetObjectsRequest,
+  // Cancel outstanding get requests from the worker.
+  CancelGetRequest,
+  // Notify the current worker is blocked for objects to become available. The raylet
+  // will release the worker's resources.
+  NotifyWorkerBlocked,
+  // Notify the current worker is unblocked. The raylet will cancel any inflight
+  // pull requests for objects.
+  NotifyWorkerUnblocked,
+  // Wait for objects to be ready either from local or remote Plasma stores.
+  WaitRequest,
+  // The response message to WaitRequest; replies with the objects found and objects
+  // remaining.
+  WaitReply,
+  // Wait for objects asynchronously. The reply will be sent back via gRPC push.
+  WaitForActorCallArgsRequest,
+  // Push an error to the relevant driver. This is sent from a worker to the
+  // node manager.
+  PushErrorRequest,
+  // Free the objects in objects store.
+  FreeObjectsInObjectStoreRequest,
+  // Subscribe to Plasma updates.
+  SubscribePlasmaReady,
+}
+
+// This message is sent from a worker to the node manager.
+table DisconnectClientRequest {
+  // Populated with a WorkerExitType enum.
+  disconnect_type: int;
+  disconnect_detail: string;
+  // Creation task exception serialized by protobuf.
+  // Contains a RayException defined in common.pb
+  creation_task_exception_pb: [ubyte];
+}
+
+table DisconnectClientReply {}
+
+// This struct is used to register a new worker with the raylet.
+// It is shipped as part of raylet_connect.
+table RegisterClientRequest {
+  // Type of the worker.
+  // TODO(suquark): Use `WorkerType` in `common.proto`.
+  worker_type: int;
+  worker_id: string;
+  worker_pid: long;
+  // The startup token of the process assigned to
+  // it during startup as a command line argument.
+  startup_token: long;
+  // The job ID if the client is a driver, otherwise it should be NIL.
+  job_id: string;
+  // The hash of the runtime env for this worker.
+  runtime_env_hash: int;
+  // Language of this worker.
+  // TODO(hchen): Use `Language` in `common.proto`.
+  language: int;
+  ip_address: string;
+  port: int;
+  // The config bytes of this job serialized with protobuf.
+  serialized_job_config: string;
+}
+
+table RegisterClientReply {
+  success: bool;
+  failure_reason: string;
+  node_id: string;
+  port: int;
+}
+
+table AnnounceWorkerPort {
+  port: int;
+  // The entrypoint of the job. Only populated if the worker is a driver.
+  entrypoint: string;
+}
+
+table AnnounceWorkerPortReply {
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
+}
+
+// Mimics the Address protobuf.
+table Address {
+  node_id: string;
+  ip_address: string;
+  port: int;
+  // Optional unique id for the worker.
+  worker_id: string;
+}
+
+table AsyncGetObjectsRequest {
+  // Object IDs that we want the Raylet to pull locally.
+  object_ids: [string];
+  owner_addresses: [Address];
+}
+
+table CancelGetRequest {
+}
+
+table NotifyWorkerBlocked {
+}
+
+table NotifyWorkerUnblocked {
+}
+
+table WaitRequest {
+  object_ids: [string];
+  owner_addresses: [Address];
+  // Minimum number of objects to wait for before returning.
+  // At most this many objects will be returned even if more are ready.
+  num_required_objects: int;
+  timeout: long;
+}
+
+table WaitReply {
+  // List of object ids found.
+  found: [string];
+  // List of object ids not found.
+  remaining: [string];
+}
+
+table WaitForActorCallArgsRequest {
+  object_ids: [string];
+  owner_addresses: [Address];
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  tag: int;
+}
+
+// This struct is the same as ErrorTableData.
+table PushErrorRequest {
+  // The ID of the job that the error is for.
+  job_id: string;
+  // The type of the error.
+  type: string;
+  // The error message.
+  error_message: string;
+  // The timestamp of the error message.
+  timestamp: double;
+}
+
+table FreeObjectsRequest {
+  // Whether keep this request with local object store
+  // or send it to all the object stores.
+  local_only: bool;
+  // List of object ids we'll delete from object store.
+  object_ids: [string];
+}
+
+table SubscribePlasmaReady {
+  // ObjectID to wait for
+  object_id: string;
+  owner_address: Address;
+}

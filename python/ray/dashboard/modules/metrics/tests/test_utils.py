@@ -1,11 +1,11 @@
-import sys
 import json
+import sys
 
 import pytest
 
 from ray.dashboard.modules.metrics.metrics_head import (
-    parse_prom_headers,
     DEFAULT_PROMETHEUS_HEADERS,
+    parse_prom_headers,
 )
 
 

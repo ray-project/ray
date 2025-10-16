@@ -8,8 +8,8 @@ set -euxo pipefail
 SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
-# importing install_miniconda function
-source "${SCRIPT_DIR}/install-miniconda.sh"
+# importing install_miniforge function
+source "${SCRIPT_DIR}/install-miniforge.sh"
 
 pkg_install_helper() {
   case "${OSTYPE}" in
@@ -154,13 +154,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -198,7 +198,6 @@ download_mnist() {
 }
 
 retry_pip_install() {
-  local pip_command=$1
   local status="0"
   local errmsg=""
 
@@ -206,7 +205,7 @@ retry_pip_install() {
   # that break the entire CI job: Simply retry installation in this case
   # after n seconds.
   for _ in {1..3}; do
-    errmsg=$(eval "${pip_command}" 2>&1) && break
+    errmsg="$("$@" 2>&1)" && break
     status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
   done
   if [[ "$status" != "0" ]]; then
@@ -277,24 +276,6 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
   fi
 
-  # Additional dependency for Ludwig.
-  # This cannot be included in requirements files as it has conflicting
-  # dependencies with Modin.
-  if [[ "${INSTALL_LUDWIG-}" == 1 ]]; then
-    # TODO: eventually pin this to master.
-    requirements_packages+=("ludwig[test]>=0.4")
-    requirements_packages+=("jsonschema>=4")
-  fi
-
-  # Additional dependency for time series libraries.
-  # This cannot be included in tune-requirements.txt as it has conflicting
-  # dependencies.
-  if [[ "${INSTALL_TIMESERIES_LIBS-}" == 1 ]]; then
-    requirements_packages+=("statsforecast==1.5.0")
-    requirements_packages+=("prophet==1.1.1")
-    requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
-  fi
-
   # Data processing test dependencies.
   if [[ "${DATA_PROCESSING_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt")
@@ -317,7 +298,8 @@ install_pip_packages() {
     fi
   fi
 
-  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+  # TODO(ray-ci): pin the dependencies.
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -415,7 +397,7 @@ install_thirdparty_packages() {
   fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -428,7 +410,7 @@ install_dependencies() {
   fi
 
   if [[ -n "${PYTHON-}" || "${LINT-}" == 1 || "${MINIMAL_INSTALL-}" == "1" ]]; then
-    install_miniconda
+    install_miniforge
   fi
 
   install_upgrade_pip
@@ -453,7 +435,11 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies
+if [[ $# -eq 0 ]]; then
+  install_dependencies
+else
+  "$@"
+fi
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

@@ -1,8 +1,9 @@
 import os
-import pytest
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 import ray
 
@@ -49,7 +50,4 @@ def test_py_executable_with_working_dir(shutdown_only, tmp_working_dir):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

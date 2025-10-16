@@ -65,7 +65,8 @@ def train_driver_fn(config: dict):
 
 
 # Launch a single Train run.
-train_driver_fn({"num_workers": 4, "train_loop_config": {"lr": 1e-3}})
+# Note that you can only create a TuneReportCallback in a Ray Tune session.
+# train_driver_fn({"num_workers": 4, "train_loop_config": {"lr": 1e-3}})
 
 
 # Launch a sweep of hyperparameters with Ray Tune.

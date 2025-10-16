@@ -82,7 +82,7 @@ class HyperOptSearch(Searcher):
             for future parameters. Needs to be a list of dicts containing the
             configurations.
         n_initial_points: number of random evaluations of the
-            objective function before starting to aproximate it with
+            objective function before starting to approximate it with
             tree parzen estimators. Defaults to 20.
         random_state_seed: seed for reproducible
             results. Defaults to None.

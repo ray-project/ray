@@ -12,7 +12,6 @@ import ray
 from ray import tune
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
 from ray.data.block import BlockMetadata
-from ray.tune import CheckpointConfig, RunConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -20,7 +19,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, CLIReporter
+from ray.tune import Callback, CheckpointConfig, CLIReporter, RunConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -76,7 +75,6 @@ class TestDatasource(Datasource):
         meta = BlockMetadata(
             num_rows=None,
             size_bytes=None,
-            schema=None,
             input_files=None,
             exec_stats=None,
         )
@@ -379,6 +377,7 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
+# TODO: [V2] Delete the `trainer` variant once V1 is fully removed.
 def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:

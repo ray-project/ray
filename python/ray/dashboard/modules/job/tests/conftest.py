@@ -1,7 +1,7 @@
 import os
 
 import ray
-from ray._private.gcs_utils import GcsAioClient
+from ray._raylet import GcsClient
 from ray.dashboard.modules.job.job_manager import JobManager
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -20,8 +20,8 @@ def create_ray_cluster(_tracing_startup_hook=None):
 
 def create_job_manager(ray_cluster, tmp_path):
     address_info = ray_cluster
-    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
-    return JobManager(gcs_aio_client, tmp_path)
+    gcs_client = GcsClient(address=address_info["gcs_address"])
+    return JobManager(gcs_client, tmp_path)
 
 
 def _driver_script_path(file_name: str) -> str:

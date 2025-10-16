@@ -18,11 +18,15 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git
+apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-transport-https lsb-release
 
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# Download and install Microsoft signing key
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
@@ -32,12 +36,24 @@ echo \
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
+AZ_VER=2.72.0
+AZ_DIST="$(lsb_release -cs)"
+
+# Add Azure CLI repository
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: ${AZ_DIST}
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+
 # Install packages
 
 apt-get update
 apt-get install -y \
   awscli docker-ce-cli nodejs build-essential python-is-python3 \
-  python3-pip openjdk-8-jre wget jq
+  python3-pip openjdk-8-jre wget jq \
+  azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
@@ -45,8 +61,9 @@ python -m pip install pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
-addgroup --gid 1001 docker0  # Used on old buildkite AMIs.
-addgroup --gid 993 docker
+addgroup --gid 1001 docker0  # Used on old buildkite AMIs before 2023
+addgroup --gid 993 docker1
+addgroup --gid 992 docker    # buildkite AMI as of 2025-06-07
 
 # Install bazelisk
 npm install -g @bazel/bazelisk
@@ -55,6 +72,7 @@ ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
+usermod -a -G docker1 forge
 usermod -a -G docker forge
 
 if [[ "$(uname -i)" == "x86_64" ]]; then
@@ -79,3 +97,6 @@ set -euo pipefail
 EOF
 
 CMD ["echo", "ray forge"]
+
+
+# last update: 2025-10-08

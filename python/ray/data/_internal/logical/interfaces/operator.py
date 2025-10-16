@@ -1,4 +1,5 @@
-from typing import Iterator, List, Callable
+import copy
+from typing import Callable, Iterator, List
 
 
 class Operator:
@@ -76,12 +77,17 @@ class Operator:
                 new_ops.append(transformed_input_op)
 
         if new_ops:
+            # Make a shallow copy to avoid modifying operators in-place
+            target = copy.copy(self)
+
             # NOTE: Only newly created ops need to have output deps
             #       wired in
-            self._wire_output_deps(new_ops)
-            self._input_dependencies = transformed_input_ops
+            target._wire_output_deps(new_ops)
+            target._input_dependencies = transformed_input_ops
+        else:
+            target = self
 
-        return transform(self)
+        return transform(target)
 
     def _wire_output_deps(self, input_dependencies: List["Operator"]):
         for x in input_dependencies:

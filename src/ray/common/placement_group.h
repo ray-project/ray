@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -40,14 +41,14 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Return the placement group id.
@@ -60,8 +61,6 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   BundleSpecification GetBundle(int position) const;
   /// Return the name of this placement group.
   std::string GetName() const;
-  /// Return the max CPU fraction per node for this placement group.
-  double GetMaxCpuFractionPerNode() const;
 
  private:
   /// Construct bundle vector from protobuf.
@@ -84,11 +83,12 @@ class PlacementGroupSpecBuilder {
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
-      double max_cpu_fraction_per_node,
       NodeID soft_target_node_id,
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
-      bool is_creator_detached_actor) {
+      bool is_creator_detached_actor,
+      const std::vector<std::unordered_map<std::string, std::string>>
+          &bundle_label_selector = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -103,7 +103,6 @@ class PlacementGroupSpecBuilder {
     message_->set_creator_actor_id(creator_actor_id.Binary());
     message_->set_creator_actor_dead(creator_actor_id.IsNil());
     message_->set_is_detached(is_detached);
-    message_->set_max_cpu_fraction_per_node(max_cpu_fraction_per_node);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
     for (size_t i = 0; i < bundles.size(); i++) {
@@ -120,6 +119,13 @@ class PlacementGroupSpecBuilder {
           resources.erase(current);
         } else {
           mutable_unit_resources->insert({current->first, current->second});
+        }
+      }
+      // Set the label selector for this bundle if provided in bundle_label_selector.
+      if (bundle_label_selector.size() > i) {
+        auto *mutable_label_selector = message_bundle->mutable_label_selector();
+        for (const auto &pair : bundle_label_selector[i]) {
+          (*mutable_label_selector)[pair.first] = pair.second;
         }
       }
     }

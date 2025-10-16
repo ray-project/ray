@@ -1,4 +1,4 @@
-from ray._private.utils import get_function_args
+from ray._common.utils import get_function_args
 from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.repeater import Repeater

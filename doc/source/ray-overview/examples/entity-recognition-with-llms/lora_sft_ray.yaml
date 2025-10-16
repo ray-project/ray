@@ -1,0 +1,57 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+
+### dataset
+dataset: viggo-train
+dataset_dir: /mnt/cluster_storage/viggo  # shared storage workers have access to
+template: qwen
+cutoff_len: 2048
+max_samples: 1000
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+output_dir: /mnt/cluster_storage/viggo/outputs  # should be somewhere workers have access to (ex. s3, nfs)
+logging_steps: 10
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+
+### ray
+ray_run_name: lora_sft_ray
+ray_storage_path: /mnt/cluster_storage/viggo/saves  # should be somewhere workers have access to (ex. s3, nfs)
+ray_num_workers: 4
+resources_per_worker:
+  GPU: 1
+  anyscale/accelerator_shape:4xL4: 0.001  # Use this to specify a specific node shape,
+  # accelerator_type:L4: 1           # Or use this to simply specify a GPU type.
+  # see https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types
+placement_strategy: PACK
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval
+eval_dataset: viggo-val  # uses same dataset_dir as training data
+# val_size: 0.1  # only if using part of training data for validation
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 500

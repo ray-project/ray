@@ -19,7 +19,7 @@ from torch.utils.data import (
     SequentialSampler,
 )
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.air._internal.device_manager import (
     get_torch_device_manager_by_context,
     get_torch_device_manager_by_device_type,
@@ -29,16 +29,6 @@ from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
-
-if Version(torch.__version__) < Version("1.11.0"):
-    FullyShardedDataParallel = None
-else:
-    from torch.distributed.fsdp import FullyShardedDataParallel
-
-try:
-    from torch.profiler import profile
-except ImportError:
-    profile = None
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +175,7 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-
-    if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
+    if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
             "FullyShardedDataParallel requires torch>=1.11.0. "
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
@@ -481,6 +470,8 @@ class _TorchAccelerator(Accelerator):
                         "`use_gpu=True` in your Trainer to train with "
                         "GPUs."
                     )
+                from torch.distributed.fsdp import FullyShardedDataParallel
+
                 DataParallel = FullyShardedDataParallel
             if rank == 0:
                 logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
@@ -550,7 +541,7 @@ class _TorchAccelerator(Accelerator):
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
                 def seeded_worker_init_fn(
-                    worker_init_fn: Optional[Callable[[int], None]]
+                    worker_init_fn: Optional[Callable[[int], None]],
                 ):
                     def wrapper(worker_id: int):
                         worker_seed = torch.initial_seed() % 2**32

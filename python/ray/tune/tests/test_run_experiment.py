@@ -2,9 +2,13 @@ import os
 import unittest
 
 import ray
-import ray.train
-from ray.tune import CheckpointConfig
-from ray.tune import Trainable, TuneError, register_trainable, run_experiments
+from ray.tune import (
+    CheckpointConfig,
+    Trainable,
+    TuneError,
+    register_trainable,
+    run_experiments,
+)
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import ExportFormat, Trial
 from ray.tune.logger import LegacyLoggerCallback, Logger

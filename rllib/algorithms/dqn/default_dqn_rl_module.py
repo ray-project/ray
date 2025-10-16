@@ -1,11 +1,8 @@
 import abc
 from typing import Any, Dict, List, Tuple, Union
 
-from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import QNetAPI, InferenceOnlyAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
@@ -17,6 +14,7 @@ from ray.rllib.utils.typing import NetworkType, TensorType
 from ray.util.annotations import DeveloperAPI
 
 
+QF_PREDS = "qf_preds"
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
 QF_NEXT_PREDS = "qf_next_preds"
@@ -139,43 +137,6 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         else:
             return {}
 
-    @override(RLModule)
-    def input_specs_train(self) -> SpecType:
-        return [
-            Columns.OBS,
-            Columns.ACTIONS,
-            Columns.NEXT_OBS,
-        ]
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return [
-            QF_PREDS,
-            QF_TARGET_NEXT_PREDS,
-            # Add keys for double-Q setup.
-            *([QF_NEXT_PREDS] if self.uses_double_q else []),
-            # Add keys for distributional Q-learning.
-            *(
-                [
-                    ATOMS,
-                    QF_LOGITS,
-                    QF_PROBS,
-                    QF_TARGET_NEXT_PROBS,
-                ]
-                # We add these keys only when learning a distribution.
-                if self.num_atoms > 1
-                else []
-            ),
-        ]
-
     @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_helper(
@@ -196,7 +157,7 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
                 for all heads (Q or advantages and value in case of a dueling
                 architecture).
             head: Either a head model or a dictionary of head model (dueling
-            architecture) containing advantage and value stream heads.
+                architecture) containing advantage and value stream heads.
 
         Returns:
             In case of expectation learning the Q-value predictions ("qf_preds")

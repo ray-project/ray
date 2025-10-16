@@ -1,6 +1,7 @@
-from ray._raylet import StreamRedirector
-from ray._private.utils import open_log
 import sys
+
+from ray._private.utils import open_log
+from ray._raylet import StreamRedirector
 
 
 def redirect_stdout_stderr_if_needed(

@@ -24,26 +24,37 @@
             "type": "string",
             "metadata": {
                 "description": "The publisher of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageOffer": {
             "type": "string",
             "metadata": {
                 "description": "The offer of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageSku": {
             "type": "string",
             "metadata": {
                 "description": "The sku of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
         "imageVersion": {
             "type": "string",
             "metadata": {
                 "description": "The version of the VM image"
-            }
+            },
+	    "defaultValue": ""
         },
+	"imageId": {
+	    "type": "string",
+	    "metadata": {
+		"description": "The resource id of the VM image. If provided, it will override the imagePublisher, imageOffer, imageSku and imageVersion parameters."
+	    },
+	    "defaultValue": ""
+	},
         "vmSize": {
             "type": "string",
             "metadata": {
@@ -62,6 +73,13 @@
                 "description": "Number of VMs to deploy"
             }
         },
+	"osDiskSize": {
+	    "type": "int",
+	    "defaultValue": 0,
+	    "metadata": {
+		"description": "Size of the OS disk in GB"
+	    }
+	},
         "provisionPublicIp": {
             "type": "bool",
             "defaultValue": true,
@@ -114,10 +132,18 @@
             "metadata": {
                 "descriptions": "Whether to enable accelerated networking."
             }
+        },
+        "zones": {
+            "type": "array",
+            "defaultValue": [],
+            "metadata": {
+                "description": "Availability zones for the virtual machine. If empty, no zones will be specified."
+            }
         }
     },
     "variables": {
         "location": "[resourceGroup().location]",
+        "useZones": "[greater(length(parameters('zones')), 0)]",
         "networkInterfaceNamePrivate": "[concat(parameters('vmName'), '-nic')]",
         "networkInterfaceNamePublic": "[concat(parameters('vmName'), '-nic-public')]",
         "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
@@ -128,7 +154,7 @@
     "resources": [
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2020-06-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('networkInterfaceNamePublic'), copyIndex())]",
             "location": "[variables('location')]",
             "dependsOn": [
@@ -162,7 +188,7 @@
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2020-06-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('networkInterfaceNamePrivate'), copyIndex())]",
             "location": "[variables('location')]",
             "copy": {
@@ -190,7 +216,7 @@
         },
         {
             "type": "Microsoft.Network/publicIpAddresses",
-            "apiVersion": "2019-02-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('publicIpAddressName'), copyIndex())]",
             "location": "[variables('location')]",
             "properties": {
@@ -201,15 +227,16 @@
                 "name": "PublicIpCopy",
                 "count": "[parameters('vmCount')]"
             },
+            "zones": "[if(variables('useZones'), createArray(string(parameters('zones')[mod(copyIndex(), length(parameters('zones')))])), json('null'))]",
             "sku": {
-                "name": "Basic",
+                "name": "Standard",
                 "tier": "Regional"
             },
             "condition": "[parameters('provisionPublicIp')]"
         },
         {
             "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(parameters('vmName'), copyIndex())]",
             "location": "[variables('location')]",
             "dependsOn": [
@@ -220,6 +247,7 @@
                 "count": "[parameters('vmCount')]"
             },
             "tags": "[parameters('vmTags')]",
+            "zones": "[if(variables('useZones'), createArray(string(parameters('zones')[mod(copyIndex(), length(parameters('zones')))])), json('null'))]",
             "properties": {
                 "hardwareProfile": {
                     "vmSize": "[parameters('vmSize')]"
@@ -227,16 +255,12 @@
                 "storageProfile": {
                     "osDisk": {
                         "createOption": "fromImage",
+			"diskSizeGB": "[if(equals(parameters('osDiskSize'), 0), json('null'), parameters('osDiskSize'))]",
                         "managedDisk": {
                             "storageAccountType": "[variables('osDiskType')]"
                         }
                     },
-                    "imageReference": {
-                        "publisher": "[parameters('imagePublisher')]",
-                        "offer": "[parameters('imageOffer')]",
-                        "sku": "[parameters('imageSku')]",
-                        "version": "[parameters('imageVersion')]"
-                    }
+                    "imageReference": "[if(equals(parameters('imageId'), ''), json(concat('{\"publisher\":\"', parameters('imagePublisher'), '\",\"offer\":\"', parameters('imageOffer'), '\",\"sku\":\"', parameters('imageSku'), '\",\"version\":\"', parameters('imageVersion'), '\"}')), json(concat('{\"id\":\"', parameters('imageId'), '\"}')))]"
                 },
                 "networkProfile": {
                     "networkInterfaces": [

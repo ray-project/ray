@@ -2,7 +2,7 @@
 # Configuring and Managing Ray Dashboard
 {ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and Clusters. This page describes how to configure Ray Dashboard on your Clusters.
 
-Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster v.s. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
+Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
 
 :::{note}
 Ray Dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
@@ -46,7 +46,7 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
 :::{danger}
-For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+For security purposes, do not expose Ray Dashboard publicly without proper authentication in place.
 :::
 
 ::::{tab-set}
@@ -135,7 +135,7 @@ The Ray Dashboard provides read **and write** access to the Ray Cluster. The rev
 
 Dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
 
-To disable Dashboard, use the following arguments `--include-dashboard`.
+To disable the Dashboard, use the `--include-dashboard` argument.
 
 ::::{tab-set}
 
@@ -204,6 +204,7 @@ To view embedded time-series visualizations in Ray Dashboard, the following must
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
+* Set `RAY_GRAFANA_ORG_ID` to the organization ID you use in Grafana. Default is "1".
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
 * Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panels to use. Default is "Prometheus".
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
@@ -266,7 +267,7 @@ If you have followed the instructions above to set up everything, run the connec
 
 
 ##### Getting an error that says `RAY_GRAFANA_HOST` is not setup
-If you have set up Grafana , check that:
+If you have set up Grafana, check that:
 * You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 * The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 

@@ -2,7 +2,6 @@ import collections
 import inspect
 
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.utils import ResponseType

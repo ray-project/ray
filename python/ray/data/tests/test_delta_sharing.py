@@ -1,5 +1,6 @@
 import json
 import unittest
+from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -7,12 +8,12 @@ import pytest
 from delta_sharing.protocol import Table
 from delta_sharing.rest_client import DataSharingRestClient
 
-from ray.data import Dataset
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
     _parse_delta_sharing_url,
 )
 from ray.data.block import BlockMetadata
+from ray.data.dataset import Dataset
 from ray.data.datasource.datasource import ReadTask
 from ray.data.read_api import read_delta_sharing_tables
 
@@ -98,7 +99,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
             self.assertTrue(metadata.input_files[0]["url"] in ["file1", "file2"])
             self.assertEqual(metadata.num_rows, None)
             self.assertEqual(metadata.size_bytes, None)
-            self.assertEqual(metadata.schema, None)
+            self.assertEqual(task.schema, None)
             self.assertEqual(metadata.exec_stats, None)
 
 
@@ -178,7 +179,9 @@ class MockDeltaSharingDatasource:
         )
         return table, rest_client
 
-    def get_read_tasks(self, parallelism):
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ):
         self._table, self._rest_client = self.setup_delta_sharing_connections(self._url)
         response = self._rest_client.list_files_in_table(
             self._table,
@@ -206,6 +209,7 @@ class MockDeltaSharingDatasource:
                     }
                 ]
             )
+            read_task.per_task_row_limit = per_task_row_limit
             read_tasks.append(read_task)
         return read_tasks
 

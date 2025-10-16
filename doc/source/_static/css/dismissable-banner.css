@@ -1,0 +1,13 @@
+#close-banner {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0 5px;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+    position: absolute;
+    top: 8px;
+    right: 12px;
+}

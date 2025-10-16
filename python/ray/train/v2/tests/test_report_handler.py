@@ -1,11 +1,11 @@
 import random
 import unittest.mock
 from unittest.mock import MagicMock
+
 import pytest
 
 from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -14,6 +14,7 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
     WorkerStatus,
@@ -21,7 +22,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2.tests.test_controller import DummyWorkerGroup
+from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
 
 
 def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none):
@@ -31,11 +32,19 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     """
 
     assert num_workers == num_ckpt + num_dummy + num_none
-    ckpt_tr = _TrainingResult(metrics={}, checkpoint=Checkpoint("mock://bucket/path"))
-    dummy_tr = _TrainingResult(metrics={}, checkpoint=None)
-    ckpt_ws = WorkerStatus(running=True, error=None, training_result=ckpt_tr)
-    dummy_ws = WorkerStatus(running=True, error=None, training_result=dummy_tr)
-    none_ws = WorkerStatus(running=True, error=None, training_result=None)
+    ckpt_tr = _TrainingReport(
+        metrics={},
+        checkpoint=Checkpoint("mock://bucket/path"),
+        validation_spec=None,
+    )
+    dummy_tr = _TrainingReport(
+        metrics={},
+        checkpoint=None,
+        validation_spec=None,
+    )
+    ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)
+    dummy_ws = WorkerStatus(running=True, error=None, training_report=dummy_tr)
+    none_ws = WorkerStatus(running=True, error=None, training_report=None)
 
     worker_statuses = (
         [ckpt_ws] * num_ckpt + [dummy_ws] * num_dummy + [none_ws] * num_none
@@ -67,7 +76,7 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
 
     worker_group_context = WorkerGroupContext(
         run_attempt_id="test_run_attempt_id",
-        train_fn=lambda: None,
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
         num_workers=10,
         resources_per_worker={"CPU": 1},
     )
@@ -82,7 +91,7 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
         num_workers, num_ckpt, num_dummy, num_none
     )
     with unittest.mock.patch.object(
-        CheckpointManager, "register_checkpoint"
+        CheckpointManager, "register_checkpoint", autospec=True
     ) as fake_register_checkpoint:
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected

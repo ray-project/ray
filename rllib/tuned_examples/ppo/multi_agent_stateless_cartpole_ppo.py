@@ -12,7 +12,6 @@ from ray.tune import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=4000000)
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
     num_env_runners=3,
 )
@@ -29,7 +28,9 @@ config = (
     PPOConfig()
     .environment("multi_stateless_cart")
     .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(
+            multi_agent=True
+        ),
     )
     .training(
         lr=0.0003 * ((args.num_learners or 1) ** 0.5),

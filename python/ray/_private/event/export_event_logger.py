@@ -1,23 +1,29 @@
-from enum import Enum
+import json
 import logging
 import pathlib
-import json
 import random
 import string
 import threading
-
-from typing import Union
 from datetime import datetime
+from enum import Enum
+from typing import Union
+
 from ray._private import ray_constants
+from ray._private.protobuf_compat import message_to_dict
+from ray.core.generated.export_dataset_metadata_pb2 import (
+    ExportDatasetMetadata,
+)
+from ray.core.generated.export_dataset_operator_event_pb2 import (
+    ExportDatasetOperatorEventData,
+)
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
+    ExportTrainRunEventData,
 )
-from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
@@ -27,6 +33,8 @@ ExportEventDataType = Union[
     ExportSubmissionJobEventData,
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
+    ExportDatasetMetadata,
+    ExportDatasetOperatorEventData,
 ]
 
 
@@ -38,6 +46,8 @@ class EventLogType(Enum):
     Attributes:
         TRAIN_STATE: Export events related to training state, supporting train run and attempt events.
         SUBMISSION_JOB: Export events related to job submissions.
+        DATASET_METADATA: Export events related to dataset metadata.
+        DATASET_OPERATOR_EVENT: Export events related to Ray Data operator.
     """
 
     TRAIN_STATE = (
@@ -45,6 +55,11 @@ class EventLogType(Enum):
         {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
     )
     SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
+    DATASET_METADATA = ("EXPORT_DATASET_METADATA", {ExportDatasetMetadata})
+    DATASET_OPERATOR_EVENT = (
+        "EXPORT_DATASET_OPERATOR_EVENT",
+        {ExportDatasetOperatorEventData},
+    )
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
         """Initialize an EventLogType enum value.
@@ -110,6 +125,12 @@ class ExportEventLoggerAdapter:
         elif isinstance(event_data, ExportTrainRunAttemptEventData):
             event.train_run_attempt_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
+        elif isinstance(event_data, ExportDatasetMetadata):
+            event.dataset_metadata.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_DATASET_METADATA
+        elif isinstance(event_data, ExportDatasetOperatorEventData):
+            event.dataset_operator_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_DATASET_OPERATOR_EVENT
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if not self.log_type.supports_event_type(event_data):

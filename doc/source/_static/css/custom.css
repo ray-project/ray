@@ -388,10 +388,16 @@ table.autosummary tr > td:first-child > p > a > code > span {
   text-decoration: underline;
 }
 
-/* Prevent the the PyData theme Version Switcher from getting too large */
+/* Prevent the PyData theme Version Switcher from getting too large */
 .version-switcher__menu {
   max-height: 40rem;
   overflow-y: scroll;
+}
+
+/* Right align the version switcher dropdown menu to prevent it from going off screen */
+.version-switcher__menu[data-bs-popper] {
+  right: 0;
+  left: unset;
 }
 
 /* Hide the RTD version switcher since we are using PyData theme one */
@@ -404,32 +410,16 @@ readthedocs-flyout {
   margin-bottom: 16px;
 }
 
-/* Styles for the community card in the secondary side panel */
-#community-card {
-  border: 1px solid #02A0CF;
-  background-color: #02A0CF4D;
-  padding: 8px 12px;
-}
 
-#community-card ul {
-  padding: 0;
-  margin: 0;
-}
-
-#community-card ul li {
-  list-style-type: none;
-  white-space: nowrap;
-}
-
-#community-card ul li svg {
-  width: 16px;
-  height: 16px;
-  margin-right: 4px;
-}
-
-#community-card ul li a {
-  color: inherit;
-  text-decoration: none;
-  font-size: 13px;
-  white-space: nowrap;
+/* Prevent text wrapping around left-aligned images on ultra-wide screens */
+@media (min-width: 1600px) {
+  .bd-content .align-left,
+  .bd-content .figure.align-left,
+  .bd-content img.align-left {
+    float: none !important;
+    display: block;
+    clear: both;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
 }

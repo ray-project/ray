@@ -22,7 +22,6 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
-    docs_path: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -44,7 +43,6 @@ def get_deploy_args(
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
-        "docs_path": docs_path,
         "ingress": ingress,
     }
 
@@ -56,7 +54,6 @@ def deploy_args_to_deployment_info(
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    docs_path: Optional[str],
     app_name: Optional[str] = None,
     ingress: bool = False,
     route_prefix: Optional[str] = None,
@@ -88,7 +85,6 @@ def deploy_args_to_deployment_info(
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
         route_prefix=route_prefix,
-        docs_path=docs_path,
         ingress=ingress,
     )
 
@@ -102,11 +98,21 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
+    deployment_autoscaling_policies = [
+        deployment_config.autoscaling_config.get("policy", None)
+        for deployment_config in app_config.deployments
+        if isinstance(deployment_config.autoscaling_config, dict)
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            # NOTE: trigger a change in the code version when
+            # application level autoscaling policy is changed or
+            # any one of the deployment level autoscaling policy is changed
+            "autoscaling_policy": app_config.autoscaling_policy,
+            "deployment_autoscaling_policies": deployment_autoscaling_policies,
         },
         sort_keys=True,
     ).encode("utf-8")

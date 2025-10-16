@@ -14,6 +14,8 @@
 
 #include "ray/util/pipe_logger.h"
 
+#include <fcntl.h>
+
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -28,7 +30,9 @@
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/spdlog_newliner_sink.h"
@@ -157,48 +161,18 @@ std::shared_ptr<spdlog::logger> CreateLogger(
   sinks.emplace_back(std::move(newliner_sink));
 
   // Setup fd sink for stdout and stderr.
-#if defined(__APPLE__) || defined(__linux__)
   if (stream_redirect_opt.tee_to_stdout) {
-    int duped_stdout_fd = dup(STDOUT_FILENO);
+    int duped_stdout_fd = Dup(GetStdoutFd());
     RAY_CHECK_NE(duped_stdout_fd, -1) << "Fails to duplicate stdout: " << strerror(errno);
     auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_fd);
     sinks.emplace_back(std::move(stdout_sink));
   }
   if (stream_redirect_opt.tee_to_stderr) {
-    int duped_stderr_fd = dup(STDERR_FILENO);
+    int duped_stderr_fd = Dup(GetStderrFd());
     RAY_CHECK_NE(duped_stderr_fd, -1) << "Fails to duplicate stderr: " << strerror(errno);
     auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_fd);
     sinks.emplace_back(std::move(stderr_sink));
   }
-
-#elif defined(_WIN32)
-  if (stream_redirect_opt.tee_to_stdout) {
-    HANDLE duped_stdout_handle;
-    BOOL result = DuplicateHandle(GetCurrentProcess(),
-                                  GetStdHandle(STD_OUTPUT_HANDLE),
-                                  GetCurrentProcess(),
-                                  &duped_stdout_handle,
-                                  0,
-                                  FALSE,
-                                  DUPLICATE_SAME_ACCESS);
-    RAY_CHECK(result) << "Fails to duplicate stdout handle";
-    auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_handle);
-    sinks.emplace_back(std::move(stdout_sink));
-  }
-  if (stream_redirect_opt.tee_to_stderr) {
-    HANDLE duped_stderr_handle;
-    BOOL result = DuplicateHandle(GetCurrentProcess(),
-                                  GetStdHandle(STD_ERROR_HANDLE),
-                                  GetCurrentProcess(),
-                                  &duped_stderr_handle,
-                                  0,
-                                  FALSE,
-                                  DUPLICATE_SAME_ACCESS);
-    RAY_CHECK(result) << "Fails to duplicate stderr handle";
-    auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_handle);
-    sinks.emplace_back(std::move(stderr_sink));
-  }
-#endif
 
   auto logger = std::make_shared<spdlog::logger>(
       /*name=*/absl::StrFormat("pipe-logger-%s", stream_redirect_opt.file_path),
@@ -222,22 +196,24 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 }
 
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  boost::iostreams::file_descriptor_sink fd_sink{file_path, std::ios_base::out};
-  auto handle = fd_sink.handle();
-  auto ostream =
-      std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-          std::move(fd_sink));
+#if defined(__APPLE__) || defined(__linux__)
+  const int fd = open(file_path.c_str(),
+                      O_WRONLY | O_CREAT | O_APPEND,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+#elif defined(_WIN32)
+  const int fd =
+      _open(file_path.c_str(), _O_WRONLY | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
+#endif
 
   // In this case, we don't write to the file via logger, so no need to set formatter.
   // spglog is used here merely to reuse the same [RedirectionFileHandle] interface.
-  auto logger_sink = std::make_shared<non_owned_fd_sink_st>(handle);
+  auto logger_sink = std::make_shared<non_owned_fd_sink_st>(fd);
   auto logger = std::make_shared<spdlog::logger>(
       /*name=*/absl::StrFormat("pipe-logger-%s", file_path), std::move(logger_sink));
 
-  // Lifecycle for the file handle is bound at [ostream] thus [close_fn].
-  auto close_fn = [ostream = std::move(ostream)]() { ostream->close(); };
+  auto close_fn = [fd]() { RAY_CHECK_OK(Close(fd)); };
 
-  return RedirectionFileHandle{handle, std::move(logger), std::move(close_fn)};
+  return RedirectionFileHandle{fd, std::move(logger), std::move(close_fn)};
 }
 }  // namespace
 
@@ -261,19 +237,21 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 #if defined(__APPLE__) || defined(__linux__)
   int pipefd[2] = {0};
   RAY_CHECK_EQ(pipe(pipefd), 0);
-  int read_handle = pipefd[0];
-  int write_handle = pipefd[1];
+  int read_fd = pipefd[0];
+  int write_fd = pipefd[1];
 #elif defined(_WIN32)
   HANDLE read_handle = nullptr;
   HANDLE write_handle = nullptr;
   SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
   RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0)) << "Fails to create pipe";
+  int read_fd = _open_osfhandle(reinterpret_cast<intptr_t>(read_handle), _O_RDONLY);
+  int write_fd = _open_osfhandle(reinterpret_cast<intptr_t>(write_handle), _O_WRONLY);
 #endif
 
   boost::iostreams::file_descriptor_source pipe_read_source{
-      read_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+      read_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
   boost::iostreams::file_descriptor_sink pipe_write_sink{
-      write_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+      write_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
   auto pipe_instream = std::make_shared<
       boost::iostreams::stream<boost::iostreams::file_descriptor_source>>(
@@ -291,8 +269,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto logger = CreateLogger(stream_redirect_opt);
   StartStreamDump(std::move(pipe_instream), logger, std::move(on_close_completion));
 
-  RedirectionFileHandle redirection_file_handle{
-      write_handle, logger, std::move(close_fn)};
+  RedirectionFileHandle redirection_file_handle{write_fd, logger, std::move(close_fn)};
 
   return redirection_file_handle;
 }

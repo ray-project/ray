@@ -1,16 +1,14 @@
+import functools
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
+from ray.data.expressions import Expr
 from ray.data.preprocessor import Preprocessor
-
-if TYPE_CHECKING:
-    import pyarrow as pa
-
 
 logger = logging.getLogger(__name__)
 
@@ -31,27 +29,38 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
     ):
-        """
+        """Initialize an ``AbstractMap`` logical operator that will later
+        be converted into a physical ``MapOperator``.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
+            input_op: The operator preceding this operator in the plan DAG. The
+                outputs of ``input_op`` will be the inputs to this operator.
+            num_outputs: Number of outputs for this operator.
+            min_rows_per_bundled_input: Minimum number of rows a single bundle of
+                blocks passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+            ray_remote_args_fn: A function that returns a dictionary of remote
+                args passed to each map worker. The purpose of this argument is
+                to generate dynamic arguments for each actor/task, and it will
+                be called each time prior to initializing the worker. Args
+                returned from this dict always override the args in
+                ``ray_remote_args``. Note: this is an advanced, experimental
+                feature.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default)
+                to use Ray tasks, or ``ActorPoolStrategy`` to use an
+                autoscaling actor pool.
         """
         super().__init__(name, input_op, num_outputs)
         self._min_rows_per_bundled_input = min_rows_per_bundled_input
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
         self._compute = compute or TaskPoolStrategy()
+        self._per_block_limit = None
+
+    def set_per_block_limit(self, per_block_limit: int):
+        self._per_block_limit = per_block_limit
 
 
 class AbstractUDFMap(AbstractMap):
@@ -133,6 +142,9 @@ class AbstractUDFMap(AbstractMap):
             elif inspect.isfunction(fn):
                 # normal function or lambda function.
                 return f"{op_name}({fn.__name__})"
+            elif isinstance(fn, functools.partial):
+                # functools.partial
+                return f"{op_name}({fn.func.__name__})"
             else:
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"
@@ -177,7 +189,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -210,7 +221,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -221,20 +231,24 @@ class Filter(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
+        predicate_expr: Optional[Expr] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        # Ensure exactly one of fn or filter_expr is provided
-        if not ((fn is None) ^ (filter_expr is None)):
-            raise ValueError("Exactly one of 'fn' or 'filter_expr' must be provided")
-        self._filter_expr = filter_expr
+        # Ensure exactly one of fn, or predicate_expr is provided
+        provided_params = sum([fn is not None, predicate_expr is not None])
+        if provided_params != 1:
+            raise ValueError(
+                f"Exactly one of 'fn', or 'predicate_expr' must be provided (received fn={fn}, predicate_expr={predicate_expr})"
+            )
+
+        self._predicate_expr = predicate_expr
 
         super().__init__(
             "Filter",
@@ -249,7 +263,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -262,6 +275,9 @@ class Project(AbstractMap):
         input_op: LogicalOperator,
         cols: Optional[List[str]] = None,
         cols_rename: Optional[Dict[str, str]] = None,
+        exprs: Optional[
+            Dict[str, "Expr"]
+        ] = None,  # TODO Remove cols and cols_rename and replace them with corresponding exprs
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -274,8 +290,17 @@ class Project(AbstractMap):
         self._batch_size = None
         self._cols = cols
         self._cols_rename = cols_rename
+        self._exprs = exprs
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
+
+        if exprs is not None:
+            # Validate that all values are expressions
+            for name, expr in exprs.items():
+                if not isinstance(expr, Expr):
+                    raise TypeError(
+                        f"Expected Expr for column '{name}', got {type(expr)}"
+                    )
 
     @property
     def cols(self) -> Optional[List[str]]:
@@ -286,6 +311,9 @@ class Project(AbstractMap):
         return self._cols_rename
 
     @property
+    def exprs(self) -> Optional[Dict[str, "Expr"]]:
+        return self._exprs
+
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -318,7 +346,6 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -326,8 +353,8 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
     Args:
-        target_num_rows_per_block: The targetr number of rows per block granularity for
-        streaming repartition.
+        target_num_rows_per_block: The target number of rows per block granularity for
+           streaming repartition.
     """
 
     def __init__(
@@ -342,6 +369,5 @@ class StreamingRepartition(AbstractMap):
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False

@@ -25,7 +25,7 @@ researchers, and folks that love machine learning.
   community is extremely active in helping people succeed in building their
   Ray applications.
 
-You can join (and Star!) us on `on GitHub`_.
+You can join (and Star!) us `on GitHub`_.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 
@@ -47,7 +47,7 @@ What can I work on?
 -------------------
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ for a place to start.
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ for a place to start.
 
 Setting up your development environment
 ---------------------------------------
@@ -260,7 +260,7 @@ An output like the following indicates failure:
    * branch                master     -> FETCH_HEAD
   python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 
-In addition, there are other formatting and semantic checkers for components like the following (not included in ``scripts/format.sh``):
+In addition, there are other formatting and semantic checkers for components like the following (not included in ``pre-commit``):
 
 * Python README format:
 

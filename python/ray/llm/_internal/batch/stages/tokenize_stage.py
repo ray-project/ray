@@ -1,16 +1,16 @@
 """Tokenize and detokenize stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Type
+from typing import Any, AsyncIterator, Dict, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.common.utils.download_utils import (
-    download_model_files,
-    NodeModelDownloadable,
-)
 from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+)
 
 
 class TokenizeUDF(StatefulStageUDF):

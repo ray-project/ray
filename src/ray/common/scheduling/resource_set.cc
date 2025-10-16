@@ -14,10 +14,10 @@
 
 #include "ray/common/scheduling/resource_set.h"
 
-#include <cmath>
+#include <set>
 #include <sstream>
-
-#include "ray/util/logging.h"
+#include <string>
+#include <unordered_map>
 
 namespace ray {
 

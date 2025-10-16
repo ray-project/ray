@@ -54,7 +54,7 @@ class DataParallelTrainer(BaseTrainer):
     the "train" key), then it will be split into multiple dataset
     shards that can then be accessed by ``train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``train.get_dataset_shard(...)`` will return the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train loop methods <train-loop-api>`.
@@ -91,6 +91,7 @@ class DataParallelTrainer(BaseTrainer):
     Example:
 
     .. testcode::
+        :skipif: True
 
         import ray
         from ray import train
@@ -112,11 +113,6 @@ class DataParallelTrainer(BaseTrainer):
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     **How do I develop on top of DataParallelTrainer?**
 

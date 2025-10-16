@@ -1,17 +1,19 @@
-import sys
 import os
-from ray import (
-    ActorID,
-    JobID,
-    TaskID,
-    NodeID,
-    WorkerID,
-    FunctionID,
-    ActorClassID,
-    ClusterID,
-    PlacementGroupID,
-)
+import sys
+
 import pytest
+
+from ray import (
+    ActorClassID,
+    ActorID,
+    ClusterID,
+    FunctionID,
+    JobID,
+    NodeID,
+    PlacementGroupID,
+    TaskID,
+    WorkerID,
+)
 
 
 @pytest.mark.parametrize(
@@ -85,7 +87,4 @@ def test_id_methods(id_cls, size):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -19,7 +19,7 @@ message = (
     "workload. We divide the system memory by 2 to provide a buffer."
 )
 assert (
-    num_nodes * object_store_memory < ray._private.utils.get_system_memory() / 2
+    num_nodes * object_store_memory < ray._common.utils.get_system_memory() / 2
 ), message
 
 # Simulate a cluster on one machine.

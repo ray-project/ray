@@ -1,33 +1,35 @@
 """The stage that runs vLLM engine."""
+
 import asyncio
+import copy
 import dataclasses
 import logging
 import math
 import time
 import uuid
+from collections import Counter
 from enum import Enum
 from functools import partial
-from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+import torch
+from pydantic import BaseModel, Field, root_validator
 
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
-    download_lora_adapter,
-    download_model_files,
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
+    download_model_files,
 )
-from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-vllm = try_import("vllm")
-
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,8 @@ class vLLMOutputData(BaseModel):
             num_input_tokens=len(prompt_token_ids),
         )
 
+        import vllm
+
         if isinstance(output, vllm.outputs.RequestOutput):
             metrics = {}
             if output.metrics is not None:
@@ -109,6 +113,11 @@ class vLLMOutputData(BaseModel):
             data.num_generated_tokens = len(output.outputs[0].token_ids)
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
+            if (
+                isinstance(data.embeddings, torch.Tensor)
+                and data.embeddings.dtype == torch.bfloat16
+            ):
+                data.embeddings = data.embeddings.to(torch.float32)
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -155,11 +164,13 @@ class vLLMEngineWrapper:
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
 
-        if vllm is None:
+        try:
+            import vllm
+        except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
-            )
+            ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
@@ -170,16 +181,10 @@ class vLLMEngineWrapper:
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
-            disable_log_requests=True,
         )
+        # create_engine_config will set default values including `max_num_seqs`.
+        self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
-
-        # Determine the generate function based on vLLM v0 or v1.
-        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
-        if self.vllm_use_v1:
-            self._generate_async = self.generate_async_v1
-        else:
-            self._generate_async = self.generate_async_v0
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -188,29 +193,6 @@ class vLLMEngineWrapper:
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
             self.semaphore = asyncio.NullContext()
-
-    def _maybe_convert_ndarray_to_list(
-        self, params: Union[np.ndarray, List[Any], Dict[str, Any]]
-    ) -> Union[List[Any], Dict[str, Any]]:
-        """Convert all ndarray to list in the params. This is because Ray Data
-        by default converts all lists to ndarrays when passing data around, but
-        vLLM expects lists.
-
-        Args:
-            params: The parameters to convert.
-
-        Returns:
-            The converted parameters.
-        """
-        if isinstance(params, dict):
-            return {
-                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
-            }
-        elif isinstance(params, list):
-            return [self._maybe_convert_ndarray_to_list(v) for v in params]
-        elif isinstance(params, np.ndarray):
-            return params.tolist()
-        return params
 
     async def _maybe_get_lora_request(
         self,
@@ -228,10 +210,10 @@ class vLLMEngineWrapper:
             or None if there is no LoRA. We use Any in type hint to
             pass doc build in the environment without vLLM.
         """
+        import vllm
+
         lora_request = None
         if "model" in row and row["model"] != self.model:
-            if self.vllm_use_v1:
-                raise ValueError("LoRA is only supported with vLLM v0")
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:
@@ -273,7 +255,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = self._maybe_convert_ndarray_to_list(
+            tokenized_prompt = maybe_convert_ndarray_to_list(
                 row.pop("tokenized_prompt")
             )
         else:
@@ -287,25 +269,24 @@ class vLLMEngineWrapper:
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
+        import vllm
+
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                if self.vllm_use_v1:
-                    raise ValueError("Guided decoding is only supported with vLLM v0")
-
                 guided_decoding = vllm.sampling_params.GuidedDecodingParams(
-                    **self._maybe_convert_ndarray_to_list(
+                    **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
                     )
                 )
             else:
                 guided_decoding = None
             params = vllm.SamplingParams(
-                **sampling_params,
+                **maybe_convert_ndarray_to_list(sampling_params),
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams()
+            params = vllm.PoolingParams(task=self.task_type.value)
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
@@ -323,69 +304,27 @@ class vLLMEngineWrapper:
 
     async def generate_async(
         self, row: Dict[str, Any]
-    ) -> Tuple[vLLMEngineRequest, Dict[str, Any]]:
+    ) -> Tuple[vLLMEngineRequest, Dict[str, Any], float]:
         """Process a single request.
 
         Args:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output and bypassed custom fields.
+            A tuple of index in batch, request output and bypassed custom fields, and time taken.
         """
         request = await self._prepare_llm_request(row)
+        t = time.perf_counter()
 
         async with self.semaphore:
             output = await self._generate_async(request)
 
+        time_taken = time.perf_counter() - t
+
         output_data = vLLMOutputData.from_vllm_engine_output(output)
-        return request, output_data.model_dump()
+        return request, output_data.model_dump(), time_taken
 
-    async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
-        """Process a single request.
-
-        Args:
-            request: The request.
-
-        Returns:
-            The output of the request.
-        """
-
-        if request.images:
-            # FIXME: The latest vLLM does not support multi-modal inputs
-            # with tokenized prompt.
-            assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
-                prompt=request.prompt, multi_modal_data={"image": request.images}
-            )
-        else:
-            if request.prompt_token_ids is not None:
-                llm_prompt = vllm.inputs.data.TokensPrompt(
-                    prompt_token_ids=request.prompt_token_ids
-                )
-            else:
-                assert request.prompt
-                llm_prompt = vllm.inputs.data.TextPrompt(prompt=request.prompt)
-
-        # Send the request to the LLM engine.
-        stream = await self.engine.add_request(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            params=request.params,
-            lora_request=request.lora_request,
-        )
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
-                return request_output
-
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
-        )
-
-    async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:
@@ -401,6 +340,8 @@ class vLLMEngineWrapper:
         # in a separate process, the benefit of decoupling them in the Processor
         # may be limited.
         assert request.prompt
+        import vllm
+
         multi_modal_data = {"image": request.images} if request.images else None
         llm_prompt = vllm.inputs.data.TextPrompt(
             prompt=request.prompt, multi_modal_data=multi_modal_data
@@ -421,8 +362,7 @@ class vLLMEngineWrapper:
                 return request_output
 
         raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
+            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
     def shutdown(self):
@@ -435,12 +375,17 @@ class vLLMEngineWrapper:
             logger.info("Shutting down vLLM engine")
             self.engine.shutdown()
 
+    def get_scheduler_config(self):
+        return self._vllm_config.scheduler_config
+
 
 class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
         expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -476,24 +421,45 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
+        exclude_safetensors = (
+            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        )
+        if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
+            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        else:
+            logger.info("Downloading model and tokenizer.")
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+
         # Download the model if needed.
         model_source = download_model_files(
             model_id=self.model,
             mirror_config=None,
-            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
+            download_model=download_model,
             download_extra_files=False,
         )
 
-        # Create an LLM engine.
+        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
+        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=model_source,
+            model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_stats=False,
+            enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
         )
+
+        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
+        if batch_size * max_concurrent_batches < max_num_seqs:
+            logger.warning(
+                f"The product of batch_size ({batch_size}) and "
+                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
+                "to saturate vLLM engine. This may lead to suboptimal "
+                "throughput. Please increase max_concurrent_batches to at least "
+                f"{math.ceil(max_num_seqs / batch_size)}."
+            )
 
     def normalize_engine_kwargs(
         self,
@@ -543,32 +509,36 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
-        t = time.perf_counter()
+        batch_start_time = time.perf_counter()
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
-        time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
-            request, output = await resp
-            time_taken = time.perf_counter() - t
+            request, output, time_taken_llm = await resp
 
             yield {
                 **output,
                 "request_id": request.request_id,
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken,
+                "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
             }
 
+        batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need
         # timer in UDFs anymore.
         logger.info(
             "[vLLM] Elapsed time for batch %s with size %d: %s",
             batch_uuid.hex,
             len(batch),
-            time_taken,
+            batch_time_taken,
         )
+
+        # Log engine stats after each batch is done conditioned on the flag
+        # passed to the engine.
+        if not self.engine_kwargs.get("disable_log_stats", False):
+            await self.llm.engine.do_log_stats()
 
     def __del__(self):
         if hasattr(self, "llm"):
@@ -579,7 +549,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
-    resources_per_bundle: Optional[Dict[str, float]] = None,
+    placement_group_config: Optional[Dict[str, Any]] = None,
 ):
     """Create a Ray scheduling strategy for the engine.
 
@@ -588,32 +558,35 @@ def _ray_scheduling_strategy_fn(
             engine replica.
         accelerator_type: The accelerator type. If None, the
             accelerator_type label will not be set.
-        resources_per_bundle: The custom resources per bundle.
-            If None, we default to 1xGPU + 1xCPU bundle.
+        placement_group_config: The custom placement group configuration.
+            If None, we use the default placement group configuration.
 
     Returns:
         The Ray scheduling strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-
-        bundle = {}
-        # Custom resources
-        if resources_per_bundle:
-            bundle = resources_per_bundle
-        else:
-            # GPU bundles
-            bundle = {"GPU": 1, "CPU": 1}
+        # GPU bundles
+        bundle = {"GPU": 1, "CPU": 1}
 
         # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
-    pg = ray.util.placement_group(
-        [_get_bundle()] * num_bundles_per_replica,
-        strategy="STRICT_PACK",
-    )
+    if placement_group_config:
+        placement_group_config = copy.deepcopy(placement_group_config)
+
+        if accelerator_type:
+            for bundle in placement_group_config["bundles"]:
+                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
+
+        pg = ray.util.placement_group(**placement_group_config)
+    else:
+        pg = ray.util.placement_group(
+            [_get_bundle()] * num_bundles_per_replica,
+            strategy="PACK",
+        )
     return dict(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             pg, placement_group_capture_child_tasks=True
@@ -661,26 +634,42 @@ class vLLMEngineStage(StatefulStage):
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        resources_per_bundle = map_batches_kwargs.pop("resources", None)
-        if executor_backend == "ray" and num_bundles_per_replica > 1:
+        placement_group_config = fn_constructor_kwargs.pop(
+            "placement_group_config", None
+        )
+        if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 _ray_scheduling_strategy_fn,
                 num_bundles_per_replica,
                 accelerator_type,
-                resources_per_bundle,
+                placement_group_config,
             )
             ray_remote_args["num_gpus"] = 0
         else:
-            if not resources_per_bundle:
-                # Default to GPUs per bundle if custom resources are not specified.
+            if not placement_group_config:
+                # Default to GPUs per bundle if placement group is not specified.
                 ray_remote_args["num_gpus"] = num_bundles_per_replica
             else:
-                ray_remote_args["resources"] = {
-                    resource_key: resource_count * num_bundles_per_replica
-                    for resource_key, resource_count in resources_per_bundle.items()
-                }
+                bundles = placement_group_config["bundles"]
+                resource_counter = Counter()
+                for bundle in bundles:
+                    resource_counter.update(bundle)
+
+                total_cpus = resource_counter.pop("CPU", 0)
+                total_gpus = resource_counter.pop("GPU", 0)
+
+                # Ray Data expects CPU/GPU to be specified via num_cpus/num_gpus,
+                # not inside the resources dict.
+                if total_cpus:
+                    ray_remote_args["num_cpus"] = total_cpus
+                if total_gpus:
+                    ray_remote_args["num_gpus"] = total_gpus
+
+                # Keep only non-CPU/GPU custom resources, if any.
+                if resource_counter:
+                    ray_remote_args["resources"] = dict(resource_counter)
 
         map_batches_kwargs.update(ray_remote_args)
         return values
@@ -700,10 +689,8 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         return {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be "
-            "tokenized by the vLLM engine.",
-            "images": "The images to generate text from. If provided, the prompt will be "
-            "a multimodal prompt.",
+            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
+            "images": "The images to generate text from. If provided, the prompt will be a multimodal prompt.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
         }

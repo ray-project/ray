@@ -3,12 +3,29 @@ from typing import Callable, Iterable, List, Optional
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.datasource.util import _iter_sliced_blocks
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
+class _DatasourceProjectionPushdownMixin:
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        """Returns ``True`` in case ``Datasource`` supports projection operation
+        being pushed down into the reading layer"""
+        return False
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        """Retrurns current projection"""
+        return None
+
+    def apply_projection(self, columns: List[str]) -> "Datasource":
+        return self
+
+
 @PublicAPI
-class Datasource:
+class Datasource(_DatasourceProjectionPushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
@@ -47,13 +64,15 @@ class Datasource:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-
+            per_task_row_limit: The per-task row limit for the read tasks.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
@@ -102,7 +121,6 @@ class Reader:
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-            read_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -119,7 +137,20 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
+        """Execute the read and return read tasks.
+
+        Args:
+            parallelism: The requested read parallelism. The number of read
+                tasks should equal to this value if possible.
+            per_task_row_limit: The per-task row limit for the read tasks.
+
+        Returns:
+            A list of read tasks that can be executed to read blocks from the
+            datasource in parallel.
+        """
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
@@ -145,17 +176,35 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
+    def __init__(
+        self,
+        read_fn: Callable[[], Iterable[Block]],
+        metadata: BlockMetadata,
+        schema: Optional["Schema"] = None,
+        per_task_row_limit: Optional[int] = None,
+    ):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._schema = schema
+        self._per_task_row_limit = per_task_row_limit
 
     @property
     def metadata(self) -> BlockMetadata:
         return self._metadata
 
+    # TODO(justin): We want to remove schema from `ReadTask` later on
+    @property
+    def schema(self) -> Optional["Schema"]:
+        return self._schema
+
     @property
     def read_fn(self) -> Callable[[], Iterable[Block]]:
         return self._read_fn
+
+    @property
+    def per_task_row_limit(self) -> Optional[int]:
+        """Get the per-task row limit for this read task."""
+        return self._per_task_row_limit
 
     def __call__(self) -> Iterable[Block]:
         result = self._read_fn()
@@ -165,7 +214,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result)
             )
-        yield from result
+        if self._per_task_row_limit is None:
+            yield from result
+            return
+
+        yield from _iter_sliced_blocks(result, self._per_task_row_limit)
 
 
 @DeveloperAPI
@@ -183,6 +236,12 @@ class RandomIntRowDatasource(Datasource):
     """
 
     def __init__(self, n: int, num_columns: int):
+        """Initialize the datasource that generates random-integer rows.
+
+        Args:
+            n: The number of rows to generate.
+            num_columns: The number of columns to generate.
+        """
         self._n = n
         self._num_columns = num_columns
 
@@ -192,6 +251,7 @@ class RandomIntRowDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow
@@ -219,7 +279,6 @@ class RandomIntRowDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * num_columns,
-                schema=schema,
                 input_files=None,
                 exec_stats=None,
             )
@@ -229,6 +288,8 @@ class RandomIntRowDatasource(Datasource):
                         make_block(count, num_columns)
                     ],
                     meta,
+                    schema=schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
             i += block_size

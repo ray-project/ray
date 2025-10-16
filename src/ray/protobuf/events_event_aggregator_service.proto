@@ -1,0 +1,62 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/public/events_base_event.proto";
+
+package ray.rpc.events;
+
+message TaskEventsMetadata {
+  // A list of task attempts that were dropped on the worker.
+  // We only drop task attempts if task state update is lost on the worker
+  // due to too many events being generated.
+  repeated TaskAttempt dropped_task_attempts = 2;
+}
+
+message RayEventsData {
+  // Events to be added to the event aggregator.
+  repeated RayEvent events = 1;
+  // Metadata about the events.
+  TaskEventsMetadata task_events_metadata = 2;
+}
+
+message AddEventsRequest {
+  // Event data to be added to the event aggregator.
+  RayEventsData events_data = 1;
+}
+
+message AddEventsStatus {
+  // Status code of the add event request result. The codes follow the codes in
+  // `src/ray/common/status.h`
+  int32 code = 1;
+  // Status message of the add event request result.
+  string message = 2;
+}
+
+message AddEventsReply {
+  // Status of the add event request result.
+  AddEventsStatus status = 1;
+}
+
+// Service for adding events to the event aggregator.
+service EventAggregatorService {
+  // Add events to the local event aggregator.
+  // Failure:
+  // Infinite timeout because the communication to the event aggregator will
+  // always be on the same node.
+  // No retry because event sending to the aggregator is best effort.
+  rpc AddEvents(AddEventsRequest) returns (AddEventsReply);
+}

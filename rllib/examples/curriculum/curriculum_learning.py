@@ -17,7 +17,7 @@ limit of 16 to make it almost impossible for a non-curriculum policy to learn.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curriculum` flag to disable curriculum learning and force your policy
 to be trained on the hardest task right away. With this option, the algorithm should NOT
@@ -73,7 +73,6 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
@@ -149,6 +148,15 @@ def _remote_fn(env_runner, new_task: int):
 class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
+    def on_algorithm_init(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        # Set the initial task to 0.
+        algorithm._counters["current_env_task"] = 0
+
     def on_train_result(
         self,
         *,
@@ -216,7 +224,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_envs_per_env_runner=5,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             num_epochs=6,

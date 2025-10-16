@@ -20,6 +20,10 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(rpc::WorkerType, GetWorkerType, (), (const, override));
   MOCK_METHOD(void, MarkDead, (), (override));
   MOCK_METHOD(bool, IsDead, (), (const, override));
+  MOCK_METHOD(void,
+              KillAsync,
+              (instrumented_io_context & io_service, bool force),
+              (override));
   MOCK_METHOD(void, MarkBlocked, (), (override));
   MOCK_METHOD(void, MarkUnblocked, (), (override));
   MOCK_METHOD(bool, IsBlocked, (), (const, override));
@@ -51,12 +55,11 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(int, GetRuntimeEnvHash, (), (const, override));
   MOCK_METHOD(void, AssignActorId, (const ActorID &actor_id), (override));
   MOCK_METHOD(const ActorID &, GetActorId, (), (const, override));
-  MOCK_METHOD(void, MarkDetachedActor, (), (override));
   MOCK_METHOD(bool, IsDetachedActor, (), (const, override));
   MOCK_METHOD(const std::shared_ptr<ClientConnection>, Connection, (), (const, override));
   MOCK_METHOD(void, SetOwnerAddress, (const rpc::Address &address), (override));
   MOCK_METHOD(const rpc::Address &, GetOwnerAddress, (), (const, override));
-  MOCK_METHOD(void, DirectActorCallArgWaitComplete, (int64_t tag), (override));
+  MOCK_METHOD(void, ActorCallArgWaitComplete, (int64_t tag), (override));
   MOCK_METHOD(const BundleID &, GetBundleId, (), (const, override));
   MOCK_METHOD(void, SetBundleId, (const BundleID &bundle_id), (override));
   MOCK_METHOD(void,

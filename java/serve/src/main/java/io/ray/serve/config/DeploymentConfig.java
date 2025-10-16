@@ -54,6 +54,8 @@ public class DeploymentConfig implements Serializable {
 
   private AutoscalingConfig autoscalingConfig;
 
+  private RequestRouterConfig routerConfig;
+
   /** This flag is used to let replica know they are deplyed from a different language. */
   private Boolean isCrossLanguage = false;
 
@@ -63,6 +65,8 @@ public class DeploymentConfig implements Serializable {
   private String version;
 
   private String prevVersion;
+
+  private Integer maxConstructorRetryCount = 20;
 
   public Integer getNumReplicas() {
     return numReplicas;
@@ -83,6 +87,19 @@ public class DeploymentConfig implements Serializable {
     if (maxOngoingRequests != null) {
       Preconditions.checkArgument(maxOngoingRequests > 0, "max_ongoing_requests must be > 0");
       this.maxOngoingRequests = maxOngoingRequests;
+    }
+    return this;
+  }
+
+  public Integer getMaxConstructorRetryCount() {
+    return maxConstructorRetryCount;
+  }
+
+  public DeploymentConfig setMaxConstructorRetryCount(Integer maxConstructorRetryCount) {
+    if (maxConstructorRetryCount != null) {
+      Preconditions.checkArgument(
+          maxConstructorRetryCount > 0, "max constructor retry count must be > 0");
+      this.maxConstructorRetryCount = maxConstructorRetryCount;
     }
     return this;
   }
@@ -140,12 +157,43 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public Double getRequestRoutingStatsPeriodS() {
+    return routerConfig.getRequestRoutingStatsPeriodS();
+  }
+
+  public DeploymentConfig setRequestRoutingStatsPeriodS(Double requestRoutingStatsPeriodS) {
+    if (requestRoutingStatsPeriodS != null) {
+      routerConfig.setRequestRoutingStatsPeriodS(requestRoutingStatsPeriodS);
+    }
+    return this;
+  }
+
+  public Double getRequestRoutingStatsTimeoutS() {
+    return routerConfig.getRequestRoutingStatsTimeoutS();
+  }
+
+  public DeploymentConfig setRequestRoutingStatsTimeoutS(Double requestRoutingStatsTimeoutS) {
+    if (requestRoutingStatsTimeoutS != null) {
+      routerConfig.setRequestRoutingStatsTimeoutS(requestRoutingStatsTimeoutS);
+    }
+    return this;
+  }
+
   public AutoscalingConfig getAutoscalingConfig() {
     return autoscalingConfig;
   }
 
   public DeploymentConfig setAutoscalingConfig(AutoscalingConfig autoscalingConfig) {
     this.autoscalingConfig = autoscalingConfig;
+    return this;
+  }
+
+  public RequestRouterConfig getRequestRouterConfig() {
+    return routerConfig;
+  }
+
+  public DeploymentConfig setRequestRouterConfig(RequestRouterConfig routerConfig) {
+    this.routerConfig = routerConfig;
     return this;
   }
 
@@ -201,12 +249,16 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage)
-            .setVersion(version);
+            .setVersion(version)
+            .setMaxConstructorRetryCount(maxConstructorRetryCount);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    if (null != routerConfig) {
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build().toByteArray();
   }
@@ -221,12 +273,16 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
-            .setDeploymentLanguage(deploymentLanguage);
+            .setDeploymentLanguage(deploymentLanguage)
+            .setMaxConstructorRetryCount(maxConstructorRetryCount);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    if (null != routerConfig) {
+      builder.setRequestRouterConfig(routerConfig.toProto());
     }
     return builder.build();
   }
@@ -254,6 +310,9 @@ public class DeploymentConfig implements Serializable {
       deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(
               proto.getUserConfig().toByteArray(), Object.class)); // TODO-xlang
+    }
+    if (proto.getMaxConstructorRetryCount() > 0) {
+      deploymentConfig.setMaxConstructorRetryCount(proto.getMaxConstructorRetryCount());
     }
     return deploymentConfig;
   }

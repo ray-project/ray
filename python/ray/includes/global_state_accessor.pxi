@@ -78,7 +78,7 @@ cdef class GlobalStateAccessor:
         for item in items:
             c_node_info.ParseFromString(item)
             node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(c_node_info.node_id()),
+                "NodeID": ray._common.utils.binary_to_hex(c_node_info.node_id()),
                 "Alive": c_node_info.state() == CGcsNodeState.ALIVE,
                 "NodeManagerAddress": c_node_info.node_manager_address().decode(),
                 "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
@@ -118,7 +118,7 @@ cdef class GlobalStateAccessor:
         results = {}
         while draining_nodes_it != draining_nodes.end():
             draining_node_id = dereference(draining_nodes_it).first
-            results[ray._private.utils.binary_to_hex(
+            results[ray._common.utils.binary_to_hex(
                 draining_node_id.Binary())] = dereference(draining_nodes_it).second
             postincrement(draining_nodes_it)
 
@@ -295,9 +295,11 @@ cdef class GlobalStateAccessor:
         if not status.ok():
             raise RuntimeError(status.message())
         c_node_info.ParseFromString(cnode_info_str)
+        c_labels = PythonGetNodeLabels(c_node_info)
         return {
             "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
+            "labels": {key.decode(): value.decode() for key, value in c_labels},
         }

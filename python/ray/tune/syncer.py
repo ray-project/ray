@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 
 from ray.train._internal.syncer import SyncConfig as TrainSyncConfig
 from ray.util.annotations import PublicAPI

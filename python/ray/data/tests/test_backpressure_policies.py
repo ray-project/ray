@@ -45,13 +45,11 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            target_max_block_size=None,
         )
         map_op = TaskPoolMapOperator(
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=map_op_no_concurrency,
-            target_max_block_size=None,
             concurrency=concurrency,
         )
         map_op.metrics.num_tasks_running = 0
@@ -62,7 +60,11 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_op_no_concurrency: MagicMock(),
         }
 
-        policy = ConcurrencyCapBackpressurePolicy(topology)
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            MagicMock(),
+        )
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
         self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))

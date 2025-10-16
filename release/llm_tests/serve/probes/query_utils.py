@@ -42,7 +42,12 @@ def _apply_delta(base, delta):
         # in order to merge them, not recursively merge them.
         if key == "logprobs":
             if delta[key]:
-                base[key]["content"].extend(delta[key]["content"])
+                cur_val = (base[key] or {}).get("content", []) or []
+                cur_val.extend(delta[key]["content"])
+                if base[key]:
+                    base[key]["content"] = cur_val
+                else:
+                    base[key] = {"content": cur_val}
             continue
 
         if isinstance(base[key], dict):
@@ -97,6 +102,8 @@ class TextGenerationProbeResponse:
         """In case of streamed response, what are the individual chunked messages? that contain the content we care about?"""
         vals = []
         for r in self.response:
+            if len(r.choices) == 0:
+                continue
             v = r.choices[0].model_dump()
             if "message" in v and "content" in v["message"]:
                 vals.append(v["message"]["content"] or "")
@@ -128,7 +135,11 @@ class TextGenerationProbeResponse:
 
     def finish_reason(self):
         # This should be set on the last response.
-        return self.response[-1].choices[0].finish_reason
+        for chunk in reversed(self.response):
+            if len(chunk.choices) > 0:
+                if chunk.choices[0].finish_reason:
+                    return chunk.choices[0].finish_reason
+        return None
 
 
 class BaseProbe:
@@ -171,6 +182,12 @@ class TextGenerationProbeQuerier(BaseProbe):
             "stream": stream,
             **chat_args,
         }
+
+        if stream:
+            args["stream_options"] = {
+                "include_usage": True,
+            }
+
         if chat:
             method = self.client.chat.completions.create
         else:

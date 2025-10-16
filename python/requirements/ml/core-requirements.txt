@@ -1,6 +1,6 @@
 # ML tracking integrations
 comet-ml==3.44.1
-mlflow==2.9.2
+mlflow>=2.22.0
 wandb==0.17.0
 
 # ML training frameworks
@@ -12,4 +12,4 @@ transformers==4.36.2
 accelerate==0.28.0
 
 # Cloud storage tools
-s3fs==2023.5.0
+s3fs==2023.12.1

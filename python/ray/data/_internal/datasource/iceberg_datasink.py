@@ -2,15 +2,15 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-
+import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-from ray.data.datasource.datasink import Datasink
-from ray.util.annotations import DeveloperAPI
-from ray.data.block import BlockAccessor, Block
+from packaging import version
+
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.datasource.datasink import WriteResult
-import uuid
+from ray.data.block import Block, BlockAccessor
+from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -85,7 +85,15 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def on_write_start(self) -> None:
         """Prepare for the transaction"""
-        from pyiceberg.table import PropertyUtil, TableProperties
+        import pyiceberg
+        from pyiceberg.table import TableProperties
+
+        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
+            from pyiceberg.utils.properties import property_as_bool
+        else:
+            from pyiceberg.table import PropertyUtil
+
+            property_as_bool = PropertyUtil.property_as_bool
 
         catalog = self._get_catalog()
         table = catalog.load_table(self.table_identifier)
@@ -103,7 +111,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 f"Not all partition types are supported for writes. Following partitions cannot be written using pyarrow: {unsupported_partitions}."
             )
 
-        self._manifest_merge_enabled = PropertyUtil.property_as_bool(
+        self._manifest_merge_enabled = property_as_bool(
             self._table_metadata.properties,
             TableProperties.MANIFEST_MERGE_ENABLED,
             TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
@@ -135,8 +143,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             if pa_table.shape[0] <= 0:
                 continue
 
+            task_uuid = uuid.uuid4()
             data_files = _dataframe_to_data_files(
-                self._table_metadata, pa_table, self._io, self._uuid
+                self._table_metadata, pa_table, self._io, task_uuid
             )
             data_files_list.extend(data_files)
 

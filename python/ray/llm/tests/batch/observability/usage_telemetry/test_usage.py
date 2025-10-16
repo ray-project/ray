@@ -1,17 +1,18 @@
-import ray
-from ray._private.usage.usage_lib import TagKey
-import pytest
 import sys
 
+import pytest
+
+import ray
+from ray._common.usage.usage_lib import TagKey
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.vllm_engine_proc import (
-    vLLMEngineProcessorConfig,
-)
 from ray.llm._internal.batch.processor.http_request_proc import (
     HttpRequestProcessorConfig,
+)
+from ray.llm._internal.batch.processor.vllm_engine_proc import (
+    vLLMEngineProcessorConfig,
 )
 
 
@@ -78,6 +79,7 @@ def test_push_telemetry_report():
         TagKey.LLM_BATCH_TASK_TYPE: "generate,",
         TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,0",
         TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,0",
+        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "0,0",
     }, f"actual telemetry: {telemetry}"
 
 

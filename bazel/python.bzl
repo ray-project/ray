@@ -17,6 +17,24 @@ def _convert_target_to_import_path(t):
     # 3) Replace '/' with '.' to form an import path.
     return t.replace("/", ".")
 
+def doctest_each(files, gpu = False, deps=[], srcs=[], data=[], args=[], size="medium", tags=[], pytest_plugin_file="//bazel:default_doctest_pytest_plugin.py", **kwargs):
+    # Unlike the `doctest` macro, `doctest_each` runs `pytest` on each file separately.
+    # This is useful to run tests in parallel and more clearly report the test results.
+    for file in files:
+        doctest(
+            files = [file],
+            gpu = gpu,
+            name = paths.split_extension(file)[0],
+            deps = deps,
+            srcs = srcs,
+            data = data,
+            args = args,
+            size = size,
+            tags = tags,
+            pytest_plugin_file = pytest_plugin_file,
+            **kwargs
+        )
+
 def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], pytest_plugin_file="//bazel:default_doctest_pytest_plugin.py", **kwargs):
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
@@ -94,5 +112,24 @@ def py_test_run_all_notebooks(include, exclude, allow_empty=False, **kwargs):
             # find it right away. This allows to deal with
             # mismatches between `name` and `data` args.
             args = ["--find-recursively", "--path", file],
+            **kwargs
+        )
+
+def py_test_module_list_with_env_variants(files, env_variants, size="medium", **kwargs):
+    """Create multiple py_test_module_list targets with different environment variable configurations.
+
+    Args:
+        files: List of test files to run
+        env_variants: Dict where keys are variant names and values are dicts containing
+                     'env' and 'name_suffix' keys
+        size: Test size
+        **kwargs: Additional arguments passed to py_test_module_list
+    """
+    for variant_name, variant_config in env_variants.items():
+        py_test_module_list(
+            size = size,
+            files = files,
+            env = variant_config.get("env", {}),
+            name_suffix = variant_config.get("name_suffix", "_{}".format(variant_name)),
             **kwargs
         )

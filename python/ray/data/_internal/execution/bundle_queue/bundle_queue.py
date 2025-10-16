@@ -22,20 +22,28 @@ class BundleQueue(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def pop(self) -> "RefBundle":
+    def get_next(self) -> "RefBundle":
         """Remove and return the head of the queue.
 
         Raises:
             IndexError: If the queue is empty.
+
+        Returns:
+            A Refbundle if has_next() is True
         """
         ...
 
     @abc.abstractmethod
-    def peek(self) -> Optional["RefBundle"]:
+    def peek_next(self) -> Optional["RefBundle"]:
         """Return the head of the queue without removing it.
 
         If the queue is empty, return `None`.
         """
+        ...
+
+    @abc.abstractmethod
+    def has_next(self) -> bool:
+        """Check if the queue has a valid bundle."""
         ...
 
     @abc.abstractmethod

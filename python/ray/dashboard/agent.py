@@ -2,23 +2,20 @@ import argparse
 import asyncio
 import json
 import logging
-import logging.handlers
 import os
 import signal
 import sys
 
-import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.services
-import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import build_address, is_localhost
 from ray._common.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
+from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._private import logging_utils
+from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +24,13 @@ class DashboardAgent:
     def __init__(
         self,
         node_ip_address,
-        dashboard_agent_port,
+        grpc_port,
         gcs_address,
         cluster_id_hex,
         minimal,
         metrics_export_port=None,
         node_manager_port=None,
+        events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         *,  # the following are required kwargs
@@ -56,9 +54,10 @@ class DashboardAgent:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.log_dir = log_dir
-        self.dashboard_agent_port = dashboard_agent_port
+        self.grpc_port = grpc_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.events_export_addr = events_export_addr
         self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
@@ -72,7 +71,7 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        self.gcs_aio_client = GcsAioClient(
+        self.gcs_client = GcsClient(
             address=self.gcs_address,
             cluster_id=self.cluster_id_hex,
         )
@@ -81,11 +80,10 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray._private.gcs_pubsub import GcsAioPublisher
-        from ray.dashboard.http_server_agent import HttpServerAgent
-
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
         from grpc import aio as aiogrpc
+
+        from ray._private.tls_utils import add_port_to_grpc_server
+        from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -113,11 +111,10 @@ class DashboardAgent:
                 ),
             )  # noqa
         )
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
-            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
-            )
+            add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
+            if not is_localhost(self.ip):
+                add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
@@ -129,7 +126,10 @@ class DashboardAgent:
             self.server = None
             self.grpc_port = None
         else:
-            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+            logger.info(
+                "Dashboard agent grpc address: %s",
+                build_address(self.ip, self.grpc_port),
+            )
 
         # If the agent is not minimal it should start the http server
         # to communicate with the dashboard in a head node.
@@ -159,13 +159,6 @@ class DashboardAgent:
             self.http_server
         ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
-
-    @property
-    def publisher(self):
-        assert (
-            self.aio_publisher
-        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
-        return self.aio_publisher
 
     def get_node_id(self) -> str:
         return self.node_id
@@ -200,13 +193,13 @@ class DashboardAgent:
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
-            put_by_node_id = self.gcs_aio_client.internal_kv_put(
+            put_by_node_id = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
                 json.dumps([self.ip, http_port, grpc_port]).encode(),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
-            put_by_ip = self.gcs_aio_client.internal_kv_put(
+            put_by_ip = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
                 json.dumps([self.node_id, http_port, grpc_port]).encode(),
                 True,
@@ -225,7 +218,7 @@ class DashboardAgent:
                 )
 
             check_parent_task = create_check_raylet_task(
-                self.log_dir, self.gcs_address, callback, loop
+                self.log_dir, self.gcs_client, callback, loop
             )
             tasks.append(check_parent_task)
 
@@ -269,7 +262,7 @@ if __name__ == "__main__":
         help="The port to expose metrics through Prometheus.",
     )
     parser.add_argument(
-        "--dashboard-agent-port",
+        "--grpc-port",
         required=True,
         type=int,
         help="The port on which the dashboard agent will receive GRPCs.",
@@ -379,7 +372,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="The session name (cluster id) of this cluster.",
+        help="The current Ray session name.",
     )
     parser.add_argument(
         "--stdout-filepath",
@@ -430,7 +423,7 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.node_ip_address,
-            args.dashboard_agent_port,
+            args.grpc_port,
             args.gcs_address,
             args.cluster_id_hex,
             args.minimal,

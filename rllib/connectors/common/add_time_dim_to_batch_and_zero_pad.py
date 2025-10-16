@@ -183,7 +183,11 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
     ) -> Any:
 
         # If not stateful OR STATE_IN already in data, early out.
-        if not rl_module.is_stateful() or Columns.STATE_IN in batch:
+        if (
+            rl_module is None
+            or not rl_module.is_stateful()
+            or Columns.STATE_IN in batch
+        ):
             return batch
 
         # Make all inputs (other than STATE_IN) have an additional T-axis.

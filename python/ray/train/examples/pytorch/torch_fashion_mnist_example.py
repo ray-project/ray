@@ -65,6 +65,8 @@ class NeuralNetwork(nn.Module):
 
 
 def train_func_per_worker(config: Dict):
+    ray.train.torch.enable_reproducibility()
+
     lr = config["lr"]
     epochs = config["epochs"]
     batch_size = config["batch_size_per_worker"]

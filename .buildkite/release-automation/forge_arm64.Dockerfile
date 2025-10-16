@@ -15,11 +15,11 @@ apt-get install -y curl zip clang-12
 
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
-# Install miniconda
-curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-aarch64.sh > /tmp/miniconda.sh
-bash /tmp/miniconda.sh -b -u -p /usr/local/bin/miniconda3
-rm /tmp/miniconda.sh
-/usr/local/bin/miniconda3/bin/conda init bash
+# Install miniforge3
+curl -sfL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-Linux-aarch64.sh > /tmp/miniforge3.sh
+bash /tmp/miniforge3.sh -b -u -p /usr/local/bin/miniforge3
+rm /tmp/miniforge3.sh
+/usr/local/bin/miniforge3/bin/conda init bash
 
 # Install Bazelisk
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output /usr/local/bin/bazelisk

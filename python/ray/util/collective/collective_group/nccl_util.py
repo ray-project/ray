@@ -3,13 +3,17 @@ import numpy
 
 try:
     import cupy
-    from cupy.cuda import nccl
-    from cupy.cuda import Device  # noqa: F401
-    from cupy.cuda.nccl import get_version
-    from cupy.cuda.nccl import get_build_version
-    from cupy.cuda.nccl import NcclCommunicator
-    from cupy.cuda.nccl import groupStart  # noqa: F401
-    from cupy.cuda.nccl import groupEnd  # noqa: F401
+    from cupy.cuda import (
+        Device,  # noqa: F401
+        nccl,
+    )
+    from cupy.cuda.nccl import (
+        NcclCommunicator,
+        get_build_version,
+        get_version,
+        groupEnd,  # noqa: F401
+        groupStart,  # noqa: F401
+    )
 except ImportError:
     raise ImportError("NCCL in Ray requires Cupy being available!")
 

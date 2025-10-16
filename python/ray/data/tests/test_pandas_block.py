@@ -275,7 +275,10 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        memory_usage = sum([sys.getsizeof(animal) for animal in animals])
+        # The actual usage should be the index usage + the string data usage.
+        memory_usage = block.memory_usage(index=True, deep=False).sum() + sum(
+            [sys.getsizeof(animal) for animal in animals]
+        )
 
         assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
@@ -447,8 +450,49 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        true_size = block.memory_usage(index=True, deep=True).sum()
+        true_size = block.memory_usage(index=True, deep=False).sum() + sum(
+            sys.getsizeof(x) for x in data
+        )
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
+
+
+def test_iter_rows_with_na(ray_start_regular_shared):
+    block = pd.DataFrame({"col": [pd.NA]})
+    block_accessor = PandasBlockAccessor.for_block(block)
+
+    rows = block_accessor.iter_rows(public_row_format=True)
+
+    # We should return None for NaN values.
+    assert list(rows) == [{"col": None}]
+
+
+def test_empty_dataframe_with_object_columns(ray_start_regular_shared):
+    """Test that size_bytes handles empty DataFrames with object/string columns.
+
+    The warning log:
+    "Error calculating size for column 'parent': cannot call `vectorize`
+    on size 0 inputs unless `otypes` is set"
+    should not be logged in the presence of empty columns.
+    """
+    from unittest.mock import patch
+
+    # Create an empty DataFrame but with defined columns and dtypes
+    block = pd.DataFrame(
+        {
+            "parent": pd.Series([], dtype=object),
+            "child": pd.Series([], dtype="string"),
+            "data": pd.Series([], dtype=object),
+        }
+    )
+
+    block_accessor = PandasBlockAccessor.for_block(block)
+
+    # Check that NO warning is logged after calling size_bytes
+    with patch("ray.data._internal.pandas_block.logger.warning") as mock_warning:
+        bytes_size = block_accessor.size_bytes()
+        mock_warning.assert_not_called()
+
+    assert bytes_size >= 0
 
 
 if __name__ == "__main__":

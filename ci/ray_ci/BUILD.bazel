@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
     name = "ray_ci_lib",
@@ -9,15 +9,19 @@ py_library(
             "test_*.py",
             "test_in_docker.py",
             "build_in_docker.py",
+            "build_in_docker_windows.py",
         ],
     ),
-    visibility = ["//ci/ray_ci:__subpackages__"],
     data = glob(["*.yaml"]),
+    visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
+        "//release:bazel",
+        "//release:global_config",
+        "//release:test",
+        "//release:test_automation",
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
-        "//release:ray_release",
     ],
 )
 
@@ -108,6 +112,21 @@ py_test(
     deps = [
         ":ray_ci_lib",
         ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_container",
+    size = "small",
+    srcs = ["test_container.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
         ci_require("pytest"),
     ],
 )
@@ -217,7 +236,7 @@ py_test(
     size = "small",
     srcs = ["test_privileged.py"],
     tags = [
-        "team:ci"
+        "team:ci",
     ],
     deps = [ci_require("pytest")],
 )
