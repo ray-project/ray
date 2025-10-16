@@ -650,12 +650,15 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 }
 
 void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) {
-  auto data = std::move(*request.mutable_data());
+  rpc::TaskEventData data;
+  data.Swap(request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
-  for (auto &events_by_task : *data.mutable_events_by_task()) {
+  for (auto &task_event : *data.mutable_events_by_task()) {
+    rpc::TaskEvents task_event_proto;
+    task_event_proto.Swap(&task_event);
     stats_counter_.Increment(kTotalNumTaskEventsReported);
-    task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
+    task_event_storage_->AddOrReplaceTaskEvent(std::move(task_event_proto));
   }
 }
 
@@ -671,11 +674,10 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  rpc::AddTaskEventDataRequest task_event_data_request;
+  ConvertToTaskEventDataRequests(request, task_event_data_request);
 
-  for (auto &task_event_data : task_event_data_requests) {
-    RecordTaskEventData(task_event_data);
-  }
+  RecordTaskEventData(task_event_data_request);
 
   // Processed all the task events
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

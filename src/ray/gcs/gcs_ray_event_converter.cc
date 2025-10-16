@@ -25,37 +25,6 @@ namespace gcs {
 
 namespace {
 
-/// Add dropped task attempts to the appropriate job-grouped request.
-///
-/// \param metadata The task events metadata containing dropped task attempts.
-/// \param requests_per_job_id The list of requests grouped by job id.
-/// \param job_id_to_index The map from job id to index in requests_per_job_id.
-void AddDroppedTaskAttemptsToRequest(
-    rpc::events::TaskEventsMetadata &&metadata,
-    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
-    absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
-  // Process each dropped task attempt individually and route to the correct job ID
-  for (auto &dropped_attempt : *metadata.mutable_dropped_task_attempts()) {
-    const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
-    const auto job_id_key = task_id.JobId().Binary();
-
-    auto it = job_id_to_index.find(job_id_key);
-    if (it == job_id_to_index.end()) {
-      // Create new request if job_id not found
-      size_t idx = requests_per_job_id.size();
-      requests_per_job_id.emplace_back();
-      auto *data = requests_per_job_id.back().mutable_data();
-      data->set_job_id(job_id_key);
-      data->add_dropped_task_attempts()->Swap(&dropped_attempt);
-      job_id_to_index.emplace(job_id_key, idx);
-    } else {
-      // Add to existing request with same job_id
-      auto *data = requests_per_job_id[it->second].mutable_data();
-      data->add_dropped_task_attempts()->Swap(&dropped_attempt);
-    }
-  }
-}
-
 /// Populate the TaskInfoEntry with the given runtime env info, function descriptor,
 /// and required resources. This function is commonly used to convert the task
 /// and actor task definition events to TaskEvents.
@@ -146,10 +115,10 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   task_state_update->set_worker_pid(event.worker_pid());
   task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
 
-  // for (const auto &[state, timestamp] : event.task_state()) {
-  //   int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
-  //   (*task_state_update->mutable_state_ts_ns())[state] = ns;
-  // }
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+  }
   return task_event;
 }
 
@@ -199,13 +168,12 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
 
 }  // namespace
 
-std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
-    rpc::events::AddEventsRequest &&request) {
-  std::vector<rpc::AddTaskEventDataRequest> requests_per_job_id;
-  absl::flat_hash_map<std::string, size_t> job_id_to_index;
-  // convert RayEvents to TaskEvents and group by job id.
-  for (auto &event : *request.mutable_events_data()->mutable_events()) {
-    std::optional<rpc::TaskEvents> task_event = std::nullopt;
+rpc::AddTaskEventDataRequest ConvertToTaskEventDataRequests(
+    rpc::events::AddEventsRequest &events_request,
+    rpc::AddTaskEventDataRequest &request) {
+  // convert RayEvents to TaskEvents and add to single request
+  for (auto &event : *events_request.mutable_events_data()->mutable_events()) {
+    rpc::TaskEvents task_event;
 
     switch (event.event_type()) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
@@ -226,38 +194,28 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
       break;
     }
     default:
-      break;
       RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
     }
 
-    // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
-    if (task_event) {
-      const std::string job_id_key = task_event->job_id();
-      auto it = job_id_to_index.find(job_id_key);
-      if (it == job_id_to_index.end()) {
-        // Create new AddTaskEventDataRequest entry and add index to map
-        size_t idx = requests_per_job_id.size();
-        requests_per_job_id.emplace_back();
-        auto *data = requests_per_job_id.back().mutable_data();
-        data->set_job_id(job_id_key);
-        data->add_events_by_task()->Swap(&(*task_event));
-        job_id_to_index.emplace(job_id_key, idx);
-      } else {
-        // add taskEvent to existing AddTaskEventDataRequest with same job id
-        auto *data = requests_per_job_id[it->second].mutable_data();
-        data->add_events_by_task()->Swap(&(*task_event));
-      }
-    }
+    // Add task event to the single request
+    auto *data = request.mutable_data();
+    data->add_events_by_task()->Swap(&task_event);
+    data->set_job_id(task_event.job_id());
   }
 
-  // Groups all taskEventMetadata belonging to same jobId into one
-  // AddTaskEventDataRequest
-  auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
-  if (metadata->dropped_task_attempts_size() > 0) {
-    AddDroppedTaskAttemptsToRequest(
-        std::move(*metadata), requests_per_job_id, job_id_to_index);
-  }
-  return requests_per_job_id;
+  // Handle task event metadata
+  // auto *metadata =
+  // events_request.mutable_events_data()->mutable_task_events_metadata(); if
+  // (metadata->dropped_task_attempts_size() > 0) {
+  //   auto *data = request.mutable_data();
+  //   for (const auto &dropped_attempt : metadata->dropped_task_attempts()) {
+  //     auto *dropped_attempt_proto = data->add_dropped_task_attempts();
+  //     dropped_attempt_proto->set_task_id(dropped_attempt.task_id());
+  //     dropped_attempt_proto->set_attempt_number(dropped_attempt.attempt_number());
+  //   }
+  // }
+
+  return request;
 }
 
 }  // namespace gcs
