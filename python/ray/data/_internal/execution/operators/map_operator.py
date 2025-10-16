@@ -742,7 +742,6 @@ class _OrderedOutputQueue(_OutputQueue):
         del self._task_outputs[self._current_output_index]
         self._completed_tasks.remove(self._current_output_index)
         self._current_output_index += 1
-        self._size -= 1
 
     def notify_task_completed(self, task_index: int):
         assert task_index >= self._current_output_index
@@ -759,6 +758,7 @@ class _OrderedOutputQueue(_OutputQueue):
         if len(self._task_outputs[self._current_output_index]) == 0:
             if self._current_output_index in self._completed_tasks:
                 self._move_to_next_task()
+        self._size -= 1
         return next_bundle
 
     def __len__(self) -> int:
