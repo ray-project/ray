@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class TrainingFailedError(RayTrainError):
     """Exception raised when training fails from a `trainer.fit()` call.
-    This is either `WorkerGroupError` or `ControllerError`.
+    This is either :class:`ray.train.WorkerGroupError` or :class:`ray.train.ControllerError`.
     """
 
 
