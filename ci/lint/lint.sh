@@ -70,8 +70,8 @@ banned_words() {
 }
 
 doc_readme() {
-  uv pip install -c python/requirements_compiled.txt docutils
-  cd python && python setup.py check --restructuredtext --strict --metadata
+  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
+  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
 }
 
 dashboard_format() {

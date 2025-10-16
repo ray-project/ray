@@ -71,7 +71,6 @@ ln -s $PYTHON39_PATH /usr/local/bin/python3.9
 ln -s $PYTHON39_PATH /usr/local/bin/python3
 ln -s $PYTHON39_PATH /usr/local/bin/python
 
-uv venv /opt/venv
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
 uv pip install --system pip==25.0 cffi==1.16.0
@@ -97,7 +96,6 @@ if [[ "$(uname -i)" == "x86_64" ]]; then
 fi
 
 EOF
-ENV PATH="/opt/venv/bin:$PATH"
 
 USER forge
 
