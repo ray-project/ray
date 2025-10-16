@@ -891,7 +891,44 @@ class Unique(AggregateFnV2):
 
 @PublicAPI(stability="beta")
 class ValueCounter(AggregateFnV2):
-    """Counts the number of times each value appears in a column."""
+    """Counts the number of times each value appears in a column.
+
+    This aggregation computes value counts for a specified column, similar to pandas'
+    `value_counts()` method. It returns a dictionary with two lists: "values" containing
+    the unique values found in the column, and "counts" containing the corresponding
+    count for each value.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ValueCounter
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count occurrences of each category
+            result = ds.aggregate(ValueCounter(on="category"))
+            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+
+    Args:
+        on: The name of the column to count values in. Must be provided.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "value_counter({column_name})".
+    """
 
     def __init__(
         self,
