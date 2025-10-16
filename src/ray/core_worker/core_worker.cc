@@ -1375,11 +1375,8 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids,
-                                                  local_timeout_ms,
-                                                  *worker_context_,
-                                                  &result_map,
-                                                  &got_exception));
+    RAY_RETURN_NOT_OK(
+        plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms, &result_map));
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
@@ -3004,15 +3001,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   // might not have the same value as the new copy. It would be better to evict
   // the existing copy here.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  bool got_exception = false;
 
   // Temporarily set the return object's owner's address. This is needed to retrieve the
   // value from plasma.
   reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
-  auto status = plasma_store_provider_->Get(
-      {return_id}, 0, *worker_context_, &result_map, &got_exception);
+  Status status = plasma_store_provider_->Get({return_id}, 0, &result_map);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3279,8 +3274,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     RAY_RETURN_NOT_OK(memory_store_->Get(
         by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
   } else {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, &result_map));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
