@@ -357,7 +357,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
 
 
     Args:
-        pd_serving_args: The dictionary containing prefill and decode configs.
+        pd_serving_args: The dictionary containing prefill and decode configs. See PDServingArgs for more details.
 
     Returns:
         The configured Ray Serve Application router.

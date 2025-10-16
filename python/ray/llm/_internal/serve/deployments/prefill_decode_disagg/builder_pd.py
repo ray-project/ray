@@ -25,7 +25,7 @@ from ray.serve.llm import (
 class ProxyClsConfig(BaseModelExtended):
     proxy_cls: Union[str, type[PDProxyServer]] = Field(
         default=PDProxyServer,
-        description="The class name of the proxy class.",
+        description="The proxy class or the class module path to use.",
     )
 
     proxy_extra_kwargs: Optional[dict] = Field(
@@ -65,8 +65,9 @@ class PDServingArgs(BaseModelExtended):
         description="The Ray @server.deployment options for the ingress.",
     )
 
-    @staticmethod
-    def _validate_llm_config(value: Any) -> LLMConfig:
+    @field_validator("prefill_config", "decode_config")
+    @classmethod
+    def _validate_llm_config(cls, value: Any) -> LLMConfig:
         if isinstance(value, str):
             return LLMConfig.from_file(value)
         elif isinstance(value, dict):
@@ -74,7 +75,7 @@ class PDServingArgs(BaseModelExtended):
         elif isinstance(value, LLMConfig):
             return value
         else:
-            raise ValueError(f"Invalid LLMConfig: {value}")
+            raise TypeError(f"Invalid LLMConfig type: {type(value)}")
 
     @field_validator("proxy_cls_config")
     @classmethod
@@ -93,16 +94,6 @@ class PDServingArgs(BaseModelExtended):
         if isinstance(value, dict):
             return IngressClsConfig.model_validate(value)
         return value
-
-    @field_validator("prefill_config")
-    @classmethod
-    def _validate_prefill_config(cls, value: Any) -> LLMConfig:
-        return cls._validate_llm_config(value)
-
-    @field_validator("decode_config")
-    @classmethod
-    def _validate_decode_config(cls, value: Any) -> LLMConfig:
-        return cls._validate_llm_config(value)
 
     @model_validator(mode="after")
     def _validate_model_ids(self):
