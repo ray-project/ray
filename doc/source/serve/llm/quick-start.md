@@ -912,5 +912,5 @@ The Ray Team collects usage data to improve Ray Serve LLM. The team collects dat
 - Initial replicas count.
 - GPU type used and number of GPUs used.
 
-If you'd like to opt-out from usage data collection, you can follow {ref}`Ray usage stats <ref-usage-stats>` to disable it.
+To opt-out of usage data collection, you can follow {ref}`Ray usage stats <ref-usage-stats>` to disable it.
 
