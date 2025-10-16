@@ -1,7 +1,9 @@
 import pytest
 
 import ray
+from ray.train.utils import _in_ray_train_worker
 from ray.train.v2._internal.util import ray_get_safe
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +56,16 @@ def test_ray_get_safe(type, failing, task_list):
             assert out == [1] * num_tasks
         else:
             assert out == 1
+
+
+def test_in_ray_train_worker(ray_start_4_cpus):
+    assert not _in_ray_train_worker()
+
+    def train_fn():
+        assert _in_ray_train_worker()
+
+    trainer = DataParallelTrainer(train_fn)
+    trainer.fit()
 
 
 if __name__ == "__main__":
