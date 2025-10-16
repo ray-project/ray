@@ -1183,7 +1183,6 @@ Status NodeManager::RegisterForNewDriver(
   worker->SetProcess(Process::FromPid(pid));
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
-  // The driver must start in the system cgroup.
   Status s = cgroup_manager_->AddProcessToWorkersCgroup(std::to_string(pid));
   RAY_CHECK(s.ok()) << absl::StrFormat(
       "Failed to move the driver process into the workers cgroup with error %s",
