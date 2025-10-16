@@ -1,5 +1,4 @@
 from collections import defaultdict
-from functools import partial
 import logging
 
 import gymnasium
@@ -28,7 +27,6 @@ from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -206,6 +204,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # desired timesteps/episodes to sample and exploration behavior.
             if explore is None:
                 explore = self.config.explore
+
             if (
                 num_timesteps is None
                 and num_episodes is None
@@ -656,24 +655,40 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 "You should provide a valid environment to your config through "
                 "`config.environment(<env descriptor e.g. 'CartPole-v1'>)`."
             )
-
-        if isinstance(self.config.env, str):
-            env_name = self.config.env
-            if self.config.env not in gymnasium.registry:
-                if _global_registry.contains(ENV_CREATOR, self.config.env):
-                    env_entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
-                    # we don't know if the entry-point is for a single or vector env so we register for both and let the user choose the vectorize mode
-                    gymnasium.register(self.config.env, entry_point=env_entry_point, vector_entry_point=env_entry_point)
-                elif ":" in self.config.env:
-                    if len(self.config.env.split(":")) == 2:
-                        importlib, env_name = self.config.env.split(":")
-                        assert env_name in gymnasium.registry
-                else:
-                    raise ValueError("`config.env` is a string but not contained in the `gymnasium.registry` or `tune._global_registry`")
-        else:
+        # callable to the environment, either directly as the Environment or function to the Environment
+        elif not isinstance(self.config.env, str):
             env_name = "rllib-env-v0"
-            # we don't know if the entry-point is for a single or vector env so we register for both and let the user choose the vectorize mode
-            gymnasium.register(env_name, entry_point=self.config.env, vector_entry_point=self.config.env)
+            gymnasium.register(
+                env_name,
+                entry_point=self.config.env,
+                vector_entry_point=self.config.env,
+            )
+        # the env is already contained in the gymnasium registry
+        elif self.config.env in gymnasium.registry:
+            env_name = self.config.env
+        # the env isn't in the registry but is in the tune._global_registry
+        elif _global_registry.contains(ENV_CREATOR, self.config.env):
+            env_name = self.config.env
+            env_entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
+            gymnasium.register(
+                self.config.env,
+                entry_point=env_entry_point,
+                vector_entry_point=env_entry_point,
+            )
+        # check if the env is `importlib:env-name` where importlib will register the environment
+        else:
+            env_name = self.config.env
+            is_valid_reference = (
+                ":" in env_name
+                and len(env_name.split(":")) == 2
+                and env_name.split(":")[1] in gymnasium.registry
+            )
+
+            if not is_valid_reference:
+                raise ValueError(
+                    "`config.env` is a string but not contained in the "
+                    "`gymnasium.registry` or `tune._global_registry`"
+                )
 
         vectorize_mode = VectorizeMode(self.config.gym_env_vectorize_mode)
         self.env = DictInfoToList(
@@ -681,7 +696,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 env_name,
                 num_envs=self.config.num_envs_per_env_runner,
                 vectorization_mode=vectorize_mode,
-                **self.config.env_config
+                **self.config.env_config,
             )
         )
 

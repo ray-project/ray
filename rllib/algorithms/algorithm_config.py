@@ -4822,14 +4822,14 @@ class AlgorithmConfig(_Config):
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
-            list(gym.envs.registration.VectorizeMode.__members__.keys())
-            + list(gym.envs.registration.VectorizeMode.__members__.values())
+            list(gymnasium.VectorizeMode)
+            + [mode.value for mode in gymnasium.VectorizeMode]
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
             self._value_error(
-                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
-                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
-                f"are {allowed_vectorize_modes}."
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) "
+                "must be a member of `gymnasium.VectorizeMode`! "
+                f"Allowed values are {allowed_vectorize_modes}."
             )
 
     def _validate_callbacks_settings(self) -> None:

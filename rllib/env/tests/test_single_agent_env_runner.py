@@ -23,7 +23,10 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             "tune-registered",
             lambda **cfg: CartPoleEnv(**cfg),
         )
-        tune.register_env("tune-registered-vec", lambda num_envs, **cfg: CartPoleVectorEnv(num_envs=num_envs, **cfg))
+        tune.register_env(
+            "tune-registered-vec",
+            lambda num_envs, **cfg: CartPoleVectorEnv(num_envs=num_envs, **cfg),
+        )
 
         gym.register(
             "TestEnv-v0",
