@@ -38,7 +38,8 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
@@ -95,8 +96,8 @@ class CoreWorkerTest : public ::testing::Test {
       return Status::OK();
     };
 
-    auto client_call_manager =
-        std::make_unique<rpc::ClientCallManager>(io_service_, /*record_stats=*/false);
+    auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+        io_service_, /*record_stats=*/false, /*local_address=*/"");
 
     auto core_worker_client_pool =
         std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
@@ -106,7 +107,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
         [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
 
-    auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
+    mock_gcs_client_ = std::make_shared<gcs::MockGcsClient>();
 
     auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
 
@@ -184,8 +185,9 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
-        mock_gcs_client,
-        fake_task_by_state_counter_);
+        mock_gcs_client_,
+        fake_task_by_state_gauge_,
+        /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -203,7 +205,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
-    auto actor_creator = std::make_shared<ActorCreator>(mock_gcs_client->Actors());
+    actor_creator_ = std::make_shared<ActorCreator>(mock_gcs_client_->Actors());
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc_address_,
@@ -216,7 +218,7 @@ class CoreWorkerTest : public ::testing::Test {
         NodeID::Nil(),
         WorkerType::WORKER,
         10000,
-        actor_creator,
+        actor_creator_,
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
@@ -226,16 +228,16 @@ class CoreWorkerTest : public ::testing::Test {
         *core_worker_client_pool,
         *memory_store_,
         *task_manager_,
-        *actor_creator,
+        *actor_creator_,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
+        [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
         reference_counter_);
     actor_task_submitter_ = actor_task_submitter.get();
 
     auto actor_manager = std::make_unique<ActorManager>(
-        mock_gcs_client, *actor_task_submitter, *reference_counter_);
+        mock_gcs_client_, *actor_task_submitter, *reference_counter_);
 
     auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
 
@@ -250,7 +252,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(periodical_runner),
                                                 std::move(core_worker_server),
                                                 std::move(rpc_address_),
-                                                std::move(mock_gcs_client),
+                                                mock_gcs_client_,
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
@@ -260,7 +262,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 nullptr,  // mutable_object_provider_
                                                 std::move(future_resolver),
                                                 task_manager_,
-                                                std::move(actor_creator),
+                                                actor_creator_,
                                                 std::move(actor_task_submitter),
                                                 std::move(object_info_publisher),
                                                 std::move(fake_object_info_subscriber),
@@ -271,7 +273,8 @@ class CoreWorkerTest : public ::testing::Test {
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
                                                 getpid(),
-                                                fake_task_by_state_counter_);
+                                                fake_task_by_state_gauge_,
+                                                fake_actor_by_state_gauge_);
   }
 
  protected:
@@ -284,13 +287,16 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
+  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::shared_ptr<ActorCreator> actor_creator_;
   std::shared_ptr<CoreWorker> core_worker_;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_gauge_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
@@ -316,7 +322,7 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
   ASSERT_TRUE(status.ok());
   // disconnect to trigger metric recording
   core_worker_->Disconnect(rpc::WorkerExitType::SYSTEM_ERROR, "test", nullptr);
-  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  auto tag_to_value = fake_task_by_state_gauge_.GetTagToValue();
   // 4 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT
   ASSERT_EQ(tag_to_value.size(), 4);
   for (auto &[key, value] : tag_to_value) {
@@ -534,9 +540,10 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
 namespace {
 
-ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
-                                                      ReferenceCounter &reference_counter,
-                                                      rpc::Address &rpc_address) {
+ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
+    CoreWorkerMemoryStore &memory_store,
+    ReferenceCounterInterface &reference_counter,
+    rpc::Address &rpc_address) {
   auto inlined_dependency_id = ObjectID::FromRandom();
   std::string data = "hello";
   auto data_ptr = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data()));
@@ -955,6 +962,164 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     CheckMessage(msg, i);
   }
 }
+
+class HandleWaitForActorRefDeletedRetriesTest
+    : public CoreWorkerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActor) {
+  // delete_actor_handle: determines whether the actor handle is removed from the
+  // reference counter. This is used to trigger the send_reply_callback which is stored in
+  // the reference counter via delete_actor_handle == true: the actor handle is removed
+  // from the reference counter and we expect the send_reply_callback to be triggered.
+  // delete_actor_handle == false: the actor handle is not removed from the reference
+  // counter and we expect the send_reply_callback to not be triggered.
+  bool delete_actor_handle = GetParam();
+
+  auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(
+      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+
+  rpc::WaitForActorRefDeletedRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+
+  size_t callback_count = 0;
+  rpc::WaitForActorRefDeletedReply reply1;
+  rpc::WaitForActorRefDeletedReply reply2;
+
+  core_worker_->HandleWaitForActorRefDeleted(
+      request,
+      &reply1,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
+
+  if (delete_actor_handle) {
+    std::vector<ObjectID> deleted;
+    // Triggers the send_reply_callback which is stored in the reference counter
+    reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
+    ASSERT_EQ(deleted.size(), 1u);
+    ASSERT_EQ(callback_count, 1);
+  } else {
+    ASSERT_EQ(callback_count, 0);
+  }
+
+  // The send_reply_callback is immediately triggered since the object has gone out of
+  // scope if delete_actor_handle is true. Otherwise, it is not triggered.
+  core_worker_->HandleWaitForActorRefDeleted(
+      request,
+      &reply2,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
+
+  if (delete_actor_handle) {
+    ASSERT_EQ(callback_count, 2);
+  } else {
+    ASSERT_EQ(callback_count, 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteredActor,
+                         HandleWaitForActorRefDeletedRetriesTest,
+                         ::testing::Values(true, false));
+
+class HandleWaitForActorRefDeletedWhileRegisteringRetriesTest
+    : public CoreWorkerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
+       ActorRefDeletedForRegisteringActor) {
+  // delete_actor_handle: determines whether the actor handle is removed from the
+  // reference counter. This is used to trigger the send_reply_callback which is stored in
+  // the reference counter via delete_actor_handle == true: the actor handle is removed
+  // from the reference counter and we expect the send_reply_callback to be triggered.
+  // delete_actor_handle == false: the actor handle is not removed from the reference
+  // counter and we expect the send_reply_callback to not be triggered.
+  bool delete_actor_handle = GetParam();
+
+  auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 1);
+  auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  reference_counter_->AddOwnedObject(
+      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+
+  rpc::TaskSpec task_spec_msg;
+  task_spec_msg.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
+  auto *actor_creation_spec = task_spec_msg.mutable_actor_creation_task_spec();
+  actor_creation_spec->set_actor_id(actor_id.Binary());
+  actor_creation_spec->set_max_actor_restarts(0);
+  actor_creation_spec->set_max_task_retries(0);
+  TaskSpecification task_spec(task_spec_msg);
+
+  gcs::StatusCallback register_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_actor_accessor,
+              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::SaveArg<1>(&register_callback));
+
+  actor_creator_->AsyncRegisterActor(task_spec, nullptr);
+
+  ASSERT_TRUE(actor_creator_->IsActorInRegistering(actor_id));
+
+  rpc::WaitForActorRefDeletedRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+
+  size_t callback_count = 0;
+  rpc::WaitForActorRefDeletedReply reply1;
+  rpc::WaitForActorRefDeletedReply reply2;
+
+  // Since the actor is in the registering state, we store the callbacks and trigger them
+  // when the the actor is done registering.
+  core_worker_->HandleWaitForActorRefDeleted(
+      request,
+      &reply1,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
+
+  core_worker_->HandleWaitForActorRefDeleted(
+      request,
+      &reply2,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        callback_count++;
+      });
+
+  ASSERT_EQ(callback_count, 0);
+  register_callback(Status::OK());
+  // Triggers the callbacks passed to AsyncWaitForActorRegisterFinish
+  ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
+
+  if (delete_actor_handle) {
+    std::vector<ObjectID> deleted;
+    // Triggers the send_reply_callback which is stored in the reference counter
+    reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
+    ASSERT_EQ(deleted.size(), 1u);
+    ASSERT_EQ(callback_count, 2);
+  } else {
+    ASSERT_EQ(callback_count, 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
+                         HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
+                         ::testing::Values(true, false));
 
 }  // namespace core
 }  // namespace ray

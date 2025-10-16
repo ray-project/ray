@@ -44,6 +44,7 @@
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
 /doc/source/data/ @ray-project/ray-data
+/python/ray/dashboard/modules/data/ @ray-project/ray-data
 /python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
 # Ray workflows.
@@ -68,10 +69,15 @@
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
 /python/ray/data/llm.py @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
+/doc/source/serve/llm/ @ray-project/ray-llm
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
+/java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
+/python/ray/dashboard/modules/serve/ @ray-project/ray-serve
 /doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
 
 # ML Docker Dependencies

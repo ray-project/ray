@@ -129,7 +129,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
 
         # Check resource request propagation.
         req = monitor.load_metrics.resource_requests
-        assert req == [{"CPU": 1}] * 42, req
+        assert req == [{"resources": {"CPU": 1}, "label_selector": {}}] * 42, req
 
         pg_response_data = monitor.load_metrics.pending_placement_groups
         assert_correct_pg(pg_response_data, pg_demands, strategy)
