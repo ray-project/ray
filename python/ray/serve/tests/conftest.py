@@ -139,6 +139,7 @@ def _shared_serve_instance():
     # To run locally, please use this instead.
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
+
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,
