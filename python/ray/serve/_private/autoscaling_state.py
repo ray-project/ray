@@ -372,19 +372,6 @@ class DeploymentAutoscalingState:
 
         return 0.0
 
-    def _aggregate_ongoing_requests(self, timeseries_list: List[TimeSeries]) -> float:
-        """Aggregate and average ongoing requests from timeseries data using instantaneous merge.
-
-        This is a convenience wrapper around _merge_and_aggregate_timeseries for ongoing requests.
-
-        Args:
-            timeseries_list: A list of TimeSeries representing ongoing requests from different sources.
-
-        Returns:
-            The time-weighted average of the ongoing requests
-        """
-        return self._merge_and_aggregate_timeseries(timeseries_list)
-
     def _calculate_total_requests_aggregate_mode(self) -> float:
         """Calculate total requests using aggregate metrics mode with timeseries data.
 
@@ -474,7 +461,9 @@ class DeploymentAutoscalingState:
         ongoing_requests_timeseries.extend(queued_timeseries)
 
         # Aggregate and add running requests to total
-        ongoing_requests = self._aggregate_ongoing_requests(ongoing_requests_timeseries)
+        ongoing_requests = self._merge_and_aggregate_timeseries(
+            ongoing_requests_timeseries
+        )
 
         return ongoing_requests
 
