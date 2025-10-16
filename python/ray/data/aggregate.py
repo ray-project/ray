@@ -1255,7 +1255,7 @@ class ApproximateQuantile(AggregateFnV2):
             quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
             alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
         """
-        self._require_datasketches()
+        self._sketch_cls = self._require_datasketches()
         self._quantiles = quantiles
         self._quantile_precision = quantile_precision
         super().__init__(
@@ -1266,8 +1266,7 @@ class ApproximateQuantile(AggregateFnV2):
         )
 
     def zero(self, quantile_precision: int):
-        sketch_cls = self._require_datasketches()
-        return sketch_cls(k=quantile_precision)
+        return self._sketch_cls(k=quantile_precision)
 
     def aggregate_block(self, block: Block) -> bytes:
         block_acc = BlockAccessor.for_block(block)
@@ -1282,11 +1281,9 @@ class ApproximateQuantile(AggregateFnV2):
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
         combined = self.zero(self._quantile_precision)
-        sketch_cls = self._require_datasketches()
-        combined.merge(sketch_cls.deserialize(current_accumulator))
-        combined.merge(sketch_cls.deserialize(new))
+        combined.merge(self._sketch_cls.deserialize(current_accumulator))
+        combined.merge(self._sketch_cls.deserialize(new))
         return combined.serialize()
 
     def finalize(self, accumulator: bytes) -> List[float]:
-        sketch_cls = self._require_datasketches()
-        return sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
+        return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
