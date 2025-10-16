@@ -294,11 +294,13 @@ def _warn_if_incompatible_env_vars() -> None:
     config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
 
-    if config_path and log_encoding:
+    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
+    # RAY_DATA_LOG_ENCODING, because they are not both supported together.
+    if config_path is not None and log_encoding is not None:
         logger = logging.getLogger(__name__)
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
-            "`RAY_DATA_LOGGING_CONFIG`"
+            + "`RAY_DATA_LOGGING_CONFIG`"
         )
 
 
