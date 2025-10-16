@@ -180,7 +180,7 @@ Ray Train Errors
 
     ~train.ControllerError
     ~train.WorkerGroupError
-    ~train.TrainingFailedError
+    ~train.v2.api.exceptions.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------
