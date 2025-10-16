@@ -249,6 +249,7 @@ def plan_filter_op(
             _generate_transform_fn_for_filter(filter_fn),
             is_udf=True,
             output_block_size_option=output_block_size_option,
+            explain_fn=op.explain,
         )
 
     map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
@@ -313,6 +314,7 @@ def plan_udf_map_op(
             udf_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
+            explain_fn=op.explain,
         )
 
     map_transformer = MapTransformer([transform_fn], init_fn=init_fn)
@@ -701,6 +703,7 @@ def _generate_transform_fn_for_async_map(
         #       to keep the output ordering the same as that one of the input
         #       iterator.
         completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
         async def _reorder() -> None:
