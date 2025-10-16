@@ -261,6 +261,9 @@ class AutoscalingPolicy(BaseModel):
 
         self.policy_function = policy_path
 
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
+
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
         return cloudpickle.loads(self._serialized_policy_def)
