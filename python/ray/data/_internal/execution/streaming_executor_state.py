@@ -255,8 +255,8 @@ class OpState:
 
     def total_enqueued_input_bundles(self) -> int:
         """Total number of input bundles currently enqueued among:
-        1. Input queue(s) pending dispatching (``OpState.input_queues``)
-        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+            1. Input queue(s) pending dispatching (``OpState.input_queues``)
+            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size = (
             self.op.internal_queue_size()
@@ -265,6 +265,20 @@ class OpState:
         )
 
         return self._pending_dispatch_input_bundles_count() + internal_queue_size
+
+    def total_enqueued_input_bundles_bytes(self) -> int:
+        """Total number of bytes occupied by input bundles currently enqueued among:
+            1. Input queue(s) pending dispatching (``OpState.input_queues``)
+            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_queue_size_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return self.input_queue_bytes() + internal_queue_size_bytes
+
 
     def _pending_dispatch_input_bundles_count(self) -> int:
         """Return the number of input bundles that are pending dispatching to the
