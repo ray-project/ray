@@ -363,9 +363,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
   // fetch_only=false.
-  // return raylet_ipc_client_->CancelGetRequest
+  return raylet_ipc_client_->CancelGetRequest();
   // return UnblockIfNeeded(raylet_ipc_client_, ctx);
-  return Status::OK();
+  // return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
