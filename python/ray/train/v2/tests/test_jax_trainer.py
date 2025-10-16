@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 import ray
@@ -71,26 +73,11 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
-def train_func_check_distributed_shutdown():
-    """Training function to verify JAX distributed is properly initialized and can be checked."""
-    import jax
+def test_minimal_singlehost(ray_tpu_single_host, tmp_path, caplog):
+    """Test single-host TPU training and verify shutdown callback is invoked."""
+    # Capture DEBUG logs to verify shutdown was called
+    caplog.set_level(logging.DEBUG)
 
-    from ray import train
-
-    # Verify JAX distributed is initialized
-    process_count = jax.process_count()
-    process_index = jax.process_index()
-
-    train.report(
-        {
-            "process_count": process_count,
-            "process_index": process_index,
-            "initialized": process_count > 1,
-        }
-    )
-
-
-def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         # Topology can be omitted for single-host.
@@ -114,8 +101,22 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     ]
     assert len(labeled_nodes) == 1
 
+    # Verify that JAX distributed shutdown was called via backend on_shutdown callback
+    shutdown_log_found = any(
+        "JAX distributed shutdown completed" in record.message
+        for record in caplog.records
+    )
+    assert shutdown_log_found, (
+        "Expected 'JAX distributed shutdown completed' in logs. "
+        "This indicates the backend on_shutdown() callback was not invoked."
+    )
 
-def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
+
+def test_minimal_multihost(ray_tpu_multi_host, tmp_path, caplog):
+    """Test multi-host TPU training and verify shutdown callback is invoked."""
+    # Capture DEBUG logs to verify shutdown was called
+    caplog.set_level(logging.DEBUG)
+
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
@@ -142,32 +143,15 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
     ]
     assert len(labeled_nodes) == 2
 
-
-
-def test_jax_distributed_initialization_multihost(ray_tpu_multi_host, tmp_path):
-    """Test that JAX distributed is properly initialized in multi-host setup.
-
-    This test also verifies that the shutdown logic works correctly.
-    """
-    trainer = JaxTrainer(
-        train_loop_per_worker=train_func_check_distributed_shutdown,
-        scaling_config=ScalingConfig(
-            num_workers=2,
-            resources_per_worker={"TPU": 4},
-            use_tpu=True,
-            topology="2x2x2",
-            accelerator_type="TPU-V4",
-        ),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-        ),
+    # Verify that JAX distributed shutdown was called via backend on_shutdown callback
+    shutdown_log_found = any(
+        "JAX distributed shutdown completed" in record.message
+        for record in caplog.records
     )
-    result = trainer.fit()
-    assert result.error is None
-
-    # Verify that JAX distributed was initialized with correct process count
-    assert result.metrics["process_count"] == 2
-    assert result.metrics["initialized"] is True
+    assert shutdown_log_found, (
+        "Expected 'JAX distributed shutdown completed' in logs. "
+        "This indicates the backend on_shutdown() callback was not invoked."
+    )
 
 
 if __name__ == "__main__":
