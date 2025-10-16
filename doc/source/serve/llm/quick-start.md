@@ -357,31 +357,6 @@ applications:
 ::::
 
 
-## Frequently asked questions
-
-### How to configure tokenizer pool size so it doesn't hang?
-
-When using `tokenizer_pool_size` in vLLM's `engine_kwargs`, `tokenizer_pool_size` is also required to configure together in order to have the tokenizer group scheduled correctly.
-
-The following example shows a config:
-
-```yaml
-# config.yaml
-applications:
-- args:
-    llm_configs:
-        - engine_kwargs:
-            max_model_len: 1000
-            tokenizer_pool_size: 2
-            tokenizer_pool_extra_config: "{\"runtime_env\": {}}"
-          model_loading_config:
-            model_id: Qwen/Qwen2.5-7B-Instruct
-  import_path: ray.serve.llm:build_openai_app
-  name: llm_app
-  route_prefix: "/"
-```
-
-
 ## Usage data collection
 
 We collect usage data to improve Ray Serve LLM. We collect data about the following features and attributes:
