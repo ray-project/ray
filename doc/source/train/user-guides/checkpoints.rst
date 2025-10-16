@@ -306,6 +306,13 @@ and returns the persisted ``Checkpoint``.
     lead to unexpected behavior. You should also avoid collective operations, such as
     :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
 
+.. note::
+
+    Do not pass a ``checkpoint_upload_fn`` with ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD``
+    because Ray Train will simply ignore ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
+    ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.SYNC``, but this is equivalent to uploading the
+    checkpoint yourself and reporting the checkpoint with ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing
