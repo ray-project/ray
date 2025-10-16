@@ -58,7 +58,9 @@ void RayEventRecorder::ExportEvents() {
   // events with the same resource ID into a single event.
   for (auto &event : buffer_) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-    *ray_event_data.mutable_events()->Add() = std::move(ray_event);
+    auto *events_with_type = ray_event_data.mutable_events()->Add();
+    events_with_type->set_event(ray_event.SerializeAsString());
+    events_with_type->set_event_type(ray_event.event_type());
   }
   *request.mutable_events_data() = std::move(ray_event_data);
   buffer_.clear();

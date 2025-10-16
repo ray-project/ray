@@ -47,7 +47,9 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
-EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
+EVENTS_EXPORT_ADDR = os.environ.get(
+    f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "http://127.0.0.1:8365"
+)
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
@@ -184,12 +186,14 @@ class AggregatorAgent(
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 
-    def _can_expose_event(self, event) -> bool:
+    def _can_expose_event(
+        self, event_with_type: events_event_aggregator_service_pb2.RayEventWithType
+    ) -> bool:
         """
         Check if an event should be allowed to be sent to external services.
         """
         return (
-            events_base_event_pb2.RayEvent.EventType.Name(event.event_type)
+            events_base_event_pb2.RayEvent.EventType.Name(event_with_type.event_type)
             in self._exposable_event_types
         )
 

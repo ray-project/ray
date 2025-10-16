@@ -8,8 +8,8 @@ from typing import Callable
 import aiohttp
 
 from ray._common.utils import get_or_create_event_loop
-from ray._private.protobuf_compat import message_to_json
-from ray.core.generated import events_base_event_pb2
+from ray._raylet import ProtoConverter
+from ray.core.generated import events_event_aggregator_service_pb2
 from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class PublishBatch:
     """Data class that represents a batch of events to publish."""
 
     # The list of events to publish
-    events: list[events_base_event_pb2.RayEvent]
+    events: list[events_event_aggregator_service_pb2.RayEventWithType]
 
 
 class PublisherClientInterface(ABC):
@@ -72,9 +72,12 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self._events_filter_fn = events_filter_fn
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
+        self._proto_converter = ProtoConverter()
 
     async def publish(self, batch: PublishBatch) -> PublishStats:
-        events_batch: list[events_base_event_pb2.RayEvent] = batch.events
+        events_batch: list[
+            events_event_aggregator_service_pb2.RayEventWithType
+        ] = batch.events
         if not events_batch:
             # Nothing to publish -> success but nothing published
             return PublishStats(True, 0, 0)
@@ -89,10 +92,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             self._executor,
             lambda: [
                 json.loads(
-                    message_to_json(
-                        e,
-                        always_print_fields_with_no_presence=True,
-                        preserving_proto_field_name=False,
+                    self._proto_converter.bytes_to_json(
+                        "type.googleapis.com/ray.rpc.events.RayEvent",
+                        e.event,
                     )
                 )
                 for e in filtered

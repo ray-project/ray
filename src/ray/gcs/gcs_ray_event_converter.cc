@@ -206,27 +206,33 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
   // convert RayEvents to TaskEvents and group by job id.
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
     std::optional<rpc::TaskEvents> task_event = std::nullopt;
+    auto event_type = event.event_type();
+    rpc::events::RayEvent ray_event;
+    ray_event.ParseFromString(event.event());
 
-    switch (event.event_type()) {
+    switch (event_type) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
+      task_event =
+          ConvertToTaskEvents(std::move(*ray_event.mutable_task_definition_event()));
       break;
     }
     case rpc::events::RayEvent::TASK_LIFECYCLE_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_lifecycle_event()));
+      task_event =
+          ConvertToTaskEvents(std::move(*ray_event.mutable_task_lifecycle_event()));
       break;
     }
     case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()));
+      task_event =
+          ConvertToTaskEvents(std::move(*ray_event.mutable_task_profile_events()));
       break;
     }
     case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
-      task_event =
-          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
+      task_event = ConvertToTaskEvents(
+          std::move(*ray_event.mutable_actor_task_definition_event()));
       break;
     }
     default:
-      RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
+      RAY_CHECK(false) << "Unsupported event type: " << event_type;
     }
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest

@@ -629,16 +629,22 @@ TaskEventBufferImpl::CreateRayEventsDataToSend(
   // Move the ray events.
   for (auto &[task_attempt, ray_events_tuple] : agg_task_events) {
     if (ray_events_tuple.task_definition_event) {
-      auto events = data->add_events();
-      *events = std::move(ray_events_tuple.task_definition_event.value());
+      auto events_with_type = data->add_events();
+      events_with_type->set_event(
+          ray_events_tuple.task_definition_event.value().SerializeAsString());
+      events_with_type->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
     }
     if (ray_events_tuple.task_lifecycle_event) {
-      auto events = data->add_events();
-      *events = std::move(ray_events_tuple.task_lifecycle_event.value());
+      auto events_with_type = data->add_events();
+      events_with_type->set_event(
+          ray_events_tuple.task_lifecycle_event.value().SerializeAsString());
+      events_with_type->set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
     }
     if (ray_events_tuple.task_profile_event) {
-      auto events = data->add_events();
-      *events = std::move(ray_events_tuple.task_profile_event.value());
+      auto events_with_type = data->add_events();
+      events_with_type->set_event(
+          ray_events_tuple.task_profile_event.value().SerializeAsString());
+      events_with_type->set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
     }
   }
 

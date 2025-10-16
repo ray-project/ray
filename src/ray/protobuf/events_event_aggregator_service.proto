@@ -26,9 +26,14 @@ message TaskEventsMetadata {
   repeated TaskAttempt dropped_task_attempts = 2;
 }
 
+message RayEventWithType {
+  bytes event = 1;
+  RayEvent.EventType event_type = 2;
+}
+
 message RayEventsData {
   // Events to be added to the event aggregator.
-  repeated RayEvent events = 1;
+  repeated RayEventWithType events = 1;
   // Metadata about the events.
   TaskEventsMetadata task_events_metadata = 2;
 }

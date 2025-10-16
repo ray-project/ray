@@ -1,5 +1,7 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
+from libcpp.string cimport string as c_string
+from libcpp cimport bool as c_bool
 import contextlib
 import cython
 
@@ -23,6 +25,34 @@ cdef extern from "ray/util/memory.h" namespace "ray" nogil:
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
         const Element* data() const
+
+cdef extern from "google/protobuf/descriptor.h" namespace "google::protobuf":
+    cdef cppclass CProtoDescriptorPool "google::protobuf::DescriptorPool":
+        @staticmethod
+        const CProtoDescriptorPool* generated_pool()
+
+cdef extern from "absl/status/status.h" namespace "absl" nogil:
+    cdef cppclass CProtoStatus "absl::Status":
+        c_bool ok() const
+
+cdef extern from "google/protobuf/util/json_util.h" namespace "google::protobuf::util" nogil:
+    cdef cppclass CProtoTypeResolver "google::protobuf::util::TypeResolver":
+        pass
+
+    cdef cppclass CJsonPrintOptions "google::protobuf::util::JsonPrintOptions":
+        c_bool always_print_primitive_fields
+        CJsonPrintOptions()
+
+    CProtoStatus BinaryToJsonString(CProtoTypeResolver* resolver,
+                                    const c_string& type_url,
+                                    const c_string& binary_input,
+                                    c_string* json_output,
+                                    const CJsonPrintOptions &options)
+
+cdef extern from "google/protobuf/util/type_resolver_util.h" namespace "google::protobuf::util" nogil:
+    CProtoTypeResolver* NewTypeResolverForDescriptorPool(
+        const c_string& url_prefix,
+        const CProtoDescriptorPool* pool)
 
 cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
     cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
@@ -535,3 +565,31 @@ cdef class RawSerializedObject(SerializedObject):
                                  MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+
+cdef class ProtoConverter:
+    """
+    Resolver to do conversion with proto bytes
+    """
+    cdef:
+        unique_ptr[CProtoTypeResolver] proto_type_resolver
+
+    def __cinit__(self, url_prefix: str = "type.googleapis.com"):
+        self.proto_type_resolver.reset(NewTypeResolverForDescriptorPool(
+            url_prefix.encode('utf-8'),
+            CProtoDescriptorPool.generated_pool())
+        )
+
+    def bytes_to_json(self, type_url: str, payload: bytes) -> str:
+        cdef:
+            c_string c_type_url = type_url
+            c_string c_payload = payload
+            c_string c_out
+            CJsonPrintOptions c_json_options = CJsonPrintOptions()
+
+        c_json_options.always_print_primitive_fields = True
+        cdef CProtoStatus status = BinaryToJsonString(self.proto_type_resolver.get(),
+            c_type_url, c_payload, &c_out, c_json_options)
+        if not status.ok():
+            return ""
+        else:
+            return c_out
