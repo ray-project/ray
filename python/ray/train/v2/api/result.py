@@ -60,13 +60,14 @@ class Result(ResultV1):
             checkpoint_config=CheckpointConfig(),
         )
 
-        return cls.from_checkpoint_manager(
+        # When we build a Result object from checkpoints, the error is not loaded.
+        return cls._from_checkpoint_manager(
             checkpoint_manager=checkpoint_manager,
             storage_context=storage_context,
         )
 
     @classmethod
-    def from_checkpoint_manager(
+    def _from_checkpoint_manager(
         cls,
         checkpoint_manager: CheckpointManager,
         storage_context: StorageContext,
