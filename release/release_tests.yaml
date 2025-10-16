@@ -1960,6 +1960,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: test_jax_trainer_tpu
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/jax
 
