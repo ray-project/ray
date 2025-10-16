@@ -252,6 +252,7 @@ repos:
           - eslint-config-google@0.14.0
           - eslint-plugin-react@7.34.2
           - eslint-plugin-import@2.29.1
+          - eslint-config-react-app@7.0.1
           - '@babel/eslint-parser@7.23.3'
           - '@typescript-eslint/parser@6.9.0'
           - '@typescript-eslint/eslint-plugin@6.9.0'
