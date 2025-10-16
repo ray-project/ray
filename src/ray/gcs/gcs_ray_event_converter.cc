@@ -30,31 +30,31 @@ namespace {
 /// \param metadata The task events metadata containing dropped task attempts.
 /// \param requests_per_job_id The list of requests grouped by job id.
 /// \param job_id_to_index The map from job id to index in requests_per_job_id.
-// void AddDroppedTaskAttemptsToRequest(
-//     rpc::events::TaskEventsMetadata &&metadata,
-//     std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
-//     absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
-//   // Process each dropped task attempt individually and route to the correct job ID
-//   for (auto &dropped_attempt : *metadata.mutable_dropped_task_attempts()) {
-//     const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
-//     const auto job_id_key = task_id.JobId().Binary();
+void AddDroppedTaskAttemptsToRequest(
+    rpc::events::TaskEventsMetadata &&metadata,
+    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
+    absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
+  // Process each dropped task attempt individually and route to the correct job ID
+  for (auto &dropped_attempt : *metadata.mutable_dropped_task_attempts()) {
+    const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
+    const auto job_id_key = task_id.JobId().Binary();
 
-//     auto it = job_id_to_index.find(job_id_key);
-//     if (it == job_id_to_index.end()) {
-//       // Create new request if job_id not found
-//       size_t idx = requests_per_job_id.size();
-//       requests_per_job_id.emplace_back();
-//       auto *data = requests_per_job_id.back().mutable_data();
-//       data->set_job_id(job_id_key);
-//       *data->add_dropped_task_attempts() = std::move(dropped_attempt);
-//       job_id_to_index.emplace(job_id_key, idx);
-//     } else {
-//       // Add to existing request with same job_id
-//       auto *data = requests_per_job_id[it->second].mutable_data();
-//       *data->add_dropped_task_attempts() = std::move(dropped_attempt);
-//     }
-//   }
-// }
+    auto it = job_id_to_index.find(job_id_key);
+    if (it == job_id_to_index.end()) {
+      // Create new request if job_id not found
+      size_t idx = requests_per_job_id.size();
+      requests_per_job_id.emplace_back();
+      auto *data = requests_per_job_id.back().mutable_data();
+      data->set_job_id(job_id_key);
+      data->add_dropped_task_attempts()->Swap(&dropped_attempt);
+      job_id_to_index.emplace(job_id_key, idx);
+    } else {
+      // Add to existing request with same job_id
+      auto *data = requests_per_job_id[it->second].mutable_data();
+      data->add_dropped_task_attempts()->Swap(&dropped_attempt);
+    }
+  }
+}
 
 /// Populate the TaskInfoEntry with the given runtime env info, function descriptor,
 /// and required resources. This function is commonly used to convert the task
@@ -102,33 +102,33 @@ void PopulateTaskRuntimeAndFunctionInfo(
   task_info->mutable_required_resources()->swap(required_resources);
 }
 
-// /// Convert a TaskDefinitionEvent to a TaskEvents.
-// ///
-// /// \param event The TaskDefinitionEvent to convert.
-// /// \return The output TaskEvents to populate.
-// rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
-//   rpc::TaskEvents task_event;
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.task_attempt());
-//   task_event.set_job_id(event.job_id());
+/// Convert a TaskDefinitionEvent to a TaskEvents.
+///
+/// \param event The TaskDefinitionEvent to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
 
-//   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
-//   task_info->set_type(event.task_type());
-//   task_info->set_name(event.task_name());
-//   task_info->set_task_id(event.task_id());
-//   task_info->set_job_id(event.job_id());
-//   task_info->set_parent_task_id(event.parent_task_id());
-//   if (!event.placement_group_id().empty()) {
-//     task_info->set_placement_group_id(event.placement_group_id());
-//   }
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  task_info->set_type(event.task_type());
+  task_info->set_name(event.task_name());
+  task_info->set_task_id(event.task_id());
+  task_info->set_job_id(event.job_id());
+  task_info->set_parent_task_id(event.parent_task_id());
+  if (!event.placement_group_id().empty()) {
+    task_info->set_placement_group_id(event.placement_group_id());
+  }
 
-//   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
-//                                      std::move(*event.mutable_task_func()),
-//                                      std::move(*event.mutable_required_resources()),
-//                                      event.language(),
-//                                      task_info);
-//   return task_event;
-// }
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
+                                     std::move(*event.mutable_task_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
+  return task_event;
+}
 
 /// Convert a TaskExecutionEvent to a TaskEvents.
 ///
@@ -140,12 +140,11 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
 
-  // rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  // task_state_update->set_node_id(event.node_id());
-  // task_state_update->set_worker_id(event.worker_id());
-  // task_state_update->set_worker_pid(event.worker_pid());
-  // *task_state_update->mutable_error_info() =
-  // std::move(*event.mutable_ray_error_info());
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->set_worker_pid(event.worker_pid());
+  task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
 
   // for (const auto &[state, timestamp] : event.task_state()) {
   //   int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
@@ -154,49 +153,49 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
   return task_event;
 }
 
-// /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
-// ///
-// /// \param event The ActorTaskDefinitionEvent to convert.
-// /// \return The output TaskEvents to populate.
-// rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event) {
-//   rpc::TaskEvents task_event;
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.task_attempt());
-//   task_event.set_job_id(event.job_id());
+/// Convert an ActorTaskDefinitionEvent to a TaskEvents.
+///
+/// \param event The ActorTaskDefinitionEvent to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
 
-//   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
-//   task_info->set_type(rpc::TaskType::ACTOR_TASK);
-//   task_info->set_name(event.actor_task_name());
-//   task_info->set_task_id(event.task_id());
-//   task_info->set_job_id(event.job_id());
-//   task_info->set_parent_task_id(event.parent_task_id());
-//   if (!event.placement_group_id().empty()) {
-//     task_info->set_placement_group_id(event.placement_group_id());
-//   }
-//   if (!event.actor_id().empty()) {
-//     task_info->set_actor_id(event.actor_id());
-//   }
-//   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
-//                                      std::move(*event.mutable_actor_func()),
-//                                      std::move(*event.mutable_required_resources()),
-//                                      event.language(),
-//                                      task_info);
-//   return task_event;
-// }
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  task_info->set_type(rpc::TaskType::ACTOR_TASK);
+  task_info->set_name(event.actor_task_name());
+  task_info->set_task_id(event.task_id());
+  task_info->set_job_id(event.job_id());
+  task_info->set_parent_task_id(event.parent_task_id());
+  if (!event.placement_group_id().empty()) {
+    task_info->set_placement_group_id(event.placement_group_id());
+  }
+  if (!event.actor_id().empty()) {
+    task_info->set_actor_id(event.actor_id());
+  }
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
+                                     std::move(*event.mutable_actor_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
+  return task_event;
+}
 
-// /// Convert ProfileEvents to a TaskEvents.
-// ///
-// /// \param event TaskProfileEvents object to convert.
-// /// \return The output TaskEvents to populate.
-// rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
-//   rpc::TaskEvents task_event;
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.attempt_number());
-//   task_event.set_job_id(event.job_id());
+/// Convert ProfileEvents to a TaskEvents.
+///
+/// \param event TaskProfileEvents object to convert.
+/// \return The output TaskEvents to populate.
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.attempt_number());
+  task_event.set_job_id(event.job_id());
 
-//   *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
-//   return task_event;
-// }
+  task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
+  return task_event;
+}
 
 }  // namespace
 
@@ -209,26 +208,26 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
     std::optional<rpc::TaskEvents> task_event = std::nullopt;
 
     switch (event.event_type()) {
-    // case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-    //   task_event =
-    //   ConvertToTaskEvents(std::move(*event.mutable_task_definition_event())); break;
-    // }
+    case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
+      break;
+    }
     case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
       task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
       break;
     }
-    // case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
-    //   task_event =
-    //   ConvertToTaskEvents(std::move(*event.mutable_task_profile_events())); break;
-    // }
-    // case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
-    //   task_event =
-    //       ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
-    //   break;
-    // }
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()));
+      break;
+    }
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
+      task_event =
+          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
+      break;
+    }
     default:
       break;
-      // RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
+      RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
     }
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
@@ -241,23 +240,23 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
         requests_per_job_id.emplace_back();
         auto *data = requests_per_job_id.back().mutable_data();
         data->set_job_id(job_id_key);
-        *data->add_events_by_task() = std::move(*task_event);
+        data->add_events_by_task()->Swap(&(*task_event));
         job_id_to_index.emplace(job_id_key, idx);
       } else {
         // add taskEvent to existing AddTaskEventDataRequest with same job id
         auto *data = requests_per_job_id[it->second].mutable_data();
-        *data->add_events_by_task() = std::move(*task_event);
+        data->add_events_by_task()->Swap(&(*task_event));
       }
     }
   }
 
-  /// Groups all taskEventMetadata belonging to same jobId into one
-  /// AddTaskEventDataRequest
-  // auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
-  // if (metadata->dropped_task_attempts_size() > 0) {
-  //   AddDroppedTaskAttemptsToRequest(
-  //       std::move(*metadata), requests_per_job_id, job_id_to_index);
-  // }
+  // Groups all taskEventMetadata belonging to same jobId into one
+  // AddTaskEventDataRequest
+  auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
+  if (metadata->dropped_task_attempts_size() > 0) {
+    AddDroppedTaskAttemptsToRequest(
+        std::move(*metadata), requests_per_job_id, job_id_to_index);
+  }
   return requests_per_job_id;
 }
 
