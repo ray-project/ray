@@ -8,5 +8,6 @@ Practical guides for deploying and configuring Ray Serve LLM features.
 Prefill/decode disaggregation <prefill-decode>
 Prefix-aware routing <prefix-aware-routing>
 Multi-LoRA deployment <multi-lora>
+vLLM compatibility <vllm-compatibility>
 ```
 
