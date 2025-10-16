@@ -116,6 +116,7 @@ py_test(
         "xgboost",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py",
     tags = [
         "exclusive",
@@ -136,6 +137,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
@@ -156,6 +158,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
@@ -175,6 +178,7 @@ py_test(
         "--data-size-gb=1",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "air_tests/air_benchmarks/workloads/pytorch_training_e2e.py",
     tags = [
         "exclusive",
@@ -200,6 +204,7 @@ py_test(
         "--smoke-test",
         "--local",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "air_tests/air_benchmarks/workloads/tensorflow_benchmark.py",
     tags = [
         "exclusive",
