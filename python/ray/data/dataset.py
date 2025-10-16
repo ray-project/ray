@@ -96,7 +96,16 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
+from ray.data.aggregate import (
+    AggregateFn,
+    AggregateFnV2,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+    Unique,
+)
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -112,8 +121,10 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
+from ray.data.stats import DatasetSummary
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -6098,6 +6109,191 @@ class Dataset:
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
+
+    @AllToAllAPI
+    @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
+    def summary(
+        self,
+        columns: Optional[List[str]] = None,
+        override_dtype_agg_mapping: Optional[
+            Dict[DataType, List[AggregateFnV2]]
+        ] = None,
+    ) -> "DatasetSummary":
+        """Generate a statistical summary of the dataset, organized by data type.
+
+        This method computes various statistics for different column dtypes:
+
+        - For numerical dtypes (int*, float*, decimal, bool): count, mean, min, max, std, missing%, zero%
+        - For string dtypes: count, missing%
+        - For temporal dtypes: count, min, max, missing%
+        - For other dtypes: count, missing%
+
+        You can customize the aggregations performed for specific data types using the
+        `override_dtype_agg_mapping` parameter.
+
+        The summary separates statistics into two tables:
+        - Schema-matching stats: Statistics that preserve the original column type (e.g., min/max for integers)
+        - Schema-changing stats: Statistics that change the type (e.g., mean converts int to float)
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"age": 25, "salary": 50000, "name": "Alice", "city": "NYC"},
+            ...     {"age": 30, "salary": 60000, "name": None, "city": "LA"},
+            ...     {"age": 0, "salary": None, "name": "Bob", "city": None},
+            ... ])
+            >>> summary = ds.summary()
+            >>> # Get combined pandas DataFrame with all statistics
+            >>> summary.to_pandas()  # doctest: +SKIP
+            statistic  age  salary  name  city
+            0     count    3    3.0   3.0   3.0
+            1      mean   18.3  55000.0  NaN   NaN
+            2       min    0   50000  NaN   NaN
+            3       max   30   60000  NaN   NaN
+
+            >>> # Access individual column statistics
+            >>> summary.get_column_stats("age")  # doctest: +SKIP
+            statistic  age
+            0     count    3
+            1      mean   18.3
+            2       min    0
+            3       max   30
+
+            Custom aggregations for specific types:
+
+            >>> from ray.data import DataType
+            >>> from ray.data.aggregate import Sum, Count
+            >>> # Override aggregations for int64 columns
+            >>> custom_mapping = {
+            ...     DataType.int64(): [Count(), Sum()]
+            ... }
+            >>> summary = ds.summary(override_dtype_agg_mapping=custom_mapping)
+
+        Args:
+            columns: Optional list of column names to include in the summary.
+                If None, all columns will be included.
+            override_dtype_agg_mapping: Optional mapping from DataType to list of
+                aggregators. This will be merged with the default mapping, with
+                user-provided mappings taking precedence. Use "<column>" as the
+                placeholder column name in aggregators.
+
+        Returns:
+            A DatasetSummary object with methods to access statistics and the
+            original dataset schema. Use `to_pandas()` to get all statistics
+            as a DataFrame, or `get_column_stats(col)` for a specific column
+        """
+        import pyarrow as pa
+
+        from ray.data.stats import (
+            DatasetSummary,
+            _dtype_aggregators_for_dataset,
+        )
+
+        # Get aggregators and compute results
+        dtype_aggs = _dtype_aggregators_for_dataset(
+            self.schema(),
+            columns=columns,
+            dtype_agg_mapping=override_dtype_agg_mapping,
+        )
+        aggs = self.groupby(None).aggregate(*dtype_aggs.aggregators)
+
+        # Get the single aggregation result row as a dictionary
+        agg_result = aggs.take(1)[0]
+
+        # Get schemas
+        agg_schema = aggs.schema().base_schema
+        original_schema = self.schema().base_schema
+
+        # Parse aggregation results: keys like "count(id)", "mean(id)", etc.
+        # Separate into schema-matching and schema-changing stats
+        schema_matching_stats = {}  # stat_name -> {col_name: (value, type)}
+        schema_changing_stats = {}  # stat_name -> {col_name: (value, type)}
+        column_names = set()
+
+        for key, value in agg_result.items():
+            if "(" in key and key.endswith(")"):
+                # Parse "stat_name(col_name)" format
+                stat_name = key[: key.index("(")]
+                col_name = key[key.index("(") + 1 : -1]
+
+                # Get types
+                agg_type = agg_schema.field(key).type
+                original_type = original_schema.field(col_name).type
+
+                # Determine if type matches schema
+                if str(agg_type) == str(original_type):
+                    if stat_name not in schema_matching_stats:
+                        schema_matching_stats[stat_name] = {}
+                    schema_matching_stats[stat_name][col_name] = (value, agg_type)
+                else:
+                    if stat_name not in schema_changing_stats:
+                        schema_changing_stats[stat_name] = {}
+                    schema_changing_stats[stat_name][col_name] = (value, agg_type)
+
+                column_names.add(col_name)
+
+        # Get all columns that have stats (union of both tables)
+        all_stat_columns = column_names
+
+        # Helper function to build a table from stats dictionary
+        # Both tables will have the same columns, just different rows (stats)
+        def build_table(stats_dict, use_original_types=False):
+            arrays = []
+            field_names = ["statistic"]
+            field_types = [pa.string()]
+
+            # Statistics column (row labels)
+            stat_names = sorted(stats_dict.keys()) if stats_dict else []
+            arrays.append(pa.array(stat_names))
+
+            # Data columns - include ALL columns across both tables
+            for col_name in sorted(all_stat_columns):
+                col_data = []
+                col_type = None
+
+                for stat_name in stat_names:
+                    if col_name in stats_dict[stat_name]:
+                        value, agg_type = stats_dict[stat_name][col_name]
+                        col_data.append(value)
+                        if col_type is None:
+                            col_type = agg_type
+                    else:
+                        col_data.append(None)
+
+                # If use_original_types, use the original schema type for this column
+                # This ensures schema_matching_stats always has original types
+                if use_original_types:
+                    col_type = original_schema.field(col_name).type
+
+                # Create array with determined type
+                if col_type is not None:
+                    col_array = pa.array(col_data, type=col_type)
+                else:
+                    col_array = pa.array(col_data)
+
+                arrays.append(col_array)
+                field_names.append(col_name)
+                field_types.append(col_array.type)
+
+            # Create PyArrow table
+            schema = pa.schema(list(zip(field_names, field_types)))
+            return pa.table(dict(zip(field_names, arrays)), schema=schema)
+
+        # Build both tables with same columns but different stats
+        # schema_matching_stats uses original schema types for all columns
+        schema_matching_table = build_table(
+            schema_matching_stats, use_original_types=True
+        )
+        schema_changing_table = build_table(
+            schema_changing_stats, use_original_types=False
+        )
+
+        return DatasetSummary(
+            _schema_matching_stats=schema_matching_table,
+            _schema_changing_stats=schema_changing_table,
+            dataset_schema=original_schema,
+        )
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
