@@ -138,11 +138,11 @@ GRAPH_PANEL_TEMPLATE = {
     "id": 26,
     "legend": {
         "alignAsTable": True,
-        "avg": False,
+        "avg": True,
         "current": True,
         "hideEmpty": False,
         "hideZero": True,
-        "max": False,
+        "max": True,
         "min": False,
         "rightSide": False,
         "show": True,
