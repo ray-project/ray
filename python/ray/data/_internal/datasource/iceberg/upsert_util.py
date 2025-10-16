@@ -321,6 +321,10 @@ def _upsert_native(
 
     # Step 1: Collect unique keys from source dataset
     # Only materialize the key columns (typically small)
+    # NOTE: We call to_arrow() to collect all keys at once. For most use cases where
+    # key cardinality is reasonable (< millions), this is acceptable and simpler than
+    # streaming collection. For extremely large key sets, the 1000-key threshold
+    # optimization kicks in to avoid large filter expressions.
     logger.info("Collecting keys from source dataset")
     source_keys_table = dataset.select_columns(join_columns).to_arrow()
 
@@ -388,11 +392,17 @@ def _upsert_native(
                 f"handle the full key matching."
             )
 
-    # Combine with user's update_filter if specified
+    # Store the key-based filter for overwrite (without update_filter)
+    # This ensures we delete ALL rows with matching keys, not just filtered ones
+    overwrite_filter = read_filter
+
+    # Combine with user's update_filter for reading if specified
+    # This filters which existing rows to read, but overwrite uses key filter only
+    read_filter_with_update = read_filter
     if update_filter is not None:
         from pyiceberg.expressions import And
 
-        read_filter = And(read_filter, update_filter)
+        read_filter_with_update = And(read_filter, update_filter)
 
     # Step 2: Read ONLY the existing rows that will be updated
     # This is much more efficient than reading the entire table
@@ -402,7 +412,7 @@ def _upsert_native(
     existing_matching_rows = ray.data.read_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-        row_filter=read_filter,
+        row_filter=read_filter_with_update,
     )
 
     # Step 3: Mark data sources for deduplication priority
@@ -436,9 +446,10 @@ def _upsert_native(
     def deduplicate_on_keys(batch):
         """
         Deduplicate rows based on join keys, keeping row with highest priority.
+
+        Uses pandas' optimized drop_duplicates instead of Python loops for better performance.
         """
         import pyarrow as pa
-        import pyarrow.compute as pc
 
         if not isinstance(batch, pa.Table):
             batch = pa.Table.from_pandas(batch)
@@ -448,29 +459,20 @@ def _upsert_native(
                 batch = batch.drop(["_merge_priority"])
             return batch
 
-        # Sort by join columns + priority (descending for priority)
-        sort_keys = [(col, "ascending") for col in join_columns]
-        sort_keys.append(("_merge_priority", "descending"))
+        # Convert to pandas to use highly optimized drop_duplicates
+        df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
 
-        indices = pc.sort_indices(batch, sort_keys=sort_keys)
-        sorted_batch = pc.take(batch, indices)
+        # Sort by priority to ensure we keep the correct row (new data has priority=1)
+        df.sort_values("_merge_priority", ascending=False, inplace=True, kind="mergesort")
 
-        # Keep first occurrence of each unique key (highest priority)
-        seen_keys = set()
-        rows_to_keep = []
+        # Drop duplicates on join keys, keeping the first occurrence (highest priority)
+        df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
 
-        for i in range(len(sorted_batch)):
-            key = tuple(sorted_batch[col][i].as_py() for col in join_columns)
+        # Remove the temporary priority column
+        df.drop(columns=["_merge_priority"], inplace=True)
 
-            if key not in seen_keys:
-                seen_keys.add(key)
-                rows_to_keep.append(i)
-
-        # Take unique rows and remove priority column
-        result = pc.take(sorted_batch, rows_to_keep)
-        result = result.drop(["_merge_priority"])
-
-        return result
+        # Convert back to PyArrow table, preserving original schema
+        return pa.Table.from_pandas(df, schema=batch.drop(["_merge_priority"]).schema)
 
     deduped_data = merged_data.map_batches(
         deduplicate_on_keys, batch_format="pyarrow"
@@ -490,7 +492,7 @@ def _upsert_native(
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         snapshot_properties=snapshot_properties,
         mode="overwrite",
-        overwrite_filter=read_filter,  # Only overwrite rows matching the keys
+        overwrite_filter=overwrite_filter,  # Only overwrite rows matching the keys (no update_filter)
     )
 
     deduped_data.write_datasink(
@@ -576,40 +578,36 @@ def _upsert_fallback(
     # Group by join columns and keep the row with highest priority
     # This effectively keeps new data over old data
     def deduplicate_batch(batch):
-        """Keep only the row with highest priority for each key."""
+        """
+        Keep only the row with highest priority for each key.
+
+        Uses pandas' optimized drop_duplicates instead of Python loops for better performance.
+        """
         import pyarrow as pa
-        import pyarrow.compute as pc
 
         if not isinstance(batch, pa.Table):
             # Convert pandas to arrow for processing
             batch = pa.Table.from_pandas(batch)
 
-        # Sort by join columns + priority (descending)
-        sort_keys = [(col, "ascending") for col in join_columns]
-        sort_keys.append(("_source_priority", "descending"))
+        if len(batch) == 0:
+            if "_source_priority" in batch.schema.names:
+                batch = batch.drop(["_source_priority"])
+            return batch
 
-        sorted_batch = pc.sort_indices(batch, sort_keys=sort_keys)
-        sorted_table = pc.take(batch, sorted_batch)
+        # Convert to pandas to use highly optimized drop_duplicates
+        df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
 
-        # Take first row for each unique key combination
-        # This is a simplified approach - for large data, consider using
-        # groupby operations with proper aggregation
-        seen_keys = set()
-        rows_to_keep = []
+        # Sort by priority to ensure we keep the newest row
+        df.sort_values("_source_priority", ascending=False, inplace=True, kind="mergesort")
 
-        for i in range(len(sorted_table)):
-            row_key = tuple(
-                sorted_table[col][i].as_py() for col in join_columns
-            )
-            if row_key not in seen_keys:
-                seen_keys.add(row_key)
-                rows_to_keep.append(i)
+        # Drop duplicates on join keys, keeping the first row (highest priority)
+        df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
 
-        # Take the rows and remove the priority column
-        result = pc.take(sorted_table, rows_to_keep)
-        result = result.drop(["_source_priority"])
+        # Remove the temporary priority column
+        df.drop(columns=["_source_priority"], inplace=True)
 
-        return result
+        # Convert back to PyArrow table, preserving original schema
+        return pa.Table.from_pandas(df, schema=batch.drop(["_source_priority"]).schema)
 
     # Apply deduplication
     deduped = merged.map_batches(deduplicate_batch, batch_format="pyarrow")

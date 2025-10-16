@@ -239,7 +239,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> WriteResult[List["DataFile"]]:
+    ) -> List["DataFile"]:
         """
         Write Ray Data blocks to Parquet files and return DataFile metadata.
 

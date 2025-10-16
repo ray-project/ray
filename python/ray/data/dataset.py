@@ -4026,7 +4026,7 @@ class Dataset:
         overwrite_filter: Optional[Union[str, "BooleanExpression"]] = None,
         merge_keys: Optional[List[str]] = None,
         update_filter: Optional[Union[str, "BooleanExpression"]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
@@ -4141,10 +4141,11 @@ class Dataset:
                 For optimal performance, use merge keys that align with the table's
                 partition scheme. Misaligned keys may cause Iceberg to rewrite more
                 data files than strictly necessary, though the operation remains correct.
-            update_filter: PyIceberg BooleanExpression to filter which rows in the
-                target table can be updated during merge. Only used when ``mode="merge"``.
-                Only rows matching this filter will be considered for updates. Rows not
-                matching the filter won't be modified.
+            update_filter: PyIceberg BooleanExpression to filter which existing rows
+                to read for merging. Only used when ``mode="merge"``. This filters the
+                existing rows that are candidates for update, but does not affect which
+                rows are deleted during the overwrite. New rows with matching keys will
+                replace ALL existing rows with those keys, regardless of filter status.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control the number of tasks running simultaneously. This doesn't change the
