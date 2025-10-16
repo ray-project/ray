@@ -347,7 +347,9 @@ def test_autoscaling_config_validation_warnings(
     # Test #1: Invalid config (should warn)
     #   - max_tasks_in_flight / max_concurrency == 1
     #   - Default upscaling threshold (200%)
-    with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
             compute=ray.data.ActorPoolStrategy(
@@ -373,7 +375,9 @@ def test_autoscaling_config_validation_warnings(
     # Test #2: Provided config is valid (no warnings)
     #   - max_tasks_in_flight / max_concurrency == 2 (default)
     #   - Default upscaling threshold (200%)
-    with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
             compute=ray.data.ActorPoolStrategy(
@@ -392,14 +396,14 @@ def test_autoscaling_config_validation_warnings(
 
     assert expected_message not in wanr_log_args_str
 
-
     # Test #3: Default config is valid (no warnings)
     #   - max_tasks_in_flight / max_concurrency == 4 (default)
     #   - Default upscaling threshold (200%)
-    with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
-            SimpleMapper,
-            compute=ray.data.ActorPoolStrategy()
+            SimpleMapper, compute=ray.data.ActorPoolStrategy()
         )
         ds.take_all()
 
@@ -411,7 +415,6 @@ def test_autoscaling_config_validation_warnings(
     )
 
     assert expected_message not in wanr_log_args_str
-
 
 
 if __name__ == "__main__":

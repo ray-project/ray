@@ -140,7 +140,8 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         max_concurrency = actor_pool.max_actor_concurrency()
 
         if (
-            max_tasks_in_flight_per_actor / max_concurrency < self._actor_pool_scaling_up_threshold
+            max_tasks_in_flight_per_actor / max_concurrency
+            < self._actor_pool_scaling_up_threshold
         ):
             logger.warning(
                 f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "

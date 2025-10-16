@@ -38,10 +38,8 @@ from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import (
-    AutoscalingConfig,
-    DataContext,
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
-    WARN_PREFIX,
+    DataContext,
 )
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
@@ -152,7 +150,8 @@ class ActorPoolMapOperator(MapOperator):
                 #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
                 compute_strategy.max_tasks_in_flight_per_actor
                 or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
+                or max_actor_concurrency
+                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
