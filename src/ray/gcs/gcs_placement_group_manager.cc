@@ -28,8 +28,6 @@
 namespace ray {
 namespace gcs {
 
-using std::literals::operator""sv;
-
 namespace {
 
 ExponentialBackoff CreateDefaultBackoff() {
@@ -101,8 +99,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
         int64_t num_pg = placement_group_state_counter_->Get(key);
         placement_group_gauge_.Record(
             num_pg,
-            {{"State"sv, rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
-             {"Source"sv, "gcs"}});
+            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
+             {"Source", "gcs"}});
       });
   Tick();
 }
@@ -997,11 +995,11 @@ std::string GcsPlacementGroupManager::DebugString() const {
 
 void GcsPlacementGroupManager::RecordMetrics() const {
   placement_group_count_gauge_.Record(pending_placement_groups_.size(),
-                                      {{"State"sv, "Pending"}});
+                                      {{"State", "Pending"}});
   placement_group_count_gauge_.Record(registered_placement_groups_.size(),
-                                      {{"State"sv, "Registered"}});
+                                      {{"State", "Registered"}});
   placement_group_count_gauge_.Record(infeasible_placement_groups_.size(),
-                                      {{"State"sv, "Infeasible"}});
+                                      {{"State", "Infeasible"}});
   if (usage_stats_client_) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
                                                  lifetime_num_placement_groups_created_);
