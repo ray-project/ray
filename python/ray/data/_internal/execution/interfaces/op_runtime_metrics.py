@@ -577,7 +577,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if self.num_tasks_finished == 0:
             return None
         else:
-            return self.task_completion_time_excl_backpressure_s / self.num_tasks_finished
+            return (
+                self.task_completion_time_excl_backpressure_s / self.num_tasks_finished
+            )
 
     @metric_property(
         description="Average size of task output in bytes.",

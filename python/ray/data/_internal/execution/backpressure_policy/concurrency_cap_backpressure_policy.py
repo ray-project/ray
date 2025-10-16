@@ -29,7 +29,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
         for op, _ in self._topology.items():
-            if isinstance(op, TaskPoolMapOperator) and op.get_max_concurrency_limit() is not None:
+            if (
+                isinstance(op, TaskPoolMapOperator)
+                and op.get_max_concurrency_limit() is not None
+            ):
                 self._concurrency_caps[op] = op.get_max_concurrency_limit()
             else:
                 self._concurrency_caps[op] = float("inf")
