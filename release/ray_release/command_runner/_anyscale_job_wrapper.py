@@ -88,6 +88,14 @@ def run_storage_cp(source: str, target: str):
             source,
             target,
         ]
+    elif storage_service == "abfss":
+        subprocess.run(["azcopy", "login", "--identity"], check=True)
+        cp_cmd_args = [
+            "azcopy",
+            "copy",
+            source,
+            target,
+        ]
     else:
         raise Exception(f"Not supporting storage service: {storage_service}")
 

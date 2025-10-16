@@ -4,12 +4,54 @@ from functools import wraps
 from typing import Callable, Optional
 
 from ray._common.utils import import_attr
-from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.schema import TaskProcessorConfig
-from ray.serve.task_processor import TaskProcessorAdapter
+from ray.serve._private.constants import (
+    DEFAULT_CONSUMER_CONCURRENCY,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve._private.task_consumer import TaskConsumerWrapper
+from ray.serve.schema import (
+    TaskProcessorAdapter,
+    TaskProcessorConfig,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _instantiate_adapter(
+    task_processor_config: TaskProcessorConfig,
+    consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY,
+) -> TaskProcessorAdapter:
+    adapter = task_processor_config.adapter
+
+    # Handle string-based adapter specification (module path)
+    if isinstance(adapter, str):
+        adapter_class = import_attr(adapter)
+
+    elif callable(adapter):
+        adapter_class = adapter
+
+    else:
+        raise TypeError(
+            f"Adapter must be either a string path or a callable class, got {type(adapter).__name__}: {adapter}"
+        )
+
+    try:
+        adapter_instance = adapter_class(task_processor_config)
+    except Exception as e:
+        raise RuntimeError(f"Failed to instantiate {adapter_class.__name__}: {e}")
+
+    if not isinstance(adapter_instance, TaskProcessorAdapter):
+        raise TypeError(
+            f"{adapter_class.__name__} must inherit from TaskProcessorAdapter, got {type(adapter_instance).__name__}"
+        )
+
+    try:
+        adapter_instance.initialize(consumer_concurrency)
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
+
+    return adapter_instance
 
 
 @PublicAPI(stability="alpha")
@@ -27,7 +69,6 @@ def instantiate_adapter_from_config(
 
     Args:
         task_processor_config: Configuration object containing adapter specification.
-
     Returns:
         An initialized TaskProcessorAdapter instance ready for use.
 
@@ -46,36 +87,7 @@ def instantiate_adapter_from_config(
             adapter = instantiate_adapter_from_config(config)
     """
 
-    adapter = task_processor_config.adapter
-
-    # Handle string-based adapter specification (module path)
-    if isinstance(adapter, str):
-        adapter_class = import_attr(adapter)
-
-    elif callable(adapter):
-        adapter_class = adapter
-
-    else:
-        raise TypeError(
-            f"Adapter must be either a string path or a callable class, got {type(adapter).__name__}: {adapter}"
-        )
-
-    try:
-        adapter_instance = adapter_class(config=task_processor_config)
-    except Exception as e:
-        raise RuntimeError(f"Failed to instantiate {adapter_class.__name__}: {e}")
-
-    if not isinstance(adapter_instance, TaskProcessorAdapter):
-        raise TypeError(
-            f"{adapter_class.__name__} must inherit from TaskProcessorAdapter, got {type(adapter_instance).__name__}"
-        )
-
-    try:
-        adapter_instance.initialize()
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize {adapter_class.__name__}: {e}")
-
-    return adapter_instance
+    return _instantiate_adapter(task_processor_config)
 
 
 @PublicAPI(stability="alpha")
@@ -110,13 +122,16 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
     """
 
     def decorator(target_cls):
-        class TaskConsumerWrapper(target_cls):
+        class _TaskConsumerWrapper(target_cls, TaskConsumerWrapper):
             _adapter: TaskProcessorAdapter
 
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)
 
-                self._adapter = instantiate_adapter_from_config(task_processor_config)
+            def initialize_callable(self, consumer_concurrency: int):
+                self._adapter = _instantiate_adapter(
+                    task_processor_config, consumer_concurrency
+                )
 
                 for name, method in inspect.getmembers(
                     target_cls, predicate=inspect.isfunction
@@ -143,7 +158,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
 
-        return TaskConsumerWrapper
+        return _TaskConsumerWrapper
 
     return decorator
 
