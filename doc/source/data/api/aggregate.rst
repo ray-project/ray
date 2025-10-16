@@ -27,3 +27,5 @@ compute aggregations.
     Unique
     MissingValuePercentage
     ZeroPercentage
+    ApproximateQuantile
+    
