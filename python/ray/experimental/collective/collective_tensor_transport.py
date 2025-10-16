@@ -183,6 +183,10 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
+    def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
+        pass
+
+    @staticmethod
     def abort_transport(
         obj_id: str,
         communicator_metadata: CollectiveCommunicatorMetadata,

@@ -561,7 +561,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            const c_vector[int64_t] &count_array
+            const c_vector[unordered_map[c_string, c_string]] &label_selectors,
+            const c_vector[int64_t] &count_array,
         )
 
         CRayStatus GetClusterResourceState(
@@ -626,11 +627,11 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(
-            const c_string &gcs_address, int port, CClusterID cluster_id,
+            c_string gcs_address, int port, CClusterID cluster_id,
             c_bool allow_cluster_id_nil, c_bool fetch_cluster_id_if_nil)
 
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
-        CGcsClient(const CGcsClientOptions &options)
+        CGcsClient(CGcsClientOptions options)
 
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
