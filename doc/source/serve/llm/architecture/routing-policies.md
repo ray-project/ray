@@ -4,17 +4,17 @@ Ray Serve LLM provides customizable request routing to optimize request distribu
 
 ## Routing vs ingress
 
-It's important to distinguish between two levels of routing:
+You need to distinguish between two levels of routing:
 
 **Ingress routing** (model-level):
-- Maps model_id to deployment
+- Maps `model_id` to deployment
 - Example: `/v1/chat/completions` with `model="gptoss"` → which deployment?
-- Handled by OpenAiIngress
+- `OpenAiIngress` handles this
 
 **Request routing** (replica-level):
-- Chooses which replica to send request to
-- Example: Which replica of the "gptoss" deployment (1, 2, or 3)?
-- Handled by Ray Serve's RequestRouter
+- Chooses which replica to send the request to
+- Example: Which replica of the `gptoss` deployment (1, 2, or 3)?
+- Ray Serve's `RequestRouter` handles this
 
 This document focuses on **request routing** (replica selection).
 
@@ -75,15 +75,21 @@ For more details, see {ref}`prefix-aware-routing-guide`.
 
 ## Design patterns for custom routing policies
 
-Request routing policies can often follow two design patterns in Ray serve:
+Customizing request routers is a feature in Ray Serve's native APIs that can be defined per deployment. For each deployment, you can customize the routing logic that executes every time you call `.remote()` on the deployment handle from a caller. Since deployment handles are globally available objects across the cluster, they can be called from any actor or task in the Ray cluster. For more details on this API, see the {ref}`custom-request-router-guide`.
 
-### Pattern 1: Centralized metric store
+This allows you to run the same routing logic even if you have multiple handles. The default request router in Ray Serve is Power of Two Choices, which balances load equalization and prioritizes locality routing. However, you can customize this to use LLM-specific metrics.
 
-Uses a singleton actor to store metric-to-replica mappings:
+Ray Serve LLM includes prefix-aware routing in the framework. There are two distinct architectural patterns for customizing request routers:
+
+### Pattern 1: Centralized singleton metric store
+
+In this approach, you keep a centralized metric store (for example, a singleton actor) for tracking routing-related information. The request router logic physically runs on the process that owns the deployment handle, so there can be many such processes. Each one can query the singleton actor, creating a multi-tenant actor that provides a consistent view of the cluster state to the request routers.
+
+The single actor can provide atomic thread-safe operations such as `get()` for querying the global state and `set()` for updating the global state, which the router can use during `choose_replicas()` and `on_request_routed()`.
 
 ```
 ┌─────────┐     ┌─────────┐     ┌─────────┐
-│ Ingress │────►│         │◄────│ Ingress │
+│ Ingress │────►│ Metric  │◄────│ Ingress │
 │    1    │     │  Store  │     │    2    │
 └────┬────┘     └─────────┘     └────┬────┘
      │                               │
@@ -98,21 +104,26 @@ Uses a singleton actor to store metric-to-replica mappings:
 ```
 
 
-```{figure} ../images/request_router_1.png
+```{figure} ../images/routing_centralized_store.png
 ---
 width: 600px
-name: session_store_request_router
+name: centralized_metric_store_pattern
 ---
-Session-aware routing with centralized metric store
+Centralized metric store pattern for custom routing
 ```
 
+**Pros:**
+- Simple implementation - no need to modify deployment logic for recording replica stats
+- Request metrics are immediately available
+- Strong consistency guarantees
 
-Pros: Simple implementation, immediate consistency  
-Cons: Potential bottleneck at high scale
+**Cons:**
+- Single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s)
+- Additional network hop for every routing decision
 
-### Pattern 2: Broadcast metrics
+### Pattern 2: Metrics broadcasted from Serve controller
 
-Uses Ray Serve controller to broadcast metrics:
+In this approach, the Serve controller polls each replica for local statistics that are then broadcasted to all request routers on their deployment handles. The request router can then use this globally broadcasted information to pick the right replica. After a request reaches the replica, the replica updates its local stats so it can send them back to the Serve controller when polled next time.
 
 ```
           ┌──────────────┐
@@ -138,16 +149,30 @@ Uses Ray Serve controller to broadcast metrics:
 ```
 
 
-```{figure} ../images/request_router_2.png
+```{figure} ../images/routing_broadcast_metrics.png
 ---
 width: 600px
-name: broadcast_request_router
+name: broadcast_metrics_pattern
 ---
-Session-aware routing with broadcast metrics
+Broadcast metrics pattern for custom routing
 ```
 
-Pros: Highly scalable, distributed routing  
-Cons: Eventual consistency, stale session data possible
+**Pros:**
+- Scalable to higher throughput
+- No additional RPC overhead per routing decision
+- Distributed routing decisions
+
+**Cons:**
+- There's a lag between the request router's view of stats and the ground truth state of the replicas
+- Eventual consistency - routing decisions may be based on slightly stale data
+- More complex implementation requiring coordination with the Serve controller
+
+### Choose a pattern
+
+These two architectures capture the most popular ways to customize request routers. There are clear trade-offs between them, so pick the right one and balance simplicity with performance:
+
+- **Use Pattern 1 (Centralized store)** when you need strong consistency, have moderate throughput requirements, or want simpler implementation
+- **Use Pattern 2 (Broadcast metrics)** when you need very high throughput, can tolerate eventual consistency, or want to minimize per-request overhead
 
 ## Custom routing policies
 
