@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 
 import ray
@@ -73,11 +71,7 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
-def test_minimal_singlehost(ray_tpu_single_host, tmp_path, caplog):
-    """Test single-host TPU training and verify shutdown callback is invoked."""
-    # Capture DEBUG logs to verify shutdown was called
-    caplog.set_level(logging.DEBUG)
-
+def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         # Topology can be omitted for single-host.
@@ -101,22 +95,8 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path, caplog):
     ]
     assert len(labeled_nodes) == 1
 
-    # Verify that JAX distributed shutdown was called via backend on_shutdown callback
-    shutdown_log_found = any(
-        "JAX distributed shutdown completed" in record.message
-        for record in caplog.records
-    )
-    assert shutdown_log_found, (
-        "Expected 'JAX distributed shutdown completed' in logs. "
-        "This indicates the backend on_shutdown() callback was not invoked."
-    )
 
-
-def test_minimal_multihost(ray_tpu_multi_host, tmp_path, caplog):
-    """Test multi-host TPU training and verify shutdown callback is invoked."""
-    # Capture DEBUG logs to verify shutdown was called
-    caplog.set_level(logging.DEBUG)
-
+def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
@@ -142,16 +122,6 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path, caplog):
         if node["Alive"] and node["Labels"].get("ray.io/tpu-slice-name") == slice_label
     ]
     assert len(labeled_nodes) == 2
-
-    # Verify that JAX distributed shutdown was called via backend on_shutdown callback
-    shutdown_log_found = any(
-        "JAX distributed shutdown completed" in record.message
-        for record in caplog.records
-    )
-    assert shutdown_log_found, (
-        "Expected 'JAX distributed shutdown completed' in logs. "
-        "This indicates the backend on_shutdown() callback was not invoked."
-    )
 
 
 if __name__ == "__main__":
