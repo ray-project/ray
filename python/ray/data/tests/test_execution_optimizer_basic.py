@@ -31,6 +31,7 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -283,7 +284,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     logical_plan = ds._plan._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
-    assert op.cols == cols
+    assert op.exprs == [col("sepal.length"), col("petal.width")]
 
     physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -297,6 +298,8 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     Checks that the physical plan is properly generated for the Project operator from
     rename columns.
     """
+    from ray.data.expressions import star
+
     path = "example://iris.parquet"
     ds = ray.data.read_parquet(path)
     ds = ds.map_batches(lambda d: d)
@@ -306,9 +309,11 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     logical_plan = ds._plan._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
-    assert not op.cols
-    assert op.cols_rename == cols_rename
-
+    assert op.exprs == [
+        star(),
+        col("sepal.length").alias("sepal_length"),
+        col("petal.width").alias("pedal_width"),
+    ]
     physical_plan = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag

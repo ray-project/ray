@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -221,7 +222,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
             array = pyarrow.nulls(len(self._table), type=type)
             array = pc.fill_null(array, value)
-            return self._table.append_column(name, array)
+            return self.upsert_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -366,6 +367,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 "Columns must be a list of column name strings when aggregating on "
                 f"Arrow blocks, but got: {columns}."
             )
+        if len(columns) == 0:
+            # Applicable for count which does an empty projection.
+            # Pyarrow returns a table with 0 columns and num_rows rows.
+            return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
