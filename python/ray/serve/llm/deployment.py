@@ -3,8 +3,8 @@ from ray.llm._internal.serve.deployments.llm.llm_server import (
 )
 
 # TODO (Kourosh): Update the internal namespace.
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
-    PDProxyServer,
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import (
+    PDProxyServer as _PDProxyServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -69,8 +69,8 @@ class LLMServer(InternalLLMServer):
 
 
 @PublicAPI(stability="alpha")
-class PDServer(PDProxyServer):
-    """A server for prefill-decode disaggregation.
+class PDProxyServer(_PDProxyServer):
+    """A proxy server for prefill-decode disaggregation.
 
     This server acts as a proxy in a prefill-decode disaggregated system.
     For chat and completions, proxy sends the request to the prefill server

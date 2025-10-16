@@ -3,7 +3,7 @@ cluster_name: minimal
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. min_workers default to 0.
-max_workers: 1
+max_workers: 2
 
 # Cloud-provider specific configuration.
 provider:
