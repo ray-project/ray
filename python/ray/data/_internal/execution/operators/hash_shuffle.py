@@ -45,6 +45,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _create_sub_pb,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
@@ -363,7 +364,7 @@ class _PartitionStats:
         )
 
 
-class HashShuffleProgressBarMixin(abc.ABC):
+class HashShuffleProgressBarMixin(SubProgressBarMixin):
     @property
     @abc.abstractmethod
     def shuffle_name(self) -> str:
@@ -374,26 +375,29 @@ class HashShuffleProgressBarMixin(abc.ABC):
     def reduce_name(self) -> str:
         ...
 
+    def _validate_sub_progress_bar_names(self):
+        assert self.shuffle_name is not None, "shuffle_name should not be None"
+        assert self.reduce_name is not None, "reduce_name should not be None"
+
     def initialize_sub_progress_bars(self, position: int) -> int:
-        """Display all sub progres bars in the termainl, and return the number of bars."""
+        """Display all sub progress bars in the termainl, and return the number of bars."""
+        self._validate_sub_progress_bar_names()
 
         # shuffle
         progress_bars_created = 0
         self.shuffle_bar = None
-        if self.shuffle_name is not None:
-            self.shuffle_bar, position = _create_sub_pb(
-                self.shuffle_name, self.num_output_rows_total(), position
-            )
-            progress_bars_created += 1
+        self.shuffle_bar, position = _create_sub_pb(
+            self.shuffle_name, self.num_output_rows_total(), position
+        )
+        progress_bars_created += 1
         self.shuffle_metrics = OpRuntimeMetrics(self)
 
         # reduce
         self.reduce_bar = None
-        if self.reduce_name is not None:
-            self.reduce_bar, position = _create_sub_pb(
-                self.reduce_name, self.num_output_rows_total(), position
-            )
-            progress_bars_created += 1
+        self.reduce_bar, position = _create_sub_pb(
+            self.reduce_name, self.num_output_rows_total(), position
+        )
+        progress_bars_created += 1
         self.reduce_metrics = OpRuntimeMetrics(self)
 
         return progress_bars_created
@@ -402,6 +406,27 @@ class HashShuffleProgressBarMixin(abc.ABC):
         """Close all internal sub progress bars."""
         self.shuffle_bar.close()
         self.reduce_bar.close()
+
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        self._validate_sub_progress_bar_names()
+
+        # shuffle
+        self.shuffle_bar = None
+        self.shuffle_metrics = OpRuntimeMetrics(self)
+
+        # reduce
+        self.reduce_bar = None
+        self.reduce_metrics = OpRuntimeMetrics(self)
+
+        return [self.shuffle_name, self.reduce_name]
+
+    def set_sub_progress_bar(self, name, pg):
+        # No type-hints due to circular imports. `name` should be a `str`
+        # and `pg` should be a `SubProgressBar`
+        if self.shuffle_name is not None and self.shuffle_name == name:
+            self.shuffle_bar = pg
+        elif self.reduce_name is not None and self.reduce_name == name:
+            self.reduce_bar = pg
 
 
 def _derive_max_shuffle_aggregators(
@@ -705,7 +730,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 self.shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
 
                 # Update Shuffle progress bar
-                self.shuffle_bar.update(i=input_block_metadata.num_rows)
+                self.shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
 
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
@@ -823,7 +848,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             # Update Finalize progress bar
             self.reduce_bar.update(
-                i=bundle.num_rows(), total=self.num_output_rows_total()
+                increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):

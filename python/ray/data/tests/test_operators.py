@@ -44,6 +44,7 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.progress_manager import SubProgressBar
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
@@ -159,8 +160,15 @@ def test_all_to_all_operator():
     )
 
     # Initialize progress bar.
-    num_bars = op.initialize_sub_progress_bars(0)
-    assert num_bars == 2, num_bars
+    for name in op.get_sub_progress_bar_names():
+        pg = SubProgressBar(
+            name=name,
+            total=op.num_output_rows_total(),
+            enabled=False,
+            progress=None,
+            tid=None,
+        )
+        op.set_sub_progress_bar(name, pg)
 
     # Feed data.
     op.start(ExecutionOptions())
@@ -176,7 +184,6 @@ def test_all_to_all_operator():
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
-    op.close_sub_progress_bars()
 
 
 def test_num_outputs_total():
