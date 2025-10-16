@@ -157,7 +157,7 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
+            ray.train.v2.api.exceptions.TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
                 This returns a :class:`ray.train.ControllerError` if internal Ray Train controller logic
                 encounters a non-retryable error or reaches the controller failure limit configured in `FailureConfig`.
                 This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
