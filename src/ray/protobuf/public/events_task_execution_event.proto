@@ -19,6 +19,8 @@ import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 // Message containing the execution information of a task (can apply to both normal
 // tasks and actor tasks).
 message TaskExecutionEvent {
