@@ -74,6 +74,8 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
+  /// The port that the object manager will use.
+  int object_manager_port;
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
@@ -163,15 +165,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-      std::atomic_bool &shutting_down);
+      std::atomic_bool &shutting_down,
+      std::string socket_name);
 
-  /// Handle an unexpected error that occurred on a client connection.
-  /// The client will be disconnected and no more messages will be processed.
-  ///
-  /// \param client The client whose connection the error occurred on.
-  /// \param error The error details.
-  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
-                                   const boost::system::error_code &error);
+  void Start(const rpc::GcsNodeInfo &self_node_info);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -304,6 +301,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+
+  /// Handle an accepted client connection.
+  void HandleAccept(const boost::system::error_code &error);
+
+  /// Handle an unexpected error that occurred on a client connection.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
+                                   const boost::system::error_code &error);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -894,6 +902,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   std::atomic_bool &shutting_down_;
+
+  /// The name of the socket this raylet listens on.
+  std::string socket_name_;
+
+  /// An acceptor for new clients.
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
+
+  /// The socket to listen on for new clients.
+  local_stream_socket socket_;
 };
 
 }  // namespace ray::raylet
