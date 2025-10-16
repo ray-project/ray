@@ -71,6 +71,25 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
+def train_func_check_distributed_shutdown():
+    """Training function to verify JAX distributed is properly initialized and can be checked."""
+    import jax
+
+    from ray import train
+
+    # Verify JAX distributed is initialized
+    process_count = jax.process_count()
+    process_index = jax.process_index()
+
+    train.report(
+        {
+            "process_count": process_count,
+            "process_index": process_index,
+            "initialized": process_count > 1,
+        }
+    )
+
+
 def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -122,6 +141,33 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         if node["Alive"] and node["Labels"].get("ray.io/tpu-slice-name") == slice_label
     ]
     assert len(labeled_nodes) == 2
+
+
+
+def test_jax_distributed_initialization_multihost(ray_tpu_multi_host, tmp_path):
+    """Test that JAX distributed is properly initialized in multi-host setup.
+
+    This test also verifies that the shutdown logic works correctly.
+    """
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_check_distributed_shutdown,
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            resources_per_worker={"TPU": 4},
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    # Verify that JAX distributed was initialized with correct process count
+    assert result.metrics["process_count"] == 2
+    assert result.metrics["initialized"] is True
 
 
 if __name__ == "__main__":
