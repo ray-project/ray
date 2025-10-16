@@ -26,88 +26,100 @@ void CoreWorkerGrpcService::InitServerCallFactories(
     const ClusterID &cluster_id) {
   /// TODO(vitsai): Remove this when auth is implemented for node manager.
   /// Disable gRPC server metrics since it incurs too high cardinality.
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, PushTask, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          PushTask,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           ActorCallArgWaitComplete,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           RayletNotifyGCSRestart,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           GetObjectStatus,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           WaitForActorRefDeleted,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           PubsubLongPolling,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           PubsubCommandBatch,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           UpdateObjectLocationBatch,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           GetObjectLocationsOwner,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           ReportGeneratorItemReturns,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, KillActor, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, CancelTask, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          KillActor,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          CancelTask,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           RemoteCancelTask,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           RegisterMutableObjectReader,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           GetCoreWorkerStats,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, LocalGC, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, DeleteObjects, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, SpillObjects, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          LocalGC,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          DeleteObjects,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
+                                                          SpillObjects,
+                                                          max_active_rpcs_per_handler_,
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           RestoreSpilledObjects,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           DeleteSpilledObjects,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           PlasmaObjectReady,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-      CoreWorkerService, Exit, max_active_rpcs_per_handler_, AuthType::NO_AUTH);
+      CoreWorkerService, Exit, max_active_rpcs_per_handler_, ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           AssignObjectOwner,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           NumPendingTasks,
                                                           max_active_rpcs_per_handler_,
-                                                          AuthType::NO_AUTH);
+                                                          ClusterIdAuthType::NO_AUTH);
 }
 
 }  // namespace rpc

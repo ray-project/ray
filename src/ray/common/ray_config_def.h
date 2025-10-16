@@ -35,6 +35,13 @@ RAY_CONFIG(bool, emit_main_service_metrics, true)
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
+/// Whether to enable token-based authentication for RPC calls.
+RAY_CONFIG(bool, enable_token_auth, true)
+
+/// Authentication token for RPC calls. If empty, token auth is effectively disabled
+/// even if enable_token_auth is true.
+RAY_CONFIG(std::string, auth_token, "")
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.

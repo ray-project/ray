@@ -29,7 +29,8 @@ class ServerCallFactory;
 
 /// TODO(vitsai): Remove this when auth is implemented for node manager
 #define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(                   \
+      NodeManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                  \

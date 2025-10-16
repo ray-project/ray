@@ -28,7 +28,8 @@ namespace rpc {
 class ServerCallFactory;
 
 #define RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(ObjectManagerService, METHOD, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(                     \
+      ObjectManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \

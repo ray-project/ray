@@ -59,7 +59,7 @@ class GreeterGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override{
       RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-          Greeter, SayHello, -1, AuthType::NO_AUTH)}
+          Greeter, SayHello, -1, ClusterIdAuthType::NO_AUTH)}
 
   /// The grpc async service object.
   Greeter::AsyncService service_;
