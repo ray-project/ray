@@ -1,4 +1,4 @@
-import abc
+from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
@@ -52,7 +53,9 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
+class AllToAllOperator(
+    InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
+):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -176,6 +179,15 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         if self._sub_progress_bar_dict is not None:
             for sub_bar in self._sub_progress_bar_dict.values():
                 sub_bar.close()
+
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        return self._sub_progress_bar_names
+
+    def set_sub_progress_bar(self, name, pg):
+        # not type-checking due to circular imports
+        if self._sub_progress_bar_dict is None:
+            self._sub_progress_bar_dict = {}
+        self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
         return True

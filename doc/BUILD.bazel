@@ -552,6 +552,7 @@ doctest(
 
 doctest(
     name = "doctest[core]",
+    size = "large",
     files = glob(
         include = [
             "source/ray-core/**/*.md",

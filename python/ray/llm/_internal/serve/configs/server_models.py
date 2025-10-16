@@ -208,7 +208,7 @@ class LLMConfig(BaseModelExtended):
 
     log_engine_metrics: Optional[bool] = Field(
         default=True,
-        description="Enable additional engine metrics via Ray Prometheus port. Default is True.",
+        description="Enable additional engine metrics via Ray Prometheus port.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -375,7 +375,7 @@ class LLMConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
-        # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
+        """Validate that disable_log_stats isn't enabled when log_engine_metrics is enabled."""
         if self.log_engine_metrics and self.engine_kwargs.get("disable_log_stats"):
             raise ValueError(
                 "disable_log_stats cannot be set to True when log_engine_metrics is enabled. "
