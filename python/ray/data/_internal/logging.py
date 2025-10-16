@@ -1,7 +1,6 @@
 import logging
 import logging.config
 import os
-import weakref
 from typing import List, Optional
 
 import yaml
@@ -181,46 +180,118 @@ def _get_logger_names() -> List[str]:
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function loads the configration YAML specified by "RAY_DATA_LOGGING_CONFIG"
+    This function loads the configuration YAML specified by "RAY_DATA_LOGGING_CONFIG"
     environment variable. If the variable isn't set, this function loads the default
     "logging.yaml" file that is adjacent to this module.
 
     If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
     """
+    import importlib
 
-    # Dynamically load env vars
-    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
-    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     config = _get_logging_config()
 
-    # Grab the existing handlers that the logger has already registered
-    existing_handlers_map = logging._handlers
+    # Create formatters, filters, and handlers from config
+    formatters = _create_formatters(config, importlib)
+    filters = _create_filters(config, importlib)
+    handlers = _create_handlers(config, importlib, formatters, filters)
 
-    # Create a new empty handlers map and list
-    logging._acquireLock()
-    logging._handlers = weakref.WeakValueDictionary()
-    logging._handlerList = []
-    logging._releaseLock()
+    # Configure each logger defined in the config
+    _configure_loggers(config, handlers)
 
-    # dictConfig closes all the handlers, and sets the target to `None`
-    logging.config.dictConfig(config)
+    # Warn if both env vars are set (incompatible)
+    _warn_if_incompatible_env_vars()
 
-    # After configure Ray data logger, add the existing handlers atop Ray Data's handlers
-    logging._acquireLock()
-    for name, handler in existing_handlers_map.items():
-        if name not in logging._handlers:
-            logging._handlers[name] = handler
-            logging._handlerList.append(handler)
-    logging._releaseLock()
 
-    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
-    # RAY_DATA_LOG_ENCODING, because they are not both supported together.
+def _create_formatters(config: dict, importlib) -> dict:
+    """Create formatter instances from config."""
+    formatters = {}
+    for name, fmt_config in config.get("formatters", {}).items():
+        if "class" in fmt_config:
+            # Dynamically import custom formatter class
+            module_name, class_name = fmt_config["class"].rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            formatter_class = getattr(module, class_name)
+            formatters[name] = formatter_class()
+        elif "format" in fmt_config:
+            # Use standard formatter with format string
+            formatters[name] = logging.Formatter(fmt_config["format"])
+    return formatters
+
+
+def _create_filters(config: dict, importlib) -> dict:
+    """Create filter instances from config."""
+    filters = {}
+    for name, filter_config in config.get("filters", {}).items():
+        if "()" in filter_config:
+            # Dynamically import custom filter class
+            module_name, class_name = filter_config["()"].rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            filter_class = getattr(module, class_name)
+            filters[name] = filter_class()
+    return filters
+
+
+def _create_handlers(config: dict, importlib, formatters: dict, filters: dict) -> dict:
+    """Create and configure handler instances from config."""
+    handlers = {}
+    for name, handler_config in config.get("handlers", {}).items():
+        # Instantiate handler class
+        module_name, class_name = handler_config["class"].rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        handler_class = getattr(module, class_name)
+
+        # Extract constructor arguments
+        handler_kwargs = {}
+        if "filename" in handler_config:
+            handler_kwargs["filename"] = handler_config["filename"]
+
+        handler = handler_class(**handler_kwargs)
+        handler.name = name
+
+        # Apply handler configuration
+        if "level" in handler_config:
+            handler.setLevel(handler_config["level"])
+        if "formatter" in handler_config:
+            handler.setFormatter(formatters[handler_config["formatter"]])
+        for filter_name in handler_config.get("filters", []):
+            handler.addFilter(filters[filter_name])
+
+        handlers[name] = handler
+
+    return handlers
+
+
+def _configure_loggers(config: dict, handlers: dict) -> None:
+    """Configure logger instances from config."""
+    for logger_name, logger_config in config.get("loggers", {}).items():
+        logger = logging.getLogger(logger_name)
+
+        # Set level
+        logger.setLevel(logger_config.get("level", logging.NOTSET))
+
+        # Clear existing handlers
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+
+        # Add configured handlers
+        for handler_name in logger_config.get("handlers", []):
+            logger.addHandler(handlers[handler_name])
+
+        # Set propagate flag
+        logger.propagate = logger_config.get("propagate", True)
+
+
+def _warn_if_incompatible_env_vars() -> None:
+    """Warn if both RAY_DATA_LOGGING_CONFIG and RAY_DATA_LOG_ENCODING are set."""
+    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
+    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
+
     if config_path is not None and log_encoding is not None:
         logger = logging.getLogger(__name__)
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
-            + "`RAY_DATA_LOGGING_CONFIG`"
+            "`RAY_DATA_LOGGING_CONFIG`"
         )
 
 
