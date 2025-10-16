@@ -303,5 +303,4 @@ For reasoning model support and configuration, see the [vLLM reasoning models do
 - [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models.html) - Complete list of supported models and features
 - [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html) - vLLM's OpenAI-compatible server documentation
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
-- {doc}`Configuration guide <configuration>` - Configure LLM deployments
 
