@@ -181,23 +181,6 @@ py_test(
     deps = [":train_lib"],
 )
 
-# TODO: Delete this together with the long running PBT release test.
-py_test(
-    name = "tune_cifar_torch_pbt_example",
-    size = "medium",
-    srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
-    args = ["--smoke-test"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
-    tags = [
-        "exclusive",
-        "pytorch",
-        "team:ml",
-        "tune",
-    ],
-    deps = [":train_lib"],
-)
-
 # Formerly AIR examples
 
 py_test(
@@ -362,7 +345,9 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
-    # TODO: should port over
+    # NOTE: Relevant tests have been migrated to
+    # test_torch_trainer.py and test_worker_group.py
+    # TODO: [V2] There are still some accelerator integration tests left.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
@@ -466,7 +451,7 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
-    # TODO: move over, rename to test_torch_gpu_utils
+    # NOTE: Migrated relevant tests to v2/tests/test_torch_gpu.py
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
@@ -602,13 +587,12 @@ py_test(
     name = "test_torch_lightning_train",
     size = "large",
     srcs = ["tests/test_torch_lightning_train.py"],
-    # TODO: move over
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "gpu",
         "ptl_v2",
         "team:ml",
+        "train_v2_gpu",
     ],
     deps = [":train_lib"],
 )
@@ -683,7 +667,8 @@ py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
-    # TODO: move over
+    # TODO: [V2] The minimal test needs to install pydantic,
+    # which is a Train V2 dependency.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
