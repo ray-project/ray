@@ -1086,8 +1086,7 @@ class TestRouterMetricsManager:
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
-    @patch("ray.serve._private.router.MetricsPusher")
-    async def test_update_deployment_config(self, metrics_pusher_mock):
+    async def test_update_deployment_config(self):
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
@@ -1103,14 +1102,16 @@ class TestRouterMetricsManager:
         )
 
         # Without autoscaling config, do nothing
-        metrics_manager.update_deployment_config(DeploymentConfig(), 0)
-        metrics_manager.metrics_pusher.register_or_update_task.assert_not_called()
+        with patch.object(metrics_manager, "metrics_pusher"):
+            metrics_manager.update_deployment_config(DeploymentConfig(), 0)
+            metrics_manager.metrics_pusher.register_or_update_task.assert_not_called()
 
         # With autoscaling config, register or update task should be called
-        metrics_manager.update_deployment_config(
-            DeploymentConfig(autoscaling_config=AutoscalingConfig()), 0
-        )
-        metrics_manager.metrics_pusher.register_or_update_task.assert_called()
+        with patch.object(metrics_manager, "metrics_pusher"):
+            metrics_manager.update_deployment_config(
+                DeploymentConfig(autoscaling_config=AutoscalingConfig()), 0
+            )
+            metrics_manager.metrics_pusher.register_or_update_task.assert_called()
 
 
 class TestSingletonThreadRouter:
