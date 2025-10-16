@@ -398,7 +398,8 @@ def test_autoscaling_config_validation_warnings(
     #   - Default upscaling threshold (200%)
     with patch("ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning") as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
-            SimpleMapper
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy()
         )
         ds.take_all()
 
