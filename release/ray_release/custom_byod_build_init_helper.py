@@ -81,8 +81,6 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         step["depends_on"] = get_prerequisite_step(image, base_image)
         build_config["steps"].append(step)
 
-    logger.info(f"Build config: {build_config}")
-    print("writing to file: ", destination_file)
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
