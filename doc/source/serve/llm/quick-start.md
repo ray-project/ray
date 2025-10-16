@@ -359,7 +359,7 @@ applications:
 
 ## Advanced usage patterns
 
-For each usage pattern, we provide a server and client code snippet.
+For each usage pattern, Ray Serve LLM provides a server and client code snippet.
 
 ### Multi-LoRA deployment
 
@@ -759,7 +759,7 @@ serve.run(app, blocking=True)
 
 In this example, we've specified 8 replicas of the model, and we use the `placement_group_config` to specify the fraction of the GPU that each model will use in placement group. We also need to set the `VLLM_RAY_PER_WORKER_GPUS` environment variable so that the vLLM GPU workers will each claim a fraction of the GPU. There's also a resource contention [issue](https://github.com/vllm-project/vllm/issues/24601) among workers when doing torch compile caching, so we need to set the `VLLM_DISABLE_COMPILE_CACHE` environment variable to get around it.
 
-We need to make sure `gpu_memory_utilization` is set to a reasonable value, because vLLM will pre-allocate the GPU memory based on GPU memory utilization, regardless of how we schedule the Ray GPU workers. In this example, setting it to 0.4 means that vLLM will target to use 40% of the GPU memory for the model, its kv-cache, CUDAGraph memory, etc.
+You need to make sure to set `gpu_memory_utilization` to a reasonable value, because vLLM pre-allocates the GPU memory based on GPU memory utilization, regardless of how you schedule the Ray GPU workers. In this example, setting it to 0.4 means that vLLM targets to use 40% of the GPU memory for the model, its kv-cache, CUDAGraph memory, etc.
 
 ### Use remote storage for model weights
 
@@ -802,7 +802,7 @@ applications:
 
 ## Frequently asked questions
 
-### How do I use gated Huggingface models?
+### How do I use gated Hugging Face models?
 
 You can use `runtime_env` to specify the env variables that are required to access the model. To get the deployment options, you can use the `get_deployment_options` method on the {class}`LLMServer <ray.serve.llm.deployment.LLMServer>` class. Each deployment class has its own `get_deployment_options` method.
 
@@ -840,7 +840,7 @@ serve.run(app, blocking=True)
 
 ### Why is downloading the model so slow?
 
-If you're using Huggingface models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
+If you're using Hugging Face models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
 
 
 
@@ -902,7 +902,7 @@ applications:
 
 ## Usage data collection
 
-We collect usage data to improve Ray Serve LLM. We collect data about the following features and attributes:
+The Ray Team collects usage data to improve Ray Serve LLM. The team collects data about the following features and attributes:
 
 - Model architecture used for serving.
 - Whether JSON mode is used.
