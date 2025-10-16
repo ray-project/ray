@@ -2779,6 +2779,7 @@ def read_snowflake(
     sql: str,
     connection_parameters: Dict[str, Any],
     *,
+    parallelism: int = -1,
     shard_keys: Optional[list[str]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
