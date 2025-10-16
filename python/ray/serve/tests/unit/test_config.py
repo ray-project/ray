@@ -84,7 +84,13 @@ def test_autoscaling_config_validation():
     AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
 
     # Default values should not raise an error
-    AutoscalingConfig()
+    default_autoscaling_config = AutoscalingConfig()
+    assert default_autoscaling_config.policy.is_default_policy_function() is True
+
+    non_default_autoscaling_config = AutoscalingConfig(
+        policy={"policy_function": "ray.serve.tests.unit.test_config:fake_policy"}
+    )
+    assert non_default_autoscaling_config.policy.is_default_policy_function() is False
 
 
 def test_autoscaling_config_metrics_interval_s_deprecation_warning() -> None:

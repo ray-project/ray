@@ -557,12 +557,14 @@ class EnvRunnerGroup:
                 env_runner_states.update(rl_module_state)
 
             # Broadcast updated states back to all workers.
-            self.foreach_env_runner(
-                "set_state",  # Call the `set_state()` remote method.
+            # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+            # When these pile up, object store memory can spike.
+            self.foreach_env_runner_async_fetch_ready(
+                func="set_state",
+                tag="set_state",
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
-                local_env_runner=False,
-                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
+                timeout_seconds=0.0,
             )
 
     def foreach_env_runner_async_fetch_ready(
@@ -708,10 +710,12 @@ class EnvRunnerGroup:
                 rl_module_state_ref = ray.put(rl_module_state)
 
                 # Sync to specified remote workers in this EnvRunnerGroup.
-                self.foreach_env_runner(
+                # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+                # When these pile up, object store memory can spike.
+                self.foreach_env_runner_async_fetch_ready(
                     func="set_state",
+                    tag="set_state",
                     kwargs=dict(state=rl_module_state_ref),
-                    local_env_runner=False,  # Do not sync back to local worker.
                     remote_worker_ids=to_worker_indices,
                     timeout_seconds=timeout_seconds,
                 )

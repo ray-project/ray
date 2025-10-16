@@ -11,6 +11,7 @@ from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
+import time
 
 
 @pytest.mark.asyncio(scope="function")
@@ -131,9 +132,7 @@ def test_deepseek_model(model_name):
     llm_config = LLMConfig(
         model_loading_config=dict(
             model_id=model_name,
-            model_source=model_name,
         ),
-        runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
@@ -153,6 +152,8 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
+    serve.shutdown()
+    time.sleep(1)
 
 
 @pytest.mark.asyncio(scope="function")
@@ -170,9 +171,7 @@ def remote_model_app(request):
     base_config = {
         "model_loading_config": dict(
             model_id="hmellor/Ilama-3.2-1B",
-            model_source="hmellor/Ilama-3.2-1B",
         ),
-        "runtime_env": dict(env_vars={"VLLM_USE_V1": "1"}),
         "deployment_config": dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
@@ -188,6 +187,7 @@ def remote_model_app(request):
 
     # Cleanup
     serve.shutdown()
+    time.sleep(1)
 
 
 class TestRemoteCode:
@@ -198,8 +198,7 @@ class TestRemoteCode:
         """
         Tests that a remote code model fails to load when trust_remote_code=False.
 
-        If it loads successfully without remote code, the fixture should be changed to one
-        that does require remote code.
+        If it loads successfully without remote code, the fixture should be changed to one that does require remote code.
         """
         app = remote_model_app
         with pytest.raises(RuntimeError, match="Deploying application default failed"):

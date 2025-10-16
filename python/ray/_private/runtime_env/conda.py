@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import platform
 import runpy
 import shutil
 import subprocess
@@ -111,10 +110,6 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
-def _is_m1_mac():
-    return sys.platform == "darwin" and platform.machine() == "arm64"
-
-
 def current_ray_pip_specifier(
     logger: Optional[logging.Logger] = default_logger,
 ) -> Optional[str]:
@@ -148,17 +143,9 @@ def current_ray_pip_specifier(
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
-        if _is_m1_mac():
-            raise ValueError("Nightly wheels are not available for M1 Macs.")
         return get_master_wheel_url()
     else:
-        if _is_m1_mac():
-            # M1 Mac release wheels are currently not uploaded to AWS S3; they
-            # are only available on PyPI.  So unfortunately, this codepath is
-            # not end-to-end testable prior to the release going live on PyPI.
-            return f"ray=={ray.__version__}"
-        else:
-            return get_release_wheel_url()
+        return get_release_wheel_url()
 
 
 def inject_dependencies(
