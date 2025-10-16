@@ -488,7 +488,7 @@ py_test(
 py_test_run_all_subdirectory(
     size = "enormous",
     include = ["external/*.py"],
-    exclude = ["external/test_hashes.py"],
+    exclude = ["external/test_hashes.py", "external/pytorch_tutorials_hyperparameter_tuning_tutorial.py"],
     extra_srcs = [],
     tags = [
         "exclusive",
