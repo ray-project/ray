@@ -722,7 +722,7 @@ def test_app_unhealthy(mocked_application_state):
 
 
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a", "/old")], None)))
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/old")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
@@ -817,7 +817,7 @@ def test_apply_app_configs_fail(check_obj_ref_ready_nowait):
     Mock(return_value="123"),
 )
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a", "/old")], None)))
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/old")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     """Test that apply_app_configs deletes existing apps that aren't in the new list.
@@ -2484,6 +2484,7 @@ class TestApplicationLevelAutoscaling:
                 )
 
             mock_reconcile.return_value = (
+                None,
                 deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
@@ -2544,6 +2545,7 @@ class TestApplicationLevelAutoscaling:
                     )
 
                 mock_reconcile.return_value = (
+                    None,
                     deployment_infos,
                     BuildAppStatus.SUCCEEDED,
                     "",

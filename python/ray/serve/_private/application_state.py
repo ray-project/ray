@@ -25,6 +25,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
 )
@@ -265,6 +267,7 @@ class ApplicationState:
             target_capacity_direction=None,
             deleting=False,
             api_type=APIType.UNKNOWN,
+            serialized_application_autoscaling_policy_def=None,
         )
         self._logging_config = logging_config
 
@@ -656,14 +659,14 @@ class ApplicationState:
 
             deployment_to_autoscaling_policy_function = {
                 deployment.name: deployment.autoscaling_config.get("policy", {}).get(
-                    "policy_function"
+                    "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
                 )
                 for deployment in config.deployments
                 if isinstance(deployment.autoscaling_config, dict)
             }
             deployment_to_request_router_cls = {
                 deployment.name: deployment.request_router_config.get(
-                    "request_router_class"
+                    "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
                 )
                 for deployment in config.deployments
                 if isinstance(deployment.request_router_config, dict)
@@ -775,10 +778,10 @@ class ApplicationState:
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
         if self._build_app_task_info is None or self._build_app_task_info.finished:
-            return None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            return None, BuildAppStatus.IN_PROGRESS, ""
+            return None, None, BuildAppStatus.IN_PROGRESS, ""
 
         # Retrieve build app task result
         self._build_app_task_info.finished = True
@@ -791,6 +794,7 @@ class ApplicationState:
             else:
                 return (
                     None,
+                    None,
                     BuildAppStatus.FAILED,
                     f"Deploying app '{self._name}' failed with exception:\n{err}",
                 )
@@ -799,13 +803,13 @@ class ApplicationState:
                 f"Runtime env setup for app '{self._name}' failed:\n"
                 + traceback.format_exc()
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
 
         # Convert serialized deployment args (returned by build app task)
         # to deployment infos and apply option overrides from config
@@ -1391,7 +1395,7 @@ def build_serve_application(
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
             application_serialized_autoscaling_policy_def = None
-            if application_autoscaling_policy_function:
+            if application_autoscaling_policy_function is not None:
                 application_serialized_autoscaling_policy_def = cloudpickle.dumps(
                     import_attr(application_autoscaling_policy_function)
                 )
@@ -1437,12 +1441,12 @@ def build_serve_application(
             "Existing config deployment request terminated because of keyboard "
             "interrupt."
         )
-        return None, None
+        return None, None, None
     except Exception:
         logger.error(
             f"Exception importing application '{name}'.\n{traceback.format_exc()}"
         )
-        return None, traceback.format_exc()
+        return None, None, traceback.format_exc()
 
 
 def override_deployment_info(
