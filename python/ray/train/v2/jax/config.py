@@ -46,9 +46,7 @@ def _shutdown_jax_distributed():
         import jax
 
         jax.distributed.shutdown()
-        logger.debug("JAX distributed shutdown completed")
     except Exception as e:
-        # Log but don't raise - we want graceful degradation during shutdown
         logger.warning(f"Error during JAX distributed shutdown: {e}")
 
 
@@ -75,20 +73,17 @@ class _JaxBackend(Backend):
         ray.get(setup_futures)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: JaxConfig):
-        """Cleanup JAX distributed resources when shutting down worker group.
-
-        This is critical to prevent resource leaks and hanging workers.
-        """
+        """Cleanup JAX distributed resources when shutting down worker group."""
         if not backend_config.use_tpu:
             return
 
         # Shutdown JAX distributed on all workers
         shutdown_futures = worker_group.execute_async(_shutdown_jax_distributed)
 
-        # Wait for shutdown to complete with a reasonable timeout
-        timeout_s = 30  # JAX shutdown should be quick
+        timeout_s = 30
         try:
             ray.get(shutdown_futures, timeout=timeout_s)
+            logger.debug("JAX distributed shutdown completed")
         except ray.exceptions.GetTimeoutError:
             logger.warning(
                 f"JAX distributed shutdown timed out after {timeout_s} seconds. "
