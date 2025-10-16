@@ -7,7 +7,7 @@ from pydantic import Field, field_validator, model_validator
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
-from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.common.utils.import_utils import load_class
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
     build_llm_deployment,
@@ -20,20 +20,6 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
-
-# TODO: Remove this once we have https://github.com/ray-project/ray/pull/57257
-# merged
-def load_class(path: str) -> Type[Any]:
-    """Load class from string path."""
-    if ":" in path:
-        module_path, class_name = path.rsplit(":", 1)
-    else:
-        module_path, class_name = path.rsplit(".", 1)
-
-    module = try_import(module_path, warning=False, error=True)
-    callback_class = getattr(module, class_name)
-
-    return callback_class
 
 
 class IngressClsConfig(BaseModelExtended):
