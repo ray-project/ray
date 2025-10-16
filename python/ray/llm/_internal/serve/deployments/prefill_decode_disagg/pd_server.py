@@ -1,7 +1,7 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
 import logging
-from typing import Any, AsyncGenerator, Dict, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.openai_api_models import (
@@ -13,7 +13,10 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
+from ray.llm._internal.serve.deployments.utils.server_utils import (
+    get_serve_request_id,
+)
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
 
@@ -25,9 +28,11 @@ DEFAULT_PD_PROXY_SERVER_OPTIONS = {
 }
 
 
-class PDProxyServer(LLMServer):
-    _default_engine_cls = None
+class PDProxyServer(LLMServerProtocol):
     """Proxy between P/D LLM servers.
+
+    This class implements the LLMServerProtocol but doesn't have a real engine.
+    It forwards requests to prefill and decode servers for disaggregated inference.
 
     For chat and completions, proxy sends the request to the prefill server and
     then parses the response to send to the decode server.
@@ -42,22 +47,45 @@ class PDProxyServer(LLMServer):
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
-
-        # We pass `llm_config` here to let super() extract the model_id,
+        # Store llm_config from prefill_server for the model_id,
         # such that /v1/models endpoint can work correctly.
         # TODO(lk-chen): refactor OpenAiIngress <-> LLMServer such that router
         # query model_id through API, instead of passing it in as an argument.
-        # We can obtain llm_config from prefill_server for obtaining model_id
+        # We obtain llm_config from prefill_server for obtaining model_id
         # assuming there is no mismatch between prefill and decode server.
-        llm_config = await prefill_server.llm_config.remote()
-        await super().__init__(llm_config)
+        self._llm_config = await prefill_server.llm_config.remote()
         self.prefill_server = prefill_server.options(stream=True)
         self.decode_server = decode_server.options(stream=True)
 
-    async def embeddings(
-        self, request: EmbeddingRequest
-    ) -> AsyncGenerator[EmbeddingResponse, None]:
-        raise NotImplementedError("Embedding is not supported for P/D disaggregation")
+    async def start(self) -> None:
+        """Start is a no-op for PDProxyServer since it's just a proxy."""
+        pass
+
+    async def check_health(self) -> None:
+        """Health check is a no-op for PDProxyServer."""
+        pass
+
+    async def reset_prefix_cache(self) -> None:
+        """Prefix cache reset is not supported for P/D disaggregation."""
+        raise NotImplementedError(
+            "reset_prefix_cache is not supported for P/D disaggregation"
+        )
+
+    async def start_profile(self) -> None:
+        """Profiling is not supported for P/D disaggregation."""
+        raise NotImplementedError(
+            "start_profile is not supported for P/D disaggregation"
+        )
+
+    async def stop_profile(self) -> None:
+        """Profiling is not supported for P/D disaggregation."""
+        raise NotImplementedError(
+            "stop_profile is not supported for P/D disaggregation"
+        )
+
+    async def llm_config(self) -> Optional[LLMConfig]:
+        """Return the LLM configuration."""
+        return self._llm_config
 
     def _prepare_prefill_request(self, request: RequestType) -> RequestType:
         assert (
@@ -87,6 +115,15 @@ class PDProxyServer(LLMServer):
 
         return decode_request
 
+    def _maybe_add_request_id_to_request(
+        self,
+        request: Union[ChatCompletionRequest, CompletionRequest],
+    ) -> None:
+        """Add the request id to the request."""
+        request_id = get_serve_request_id()
+        if request_id:
+            request.request_id = request_id
+
     async def _handle_request(
         self,
         request: RequestType,
@@ -94,7 +131,7 @@ class PDProxyServer(LLMServer):
         Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
     ]:
 
-        await self._maybe_add_request_id_to_request(request)
+        self._maybe_add_request_id_to_request(request)
 
         if isinstance(request, ChatCompletionRequest):
             method = "chat"
@@ -128,6 +165,11 @@ class PDProxyServer(LLMServer):
         self, request: CompletionRequest
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
+
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
+        raise NotImplementedError("Embedding is not supported for P/D disaggregation")
 
     @classmethod
     def get_deployment_options(

@@ -3,7 +3,7 @@ from ray.llm._internal.serve.deployments.llm.llm_server import (
 )
 
 # TODO (Kourosh): Update the internal namespace.
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd import (
+from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
     PDProxyServer as _PDProxyServer,
 )
 from ray.util.annotations import PublicAPI
