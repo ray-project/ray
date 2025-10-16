@@ -46,6 +46,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_client",
+        "//src/ray/util:exponential_backoff",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
