@@ -26,7 +26,23 @@ class JaxConfig(BackendConfig):
         return _JaxBackend
 
 
-def _setup_jax_tpu_environment(
+def _set_jax_env_vars(use_tpu: bool):
+    """Set JAX environment variables based on configuration."""
+    if use_tpu:
+        # Get existing JAX_PLATFORMS if set
+        existing_jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
+
+        if "tpu" in existing_jax_platforms:
+            return
+        elif existing_jax_platforms:
+            # Prepend tpu to existing platforms
+            os.environ["JAX_PLATFORMS"] = "tpu," + existing_jax_platforms
+        else:
+            # No existing platforms, just set to "tpu"
+            os.environ["JAX_PLATFORMS"] = "tpu"
+
+
+def _setup_jax_distributed_environment(
     master_addr_with_port: str, num_workers: int, index: int
 ):
     """Set up distributed Jax training information.
@@ -35,10 +51,7 @@ def _setup_jax_tpu_environment(
     """
     import jax
 
-    jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
-
-    if "tpu" in jax_platforms.split(","):
-        jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 
 def _shutdown_jax_distributed():
@@ -60,6 +73,9 @@ class _JaxBackend(Backend):
         if not backend_config.use_tpu:
             return
 
+        # Set JAX environment variables on all workers
+        worker_group.execute(_set_jax_env_vars, use_tpu=backend_config.use_tpu)
+
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
 
@@ -69,7 +85,7 @@ class _JaxBackend(Backend):
             setup_futures.append(
                 worker_group.execute_single_async(
                     i,
-                    _setup_jax_tpu_environment,
+                    _setup_jax_distributed_environment,
                     master_addr_with_port=master_addr_with_port,
                     num_workers=len(worker_group),
                     index=i,
