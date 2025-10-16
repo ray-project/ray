@@ -121,7 +121,10 @@ class MockWorker : public WorkerInterface {
   void AssignActorId(const ActorID &actor_id) override {
     RAY_CHECK(false) << "Method unused";
   }
-  const ActorID &GetActorId() const override { return actor_id_; }
+  const ActorID &GetActorId() const override {
+    RAY_CHECK(false) << "Method unused";
+    return ActorID::Nil();
+  }
   const std::string GetLeaseIdAsDebugString() const override {
     RAY_CHECK(false) << "Method unused";
     return "";
@@ -146,7 +149,10 @@ class MockWorker : public WorkerInterface {
     lifetime_allocated_instances_ = nullptr;
   }
 
-  const BundleID &GetBundleId() const override { return bundle_id_; }
+  const BundleID &GetBundleId() const override {
+    RAY_CHECK(false) << "Method unused";
+    return bundle_id_;
+  }
 
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
@@ -194,7 +200,6 @@ class MockWorker : public WorkerInterface {
   int runtime_env_hash_;
   LeaseID lease_id_;
   JobID job_id_;
-  ActorID actor_id_;
   ActorID root_detached_actor_id_;
   Process proc_;
   std::atomic<bool> killing_ = false;

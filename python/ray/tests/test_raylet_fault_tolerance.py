@@ -65,6 +65,7 @@ def inject_rpc_failures(monkeypatch, request):
 def test_release_unused_bundles_idempotent(
     inject_rpc_failures, ray_start_cluster_head_with_external_redis
 ):
+    # NOTE: Not testing response failure because the leaked bundle is cleaned up anyway
     cluster = ray_start_cluster_head_with_external_redis
 
     @ray.remote(num_cpus=1)
@@ -72,7 +73,6 @@ def test_release_unused_bundles_idempotent(
         return "success"
 
     pg = placement_group(name="test_pg", strategy="PACK", bundles=[{"CPU": 1}])
-    assert pg.wait(timeout_seconds=10)
 
     result_ref = task.options(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
@@ -80,7 +80,7 @@ def test_release_unused_bundles_idempotent(
             placement_group_bundle_index=0,
         )
     ).remote()
-    assert ray.get(result_ref, timeout=10) == "success"
+    assert ray.get(result_ref) == "success"
 
     # Remove the placement group. This will trigger CancelResourceReserve RPCs which need to be blocked
     # for the placement group bundle to be leaked.

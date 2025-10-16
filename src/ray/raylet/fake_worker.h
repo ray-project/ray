@@ -44,10 +44,6 @@ class FakeClientConnection {
   }
 };
 
-/// A fake implementation of WorkerInterface for testing.
-/// This provides a minimal no-op implementation with only the essential fields needed
-/// for disconnect/cleanup paths. The key feature is providing a real ClientConnection
-/// to prevent segfaults in DestroyWorker callflow.
 class FakeWorker : public WorkerInterface {
  public:
   FakeWorker(WorkerID worker_id, int port, instrumented_io_context &io_context)
@@ -62,10 +58,7 @@ class FakeWorker : public WorkerInterface {
   void SetOwnerAddress(const rpc::Address &address) override {}
   void GrantLease(const RayLease &granted_lease) override {}
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
-  const RayLease &GetGrantedLease() const override {
-    static RayLease empty_lease;
-    return empty_lease;
-  }
+  const RayLease &GetGrantedLease() const override { return granted_lease_; }
   absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
@@ -96,25 +89,16 @@ class FakeWorker : public WorkerInterface {
   int AssignedPort() const override { return -1; }
   void SetAssignedPort(int port) override {}
   const LeaseID &GetGrantedLeaseId() const override { return lease_id_; }
-  const JobID &GetAssignedJobId() const override {
-    static JobID job_id = JobID::FromInt(1);
-    return job_id;
-  }
+  const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return 0; }
   void AssignActorId(const ActorID &actor_id) override {}
-  const ActorID &GetActorId() const override {
-    static ActorID actor_id;
-    return actor_id;
-  }
+  const ActorID &GetActorId() const override { return actor_id_; }
   const std::string GetLeaseIdAsDebugString() const override { return ""; }
   bool IsDetachedActor() const override { return false; }
   const std::shared_ptr<ClientConnection> Connection() const override {
     return connection_;
   }
-  const rpc::Address &GetOwnerAddress() const override {
-    static rpc::Address address;
-    return address;
-  }
+  const rpc::Address &GetOwnerAddress() const override { return owner_address_; }
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override {}
   void ActorCallArgWaitComplete(int64_t tag) override {}
@@ -122,17 +106,13 @@ class FakeWorker : public WorkerInterface {
   void ClearLifetimeAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
-  RayLease &GetGrantedLease() override {
-    static RayLease empty_lease;
-    return empty_lease;
-  }
+  RayLease &GetGrantedLease() override { return granted_lease_; }
   bool IsRegistered() override { return false; }
   rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
   bool IsAvailableForScheduling() const override { return true; }
   void SetJobId(const JobID &job_id) override {}
   const ActorID &GetRootDetachedActorId() const override {
-    static ActorID root_detached_actor_id;
-    return root_detached_actor_id;
+    return root_detached_actor_id_;
   }
 
  protected:
@@ -145,6 +125,11 @@ class FakeWorker : public WorkerInterface {
   BundleID bundle_id_;
   Process proc_;
   std::shared_ptr<ClientConnection> connection_;
+  RayLease granted_lease_;
+  JobID job_id_;
+  ActorID actor_id_;
+  rpc::Address owner_address_;
+  ActorID root_detached_actor_id_;
 };
 
 }  // namespace raylet
