@@ -69,7 +69,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         Returns:
             Rows per worker or None if no limit. Each worker gets at least 1 row.
         """
-        if total_rows <= 0:
+        if total_rows < 0:
             return None
 
         if num_workers == 0:
