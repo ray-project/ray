@@ -736,13 +736,15 @@ class TestCli(unittest.TestCase):
             assert "Pre-hook test\n" in stdout
             assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
 
-    def test_get_nested_depsets(self):
+    def test_get_expanded_depset_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            requirements = manager.get_nested_depsets("general_depset__py311_cpu", [])
+            requirements = manager.get_expanded_depset_requirements(
+                "general_depset__py311_cpu", []
+            )
             assert requirements == ["requirements_test.txt"]
-            requirements = manager.get_nested_depsets(
+            requirements = manager.get_expanded_depset_requirements(
                 "expand_general_depset__py311_cpu", []
             )
             assert sorted(requirements) == sorted(
@@ -751,7 +753,7 @@ class TestCli(unittest.TestCase):
                     "requirements_expanded.txt",
                 ]
             )
-            requirements = manager.get_nested_depsets(
+            requirements = manager.get_expanded_depset_requirements(
                 "nested_expand_depset__py311_cpu", []
             )
             assert sorted(requirements) == sorted(
