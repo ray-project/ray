@@ -19,6 +19,8 @@ import "google/protobuf/timestamp.proto";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 // Message containing the execution information of a driver job. It can be used to
 // capture the full state transition history.
 //

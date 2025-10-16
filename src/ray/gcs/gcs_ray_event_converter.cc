@@ -490,6 +490,11 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
     if (task_event) {
+      // Verify the converted TaskEvent is heap-allocated, not arena-allocated
+      RAY_CHECK(task_event->GetArena() == nullptr)
+          << "TaskEvent should be heap-allocated after conversion, not arena-allocated. "
+          << "This indicates arena pointers may have leaked through the conversion.";
+
       const std::string job_id_key = task_event->job_id();
       auto it = job_id_to_index.find(job_id_key);
       if (it == job_id_to_index.end()) {
@@ -499,13 +504,21 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
         auto *data = requests_per_job_id.back().mutable_data();
         data->set_job_id(job_id_key);
         // Deep copy to ensure no arena pointers leak into the outgoing request
-        DeepCopyTaskEvents(*task_event, data->add_events_by_task());
+        auto *copied_event = data->add_events_by_task();
+        DeepCopyTaskEvents(*task_event, copied_event);
+        // Verify the copied event is also heap-allocated
+        RAY_CHECK(copied_event->GetArena() == nullptr)
+            << "Copied TaskEvent should be heap-allocated after deep copy.";
         job_id_to_index.emplace(job_id_key, idx);
       } else {
         // add taskEvent to existing AddTaskEventDataRequest with same job id
         auto *data = requests_per_job_id[it->second].mutable_data();
         // Deep copy to ensure no arena pointers leak into the outgoing request
-        DeepCopyTaskEvents(*task_event, data->add_events_by_task());
+        auto *copied_event = data->add_events_by_task();
+        DeepCopyTaskEvents(*task_event, copied_event);
+        // Verify the copied event is also heap-allocated
+        RAY_CHECK(copied_event->GetArena() == nullptr)
+            << "Copied TaskEvent should be heap-allocated after deep copy.";
       }
     }
   }

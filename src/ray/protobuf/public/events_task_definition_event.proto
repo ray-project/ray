@@ -19,6 +19,8 @@ import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 // Message containing the definition information of a task.
 // The message is expected to be emitted once per task attempt.
 message TaskDefinitionEvent {

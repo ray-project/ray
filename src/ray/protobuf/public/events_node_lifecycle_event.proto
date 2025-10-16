@@ -18,6 +18,8 @@ import "google/protobuf/timestamp.proto";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 // Message containing the lifecycle information of a node, as observed via GCS.
 // It can be used to capture the full state transition history.
 //

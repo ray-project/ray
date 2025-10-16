@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/events_task_profile_events.proto";
 import "src/ray/protobuf/public/events_actor_task_definition_event.proto";

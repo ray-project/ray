@@ -19,6 +19,8 @@ import "src/ray/protobuf/public/events_base_event.proto";
 
 package ray.rpc.events;
 
+option cc_enable_arenas = false;
+
 message TaskEventsMetadata {
   // A list of task attempts that were dropped on the worker.
   // We only drop task attempts if task state update is lost on the worker
