@@ -2570,7 +2570,7 @@ class TestApplicationLevelAutoscaling:
         asm = self._register_deployments(app_state_manager, app_config)
 
         # Verify policy was registered
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
         assert app_state.should_autoscale() is True
         assert asm.should_autoscale_application("test_app") is True
 
@@ -2619,7 +2619,7 @@ class TestApplicationLevelAutoscaling:
 
         # Recovery happens automatically during initialization
         # Verify app-level policy was recovered
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
 
         # Test that recovered policy still works
         d1_id = DeploymentID(name="d1", app_name="test_app")
@@ -2649,7 +2649,7 @@ class TestApplicationLevelAutoscaling:
         asm = self._register_deployments(app_state_manager, app_config)
 
         # Verify app is registered
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
 
         # Delete the application
         deployment_state_manager.delete_deployment(
@@ -2662,7 +2662,7 @@ class TestApplicationLevelAutoscaling:
         app_state_manager.update()
 
         # Verify app-level policy is deregistered
-        assert asm.application_has_policy("test_app") is False
+        assert asm._application_has_policy("test_app") is False
         assert asm.should_autoscale_application("test_app") is False
 
     def test_app_level_autoscaling_policy_add_and_remove_from_config(
@@ -2682,14 +2682,14 @@ class TestApplicationLevelAutoscaling:
 
         # Verify no app-level policy initially
         # Note: The app might be registered but without a policy
-        assert asm.application_has_policy("test_app") is False
+        assert asm._application_has_policy("test_app") is False
 
         # Now add app-level autoscaling policy
         app_config_with_policy = self._create_app_config(has_policy=True)
         _ = self._deploy_app_with_mocks(app_state_manager, app_config_with_policy)
 
         # Verify app-level policy is registered
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
 
         # Now remove app-level autoscaling policy
         app_config_no_policy_again = self._create_app_config(has_policy=False)
@@ -2697,7 +2697,7 @@ class TestApplicationLevelAutoscaling:
 
         # Verify app-level policy is deregistered
         # Note: The app might still exist but without a policy
-        assert asm.application_has_policy("test_app") is False
+        assert asm._application_has_policy("test_app") is False
         assert asm.should_autoscale_application("test_app") is False
 
     def test_app_level_autoscaling_policy_with_multiple_deployments(
@@ -2746,7 +2746,7 @@ class TestApplicationLevelAutoscaling:
         asm = self._register_deployments(app_state_manager, app_config)
 
         # Verify policy was registered
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
 
         # Create replicas for all deployments
         deployment_ids = [
@@ -2811,7 +2811,7 @@ class TestApplicationLevelAutoscaling:
         asm = app_state_manager._autoscaling_state_manager
 
         # Test with no applications registered
-        assert asm.application_has_policy("nonexistent_app") is False
+        assert asm._application_has_policy("nonexistent_app") is False
         assert asm.should_autoscale_application("nonexistent_app") is False
 
         # Deploy app with policy
@@ -2820,7 +2820,7 @@ class TestApplicationLevelAutoscaling:
         asm = self._register_deployments(app_state_manager, app_config)
 
         # Test helper methods
-        assert asm.application_has_policy("test_app") is True
+        assert asm._application_has_policy("test_app") is True
         assert asm.should_autoscale_application("test_app") is True
 
         d1_id = DeploymentID(name="d1", app_name="test_app")
@@ -2833,7 +2833,7 @@ class TestApplicationLevelAutoscaling:
             app_state_manager, app_config_no_policy
         )
 
-        assert asm_no_policy.application_has_policy("test_app") is False
+        assert asm_no_policy._application_has_policy("test_app") is False
         assert (
             asm_no_policy.should_autoscale_application("test_app") is True
         )  # App exists but no policy
@@ -2892,8 +2892,8 @@ class TestApplicationLevelAutoscaling:
         asm = self._register_deployments(app_state_manager, app_config2)
 
         # Test isolation
-        assert asm.application_has_policy("app1") is True
-        assert asm.application_has_policy("app2") is False
+        assert asm._application_has_policy("app1") is True
+        assert asm._application_has_policy("app2") is False
         assert asm.should_autoscale_application("app1") is True
         assert asm.should_autoscale_application("app2") is True
 
@@ -2944,11 +2944,11 @@ class TestApplicationLevelAutoscaling:
         asm = app_state_manager._autoscaling_state_manager
 
         # Test with empty app name
-        assert asm.application_has_policy("") is False
+        assert asm._application_has_policy("") is False
         assert asm.should_autoscale_application("") is False
 
         # Test with None app name
-        assert asm.application_has_policy(None) is False
+        assert asm._application_has_policy(None) is False
         assert asm.should_autoscale_application(None) is False
 
         # Test get_decision_num_replicas with nonexistent app
