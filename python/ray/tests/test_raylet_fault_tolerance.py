@@ -48,12 +48,15 @@ def test_request_worker_lease_idempotent(
     assert ray.get([result_ref1, result_ref2]) == [0, 1]
 
 
+# Bundles can be leaked if the gcs dies before the CancelResourceReserve RPCs are
+# propagated to all the raylets. Since this is inherently racy, we block CancelResourceReserve RPCs
+# from ever succeeding to make this test deterministic.
 @pytest.fixture
-def inject_rpc_failures(monkeypatch, request):
+def inject_rpc_failures(monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
         "NodeManagerService.grpc_client.ReleaseUnusedBundles=1:100:0"
-        + ",NodeManagerService.grpc_client.CancelResourceReserve=100:100:0",
+        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
     )
 
 

@@ -53,6 +53,8 @@ using ::testing::Return;
 
 namespace {
 
+constexpr double kTestTotalCpuResource = 10.0;
+
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
   FakeLocalObjectManager(
@@ -312,8 +314,8 @@ class NodeManagerTest : public ::testing::Test {
     NodeManagerConfig node_manager_config{};
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
-    node_manager_config.resource_config =
-        ResourceSet(absl::flat_hash_map<std::string, double>{{"CPU", 10.0}});
+    node_manager_config.resource_config = ResourceSet(
+        absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
 
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
@@ -685,8 +687,8 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
-  payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 10.0});
+  payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+  payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
   payload.mutable_labels()->insert({"label1", "value1"});
 
   std::string serialized;
@@ -705,8 +707,10 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
       cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(node_id.Binary()));
   EXPECT_EQ(node_resources.labels.at("label1"), "value1");
-  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
-  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
+  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
@@ -1072,7 +1076,7 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
 }
 
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
-  auto lease_spec = BuildLeaseSpec({{"CPU", 11}});
+  auto lease_spec = BuildLeaseSpec({{"CPU", kTestTotalCpuResource + 1}});
   lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
       ->mutable_node_affinity_scheduling_strategy()
