@@ -248,6 +248,8 @@ your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` w
     :start-after: __checkpoint_upload_mode_sync_start__
     :end-before: __checkpoint_upload_mode_sync_end__
 
+.. _train-checkpoint-upload-mode-async:
+
 Asynchronous checkpoint uploading
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -288,7 +290,8 @@ the ``storage_path`` and then report a reference to the uploaded checkpoint with
     :end-before: __checkpoint_upload_mode_no_upload_end__
 
 If you want to upload the checkpoint manually or with a third-party library like above,
-but still want Ray Train to manage checkpoint upload threads for you, you can pass a
+but still want Ray Train to avoid OOM's by blocking until previous checkpoint upload threads
+complete as explained in :ref:`train-checkpoint-upload-mode-async`, you can pass a
 ``checkpoint_upload_fn`` to ``ray.train.report``. This function takes the ``Checkpoint``
 and ``checkpoint_dir_name`` passed to ``ray.train.report`` and returns the persisted
 ``Checkpoint``.
@@ -298,7 +301,7 @@ and ``checkpoint_dir_name`` passed to ``ray.train.report`` and returns the persi
     :start-after: __checkpoint_upload_function_start__
     :end-before: __checkpoint_upload_function_end__
 
-.. note::
+.. warning::
 
     In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
     lead to unexpected behavior. You should also avoid collective operations, such as
