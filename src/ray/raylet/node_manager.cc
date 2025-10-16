@@ -44,6 +44,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
