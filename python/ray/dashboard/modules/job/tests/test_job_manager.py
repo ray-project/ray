@@ -385,9 +385,9 @@ async def test_pending_job_timeout_during_new_head_creation(
 
     # New head node created.
     timeout = DEFAULT_JOB_START_TIMEOUT_SECONDS
-    start_timer.advance(timeout + 1)
+    timeout_timer = FakeTimer(start_timer.time() + timeout + 1)
 
-    new_job_manager = JobManager(gcs_client, tmp_path, timeout_check_timer=start_timer)
+    new_job_manager = JobManager(gcs_client, tmp_path, timeout_check_timer=timeout_timer)
     # wait for the new jobmanager to be initialized
     await async_wait_for_condition(
         lambda: new_job_manager._recover_running_jobs_event.is_set(), timeout=5
