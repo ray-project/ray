@@ -27,20 +27,14 @@ namespace raylet {
 
 class FakeClientConnection {
  public:
-  /// Create a FakeClientConnection with a dummy socket.
-  ///
-  /// \param io_context The IO context to create the socket with.
-  /// \return A shared pointer to a ClientConnection.
   static std::shared_ptr<ClientConnection> Create(instrumented_io_context &io_context) {
     local_stream_socket socket(io_context);
     return ClientConnection::Create(
-        /*message_handler=*/
         [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-        /*connection_error_handler=*/
         [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
         std::move(socket),
-        /*debug_label=*/"fake_worker_connection",
-        /*message_type_enum_names=*/{});
+        "fake_worker_connection",
+        {});
   }
 };
 
