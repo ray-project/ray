@@ -70,7 +70,7 @@ class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
   explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+  void OnNodeChanges(const rpc::GcsNodeAddressAndLiveness &data);
 
  private:
   const size_t min_concurrent_lease_cap_;
