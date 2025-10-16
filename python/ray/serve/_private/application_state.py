@@ -1028,6 +1028,7 @@ class ApplicationStateManager:
         }
 
         for name, deployment_args in name_to_deployment_args.items():
+            external_scaler_enabled = False
             for deploy_param in deployment_args:
                 # Make sure route_prefix is not being used by other application.
                 deploy_app_prefix = deploy_param.get("route_prefix")
@@ -1049,9 +1050,9 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
-            external_scaler_enabled = deployment_args.get(
-                "external_scaler_enabled", False
-            )
+                external_scaler_enabled = external_scaler_enabled or deploy_param.get(
+                    "external_scaler_enabled", False
+                )
 
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(
