@@ -55,11 +55,6 @@ pre_commit_pydoclint() {
   }
 }
 
-code_format() {
-  pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
-  FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
-}
-
 untested_code_snippet() {
   pip install -c python/requirements_compiled.txt semgrep
   semgrep ci --config semgrep.yml
