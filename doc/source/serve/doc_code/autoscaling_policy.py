@@ -29,8 +29,10 @@ def custom_metrics_autoscaling_policy(
 ) -> tuple[int, Dict[str, Any]]:
     cpu_usage_metric = ctx.aggregated_metrics.get("cpu_usage", {})
     memory_usage_metric = ctx.aggregated_metrics.get("memory_usage", {})
-    max_cpu_usage = max(cpu_usage_metric.values())
-    max_memory_usage = max(memory_usage_metric.values())
+    max_cpu_usage = list(cpu_usage_metric.values())[-1] if cpu_usage_metric else 0
+    max_memory_usage = (
+        list(memory_usage_metric.values())[-1] if memory_usage_metric else 0
+    )
 
     if max_cpu_usage > 80 or max_memory_usage > 85:
         return min(ctx.capacity_adjusted_max_replicas, ctx.current_num_replicas + 1), {}

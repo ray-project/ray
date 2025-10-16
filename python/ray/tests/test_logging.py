@@ -123,7 +123,8 @@ def test_reopen_changed_inode_seeks_beginning_if_smaller(tmp_path):
     # Start monitoring and read some lines
     file_info.reopen_if_necessary()
     for i in range(50):
-        assert file_info.file_handle.readline() == f"Log line {i}\n".encode("utf-8")
+        line = file_info.file_handle.readline().strip()
+        assert line == f"Log line {i}".encode("utf-8")
 
     assert file_info.size_when_last_opened == os.path.getsize(original_log)
 
@@ -140,10 +141,8 @@ def test_reopen_changed_inode_seeks_beginning_if_smaller(tmp_path):
     file_info.reopen_if_necessary()
 
     # Should start from beginning of new file
-    line = file_info.file_handle.readline()
-    assert (
-        line == b"New log line 0\n"
-    ), f"Expected to read from beginning, got: '{line}'"
+    line = file_info.file_handle.readline().strip()
+    assert line == b"New log line 0", f"Expected to read from beginning, got: '{line}'"
     assert (
         file_info.file_position == 0
     ), f"Expected position 0, got: {file_info.file_position}"

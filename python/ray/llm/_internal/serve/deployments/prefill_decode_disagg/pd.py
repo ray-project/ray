@@ -1,13 +1,9 @@
 """Using Ray Serve to deploy LLM models with P/D disaggregation.
 """
 import logging
-import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
-from pydantic import Field
-
-from ray import serve
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -18,53 +14,15 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ErrorResponse,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
-    parse_args as parse_llm_configs,
-)
-from ray.llm._internal.serve.deployments.routers.router import (
-    OpenAiIngress,
-    make_fastapi_ingress,
-)
-from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import (
-    LLMConfig,
-    build_llm_deployment,
-)
+from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
-
-class PDServingArgs(BaseModelExtended):
-    """Schema for P/D serving args."""
-
-    prefill_config: Union[str, LLMConfig]
-    decode_config: Union[str, LLMConfig]
-    proxy_deployment_config: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="""
-            The Ray @server.deployment options for the proxy server.
-        """,
-    )
-
-    def parse_args(self) -> "PDServingArgs":
-        """Converts this LLMServingArgs object into an DeployArgs object."""
-
-        def parse_configs_and_cast_type(config: Union[str, LLMConfig]) -> LLMConfig:
-            # ray.serve.llm.__init__ imports internal LLMConfig, and extends it to external-facing LLMConfig.
-            # parse_llm_configs returns internal LLMConfig, while {prefill, decode}_configs expect external-facing LLMConfig.
-            # So the model_dump() here is to convert the type, to satisfy pydantic.
-            # TODO(lk-chen): refactor llm_config parsing to avoid this model_dump, and make llm_config more reusable.
-            config = parse_llm_configs([config])[0]
-            return LLMConfig(**config.model_dump())
-
-        return PDServingArgs(
-            # Parse string file path into LLMConfig
-            prefill_config=parse_configs_and_cast_type(self.prefill_config),
-            decode_config=parse_configs_and_cast_type(self.decode_config),
-            proxy_deployment_config=self.proxy_deployment_config,
-        )
+DEFAULT_PD_PROXY_SERVER_OPTIONS = {
+    "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+}
 
 
 class PDProxyServer(LLMServer):
@@ -171,45 +129,8 @@ class PDProxyServer(LLMServer):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._handle_request(request)
 
-
-def build_pd_openai_app(pd_serving_args: dict) -> Application:
-    """Build a deployable application utilizing prefill/decode disaggregation."""
-
-    pd_config = PDServingArgs.model_validate(pd_serving_args).parse_args()
-
-    model_id = pd_config.decode_config.model_id
-    assert model_id == pd_config.prefill_config.model_id, "P/D model id mismatch"
-
-    for config in [pd_config.prefill_config, pd_config.decode_config]:
-        if "kv_transfer_config" not in config.engine_kwargs:
-            config.update_engine_kwargs(
-                kv_transfer_config=dict(
-                    kv_connector="NixlConnector",
-                    kv_role="kv_both",
-                    engine_id=str(uuid.uuid4()),
-                )
-            )
-
-    prefill_deployment = build_llm_deployment(
-        pd_config.prefill_config, name_prefix="Prefill:"
-    )
-    decode_deployment = build_llm_deployment(
-        pd_config.decode_config, name_prefix="Decode:"
-    )
-
-    proxy_server_deployment = (
-        serve.deployment(PDProxyServer)
-        .options(**pd_config.proxy_deployment_config)
-        .bind(
-            prefill_server=prefill_deployment,
-            decode_server=decode_deployment,
-        )
-    )
-
-    ingress_options = OpenAiIngress.get_deployment_options(
-        [pd_config.prefill_config, pd_config.decode_config]
-    )
-    ingress_cls = make_fastapi_ingress(OpenAiIngress)
-    return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[proxy_server_deployment]
-    )
+    @classmethod
+    def get_deployment_options(
+        cls, prefill_config: "LLMConfig", decode_config: "LLMConfig"
+    ) -> Dict[str, Any]:
+        return DEFAULT_PD_PROXY_SERVER_OPTIONS

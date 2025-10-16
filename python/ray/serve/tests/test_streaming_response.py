@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -32,17 +31,19 @@ class StreamingRequester:
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
 def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
+    signal_actor = SignalActor.remote()
+
     async def hi_gen_async():
         for i in range(10):
             yield f"hi_{i}"
             # to avoid coalescing chunks
-            await asyncio.sleep(0.2)
+            await signal_actor.wait.remote()
 
     def hi_gen_sync():
         for i in range(10):
             yield f"hi_{i}"
             # to avoid coalescing chunks
-            time.sleep(0.2)
+            ray.get(signal_actor.wait.remote())
 
     if use_fastapi:
         app = FastAPI()
@@ -70,6 +71,7 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
+            ray.get(signal_actor.send.remote())
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -257,19 +259,21 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
 def test_proxy_from_streaming_handle(
     serve_instance, use_async: bool, use_fastapi: bool
 ):
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     class Streamer:
         async def hi_gen_async(self):
             for i in range(10):
                 yield f"hi_{i}"
                 # to avoid coalescing chunks
-                await asyncio.sleep(0.2)
+                await signal_actor.wait.remote()
 
         def hi_gen_sync(self):
             for i in range(10):
                 yield f"hi_{i}"
                 # to avoid coalescing chunks
-                time.sleep(0.2)
+                ray.get(signal_actor.wait.remote())
 
     if use_fastapi:
         app = FastAPI()
@@ -311,6 +315,7 @@ def test_proxy_from_streaming_handle(
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
+            ray.get(signal_actor.send.remote())
 
 
 def test_http_disconnect(serve_instance):

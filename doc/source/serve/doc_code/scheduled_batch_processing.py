@@ -12,6 +12,7 @@ from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
         policy=AutoscalingPolicy(
             policy_function="autoscaling_policy:scheduled_batch_processing_policy"
         ),
+        metrics_interval_s=0.1,
     ),
     max_ongoing_requests=3,
 )

@@ -19,7 +19,7 @@ from typing import (
     Union,
 )
 
-from ray.serve._private.common import TimeStampedValue
+from ray.serve._private.common import TimeSeries, TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -143,7 +143,7 @@ class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
-        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+        self.data: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
 
     def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
@@ -176,7 +176,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[TimeStampedValue]:
+    ) -> TimeSeries:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -301,7 +301,7 @@ class InMemoryMetricsStore:
 
 
 def time_weighted_average(
-    step_series: List[TimeStampedValue],
+    step_series: TimeSeries,
     window_start: Optional[float] = None,
     window_end: Optional[float] = None,
     last_window_s: float = 1.0,
@@ -365,7 +365,7 @@ def time_weighted_average(
 
 
 def aggregate_timeseries(
-    timeseries: List[TimeStampedValue],
+    timeseries: TimeSeries,
     aggregation_function: AggregationFunction,
     last_window_s: float = 1.0,
 ) -> Optional[float]:
@@ -381,8 +381,8 @@ def aggregate_timeseries(
 
 
 def merge_instantaneous_total(
-    replicas_timeseries: List[List[TimeStampedValue]],
-) -> List[TimeStampedValue]:
+    replicas_timeseries: List[TimeSeries],
+) -> TimeSeries:
     """
     Merge multiple gauge time series (right-continuous, LOCF) into an
     instantaneous total time series as a step function.
@@ -429,7 +429,7 @@ def merge_instantaneous_total(
             except StopIteration:
                 pass
 
-    merged: List[TimeStampedValue] = []
+    merged: TimeSeries = []
     running_total = 0.0
 
     while merge_heap:
@@ -468,12 +468,12 @@ def merge_instantaneous_total(
 
 
 def merge_timeseries_dicts(
-    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
-) -> DefaultDict[Hashable, List[TimeStampedValue]]:
+    *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
+) -> DefaultDict[Hashable, TimeSeries]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
     """
-    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+    merged: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:
         for key, ts in ts_dict.items():
