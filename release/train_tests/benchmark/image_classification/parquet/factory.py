@@ -49,24 +49,22 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 - "val": Validation dataset without transforms
         """
         # Create training dataset with image decoding and transforms
-        train_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_training_rows)
-        )
+        train_ds = ray.data.read_parquet(
+            self._data_dirs[DatasetKey.TRAIN],
+            columns=["image", "label"],
+        ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+
+        if self.get_dataloader_config().limit_training_rows > 0:
+            train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
 
         # Create validation dataset without random transforms
-        val_ds = (
-            ray.data.read_parquet(
-                self._data_dirs[DatasetKey.TRAIN],
-                columns=["image", "label"],
-            ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_validation_rows)
-        )
+        val_ds = ray.data.read_parquet(
+            self._data_dirs[DatasetKey.TRAIN],
+            columns=["image", "label"],
+        ).map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+
+        if self.get_dataloader_config().limit_validation_rows > 0:
+            val_ds = val_ds.limit(self.get_dataloader_config().limit_validation_rows)
 
         return {
             DatasetKey.TRAIN: train_ds,
