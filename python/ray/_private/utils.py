@@ -803,7 +803,7 @@ _signal_handler_installed = False
 _graceful_shutdown_in_progress = False
 
 
-def install_driver_signal_handlers() -> None:
+def install_driver_signal_handler() -> None:
     """Install SIGTERM handler for Ray driver processes.
 
     Implements graceful-then-forced shutdown semantics:
@@ -838,7 +838,7 @@ def install_driver_signal_handlers() -> None:
     _signal_handler_installed = True
 
 
-def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> None:
+def install_worker_signal_handler(force_shutdown_fn: Callable[[str], None]) -> None:
     """Install SIGTERM handler for Ray worker processes.
 
     Workers receive external SIGTERM as a forced shutdown signal to avoid hangs
@@ -873,13 +873,14 @@ def install_worker_signal_handlers(force_shutdown_fn: Callable[[str], None]) -> 
 
     def _handler(signum, _frame):
         # Workers treat external SIGTERM as immediate forced exit to avoid hangs.
-        force_shutdown_fn("SIGTERM")
+        signal_name = signal.Signals(signum).name
+        force_shutdown_fn(signal_name)
 
     set_sigterm_handler(_handler)
     _signal_handler_installed = True
 
 
-def reset_signal_handlers_state() -> None:
+def reset_signal_handler_state() -> None:
     """Reset signal handler module flags for subsequent ray.init() in same process.
 
     Called during ray.shutdown() to allow re-initialization of signal handlers.
