@@ -1914,7 +1914,6 @@
 - name: torch_lightning
   group: Train tests
   working_dir: train_tests/pytorch_lightning
-
   frequency: nightly
   team: ml
 
@@ -1959,6 +1958,23 @@
   run:
     timeout: 1800
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
+
+- name: test_jax_trainer_tpu
+  group: Train tests
+  working_dir: train_tests/jax
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: cpu
+      post_build_script: byod_install_jax_tpu.sh
+    cluster_compute: compute_gce_tpu_singlehost.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python minimal_jax_trainer.py --num-workers=1 --use-tpu
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   python: "3.10"
