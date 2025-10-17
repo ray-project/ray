@@ -14,6 +14,8 @@
 
 #include "ray/rpc/auth_token_loader.h"
 
+#include <string.h>
+
 #include <fstream>
 #include <random>
 #include <sstream>
