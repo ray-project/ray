@@ -281,7 +281,7 @@ Launch a training job
 Tying it all together, you can now launch a distributed training job with a :class:`~ray.train.v2.jax.JaxTrainer`.
 
 .. testcode::
-    :hide:
+    :skipif: True
 
     from ray.train import ScalingConfig
 

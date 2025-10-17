@@ -132,10 +132,10 @@ Get started
 
     .. grid-item-card::
 
-        **Jax**
+        **JAX**
         ^^^
 
-        Get started on distributed model training with Ray Train and Jax.
+        Get started on distributed model training with Ray Train and JAX.
 
         +++
         .. button-ref:: train-jax
@@ -143,7 +143,7 @@ Get started
             :outline:
             :expand:
 
-            Try Ray Train with Jax
+            Try Ray Train with JAX
 
 Learn more
 ----------
