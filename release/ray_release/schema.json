@@ -159,6 +159,9 @@
 				},
 				"artifact_path": {
 					"type": "string"
+				},
+				"num_retries": {
+					"type": "integer"
 				}
 			},
 			"required": [
