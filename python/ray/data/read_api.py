@@ -407,8 +407,9 @@ def read_datasource(
         ray_remote_args["label_selector"] = {
             "ray.io/node-id": ray.get_runtime_context().get_node_id()
         }
+        ray_remote_args.pop("scheduling_strategy", None)
 
-    if "scheduling_strategy" not in ray_remote_args:
+    elif "label_selector" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     ray_remote_args = merge_resources_to_ray_remote_args(
