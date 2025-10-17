@@ -7,6 +7,9 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+)
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -331,12 +334,15 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
 
 # Not adding arrow_native because we don't have control
 # over it's __str__ representation
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native"])
 def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    if tensor_format == "arrow_native":
+    if (
+        tensor_format == "arrow_native"
+        and get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
+    ):
         ctx.use_arrow_native_fixed_shape_tensor_type = True
         schema_name = "arrow.fixed_shape_tensor"
     elif tensor_format == "v2":

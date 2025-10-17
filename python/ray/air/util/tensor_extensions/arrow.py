@@ -550,7 +550,16 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         Convert an ExtensionScalar to a tensor element.
         """
-        return _fixed_shape_extension_scalar_to_ndarray(scalar)
+        # Handle None/null values
+        if scalar.value is None:
+            return None
+
+        raw_values = scalar.value.values
+        shape = scalar.type.shape
+        value_type = raw_values.type
+        offset = raw_values.offset
+        data_buffer = raw_values.buffers()[1]
+        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.storage_type.value_type})"
@@ -571,24 +580,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        return hash((self.extension_name, self.value_type, self._shape))
-
-
-def _fixed_shape_extension_scalar_to_ndarray(
-    scalar: "pa.ExtensionScalar",
-) -> np.ndarray:
-    """
-    Convert an ExtensionScalar to a tensor element.
-    """
-    # Handle None/null values
-    if scalar.value is None:
-        return None
-    raw_values = scalar.value.values
-    shape = scalar.type.shape
-    value_type = raw_values.type
-    offset = raw_values.offset
-    data_buffer = raw_values.buffers()[1]
-    return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        return hash((self.extension_name, self.scalar_type, self._shape))
 
 
 @PublicAPI(stability="beta")
@@ -781,36 +773,28 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         from ray.data import DataContext
 
-        ctx = DataContext.get_current()
-        if (
-            ctx.use_arrow_native_fixed_shape_tensor_type
-            and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES
-            and FixedShapeTensorArray is not None
-        ):
-            return FixedShapeTensorArray.from_numpy_ndarray(arr)
+        if DataContext.get_current().use_arrow_tensor_v2:
+            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
         else:
-            if ctx.use_arrow_tensor_v2:
-                pa_tensor_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
-            else:
-                pa_tensor_type_ = ArrowTensorType(element_shape, scalar_dtype)
+            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         # Create offsets buffer
         offsets = np.arange(
             0,
             (outer_len + 1) * num_items_per_element,
             num_items_per_element,
-            dtype=pa_tensor_type_.OFFSET_DTYPE.to_pandas_dtype(),
+            dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype(),
         )
         offset_buffer = pa.py_buffer(offsets)
 
         storage = pa.Array.from_buffers(
-            pa_tensor_type_.storage_type,
+            pa_type_.storage_type,
             outer_len,
             [None, offset_buffer],
             children=[data_array],
         )
 
-        return pa_tensor_type_.wrap_array(storage)
+        return pa_type_.wrap_array(storage)
 
     def to_numpy(self, zero_copy_only: bool = True):
         """
@@ -889,9 +873,6 @@ class ArrowTensorArray(pa.ExtensionArray):
             ext_dtype = value_type.to_pandas_dtype()
 
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
-
-    def to_numpy_ndarray(self, zero_copy_only: bool = True):
-        return self.to_numpy(zero_copy_only=zero_copy_only)
 
     def to_var_shaped_tensor_array(
         self,
@@ -1246,7 +1227,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
-
         if ndim == self.type.ndim:
             return self
         elif ndim < self.type.ndim:
@@ -1324,9 +1304,7 @@ def unify_tensor_types(
 
 @DeveloperAPI(stability="alpha")
 def unify_tensor_arrays(
-    arrs: List[
-        Union[ArrowTensorArray, ArrowVariableShapedTensorArray, FixedShapeTensorArray]
-    ]
+    arrs: List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]
 ) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
     supported_tensor_types = get_arrow_extension_tensor_types()
 
@@ -1354,11 +1332,10 @@ def unify_tensor_arrays(
 
     unified_arrs = []
     for arr in arrs:
-        if FixedShapeTensorArray is not None and isinstance(arr, FixedShapeTensorArray):
-            arr = ArrowVariableShapedTensorArray.from_numpy(arr.to_numpy_ndarray())
-        else:
-            arr = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
-        unified_arrs.append(arr)
+        unified_arrs.append(
+            arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
+        )
+
     return unified_arrs
 
 

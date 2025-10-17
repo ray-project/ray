@@ -1245,7 +1245,7 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
-@pytest.mark.parametrize("new_tensor_format", ["arrow_native", "v2"])
+@pytest.mark.parametrize("new_tensor_format", ["arrow_native", "v1", "v2"])
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
