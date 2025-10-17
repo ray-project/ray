@@ -17,7 +17,7 @@ This section offers some tips and tricks to improve your Ray Serve application's
 
 Ray Serve is built on top of Ray, so its scalability is bounded by Ray’s scalability. See Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md) to learn more about the maximum number of nodes and other limitations.
 
-## Debugging performance issues
+## Debugging performance issues in request path
 
 The performance issue you're most likely to encounter is high latency or low throughput for requests.
 
@@ -75,7 +75,24 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
 
-### Give the Serve Controller more time to process requests
+### Enable throughput-optimized flags
+
+:::{note}
+In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+:::
+
+Ray Serve offers performance flags that improve throughput and latency. You can enable all optimizations at once with `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`, or configure individual flags:
+
+- `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0`: Runs user code in the same event loop as the replica's main event loop. By default, user code runs in a separate event loop (default is `1`) to protect the replica's ability to communicate with the Serve Controller when user code has blocking operations. Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
+
+- `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`: Runs the request router in the same event loop as the user code's event loop. By default, the router runs in a separate event loop (default is `1`). Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
+
+- `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000`: Sets the log buffer size. By default, Ray Serve flushes logs immediately with a buffer size of `1`. Increasing this value improves performance by batching log writes. The system flushes buffered logs when the buffer is full or when there's a log line with level ERROR.
+
+- `RAY_SERVE_LOG_TO_STDERR=0`: When running `serve run` with this flag set to `0`; Proxy, Controller, and Replica logs won't appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Logs are still written to files under `logs/serve/` directory.
+
+
+## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
 including receiving autoscaling metrics from other Ray Serve components.
