@@ -5,12 +5,7 @@ import pydantic
 import pytest
 
 import ray
-
-# Import build_llm_processor from source
-# Note: This imports from the modified source code in this repo
 from ray.data.llm import build_llm_processor
-
-# Import from internal module to ensure we're testing source code, not installed package
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
