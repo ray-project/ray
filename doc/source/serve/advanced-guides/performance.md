@@ -75,21 +75,84 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
 
-### Enable throughput-optimized flags
+### Enable throughput-optimized serving
 
 :::{note}
 In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
 :::
 
-Ray Serve offers performance flags that improve throughput and latency. You can enable all optimizations at once with `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`, or configure individual flags:
+This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
 
-- `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0`: Runs user code in the same event loop as the replica's main event loop. By default, user code runs in a separate event loop (default is `1`) to protect the replica's ability to communicate with the Serve Controller when user code has blocking operations. Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
+- Reducing overhead associated with frequent logging.
+- Disabling behavior that allowed Serve applications to include blocking operations.
 
-- `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`: Runs the request router in the same event loop as the user code's event loop. By default, the router runs in a separate event loop (default is `1`) to protect Ray Serve's request routing ability when user code has blocking operations. Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput.
 
-- `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000`: Sets the log buffer size. By default, Ray Serve flushes logs immediately with a buffer size of `1`. Increasing this value improves performance by batching log writes. The system flushes buffered logs when the buffer is full or when there's a log line with level ERROR.
+The following table shows examples of blocking and non-blocking code:
 
-- `RAY_SERVE_LOG_TO_STDERR=0`: When running `serve run` with this flag set to `0`; Proxy, Controller, and Replica logs won't appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Logs are still written to files under `logs/serve/` directory.
+<table>
+<tr>
+<th>Blocking operation (❌)</th>
+<th>Non-blocking operation (✅)</th>
+</tr>
+<tr>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import time
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class BlockingDeployment:
+    @app.get("/process")
+    def process(self):
+        # ❌ Blocking operation
+        time.sleep(2)
+        return {"message": "Processed (blocking)"}
+
+serve.run(BlockingDeployment.bind())
+```
+
+</td>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import asyncio
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class NonBlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ✅ Non-blocking operation
+        await asyncio.sleep(2)
+        return {"message": "Processed (non-blocking)"}
+
+serve.run(NonBlockingDeployment.bind())
+```
+
+</td>
+</tr>
+</table>
+
+To configure all options to the recommended settings, set the environment variable `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`.
+
+You can also configure each option individually. The following table details the recommended configurations and their impact:
+
+| Configured value | Impact |
+| --- | --- |
+| `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0` | Your code runs in the same event loop as the replica's main event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run your code in a separate event loop, which protects the replica's ability to communicate with the Serve Controller if your code has blocking operations. |
+| `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`| The request router runs in the same event loop as the your code's event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run the router in a separate event loop, which protect Ray Serve's request routing ability when your code has blocking operations |
+| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level ERROR.  Set the buffer size to `1` to disable buffering and write logs immediately. |
+| `RAY_SERVE_LOG_TO_STDERR=0` | Only write logs to files under the `logs/serve/` directory. Proxy, Controller, and Replica logs no longer appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Set this property to `1` to enable additional logging. |
 
 
 ## Debugging performance issues in controller
