@@ -10,6 +10,7 @@ Ray Data: Scalable Datasets for ML
     quickstart
     key-concepts
     user-guide
+    sql
     examples
     api/api
     comparisons
@@ -104,6 +105,21 @@ Learn more
             :expand:
 
             Learn how to use Ray Data
+
+    .. grid-item-card::
+
+        **SQL Interface**
+        ^^^
+
+        Use familiar SQL syntax to query and transform Ray Datasets.
+
+        +++
+        .. button-ref:: data_sql
+            :color: primary
+            :outline:
+            :expand:
+
+            Ray Data SQL
 
     .. grid-item-card::
 
