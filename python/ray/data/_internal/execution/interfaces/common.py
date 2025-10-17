@@ -114,7 +114,9 @@ class RuntimeMetricsHistogram:
         if getattr(metric, "last_applied_bucket_counts_for_tags", None) is None:
             metric.last_applied_bucket_counts_for_tags = {}
         tags_key = json.dumps(tags, sort_keys=True)
-        previous_bucket_counts = metric.last_applied_bucket_counts_for_tags.get(tags_key)
+        previous_bucket_counts = metric.last_applied_bucket_counts_for_tags.get(
+            tags_key
+        )
 
         for i in range(len(self._bucket_counts)):
             # Pick a value between the boundaries so the sample falls into the right bucket.
@@ -138,7 +140,9 @@ class RuntimeMetricsHistogram:
                 for _ in range(diff):
                     metric.observe(bucket_value, tags)
 
-        metric.last_applied_bucket_counts_for_tags[tags_key] = self._bucket_counts.copy()
+        metric.last_applied_bucket_counts_for_tags[
+            tags_key
+        ] = self._bucket_counts.copy()
 
     def _find_bucket_index(self, value: float):
         return bisect.bisect_left(self.boundaries, value)
