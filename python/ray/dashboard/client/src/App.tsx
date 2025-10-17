@@ -59,8 +59,7 @@ import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
 dayjs.extend(duration);
-const test
-console.log(test);
+
 // lazy loading fro prevent loading too much code at once
 const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
