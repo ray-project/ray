@@ -663,6 +663,15 @@ def test_path_partition_parser_hive(fs, base_dir):
     # decodes value back to "/"
     assert partition_parser(partitioned_path) == {"foo": "3", "bar": "partition/value"}
 
+    # '+' must remain literal when decoding path components
+    partitioned_path = posixpath.join(base_dir, "name=first+last/test.txt")
+    assert partition_parser(partitioned_path) == {"name": "first+last"}
+    # '%2B' should decode to '+'
+    partitioned_path = posixpath.join(
+        base_dir, f"name={urllib.parse.quote('first+last', safe='')}/test.txt"
+    )
+    assert partition_parser(partitioned_path) == {"name": "first+last"}
+
     partition_parser = PathPartitionParser.of(
         base_dir=base_dir,
         field_names=["foo", "bar"],
