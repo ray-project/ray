@@ -85,7 +85,7 @@ Ray Serve offers performance flags that improve throughput and latency. You can 
 
 - `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0`: Runs user code in the same event loop as the replica's main event loop. By default, user code runs in a separate event loop (default is `1`) to protect the replica's ability to communicate with the Serve Controller when user code has blocking operations. Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
 
-- `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`: Runs the request router in the same event loop as the user code's event loop. By default, the router runs in a separate event loop (default is `1`). Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
+- `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`: Runs the request router in the same event loop as the user code's event loop. By default, the router runs in a separate event loop (default is `1`) to protect Ray Serve's request routing ability when user code has blocking operations. Setting this to `0` improves throughput and latency but requires you to avoid blocking operations in your request path.
 
 - `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000`: Sets the log buffer size. By default, Ray Serve flushes logs immediately with a buffer size of `1`. Increasing this value improves performance by batching log writes. The system flushes buffered logs when the buffer is full or when there's a log line with level ERROR.
 
