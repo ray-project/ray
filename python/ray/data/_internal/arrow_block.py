@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -221,7 +222,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
             array = pyarrow.nulls(len(self._table), type=type)
             array = pc.fill_null(array, value)
-            return self._table.append_column(name, array)
+            return self.upsert_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -453,7 +454,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self._table.num_rows == 0:
             return self._table
 
-        from ray.data._expression_evaluator import eval_expr
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
 
         # Evaluate the expression to get a boolean mask
         mask = eval_expr(predicate_expr, self._table)

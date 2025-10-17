@@ -33,7 +33,7 @@ def test_count_edge_case(ray_start_regular):
     ds = ray.data.range(10)
     ds.count()
 
-    actual_count = ds.filter(lambda row: row["id"] % 2 == 0).count()
+    actual_count = ds.filter(fn=lambda row: row["id"] % 2 == 0).count()
 
     assert actual_count == 5
 
