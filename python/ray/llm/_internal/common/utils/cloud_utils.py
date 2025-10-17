@@ -574,7 +574,7 @@ class CloudFileSystem:
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
 
-            CloudFileSystem.download_files_optimized(
+            CloudFileSystem.download_files_parallel(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
