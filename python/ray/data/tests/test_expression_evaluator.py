@@ -335,6 +335,10 @@ def test_filter_equal_negative_number():
     assert result_df == expected
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="test_filter requires PyArrow >= 20.0.0",
+)
 def test_filter_bad_expression(sample_data):
     with pytest.raises(ValueError, match="Invalid syntax in the expression"):
         ExpressionEvaluator.get_filters(expression="bad filter")
