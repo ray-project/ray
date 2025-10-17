@@ -301,6 +301,40 @@ class ReplicaMetricsManager:
         )
 
     def should_collect_ongoing_requests(self) -> bool:
+        """Determine if replicas should collect ongoing request metrics.
+
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                               │
+        ├─────────────────────────────────────────────────────────────────┤
+        │                                                                 │
+        │  Client          Handle            Replicas                     │
+        │  ┌──────┐      ┌────────┐                                       │
+        │  │  App │─────>│ Handle │────┬───>┌─────────┐                  │
+        │  │      │      │ Tracks │    │    │ Replica │                  │
+        │  └──────┘      │ Queued │    │    │    1    │                  │
+        │                │Requests│    │    │ Tracks  │                  │
+        │                └────────┘    │    │ Running │                  │
+        │                     │        │    └─────────┘                  │
+        │                     │        │         │                       │
+        │                     │        │         │                       │
+        │                     │        │    ┌─────────┐                  │
+        │                     │        └───>│ Replica │                  │
+        │                     │             │    2    │                  │
+        │                     │             │ Tracks  │                  │
+        │                     │             │ Running │                  │
+        │                     │             └─────────┘                  │
+        │                     │                  │                        │
+        │                     │                  │                        │
+        │                     ▼                  ▼                        │
+        │              ┌──────────────────────────────┐                  │
+        │              │        Controller            │                  │
+        │              │  • Queued metrics (handle)   │                  │
+        │              │  • Running metrics (replica1)│                  │
+        │              │  • Running metrics (replica2)│                  │
+        │              └──────────────────────────────┘                  │
+        │                                                                │
+        └────────────────────────────────────────────────────────────────┘
+        """
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
