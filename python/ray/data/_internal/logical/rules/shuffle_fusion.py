@@ -10,7 +10,8 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
-from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
+from ray.data._internal.logical.rules.operator_fusion import are_remote_args_compatible
+from ray.data._internal.progress_bar import truncate_operator_name
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,10 @@ class ShuffleFusion(Rule):
             # NOTE: This str contains outer brackets to show
             # that it's logical fusion. TODO(justin): Please confirm
             # with team if that's ok with team.
-            fused_name = f"[{prev_op.name}->{op.name}]"
+            fused_name = truncate_operator_name(f"[{prev_op.name}->{op.name}]", 100)
 
             # Only fuse if the ops' remote arguments are compatible.
-            if not _are_remote_args_compatible(
+            if not are_remote_args_compatible(
                 getattr(prev_op, "_ray_remote_args", {}),
                 getattr(op, "_ray_remote_args", {}),
             ):

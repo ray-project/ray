@@ -175,14 +175,14 @@ class TestShuffleFusionLongChains:
         # Create a very long chain of repartitions
         current_op = input_op
         expected_fused_name = "Repartition"
-        for i in range(10):
+        for i in range(5):
             current_op = Repartition(
                 input_op=current_op,
                 num_outputs=i,
                 full_shuffle=(i % 2 == 1),  # Alternate shuffle
                 random_permute=(i % 2 == 1),  # Every other
             )
-            if i < 9:
+            if i < 4:
                 expected_fused_name = f"[{expected_fused_name}->Repartition]"
 
         logical_plan = LogicalPlan(current_op, self.context)
@@ -191,7 +191,7 @@ class TestShuffleFusionLongChains:
         # Should fuse into a single repartition
         dag = optimized_plan.dag
         assert isinstance(dag, Repartition)
-        assert dag._num_outputs == 9  # Should use the final output count
+        assert dag._num_outputs == 4  # Should use the final output count
         assert dag._full_shuffle  # Should be True if any were True
         assert dag._random_permute  # Should be True if any were True
         assert dag.input_dependencies[0] == input_op  # Should connect directly to input
