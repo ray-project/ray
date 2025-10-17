@@ -247,7 +247,7 @@ class DeploymentConfig(BaseModel):
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
-        if data.get("autoscaling_config") and data["autoscaling_config"].get("policy"):
+        if data.get("autoscaling_config"):
             # By setting the serialized policy def, on the protobuf level, AutoscalingConfig constructor will not
             # try to import the policy from the string import path when the protobuf is deserialized on the controller side
             data["autoscaling_config"]["policy"][
