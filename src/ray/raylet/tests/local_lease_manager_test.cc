@@ -398,11 +398,21 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto lease_f2 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   rpc::RequestWorkerLeaseReply reply;
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f1,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f2, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f2,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
@@ -412,13 +422,33 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto lease_f5 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "f");
   auto lease_g1 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, "g");
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f3, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f3,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f4, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f4,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_f5, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_f5,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-      lease_g1, false, false, &reply, [] {}, internal::WorkStatus::WAITING));
+      lease_g1,
+      false,
+      false,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {},
+      internal::WorkStatus::WAITING));
   local_lease_manager_->ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
@@ -451,7 +481,11 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
 
   // Submit the leases to the local lease manager.
   int num_callbacks_called = 0;
-  auto callback = [&num_callbacks_called]() { ++num_callbacks_called; };
+  auto callback = [&num_callbacks_called](Status status,
+                                          std::function<void()> success,
+                                          std::function<void()> failure) {
+    ++num_callbacks_called;
+  };
   rpc::RequestWorkerLeaseReply reply1;
   local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
       lease1, false, false, &reply1, callback, internal::WorkStatus::WAITING));
