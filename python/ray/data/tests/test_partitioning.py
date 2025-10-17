@@ -1,6 +1,7 @@
 import json
 import os
 import posixpath
+import urllib.parse
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
@@ -654,6 +655,13 @@ def test_path_partition_parser_hive(fs, base_dir):
     assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
     partitioned_path = posixpath.join(base_dir, "foo/bar/qux=3/")
     assert partition_parser(partitioned_path) == {"qux": "3"}
+
+    # encodes "/" to "%2F"
+    partitioned_path = posixpath.join(
+        base_dir, f"foo=3/bar={urllib.parse.quote('partition/value', safe=" ")}/"
+    )
+    # decodes value back to "/"
+    assert partition_parser(partitioned_path) == {"foo": "3", "bar": "partition/value"}
 
     partition_parser = PathPartitionParser.of(
         base_dir=base_dir,
