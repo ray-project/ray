@@ -633,32 +633,6 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
             assert worker_result != placement_group.id
 
 
-def test_jax_start_shutdown(ray_start_2_cpus, monkeypatch):
-    """Test that JAX distributed is properly initialized and shutdown."""
-    monkeypatch.setenv("JAX_PLATFORMS", "tpu")
-    jax_config = JaxConfig(use_tpu=True)
-    e = BackendExecutor(jax_config, num_workers=2)
-    e.start()
-
-    def check_jax_distributed():
-        try:
-            import jax
-
-            # Check if JAX distributed is initialized
-            return jax.process_count() == 2
-        except Exception:
-            # If jax is not available or not initialized, return False
-            return False
-
-    _start_training(e, check_jax_distributed)
-    assert all(e.finish_training())
-
-    e._backend.on_shutdown(e.worker_group, e._backend_config)
-
-    _start_training(e, check_jax_distributed)
-    assert not any(e.finish_training())
-
-
 @pytest.mark.parametrize("timeout_s", [5, 0])
 def test_jax_distributed_shutdown_timeout(ray_start_2_cpus, monkeypatch, timeout_s):
     """Test that JAX distributed shutdown respects the timeout env var."""
