@@ -78,6 +78,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def internal_output_queue_size(self) -> int:
         return len(self._output_buffer)
 
+    def internal_output_queue_type(self) -> type:
+        return type(self._output_buffer)
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index

@@ -25,6 +25,11 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         """Returns Operator's internal output queue size"""
         ...
 
+    @abc.abstractmethod
+    def internal_output_queue_type(self) -> type:
+        """Returns the type of the internal output queue"""
+        ...
+
 
 class OneToOneOperator(PhysicalOperator):
     """An operator that has one input and one output dependency.
@@ -120,6 +125,9 @@ class AllToAllOperator(
 
     def internal_output_queue_size(self) -> int:
         return len(self._output_buffer)
+
+    def internal_output_queue_type(self) -> type:
+        return type(self._output_buffer)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(

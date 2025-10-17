@@ -413,6 +413,12 @@ class PhysicalOperator(Operator):
                 #   - There are no active or pending tasks
                 self._execution_finished = True
 
+        if self._execution_finished and not self.has_next():
+            if isinstance(self, InternalQueueOperatorMixin):
+                internal_output_queue_size = self.internal_output_queue_size()
+                assert (
+                    internal_output_queue_size == 0
+                ), f"Found {internal_output_queue_size} bundles, {self.internal_output_queue_type()}"
         return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
