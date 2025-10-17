@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
 )
