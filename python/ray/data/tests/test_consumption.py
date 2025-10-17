@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pds
 import pytest
 
 import ray
@@ -454,6 +455,8 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
         "+- ReadRange\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
+        "Transformer 0: RangeDatasource(range(0..10), column_name=id)\n"
+        "Transformer 1: Map(<lambda>)\n"
         "+- InputDataBuffer[Input]"
     )
 
@@ -467,6 +470,9 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
         "   +- ReadRange\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
+        "Transformer 0: RangeDatasource(range(0..10), column_name=id)\n"
+        "Transformer 1: Map(<lambda>)\n"
+        "Transformer 2: Filter(<lambda>)\n"
         "+- InputDataBuffer[Input]"
     )
     ds = ds.random_shuffle().map(lambda x: x)
@@ -481,8 +487,37 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
         "         +- ReadRange\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[Map(<lambda>)]\n"
+        "Transformer 0: Map(<lambda>)\n"
         "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
         "   +- InputDataBuffer[Input]"
+    )
+    result = ds.take()
+    assert len(result) == 9
+    ds.explain()
+    captured_after_execute = capsys.readouterr()
+    assert captured.out.rstrip() == captured_after_execute.out.rstrip()
+
+    filter_expr = pds.field("sepal.length") > 6.0
+    ds = ray.data.read_parquet(
+        "example://iris.parquet",
+        filter=filter_expr,
+        columns=["petal.length", "variety"],
+    )
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
+        "-------- Logical Plan --------\n"
+        "ReadParquet\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "Transformer 0: Parquet Datasource:\n"
+        "Paths (1 files): ['/ray/python/ray/data/examples/data/iris.parquet']\n"
+        "Partitioning: Partitioning(style='hive', base_dir='', field_names=None, field_types={}, filesystem=None)\n"
+        "Projected Columns: ['petal.length', 'variety']\n"
+        "Filter: (sepal.length > 6)\n"
+        "File Schema : ['sepal.length', 'sepal.width', 'petal.length', 'petal.width', 'variety']\n"
+        "Performance Estimates: EncodingRatio=1.00, ReaderBatchSize=6391321\n"
+        "+- InputDataBuffer[Input]"
     )
 
 

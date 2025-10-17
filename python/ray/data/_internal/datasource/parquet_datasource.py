@@ -447,6 +447,41 @@ class ParquetDatasource(Datasource):
 
         return round(in_mem_size)
 
+    def explain(self, mode: str = "simple") -> str:
+        summary = ["Parquet Datasource:"]
+
+        # Paths and file count
+        paths = self._pq_paths
+        path_str = f"{paths[:5]}{'...' if len(paths) > 5 else ''}"
+        summary.append(f"Paths ({len(paths)} files): {path_str}")
+
+        # Partitioning
+        if self._partitioning:
+            summary.append(f"Partitioning: {self._partitioning}")
+
+        # Column Projection
+        projection = self.get_current_projection()
+        if projection:
+            summary.append(f"Projected Columns: {projection}")
+
+        filter_expr = self._to_batches_kwargs.get("filter", None)
+        if filter_expr is not None:
+            summary.append(f"Filter: {filter_expr}")
+
+        # Schema
+        if self._file_schema:
+            schema_names = self._file_schema.names
+            schema_str = f"{schema_names}"
+            summary.append(f"File Schema : {schema_str}")
+
+        # Performance Estimates
+        summary.append(
+            f"Performance Estimates: EncodingRatio={self._encoding_ratio:.2f}, "
+            f"ReaderBatchSize={self._default_batch_size}"
+        )
+
+        return "\n".join(summary)
+
 
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],

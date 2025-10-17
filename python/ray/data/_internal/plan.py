@@ -7,7 +7,7 @@ import pyarrow
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -111,17 +111,23 @@ class ExecutionPlan:
             f")"
         )
 
-    def explain(self) -> str:
+    def explain(self, mode: str = "simple") -> str:
         """Return a string representation of the logical and physical plan."""
-        from ray.data._internal.logical.optimizers import get_execution_plan
-
         logical_plan = self._logical_plan
         logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
         logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
 
-        physical_plan = get_execution_plan(self._logical_plan)
+        if self._physical_plan:
+            # Use the cached physical plan if available. So we can use operator's stats and metrics later.
+            physical_plan = self._physical_plan
+        else:
+            # Generate the physical plan
+            from ray.data._internal.logical.optimizers import get_execution_plan
+
+            physical_plan = get_execution_plan(self._logical_plan)
+
         physical_plan_str, _ = self.generate_plan_string(
-            physical_plan.dag, show_op_repr=True
+            physical_plan.dag, show_op_explain=True, mode=mode
         )
         physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
 
@@ -133,28 +139,33 @@ class ExecutionPlan:
         curr_str: str = "",
         depth: int = 0,
         including_source: bool = True,
-        show_op_repr: bool = False,
+        show_op_explain: bool = False,
+        mode: str = "simple",
     ):
         """Traverse (DFS) the Plan DAG and
         return a string representation of the operators."""
+        import textwrap
+
         if not including_source and isinstance(op, SourceOperator):
             return curr_str, depth
 
         curr_max_depth = depth
 
         # For logical plan, only show the operator name like "Aggregate".
-        # But for physical plan, show the operator class name as well like "AllToAllOperator[Aggregate]".
-        op_str = repr(op) if show_op_repr else op.name
-
-        if depth == 0:
-            curr_str += f"{op_str}\n"
+        # But for physical plan,  we show the operator explain output
+        if isinstance(op, LogicalOperator):
+            op_str = op.name
+        elif isinstance(op, PhysicalOperator):
+            op_str = op.explain(mode)
         else:
-            trailing_space = " " * ((depth - 1) * 3)
-            curr_str += f"{trailing_space}+- {op_str}\n"
+            raise ValueError(f"Unexpected operator type: {type(op)}")
+
+        prefix = "" if depth == 0 else " " * ((depth - 1) * 3) + "+- "
+        curr_str += textwrap.indent(op_str + "\n", prefix)
 
         for input in op.input_dependencies:
             curr_str, input_max_depth = ExecutionPlan.generate_plan_string(
-                input, curr_str, depth + 1, including_source, show_op_repr
+                input, curr_str, depth + 1, including_source, show_op_explain
             )
             curr_max_depth = max(curr_max_depth, input_max_depth)
         return curr_str, curr_max_depth
@@ -323,6 +334,7 @@ class ExecutionPlan:
         This is used for triggering execution for optimizer code path in this legacy
         execution plan.
         """
+        self._physical_plan = None
         self._logical_plan = logical_plan
         self._logical_plan._context = self._context
 
@@ -446,6 +458,8 @@ class ExecutionPlan:
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
+        # reset physical plan
+        self._physical_plan = None
         self._has_started_execution = True
 
         if self.has_computed_output():
@@ -481,6 +495,8 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        # reset physical plan
+        self._physical_plan = None
         self._has_started_execution = True
 
         # Always used the saved context for execution.

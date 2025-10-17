@@ -98,6 +98,9 @@ class Datasource(_DatasourceProjectionPushdownMixin):
         """If ``False``, only launch read tasks on the driver's node."""
         return True
 
+    def explain(self, mode: str = "simple") -> str:
+        return self.__class__.__name__ + "\n"
+
 
 @Deprecated
 class Reader:

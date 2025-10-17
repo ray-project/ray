@@ -62,6 +62,9 @@ class AbstractMap(AbstractOneToOne):
     def set_per_block_limit(self, per_block_limit: int):
         self._per_block_limit = per_block_limit
 
+    def explain(self, mode: str = "default") -> str:
+        return f"{self._name}"
+
 
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
