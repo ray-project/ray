@@ -143,4 +143,3 @@ class HashDistinctOperator(HashShufflingOperatorBase):
         )
 
         return aggregator_total_memory_required
-
