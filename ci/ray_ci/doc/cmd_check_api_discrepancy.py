@@ -63,6 +63,7 @@ TEAM_API_CONFIGS = {
             "ray.train.error.SessionMisuseError",
             "ray.train.TrainingFailedError",
             "ray.train.context.TrainContext",
+            "ray.train.context.get_context",
         },
     },
     "tune": {
