@@ -17,7 +17,7 @@ In prefill-decode disaggregation:
 - **Prefill deployment**: Processes input prompts and generates initial KV cache.
 - **Decode deployment**: Uses transferred KV cache to generate output tokens.
 - **Independent scaling**: Each phase scales based on its own load.
-- **Resource optimization**: Different hardware configurations for different phases.
+- **Resource optimization**: Different engine configurations for different phases.
 
 ## Why disaggregate?
 
@@ -29,18 +29,17 @@ Prefill and decode have different computational patterns:
 |-------|----------------|----------------|
 | Prefill | Processes entire prompt at once | High compute, lower memory |
 | | Parallel token processing | Benefits from high FLOPS |
-| | Short duration per request | Can use fewer replicas |
+| | Short duration per request | Can use fewer replicas when decode-limited |
 | Decode | Generates one token at a time | Lower compute, high memory |
-| | Sequential generation | Benefits from large KV cache |
+| | Auto-regressive generation | Benefits from large batch sizes |
 | | Long duration (many tokens) | Needs more replicas |
 
 ### Scaling benefits
 
 Disaggregation enables:
-- **Cost optimization**: Use expensive GPUs for prefill, cheaper for decode.
-- **Throughput**: Scale decode independently for long generations.
-- **Efficiency**: Prefill serves multiple requests while decode generates.
-- **Flexibility**: Different autoscaling policies for each phase.
+- **Cost optimization**: The correct ratio of prefill to decode instances improves overall throughput per node.
+- **Dynamic traffic adjustment**: Scale prefill and decode independently depending on workloads (prefill-heavy versus decode-heavy) and traffic volume.
+- **Efficiency**: Prefill serves multiple requests while decode generates, allowing one prefill instance to feed multiple decode instances.
 
 ## Components
 
@@ -57,19 +56,12 @@ class PDProxyServer:
         prefill_handle: DeploymentHandle,
         decode_handle: DeploymentHandle,
     ):
-        """Initialize PD proxy.
-        
-        Args:
-            prefill_handle: Handle to prefill LLMServer
-            decode_handle: Handle to decode LLMServer
-        """
         self.prefill_handle = prefill_handle
         self.decode_handle = decode_handle
     
     async def chat(
         self,
         request: ChatCompletionRequest,
-        raw_request: Optional[Request] = None
     ) -> AsyncGenerator[str, None]:
         """Handle chat completion with PD flow.
         
@@ -79,9 +71,7 @@ class PDProxyServer:
         3. Decode generates tokens, streams to client
         """
         # Prefill phase
-        prefill_result = await self.prefill_handle.chat.remote(
-            request, raw_request
-        )
+        prefill_result = await self.prefill_handle.chat.remote(request)
         
         # Extract KV cache metadata
         kv_metadata = prefill_result["kv_metadata"]
@@ -98,7 +88,7 @@ Key responsibilities:
 - Route requests between prefill and decode.
 - Handle KV cache metadata transfer.
 - Stream responses from decode to client.
-- Manage errors in either phase.
+- Manage errors in either phase per request.
 
 ### Prefill LLMServer
 
@@ -114,13 +104,9 @@ prefill_config = LLMConfig(
         # Prefill-specific configuration
         kv_transfer_config={
             "kv_connector": "NixlConnector",
-            "kv_role": "kv_producer",  # Produces KV cache
-            "engine_id": "prefill-engine"
+            "kv_role": "kv_both",
         },
-        # Optimize for prefill
-        max_num_seqs=128,  # More concurrent prefills
     ),
-    runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
 )
 ```
 
@@ -138,62 +124,12 @@ decode_config = LLMConfig(
         # Decode-specific configuration
         kv_transfer_config={
             "kv_connector": "NixlConnector",
-            "kv_role": "kv_consumer",  # Consumes KV cache
-            "engine_id": "decode-engine"
+            "kv_role": "kv_both",
         },
-        # Optimize for decode
-        max_model_len=8192,  # Large output space
     ),
-    runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
 )
 ```
 
-## KV cache transfer
-
-### Transfer backends
-
-vLLM v1 supports multiple KV cache transfer mechanisms:
-
-#### NIXLConnector
-
-Network-based transfer using NIXL (Network Interface for eXtended LLM):
-
-**Advantages**:
-- Simple setup, no external dependencies.
-- Automatic network configuration.
-- Good for single-cluster deployments.
-
-**Configuration**:
-```python
-kv_transfer_config = {
-    "kv_connector": "NixlConnector",
-    "kv_role": "kv_both",  # or "kv_producer", "kv_consumer"
-    "engine_id": "unique-engine-id"
-}
-```
-
-#### LMCacheConnectorV1
-
-Advanced caching with multiple storage backends:
-
-**Advantages**:
-- Supports persistent caching.
-- Multiple storage backends (Redis, S3, local).
-- Better for multi-cluster or long-lived caches.
-
-**Requirements**:
-- etcd server for metadata coordination.
-- LMCache library installed.
-
-**Configuration**:
-```python
-kv_transfer_config = {
-    "kv_connector": "LMCacheConnectorV1",
-    "kv_role": "kv_both",
-    "engine_id": "unique-engine-id",
-    "lmcache_config_file": "/path/to/lmcache.yaml"
-}
-```
 
 ### Request flow
 
@@ -224,45 +160,6 @@ Detailed request flow:
 The KV cache transfer is transparent to the client. From the client's perspective, it's a standard OpenAI API call.
 :::
 
-## Combining with data parallelism
-
-You can combine PD with DP for maximum scalability:
-
-```python
-from ray.serve.llm.builders import (
-    build_dp_deployment,
-    build_pd_openai_app
-)
-
-# Build DP prefill (2 parallel instances)
-prefill_dp = build_dp_deployment(
-    llm_config=prefill_config,
-    dp_size=2,
-    deployment_name="prefill-dp"
-)
-
-# Build DP decode (4 parallel instances)
-decode_dp = build_dp_deployment(
-    llm_config=decode_config,
-    dp_size=4,
-    deployment_name="decode-dp"
-)
-
-# Build PD application with DP deployments
-app = build_pd_openai_app({
-    "prefill_deployment": prefill_dp,
-    "decode_deployment": decode_dp,
-})
-
-serve.run(app)
-```
-
-This gives you:
-- 2-way DP on prefill (2 replicas).
-- 4-way DP on decode (4 replicas).
-- Independent scaling of each.
-- KV cache transfer between all prefill and decode replicas.
-
 ## Performance characteristics
 
 ### When to use PD disaggregation
@@ -284,74 +181,12 @@ Consider alternatives when:
 - **Network limitations**: KV transfer overhead too high.
 - **Small models**: Both phases fit comfortably on same resources.
 
-### Resource allocation strategies
-
-#### Prefill optimization
-
-High compute, moderate memory:
-
-```python
-prefill_config = LLMConfig(
-    accelerator_type="H100",  # High TFLOPS
-    engine_kwargs=dict(
-        tensor_parallel_size=2,
-        max_num_seqs=64,  # Batch multiple prefills
-        max_num_batched_tokens=4096,
-    ),
-)
-```
-
-#### Decode optimization
-
-Moderate compute, high memory:
-
-```python
-decode_config = LLMConfig(
-    accelerator_type="L4",  # Cost-effective
-    engine_kwargs=dict(
-        tensor_parallel_size=1,
-        max_num_seqs=256,  # Many concurrent generations
-        max_model_len=8192,  # Large context window
-    ),
-)
-```
-
-### Autoscaling strategies
-
-Set different scaling targets:
-
-```python
-# Prefill: Scale based on input tokens
-prefill_config = LLMConfig(
-    deployment_config=dict(
-        autoscaling_config=dict(
-            target_ongoing_requests=16,  # Fewer concurrent
-            upscale_delay_s=10,  # Quick scale-up
-            downscale_delay_s=60,
-        )
-    ),
-)
-
-# Decode: Scale based on output tokens
-decode_config = LLMConfig(
-    deployment_config=dict(
-        autoscaling_config=dict(
-            target_ongoing_requests=32,  # More concurrent
-            upscale_delay_s=5,  # Very quick scale-up
-            downscale_delay_s=120,  # Slower scale-down
-        )
-    ),
-)
-```
 
 ## Design considerations
 
 ### KV cache transfer latency
 
-The latency of KV cache transfer between prefill and decode affects overall request latency. Choose the appropriate connector based on your deployment:
-
-- **NIXLConnector**: Lower latency for single-cluster deployments.
-- **LMCacheConnectorV1**: Higher latency but more flexible for multi-cluster or persistent caching.
+The latency of KV cache transfer between prefill and decode affects overall request latency and it's mostly determined by network bandwidth. NIXL has different backend plugins, but its performance on different network stacks isn't mature yet. You should inspect your deployment to verify NIXL uses the right network backend for your environment.
 
 ### Phase load balancing
 
@@ -360,13 +195,6 @@ The system must balance load between prefill and decode phases. Mismatched scali
 - **Decode bottleneck**: Prefill completes quickly, decode can't keep up.
 
 Monitor both phases and adjust replica counts and autoscaling policies accordingly.
-
-### Error handling
-
-The proxy must handle errors in either phase:
-- **Prefill failure**: Return error to client immediately.
-- **Decode failure**: Attempt retry or return partial results.
-- **Transfer failure**: Retry transfer or fall back to single-phase.
 
 ## See also
 
