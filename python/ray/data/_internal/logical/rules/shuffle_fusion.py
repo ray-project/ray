@@ -80,7 +80,7 @@ def _disconnect_op_from_dag(op: Operator):
         prev_op.output_dependencies.remove(op)
         prev_op.output_dependencies.extend(next_ops)
 
-    # the child_op is now disconnected
+    # the op is now disconnected
 
 
 def _keys_can_fuse(
