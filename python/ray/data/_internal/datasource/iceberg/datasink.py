@@ -47,21 +47,21 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     Examples:
         Append data to an existing table:
-            >>> ds.write_iceberg(
+            >>> ds.write_iceberg(  # doctest: +SKIP
             ...     table_identifier="db.table",
             ...     catalog_kwargs={"type": "glue"},
             ...     mode="append"
             ... )
 
         Overwrite entire table:
-            >>> ds.write_iceberg(
+            >>> ds.write_iceberg(  # doctest: +SKIP
             ...     table_identifier="db.table",
             ...     catalog_kwargs={"type": "glue"},
             ...     mode="overwrite"
             ... )
 
         Dynamic partition overwrite (replace only affected partitions):
-            >>> ds.write_iceberg(
+            >>> ds.write_iceberg(  # doctest: +SKIP
             ...     table_identifier="db.table",
             ...     catalog_kwargs={"type": "glue"},
             ...     mode="overwrite",
@@ -378,13 +378,10 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             # Overwrite mode: Delete matching files, then add new files
             # Supports optional filter for dynamic partition overwrites
 
-            # Check PyIceberg version for API compatibility
-            # overwrite_files() was added in PyIceberg 0.8.0+
-            import pyiceberg
-            from packaging import version
-
-            if version.parse(pyiceberg.__version__) >= version.parse("0.8.0"):
-                # Use overwrite_files API (PyIceberg 0.8.0+)
+            # Check if overwrite_files API is available
+            # This method was added in later PyIceberg versions
+            if hasattr(update_snapshot, "overwrite_files"):
+                # Use overwrite_files API (PyIceberg 0.9.0+)
                 with update_snapshot.overwrite_files() as overwrite_files:
                     overwrite_files.commit_uuid = self._uuid
 

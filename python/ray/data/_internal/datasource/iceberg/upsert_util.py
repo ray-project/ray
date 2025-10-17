@@ -91,14 +91,14 @@ def upsert_to_iceberg(
     Examples:
         Basic upsert on a customer table using customer_id as the key:
 
-        >>> import ray
+        >>> import ray  # doctest: +SKIP
         >>> # New customer data with updates and inserts
-        >>> new_data = ray.data.from_items([
+        >>> new_data = ray.data.from_items([  # doctest: +SKIP
         ...     {"customer_id": 1, "name": "Alice Updated", "status": "active"},
         ...     {"customer_id": 3, "name": "Charlie New", "status": "active"},
         ... ])
         >>> # Upsert into the table (updates customer_id=1, inserts customer_id=3)
-        >>> new_data.write_iceberg(
+        >>> new_data.write_iceberg(  # doctest: +SKIP
         ...     table_identifier="db.customers",
         ...     mode="merge",
         ...     merge_keys=["customer_id"],
