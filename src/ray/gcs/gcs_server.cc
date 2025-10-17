@@ -215,16 +215,17 @@ void GcsServer::Start() {
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
-  gcs_init_data->AsyncLoad(
-      {[this, gcs_init_data] {
-         GetOrGenerateClusterId({[this, gcs_init_data](ClusterID cluster_id) {
-                                   rpc_server_.SetClusterId(cluster_id);
-                                   rpc_server_.SetAuthToken(RayAuthTokenLoader::instance().GetToken());
-                                   DoStart(*gcs_init_data);
-                                 },
-                                 io_context_provider_.GetDefaultIOContext()});
-       },
-       io_context_provider_.GetDefaultIOContext()});
+  gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                              GetOrGenerateClusterId(
+                                  {[this, gcs_init_data](ClusterID cluster_id) {
+                                     rpc_server_.SetClusterId(cluster_id);
+                                     rpc_server_.SetAuthToken(
+                                         RayAuthTokenLoader::instance().GetToken());
+                                     DoStart(*gcs_init_data);
+                                   },
+                                   io_context_provider_.GetDefaultIOContext()});
+                            },
+                            io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::GetOrGenerateClusterId(
