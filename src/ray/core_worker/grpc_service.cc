@@ -15,8 +15,8 @@
 #include "ray/core_worker/grpc_service.h"
 
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace ray {
 namespace rpc {
