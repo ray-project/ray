@@ -178,11 +178,13 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         const int64_t running_total = counter_.Get(key);
         const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
         const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+        const int64_t num_getting_pinning_args =
+            pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
         task_by_state_gauge_.Record(
-            running_total - num_in_get - num_in_wait,
+            running_total - num_in_get - num_in_wait - num_getting_pinning_args,
             {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name", func_name},
              {"IsRetry", is_retry_label},
@@ -208,6 +210,14 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
         task_by_state_gauge_.Record(
             num_in_wait,
             {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
+        // Record sub-state for pending args fetch.
+        task_by_state_gauge_.Record(
+            num_getting_pinning_args,
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
              {"Name", func_name},
              {"IsRetry", is_retry_label},
              {"JobId", job_id_},
@@ -250,6 +260,8 @@ void TaskCounter::SetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Increment({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Increment({func_name, is_retry});
+  } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
+    pending_getting_and_pinning_args_fetch_counter_.Increment({func_name, is_retry});
   } else {
     RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -266,6 +278,8 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
     running_in_get_counter_.Decrement({func_name, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
     running_in_wait_counter_.Decrement({func_name, is_retry});
+  } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
+    pending_getting_and_pinning_args_fetch_counter_.Decrement({func_name, is_retry});
   } else {
     RAY_LOG(FATAL) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -340,6 +354,8 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
+      num_get_pin_args_in_flight_(0),
+      num_failed_get_pin_args_(0),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
@@ -2721,18 +2737,49 @@ Status CoreWorker::ExecuteTask(
         absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
   }
 
+  std::vector<std::shared_ptr<RayObject>> args;
+  std::vector<rpc::ObjectReference> arg_refs;
+  // This includes all IDs that were passed by reference and any IDs that were
+  // inlined in the task spec. These references will be pinned during the task
+  // execution and unpinned once the task completes. We will notify the caller
+  // about any IDs that we are still borrowing by the time the task completes.
+  std::vector<ObjectID> borrowed_ids;
+
+  // Extract function name and retry status for metrics reporting.
+  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  bool is_retry = task_spec.IsRetry();
+
+  ++num_get_pin_args_in_flight_;
+  task_counter_.SetMetricStatus(
+      func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
+  Status pin_args_request_status =
+      GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
+  task_counter_.UnsetMetricStatus(
+      func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
+  --num_get_pin_args_in_flight_;
+  if (!pin_args_request_status.ok()) {
+    ++num_failed_get_pin_args_;
+    // If this has happened, it's because we are unable to talk to our local raylet.
+    // This very likely means that the raylet has shutdown before this worker
+    // unexpectedly. In whic case we'll trigger shut down.
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR,
+         absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
+                      pin_args_request_status.message()),
+         nullptr);
+    return pin_args_request_status;
+  }
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
-  std::string func_name = task_spec.FunctionDescriptor()->CallString();
   std::string actor_repr_name;
   {
     absl::MutexLock lock(&mutex_);
     actor_repr_name = actor_repr_name_;
   }
   if (!options_.is_local_mode) {
-    task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
+    task_counter_.MovePendingToRunning(func_name, is_retry);
 
     const auto update =
         (task_spec.IsActorTask() && !actor_repr_name.empty())
@@ -2759,15 +2806,6 @@ Status CoreWorker::ExecuteTask(
   }
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
-
-  std::vector<std::shared_ptr<RayObject>> args;
-  std::vector<rpc::ObjectReference> arg_refs;
-  // This includes all IDs that were passed by reference and any IDs that were
-  // inlined in the task spec. These references will be pinned during the task
-  // execution and unpinned once the task completes. We will notify the caller
-  // about any IDs that we are still borrowing by the time the task completes.
-  std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
@@ -4039,6 +4077,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_->GetWorkerType());
   stats->set_num_running_tasks(running_tasks_.size());
+  stats->set_num_in_flight_arg_pinning_requests(num_get_pin_args_in_flight_);
+  stats->set_num_of_failed_arg_pinning_requests(num_failed_get_pin_args_);
   auto *used_resources_map = stats->mutable_used_resources();
   for (auto const &[resource_name, resource_allocations] : resource_ids_) {
     rpc::ResourceAllocations allocations;
