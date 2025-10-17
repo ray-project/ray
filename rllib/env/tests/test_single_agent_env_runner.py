@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import gymnasium as gym
-from gymnasium.vector import SyncVectorEnv
+from gymnasium.vector import SyncVectorEnv, VectorEnv
 from gymnasium.envs.classic_control.cartpole import CartPoleVectorEnv, CartPoleEnv
 
 import ray
@@ -11,7 +11,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
-from ray.rllib.utils.test_utils import check
 
 
 class TestSingleAgentEnvRunner(unittest.TestCase):
@@ -83,13 +82,19 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                         ],
                     )
 
-    def test_sample(self):
+    def test_sample(
+        self,
+        num_envs_per_env_runner=5,
+        expected_episodes=10,
+        expected_timesteps=20,
+        rollout_fragment_length=64,
+    ):
         config = (
             AlgorithmConfig()
             .environment("CartPole-v1")
             .env_runners(
-                num_envs_per_env_runner=2,
-                rollout_fragment_length=64,
+                num_envs_per_env_runner=num_envs_per_env_runner,
+                rollout_fragment_length=rollout_fragment_length,
             )
         )
         env_runner = SingleAgentEnvRunner(config=config)
@@ -102,31 +107,73 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             ),
         )
 
-        # Sample 10 episodes (5 per env, because num_envs_per_env_runner=2)
+        # Sample 10 episodes (2 per env, because num_envs_per_env_runner=5)
         # Repeat 100 times
         for _ in range(100):
-            episodes = env_runner.sample(num_episodes=10, random_actions=True)
-            check(len(episodes), 10)
+            episodes = env_runner.sample(
+                num_episodes=expected_episodes, random_actions=True
+            )
+            self.assertTrue(len(episodes) == expected_episodes)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
             self.assertTrue(all(e.is_done for e in episodes))
+            self.assertTrue(all(e.t_started == 0 for e in episodes))
 
-        # Sample 10 timesteps (5 per env)
+        # Sample 20 timesteps (4 per env)
         # Repeat 100 times
+        env_runner.sample(random_actions=True)  # for the `e.t_started > 0`
         for _ in range(100):
-            episodes = env_runner.sample(num_timesteps=10, random_actions=True)
+            episodes = env_runner.sample(
+                num_timesteps=expected_timesteps, random_actions=True
+            )
             # Check the sum of lengths of all episodes returned.
-            sum_ = sum(map(len, episodes))
-            self.assertTrue(sum_ in [10, 11])
+            total_timesteps = sum(len(e) for e in episodes)
+            self.assertTrue(
+                expected_timesteps
+                <= total_timesteps
+                <= expected_timesteps + num_envs_per_env_runner
+            )
+            self.assertTrue(any(e.t_started > 0 for e in episodes))
+
+        # Sample a number of timesteps thats not a factor of the number of environments
+        # Repeat 100 times
+        expected_uneven_timesteps = expected_timesteps + num_envs_per_env_runner // 2
+        for _ in range(100):
+            episodes = env_runner.sample(
+                num_timesteps=expected_uneven_timesteps, random_actions=True
+            )
+            # Check the sum of lengths of all episodes returned.
+            total_timesteps = sum(len(e) for e in episodes)
+            self.assertTrue(
+                expected_uneven_timesteps
+                <= total_timesteps
+                <= expected_uneven_timesteps + num_envs_per_env_runner,
+            )
+            self.assertTrue(any(e.t_started > 0 for e in episodes))
 
         # Sample rollout_fragment_length=64, 100 times
         # Repeat 100 times
         for _ in range(100):
             episodes = env_runner.sample(random_actions=True)
-            # Check, whether the sum of lengths of all episodes returned is 128
-            # 2 (num_env_per_worker) * 64 (rollout_fragment_length).
-            sum_ = sum(map(len, episodes))
-            self.assertTrue(sum_ in [128, 129])
+            # Check, whether the sum of lengths of all episodes returned is 320
+            # 5 (num_env_per_worker) * 64 (rollout_fragment_length).
+            total_timesteps = sum(len(e) for e in episodes)
+            self.assertTrue(
+                num_envs_per_env_runner * rollout_fragment_length
+                <= total_timesteps
+                <= (num_envs_per_env_runner + 1) * rollout_fragment_length
+            )
+            self.assertTrue(any(e.t_started > 0 for e in episodes))
+
+        # Test that force_reset will create episodes from scratch even with `num_timesteps`
+        episodes = env_runner.sample(
+            num_timesteps=expected_timesteps, random_actions=True, force_reset=True
+        )
+        self.assertTrue(any(e.t_started == 0 for e in episodes))
+        episodes = env_runner.sample(
+            num_timesteps=expected_timesteps, random_actions=True, force_reset=False
+        )
+        self.assertTrue(any(e.t_started > 0 for e in episodes))
 
     @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
@@ -179,7 +226,13 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def test_env_vectorizer(self):
         """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
 
-        for env in ["CartPole-v1", CartPoleEnv, "tune-registered", "TestEnv-v0"]:
+        for env in [
+            "CartPole-v1",
+            CartPoleEnv,
+            "tune-registered",
+            "TestEnv-v0",
+            "ale_py:ALE/Pong-v5",
+        ]:
             config = (
                 AlgorithmConfig()
                 .environment(env)
@@ -194,9 +247,10 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
             # Sample with the async-vectorized env.
             episodes = env_runner.sample(random_actions=True)
-            self.assertEqual(
-                sum(len(e) for e in episodes),
-                config.num_envs_per_env_runner * config.rollout_fragment_length,
+            self.assertTrue(
+                config.num_envs_per_env_runner * config.rollout_fragment_length
+                <= sum(len(e) for e in episodes)
+                < config.num_envs_per_env_runner * (config.rollout_fragment_length + 1)
             )
             env_runner.stop()
 
@@ -208,6 +262,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             CartPoleVectorEnv,
             "tune-registered-vec",
             "TestVecEnv-v0",
+            "ale_py:ALE/Pong-v5",
         ]:
             config = (
                 AlgorithmConfig()
@@ -220,13 +275,16 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             )
 
             env_runner = SingleAgentEnvRunner(config=config)
-            assert isinstance(env_runner.env.env, CartPoleVectorEnv)
+            assert isinstance(env_runner.env.env, VectorEnv) and not isinstance(
+                env_runner.env.env, SyncVectorEnv
+            )
 
             # Sample with the async-vectorized env.
             episodes = env_runner.sample(random_actions=True)
-            self.assertEqual(
-                sum(len(e) for e in episodes),
-                config.num_envs_per_env_runner * config.rollout_fragment_length,
+            self.assertTrue(
+                config.num_envs_per_env_runner * config.rollout_fragment_length
+                <= sum(len(e) for e in episodes)
+                < config.num_envs_per_env_runner * (config.rollout_fragment_length + 1)
             )
             env_runner.stop()
 

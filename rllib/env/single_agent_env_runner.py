@@ -158,6 +158,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         Args:
             num_timesteps: The number of timesteps to sample during this call.
+                The episodes returned will contain the total timesteps greater than or
+                equal to num_timesteps and less than num_timesteps + num_envs_per_env_runner.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
@@ -663,10 +665,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 entry_point=self.config.env,
                 vector_entry_point=self.config.env,
             )
-        # the env is already contained in the gymnasium registry
-        elif self.config.env in gymnasium.registry:
-            env_name = self.config.env
-        # the env isn't in the registry but is in the tune._global_registry
+        # the env is in the tune._global_registry
         elif _global_registry.contains(ENV_CREATOR, self.config.env):
             env_name = self.config.env
             env_entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
@@ -675,18 +674,17 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 entry_point=env_entry_point,
                 vector_entry_point=env_entry_point,
             )
+        # the env is in the gymnasium registry
+        elif self.config.env in gymnasium.registry:
+            env_name = self.config.env
         # check if the env is `importlib:env-name` where importlib will register the environment
         else:
             env_name = self.config.env
-            is_valid_reference = (
-                ":" in env_name
-                and len(env_name.split(":")) == 2
-                and env_name.split(":")[1] in gymnasium.registry
-            )
+            contains_importlib = ":" in env_name and len(env_name.split(":")) == 2
 
-            if not is_valid_reference:
+            if not contains_importlib:
                 raise ValueError(
-                    "`config.env` is a string but not contained in the "
+                    f"`config.env` ({self.config.env}) is a string but not contained in the "
                     "`gymnasium.registry` or `tune._global_registry`"
                 )
 
