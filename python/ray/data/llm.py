@@ -512,8 +512,6 @@ def build_llm_processor(
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
     ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
-    ProcessorBuilder.validate_map_kwargs(preprocess_map_kwargs)
-    ProcessorBuilder.validate_map_kwargs(postprocess_map_kwargs)
 
     build_kwargs = dict(
         preprocess=preprocess,

@@ -383,41 +383,6 @@ class ProcessorBuilder:
                 )
 
     @classmethod
-    def validate_map_kwargs(cls, map_kwargs: Optional[Dict[str, Any]]) -> None:
-        """Validate map kwargs contain only supported Dataset.map parameters.
-
-        Args:
-            map_kwargs: Optional kwargs to pass to Dataset.map().
-
-        Note:
-            Unknown keys will trigger a warning as they'll be passed as ray_remote_args.
-        """
-        if map_kwargs is None:
-            return
-
-        # Supported Dataset.map parameters
-        supported_keys = {
-            "compute",
-            "fn_args",
-            "fn_kwargs",
-            "fn_constructor_args",
-            "fn_constructor_kwargs",
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "concurrency",
-            "ray_remote_args_fn",
-        }
-
-        unknown_keys = set(map_kwargs.keys()) - supported_keys
-        if unknown_keys:
-            logger.warning(
-                f"Unknown keys in map_kwargs: {unknown_keys}. "
-                f"These will be passed as ray_remote_args to Dataset.map(). "
-                f"Supported keys: {supported_keys}"
-            )
-
-    @classmethod
     def build(
         cls,
         config: ProcessorConfig,

@@ -431,49 +431,6 @@ class TestMapKwargs:
         assert processor.preprocess_map_kwargs == {"num_cpus": 0.5}
         assert processor.postprocess_map_kwargs == {"num_cpus": 0.25}
 
-    def test_map_kwargs_validation_warns_on_unknown_keys(self):
-        """Test that validation warns on unknown keys."""
-        import logging
-        from io import StringIO
-
-        # Capture log output
-        log_capture = StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.WARNING)
-        logger = logging.getLogger("ray.llm._internal.batch.processor.base")
-        logger.addHandler(handler)
-        logger.setLevel(logging.WARNING)
-
-        try:
-            ProcessorBuilder.validate_map_kwargs({"unknown_key": "value"})
-            log_output = log_capture.getvalue()
-            assert "unknown_key" in log_output
-            assert "Unknown keys in map_kwargs" in log_output
-        finally:
-            logger.removeHandler(handler)
-
-    def test_map_kwargs_validation_no_warning_on_valid_keys(self):
-        """Test that validation doesn't warn on valid keys."""
-        import logging
-        from io import StringIO
-
-        # Capture log output
-        log_capture = StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.WARNING)
-        logger = logging.getLogger("ray.llm._internal.batch.processor.base")
-        logger.addHandler(handler)
-        logger.setLevel(logging.WARNING)
-
-        try:
-            ProcessorBuilder.validate_map_kwargs(
-                {"num_cpus": 0.5, "num_gpus": 1, "memory": 1024}
-            )
-            log_output = log_capture.getvalue()
-            assert "Unknown keys" not in log_output
-        finally:
-            logger.removeHandler(handler)
-
     def test_builder_kwargs_conflict_with_map_kwargs(self):
         """Test that builder_kwargs validation rejects map kwargs."""
         # Test the validation that build_llm_processor calls
