@@ -79,7 +79,7 @@ steps:
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on: oss-ci-base_build-multipy
     matrix:
-      - "3.9"
+      - "3.10"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
