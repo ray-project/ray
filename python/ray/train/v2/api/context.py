@@ -189,6 +189,7 @@ class TrainContext(ABC):
         pass
 
 
+@DeveloperAPI
 class DistributedTrainContext(TrainContext):
     """Implementation of TrainContext for distributed mode."""
 
@@ -214,6 +215,7 @@ class DistributedTrainContext(TrainContext):
         return get_internal_train_context().get_storage()
 
 
+@DeveloperAPI
 class LocalTrainContext(TrainContext):
     """Implementation of TrainContext for local mode."""
 
