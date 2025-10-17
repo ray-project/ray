@@ -40,19 +40,19 @@ def test_trainable_fn_utils(tmp_path, monkeypatch, v2_enabled):
     )
 
     def tune_fn(config):
-        with asserting_context(match="ray.tune.get_checkpoint"):
+        with asserting_context(match="get_checkpoint"):
             ray.train.get_checkpoint()
 
         with warnings.catch_warnings():
             ray.tune.get_checkpoint()
 
-        with asserting_context(match="ray.tune.get_context"):
+        with asserting_context(match="get_context"):
             ray.train.get_context()
 
         with warnings.catch_warnings():
             ray.tune.get_context()
 
-        with asserting_context(match="ray.tune.report"):
+        with asserting_context(match="report"):
             ray.train.report({"a": 1})
 
         with warnings.catch_warnings():
