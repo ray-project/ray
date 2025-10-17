@@ -1,10 +1,14 @@
 import math
 import time
+from typing import Dict, Any
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
 import ray
+from ray.data import ActorPoolStrategy
+from ray.data._internal.compute import TaskPoolStrategy, ComputeStrategy
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -27,10 +31,11 @@ from ray.data.tests.conftest import *  # noqa
 
 
 def mock_map_op(
-    input_op,
-    ray_remote_args=None,
-    compute_strategy=None,
-    incremental_resource_usage=None,
+    input_op: PhysicalOperator,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    compute_strategy: Optional[ComputeStrategy] = None,
+    incremental_resource_usage: Optional[ExecutionResources] = None,
+    name="Map",
 ):
     op = MapOperator.create(
         MagicMock(),
@@ -38,6 +43,7 @@ def mock_map_op(
         DataContext.get_current(),
         ray_remote_args=ray_remote_args or {},
         compute_strategy=compute_strategy,
+        name=name,
     )
     op.start = MagicMock(side_effect=lambda _: None)
     if incremental_resource_usage is not None:
@@ -230,8 +236,15 @@ class TestResourceManager:
         }
 
         for op in [o1, o2, o3]:
+            op.update_resource_usage = MagicMock()
             op.current_processor_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            )
+            op.running_processor_usage = MagicMock(
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            )
+            op.pending_processor_usage = MagicMock(
+                return_value=ExecutionResources.zero()
             )
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
             op._metrics = MagicMock(
@@ -422,7 +435,12 @@ class TestReservationOpResourceAllocator:
 
         # Test initial state when no resources are used.
         global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         # +-----+------------------+------------------+--------------+
         # |     | _op_reserved     | _reserved_for    | used shared  |
         # |     | (used/remaining) | _op_outputs      | resources    |
@@ -450,8 +468,12 @@ class TestReservationOpResourceAllocator:
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
-        assert allocator.max_task_output_bytes_to_read(o2) == 500
-        assert allocator.max_task_output_bytes_to_read(o3) == 500
+        assert allocator.max_task_output_bytes_to_read(
+            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 500
+        assert allocator.max_task_output_bytes_to_read(
+            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 500
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -462,7 +484,12 @@ class TestReservationOpResourceAllocator:
         op_outputs_usages[o3] = 25
         op_usages[o4] = ExecutionResources(0, 0, 50)
 
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         # +-----+------------------+------------------+--------------+
         # |     | _op_reserved     | _reserved_for    | used shared  |
         # |     | (used/remaining) | _op_outputs      | resources    |
@@ -488,7 +515,7 @@ class TestReservationOpResourceAllocator:
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        allocator.update_usages()
+        remaining = allocator._update_reservation()
         # +-----+------------------+------------------+--------------+
         # |     | _op_reserved     | _reserved_for    | used shared  |
         # |     | (used/remaining) | _op_outputs      | resources    |
@@ -547,7 +574,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_usages()
+        allocator.update_budgets()
         # incremental_usage should be reserved for o2.
         assert allocator._op_reserved[o2] == incremental_usage
         # Remaining resources are CPU = 7 - 3 = 4, object_store_memory = 800 - 500 = 300.
@@ -601,7 +628,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_usages()
+        allocator.update_budgets()
 
         assert allocator._op_reserved[o2].object_store_memory == 800
 
@@ -631,7 +658,7 @@ class TestReservationOpResourceAllocator:
         )
         allocator = resource_manager._op_resource_allocator
 
-        allocator.update_usages()
+        allocator.update_budgets()
 
         # The operator's max resource usage is 1 CPU and 1 byte object store memory, so
         # we'll reserve that despite the large global limits.
@@ -663,13 +690,13 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_usages()
+        allocator.update_budgets()
         assert o1 not in allocator._op_budgets
         assert o2 in allocator._op_budgets
         assert o3 not in allocator._op_budgets
 
         o2.mark_execution_finished()
-        allocator.update_usages()
+        allocator.update_budgets()
         assert o2 not in allocator._op_budgets
 
     def test_gpu_allocation(self, restore_data_context):
@@ -709,7 +736,12 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=resource_manager._mem_op_internal,
+            outputs_object_store_usage=resource_manager._mem_op_outputs,
+        )
 
         # Non-GPU operator should get 0 GPU
         assert allocator._op_budgets[o2].gpu == 0
@@ -751,7 +783,12 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=resource_manager._mem_op_internal,
+            outputs_object_store_usage=resource_manager._mem_op_outputs,
+        )
 
         # o2: 4 total - 1 used = 3 available
         assert allocator._op_budgets[o2].gpu == 3
@@ -786,7 +823,12 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=resource_manager._mem_op_internal,
+            outputs_object_store_usage=resource_manager._mem_op_outputs,
+        )
 
         assert allocator._op_budgets[o2].gpu == 0
 
@@ -907,7 +949,12 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_global_limits = MagicMock(return_value=global_limits)
 
         allocator = resource_manager._op_resource_allocator
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
 
         # Check that o2's usage was subtracted from remaining resources
         # global_limits (10 CPU, 250 mem) - o1 usage (0) - o2 usage (2 CPU, 50 mem) = remaining (8 CPU, 200 mem)
@@ -1006,7 +1053,12 @@ class TestReservationOpResourceAllocator:
 
         allocator = resource_manager._op_resource_allocator
         global_limits = ExecutionResources(cpu=20, object_store_memory=2000)
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         """
         global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
         +-----+------------------+------------------+--------------+
@@ -1057,7 +1109,12 @@ class TestReservationOpResourceAllocator:
         | op8 | 50/150           | 50/150           | 0            |
         +-----+------------------+------------------+--------------+
         """
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         assert allocator._op_budgets[o6] == ExecutionResources(
             cpu=4, object_store_memory=350
         )
@@ -1067,7 +1124,12 @@ class TestReservationOpResourceAllocator:
 
         # Test when completed ops update the usage.
         op_usages[o5] = ExecutionResources.zero()
-        allocator.update_usages()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resources_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         """
         global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (0 CPU, 0 mem) - o7 usage (1 CPU, 100 mem) = remaining (15 CPU, 1700 mem)
         +-----+------------------+------------------+--------------+

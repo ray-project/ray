@@ -87,9 +87,6 @@ class ResourceManager:
         # Whether to print debug information.
         self._debug = DEBUG_RESOURCE_MANAGER
 
-        self._downstream_fraction: Dict[PhysicalOperator, float] = {}
-        self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
-
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
 
         if data_context.op_resource_reservation_enabled:
@@ -182,8 +179,6 @@ class ResourceManager:
         self._op_usages.clear()
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
-        self._downstream_fraction.clear()
-        self._downstream_object_store_memory.clear()
 
         # Iterate from last to first operator.
         num_ops_so_far = 0
@@ -223,15 +218,6 @@ class ResourceManager:
             self._global_pending_usage = self._global_pending_usage.add(
                 op_pending_usage
             )
-
-            # Update `self._downstream_fraction` and `_downstream_object_store_memory`.
-            # Subtract one from denom to account for input buffer.
-            f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
-            num_ops_so_far += 1
-            self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
@@ -711,6 +697,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             remaining = remaining.max(ExecutionResources.zero())
 
         self._total_shared = remaining
+
+    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        """Return whether the given operator can submit a new task based on budget."""
+        budget = self.get_budget(op)
+        if budget is None:
+            return True
+        return op.incremental_resource_usage().satisfies_limit(budget)
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)
