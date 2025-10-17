@@ -205,10 +205,11 @@ def get_step(
     step["label"] = full_label
 
     image = test.get_anyscale_byod_image()
+    base_image = test.get_anyscale_base_byod_image()
     if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
-        step["depends_on"] = get_prerequisite_step(image)
+        step["depends_on"] = get_prerequisite_step(image, base_image)
 
     if block_step_key:
         if not step["depends_on"]:
