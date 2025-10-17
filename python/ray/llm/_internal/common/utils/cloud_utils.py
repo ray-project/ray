@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import (
     Any,
@@ -406,6 +407,115 @@ class CloudFileSystem:
             raise
 
     @staticmethod
+    def download_files_parallel(
+        path: str,
+        bucket_uri: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+        use_threads: bool = True,
+        chunk_size: int = 64 * 1024 * 1024,  # 64MB chunks like Ray uses
+    ) -> None:
+        """Optimized download using PyArrow's built-in copy_files function.
+
+        This leverages PyArrow's native parallel copy implementation which is
+        much simpler and more efficient than manual threading.
+
+        Args:
+            path: Local directory where files will be downloaded
+            bucket_uri: URI of cloud directory
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude certain files from download
+            use_threads: Use PyArrow's built-in threading (default: True)
+            chunk_size: Size of transfer chunks (default: 64MB)
+        """
+        try:
+            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+
+            # Ensure destination exists
+            os.makedirs(path, exist_ok=True)
+
+            # If no filters, use direct copy_files
+            if not substrings_to_include and not suffixes_to_exclude:
+                pa_fs.copy_files(
+                    source=source_path,
+                    destination=path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=use_threads,
+                    chunk_size=chunk_size,
+                )
+                return
+
+            # List and filter files
+            file_selector = pa_fs.FileSelector(source_path, recursive=True)
+            file_infos = fs.get_file_info(file_selector)
+
+            files_to_copy = []
+            for file_info in file_infos:
+                if file_info.type != pa_fs.FileType.File:
+                    continue
+
+                rel_path = file_info.path[len(source_path) :].lstrip("/")
+
+                # Apply filters
+                if substrings_to_include:
+                    if not any(
+                        substring in rel_path for substring in substrings_to_include
+                    ):
+                        continue
+
+                if suffixes_to_exclude:
+                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
+                        continue
+
+                files_to_copy.append((file_info.path, os.path.join(path, rel_path)))
+
+            if not files_to_copy:
+                logger.info("No files match the filters")
+                return
+
+            # Copy files in parallel using ThreadPoolExecutor
+
+            def copy_single_file(file_paths):
+                source_file_path, dest_file_path = file_paths
+                # Create destination directory if needed
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
+                    os.makedirs(dest_dir, exist_ok=True)
+
+                # Use PyArrow's copy_files for individual files
+                pa_fs.copy_files(
+                    source=source_file_path,
+                    destination=dest_file_path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=True,
+                    chunk_size=chunk_size,
+                )
+                return dest_file_path
+
+            # Parallel execution
+            max_workers = min(
+                10, len(files_to_copy)
+            )  # Limit concurrent file operations
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(copy_single_file, file_paths)
+                    for file_paths in files_to_copy
+                ]
+
+                # Wait for all futures to complete
+                for future in futures:
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Failed to copy file: {e}")
+
+        except Exception as e:
+            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
+            raise
+
+    @staticmethod
     def download_model(
         destination_path: str,
         bucket_uri: str,
@@ -464,11 +574,13 @@ class CloudFileSystem:
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
 
-            CloudFileSystem.download_files(
+            CloudFileSystem.download_files_optimized(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
                 suffixes_to_exclude=safetensors_to_exclude,
+                use_threads=True,
+                chunk_size=64 * 1024 * 1024,  # 64MB chunks for large model files
             )
 
         except Exception as e:

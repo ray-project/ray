@@ -4,6 +4,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LoraConfig,
@@ -207,6 +208,36 @@ class TestModelConfig:
                 log_engine_metrics=True,
                 engine_kwargs={"disable_log_stats": True},
             )
+
+    def test_runai_streamer_load_format_callback_context(self):
+        """Test that load_format='runai_streamer' sets worker_node_download_model to NONE in callback context."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            engine_kwargs={"load_format": "runai_streamer"},
+        )
+
+        # Get the callback instance which should trigger the context setup
+        callback = llm_config.get_or_create_callback()
+
+        # Check that the callback context has the correct worker_node_download_model value
+        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
+        assert callback.ctx.worker_node_download_model == NodeModelDownloadable.NONE
+
+    def test_non_streaming_load_format_callback_context(self):
+        """Test that non-streaming load_format sets worker_node_download_model to MODEL_AND_TOKENIZER in callback context."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+        )
+
+        # Get the callback instance which should trigger the context setup
+        callback = llm_config.get_or_create_callback()
+
+        # Check that the callback context has the correct worker_node_download_model value
+        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
+        assert (
+            callback.ctx.worker_node_download_model
+            == NodeModelDownloadable.MODEL_AND_TOKENIZER
+        )
 
 
 class TestFieldValidators:
