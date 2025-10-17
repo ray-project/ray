@@ -33,11 +33,15 @@ class RayAuthTokenLoaderTest : public ::testing::Test {
     std::string home_dir = getenv("HOME");
     default_token_path_ = home_dir + "/.ray/auth_token";
     cleanup_env();
+    // Reset the singleton's cached state for test isolation
+    RayAuthTokenLoader::instance().ResetForTesting();
   }
 
   void TearDown() override {
     // Clean up after test
     cleanup_env();
+    // Reset the singleton's cached state for test isolation
+    RayAuthTokenLoader::instance().ResetForTesting();
   }
 
   void cleanup_env() {

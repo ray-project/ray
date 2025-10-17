@@ -15,6 +15,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 
 namespace ray {
@@ -41,6 +42,13 @@ class RayAuthTokenLoader {
   /// \return True if a token is available (cached or can be loaded).
   bool HasToken();
 
+  /// Reset the cached token. For testing only.
+  /// This allows tests to simulate fresh loader state between test cases.
+  void ResetForTesting() {
+    std::lock_guard<std::mutex> lock(token_mutex_);
+    cached_token_.reset();
+  }
+
   // Prevent copying and moving
   RayAuthTokenLoader(const RayAuthTokenLoader &) = delete;
   RayAuthTokenLoader &operator=(const RayAuthTokenLoader &) = delete;
@@ -56,8 +64,7 @@ class RayAuthTokenLoader {
   std::string GetDefaultTokenPath();
 
   std::mutex token_mutex_;
-  std::string cached_token_;
-  bool token_loaded_ = false;
+  std::optional<std::string> cached_token_;
 };
 
 }  // namespace rpc

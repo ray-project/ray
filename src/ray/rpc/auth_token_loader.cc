@@ -39,16 +39,22 @@ RayAuthTokenLoader &RayAuthTokenLoader::instance() {
 const std::string &RayAuthTokenLoader::GetToken() {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
-  if (token_loaded_) {
-    return cached_token_;
+  // If already loaded, return cached value
+  if (cached_token_.has_value()) {
+    return *cached_token_;
   }
 
-  // Try to load from sources
-  cached_token_ = LoadTokenFromSources();
-  token_loaded_ = true;
+  // If token auth is disabled, return empty string without loading
+  if (!RayConfig::instance().enable_token_auth()) {
+    cached_token_ = "";
+    return *cached_token_;
+  }
 
-  // If token auth is enabled but no token is found, throw an error
-  if (RayConfig::instance().enable_token_auth() && cached_token_.empty()) {
+  // Token auth is enabled, try to load from sources
+  std::string token = LoadTokenFromSources();
+
+  // If no token found and auth is enabled, throw error
+  if (token.empty()) {
     RAY_LOG(ERROR) << "Token authentication is enabled but no authentication token was "
                       "found. Please set RAY_AUTH_TOKEN environment variable, "
                       "RAY_AUTH_TOKEN_PATH to a file containing the token, or create a "
@@ -57,12 +63,26 @@ const std::string &RayAuthTokenLoader::GetToken() {
         "Token authentication is enabled but no authentication token was found");
   }
 
-  return cached_token_;
+  // Cache and return the loaded token
+  cached_token_ = token;
+  return *cached_token_;
 }
 
 bool RayAuthTokenLoader::HasToken() {
-  // This will trigger loading if not already loaded
-  const std::string &token = GetToken();
+  std::lock_guard<std::mutex> lock(token_mutex_);
+
+  // If already loaded, check if non-empty
+  if (cached_token_.has_value()) {
+    return !cached_token_->empty();
+  }
+
+  // If token auth is disabled, no token needed
+  if (!RayConfig::instance().enable_token_auth()) {
+    return false;
+  }
+
+  // Try to load token
+  std::string token = LoadTokenFromSources();
   return !token.empty();
 }
 

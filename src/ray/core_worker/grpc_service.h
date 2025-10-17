@@ -29,6 +29,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
