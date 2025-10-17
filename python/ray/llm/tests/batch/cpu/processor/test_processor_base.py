@@ -198,6 +198,8 @@ class TestBuilderKwargsValidation:
             config: ProcessorConfig,
             preprocess=None,
             postprocess=None,
+            preprocess_map_kwargs=None,
+            postprocess_map_kwargs=None,
             custom_kwarg=None,
             another_kwarg=None,
         ) -> Processor:
@@ -211,7 +213,12 @@ class TestBuilderKwargsValidation:
                 )
             ]
             processor = Processor(
-                config, stages, preprocess=preprocess, postprocess=postprocess
+                config,
+                stages,
+                preprocess=preprocess,
+                postprocess=postprocess,
+                preprocess_map_kwargs=preprocess_map_kwargs,
+                postprocess_map_kwargs=postprocess_map_kwargs,
             )
             return processor
 
