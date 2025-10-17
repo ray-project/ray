@@ -453,7 +453,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self._table.num_rows == 0:
             return self._table
 
-        from ray.data._expression_evaluator import eval_expr
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
 
         # Evaluate the expression to get a boolean mask
         mask = eval_expr(predicate_expr, self._table)

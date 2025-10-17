@@ -66,7 +66,9 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     """Test alias functionality with various expression types."""
     import pandas as pd
 
-    from ray.data._expression_evaluator import eval_expr
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
 
     # Test alias creation
     aliased_expr = expr.alias(alias_name)

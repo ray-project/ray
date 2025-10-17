@@ -24,7 +24,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -49,6 +48,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,

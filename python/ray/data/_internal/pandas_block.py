@@ -629,8 +629,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         if self._table.empty:
             return self._table
 
-        # TODO: Move _expression_evaluator to _internal
-        from ray.data._expression_evaluator import eval_expr
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
 
         # Evaluate the expression to get a boolean mask
         mask = eval_expr(predicate_expr, self._table)
