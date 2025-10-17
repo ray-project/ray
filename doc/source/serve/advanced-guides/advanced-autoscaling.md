@@ -670,6 +670,110 @@ In your policy, access custom metrics via:
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 
+(serve-external-scale-webhook)=
+## External scaling webhook
+
+::::{warning}
+This API is in alpha and may change before becoming stable.
+::::
+
+Programmatically scale a deployment's replicas from outside the Ray cluster via a REST endpoint. Use this when you want scaling driven by external metrics, scheduled/predictive logic, or manual ops control—beyond the built-in request-driven autoscaler or custom policies.
+
+### Enable in your application config
+
+```yaml
+applications:
+  - name: my-app
+    import_path: my_module:app
+    external_scaler_enabled: true
+    deployments:
+      - name: my-deployment
+        num_replicas: 1
+```
+
+::::{warning}
+External scaling and built-in autoscaling are mutually exclusive for a given application.
+
+- If you set `external_scaler_enabled: true`, do not configure `autoscaling_config` on any deployment in that application.
+- If any deployment uses `autoscaling_config`, do not set `external_scaler_enabled: true` for the application.
+
+Attempting to use both results in an error.
+::::
+
+### Authentication
+
+Use a bearer token from the Ray Dashboard (Serve tab). Send it as `Authorization: Bearer <token>`.
+
+### API endpoint
+
+```
+POST /api/v1/applications/{application_name}/deployments/{deployment_name}/scale
+```
+
+- Path params: `application_name`, `deployment_name`
+- Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+- Body (see [`ScaleDeploymentRequest`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ScaleDeploymentRequest.html)):
+
+```json
+{ "target_num_replicas": 5 }
+```
+
+### Minimal Python example (predictive scaling)
+
+```python
+import requests
+from datetime import datetime
+
+def predictive_scale(
+    application_name: str,
+    deployment_name: str,
+    auth_token: str,
+    serve_endpoint: str = "http://localhost:8000",
+    request_timeout_s: float = 10.0,
+) -> bool:
+    """Example: scale based on time-of-day profile.
+
+    Returns True on HTTP 2xx, False otherwise.
+    """
+    hour = datetime.now().hour
+
+    if 9 <= hour < 17:  # Business hours
+        target_replicas = 10
+    elif 17 <= hour < 22:  # Evening peak
+        target_replicas = 15
+    else:  # Off-peak hours
+        target_replicas = 3
+
+    url = (
+        f"{serve_endpoint}/api/v1/applications/{application_name}"
+        f"/deployments/{deployment_name}/scale"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json={"target_num_replicas": target_replicas},
+            timeout=request_timeout_s,
+        )
+        response.raise_for_status()
+        return response.ok
+    except requests.RequestException:
+        return False
+```
+
+### Common use cases
+
+- Custom metric scaling: External monitoring (Prometheus/Datadog/CloudWatch), DB latency, cost caps
+- Predictive/scheduled: Anticipated spikes, event windows, time-of-day profiles
+- Manual/operational control: Load tests, off-peak cost optimization, staging envs
+
+
 ### Application level autoscaling
 
 By default, each deployment in Ray Serve autoscales independently. When you have multiple deployments that need to scale in a coordinated way—such as deployments that share backend resources, have dependencies on each other, or need load-aware routing—you can define an **application-level autoscaling policy**. This policy makes scaling decisions for all deployments within an application simultaneously.
