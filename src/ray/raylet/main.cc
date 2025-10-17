@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -139,7 +140,7 @@ DEFINE_int64(system_reserved_cpu_weight,
              "The amount of cores reserved for ray system processes. It will be applied "
              "as a cpu.weight constraint to the system cgroup. 10000 - "
              "system-reserved-cpu-weight will be applied as a constraint to the "
-             "application cgroup. If enable-resource-isolation is true, then this "
+             "workers and user cgroups. If enable-resource-isolation is true, then this "
              "cannot be -1.");
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
@@ -278,10 +279,10 @@ int main(int argc, char *argv[]) {
                                         system_reserved_memory_bytes,
                                         system_pids);
 
-  AddProcessToCgroupHook add_process_to_application_cgroup_hook =
+  AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
       [&cgroup_mgr = *cgroup_manager](const std::string &pid) {
-        RAY_CHECK_OK(cgroup_mgr.AddProcessToApplicationCgroup(pid)) << absl::StrFormat(
-            "Failed to move process %s into the application cgroup.", pid);
+        RAY_CHECK_OK(cgroup_mgr.AddProcessToWorkersCgroup(pid))
+            << absl::StrFormat("Failed to move process %s into the workers cgroup.", pid);
       };
 
   AddProcessToCgroupHook add_process_to_system_cgroup_hook =
@@ -328,7 +329,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
-  std::unique_ptr<plasma::PlasmaClient> plasma_client;
+  std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -387,56 +388,50 @@ int main(int argc, char *argv[]) {
 #endif
   };
 
-  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+  ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
-  auto shutdown_raylet_after_unregistration = [&main_service,
-                                               &raylet_socket_name,
-                                               &raylet,
-                                               &gcs_client,
-                                               &object_manager_rpc_threads]() {
-    // We should stop the service and remove the local socket file.
-    raylet->Stop();
-    gcs_client->Disconnect();
-    ray::stats::Shutdown();
-    main_service.stop();
-    for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
-      if (object_manager_rpc_threads[i].joinable()) {
-        object_manager_rpc_threads[i].join();
-      }
-    }
-    remove(raylet_socket_name.c_str());
-  };
-
+  std::atomic_bool shutting_down = false;
   // Shut down raylet gracefully, in a synchronous fashion.
-  // This is an internal method and should only be run on the main_service.
-  auto shutdown_raylet_gracefully_internal =
-      [&raylet, shutted_down, shutdown_raylet_after_unregistration](
-          const ray::rpc::NodeDeathInfo &node_death_info) {
-        // Make the shutdown method idempotent since graceful shutdown can be triggered
-        // by many places.
-        if (*shutted_down) {
-          RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
+  // This can be run by the signal handler or on the main io service.
+  auto shutdown_raylet_gracefully =
+      [raylet_node_id,
+       &shutting_down,
+       &raylet,
+       &main_service,
+       &raylet_socket_name,
+       &gcs_client,
+       &object_manager_rpc_threads](const ray::rpc::NodeDeathInfo &node_death_info) {
+        // Make sure shutdown is only triggered once.
+        if (shutting_down.exchange(true)) {
+          RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring death info: "
+                        << node_death_info.DebugString();
           return;
         }
-        RAY_LOG(INFO) << "Raylet graceful shutdown triggered, reason = "
-                      << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
-                      << "reason message = " << node_death_info.reason_message();
-        RAY_LOG(INFO) << "Shutting down...";
-        *shutted_down = true;
+        RAY_LOG(INFO) << "Raylet graceful shutdown triggered with death info: "
+                      << node_death_info.DebugString();
 
-        raylet->UnregisterSelf(node_death_info, shutdown_raylet_after_unregistration);
+        auto unregister_done_callback = [&main_service,
+                                         &raylet_socket_name,
+                                         &raylet,
+                                         &gcs_client,
+                                         &object_manager_rpc_threads]() {
+          // We should stop the service and remove the local socket
+          // file.
+          raylet->Stop();
+          gcs_client->Disconnect();
+          ray::stats::Shutdown();
+          main_service.stop();
+          for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
+            if (object_manager_rpc_threads[i].joinable()) {
+              object_manager_rpc_threads[i].join();
+            }
+          }
+          remove(raylet_socket_name.c_str());
+        };
+
+        gcs_client->Nodes().UnregisterSelf(
+            raylet_node_id, node_death_info, std::move(unregister_done_callback));
       };
-
-  auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_internal](
-                                        const ray::rpc::NodeDeathInfo &node_death_info) {
-    main_service.post(
-        [shutdown_raylet_gracefully_internal, node_death_info]() {
-          shutdown_raylet_gracefully_internal(node_death_info);
-        },
-        "shutdown_raylet_gracefully_internal");
-  };
-
-  ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
   gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
                                                       const std::optional<std::string>
@@ -635,7 +630,7 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
-        std::move(add_process_to_application_cgroup_hook));
+        std::move(add_process_to_workers_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true, node_ip_address);
@@ -811,7 +806,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes().Get(ray::NodeID::FromBinary(id.Binary())) != nullptr;
+          return gcs_client->Nodes().GetNodeAddressAndLiveness(
+                     ray::NodeID::FromBinary(id.Binary())) != nullptr;
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -834,8 +830,10 @@ int main(int argc, char *argv[]) {
         /*labels*/
         node_manager_config.labels);
 
-    auto get_node_info_func = [&](const ray::NodeID &id) {
-      return gcs_client->Nodes().Get(id);
+    auto get_node_info_func =
+        [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
+      auto ptr = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
       /// Publish the infeasible lease error to GCS so that drivers can subscribe to it
@@ -905,14 +903,15 @@ int main(int argc, char *argv[]) {
                                                            *local_lease_manager);
 
     auto raylet_client_factory = [&](const ray::NodeID &id) {
-      const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
+      const ray::rpc::GcsNodeAddressAndLiveness *node_info =
+          gcs_client->Nodes().GetNodeAddressAndLiveness(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
           id, node_info->node_manager_address(), node_info->node_manager_port());
       return raylet_client_pool->GetOrConnectByAddress(addr);
     };
 
-    plasma_client = std::make_unique<plasma::PlasmaClient>();
+    plasma_client = std::make_shared<plasma::PlasmaClient>();
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -932,14 +931,15 @@ int main(int argc, char *argv[]) {
         *lease_dependency_manager,
         *worker_pool,
         leased_workers,
-        *plasma_client,
+        plasma_client,
         std::make_unique<ray::core::experimental::MutableObjectProvider>(
-            *plasma_client,
+            plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
         shutdown_raylet_gracefully,
         std::move(add_process_to_system_cgroup_hook),
-        std::move(cgroup_manager));
+        std::move(cgroup_manager),
+        shutting_down);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,
@@ -986,7 +986,7 @@ int main(int argc, char *argv[]) {
     raylet->Start();
   });
 
-  auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
+  auto signal_handler = [&raylet, shutdown_raylet_gracefully](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     std::optional<ray::rpc::DrainRayletRequest> drain_request =
@@ -1005,7 +1005,7 @@ int main(int argc, char *argv[]) {
       node_death_info.set_reason_message("received SIGTERM");
     }
 
-    shutdown_raylet_gracefully_internal(node_death_info);
+    shutdown_raylet_gracefully(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32
