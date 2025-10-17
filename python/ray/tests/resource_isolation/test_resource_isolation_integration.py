@@ -224,7 +224,7 @@ def cleanup_test_suite():
         ) as base_subtree_control_file:
             base_subtree_control_file.write("-cpu -memory")
             base_subtree_control_file.flush()
-        # 2) Move processes back into the leaf cgroup.
+        # 2) Move processes back into the root cgroup.
         with open(_ROOT_CGROUP / "cgroup.procs", "w") as root_procs_file, open(
             _LEAF_GROUP / "cgroup.procs", "r"
         ) as leaf_procs_file:
@@ -232,6 +232,15 @@ def cleanup_test_suite():
             for line in leaf_cgroup_lines:
                 root_procs_file.write(line.strip())
                 root_procs_file.flush()
+        # 3) Move the current process back into the _ROOT_CGROUP
+        with open(_ROOT_CGROUP / "cgroup.procs", "w") as root_procs_file, open(
+            _TEST_CGROUP / "cgroup.procs", "r"
+        ) as test_procs_file:
+            test_cgroup_lines = test_procs_file.readlines()
+            for line in test_cgroup_lines:
+                root_procs_file.write(line.strip())
+                root_procs_file.flush()
+
         # 3) Delete the cgroups.
         os.rmdir(_LEAF_GROUP)
         os.rmdir(_TEST_CGROUP)
@@ -431,9 +440,6 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     assert result.exit_code == 0
     resource_isolation_config.add_object_store_memory(object_store_memory)
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
-    assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
-    )
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -447,12 +453,17 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
+    assert_system_processes_are_in_system_cgroup(
+        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
+    )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
     runner.invoke(scripts.stop)
+
     assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
 
 
@@ -492,9 +503,6 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         object_store_memory=object_store_memory,
     )
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
-    assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
-    )
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -508,8 +516,12 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
+    assert_system_processes_are_in_system_cgroup(
+        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
+    )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )

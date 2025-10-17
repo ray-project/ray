@@ -29,6 +29,12 @@
         "createMsi": {
             "type": "bool",
             "defaultValue": "true"
+        },
+        "roleAssignmentGuid": {
+            "type": "string",
+            "metadata": {
+                "description": "Deterministic resource name for the MSI role assignment."
+            }
         }
     },
     "variables": {
@@ -44,19 +50,20 @@
        {
             "condition": "[parameters('createMsi')]",
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-            "apiVersion": "2018-11-30",
+            "apiVersion": "2024-11-30",
             "location": "[variables('location')]",
             "name": "[parameters('msiName')]"
         },
         {
             "type": "Microsoft.Authorization/roleAssignments",
-            "apiVersion": "2020-08-01-preview",
-            "name": "[guid(variables('roleAssignmentName'))]",
+            "apiVersion": "2022-04-01",
+            "name": "[parameters('roleAssignmentGuid')]",
             "properties": {
-                "principalId": "[reference(resourceId(parameters('msiResourceGroup'), 'Microsoft.ManagedIdentity/userAssignedIdentities', parameters('msiName')), '2018-11-30').principalId]",
+                "principalId": "[reference(resourceId(parameters('msiResourceGroup'), 'Microsoft.ManagedIdentity/userAssignedIdentities', parameters('msiName')), '2024-11-30').principalId]",
                 "roleDefinitionId": "[variables('contributor')]",
                 "scope": "[resourceGroup().id]",
-                "principalType": "ServicePrincipal"
+                "principalType": "ServicePrincipal",
+                "description": "[concat('Ray autoscaler cluster ', parameters('clusterId'))]"
             },
             "dependsOn": [
                 "[parameters('msiName')]"
@@ -64,7 +71,7 @@
         },
         {
             "type": "Microsoft.Network/networkSecurityGroups",
-            "apiVersion": "2019-02-01",
+            "apiVersion": "2024-10-01",
             "name": "[variables('nsgName')]",
             "location": "[variables('location')]",
             "properties": {
@@ -73,7 +80,7 @@
                         "name": "SSH",
                         "properties": {
                             "priority": 1000,
-                            "protocol": "TCP",
+                            "protocol": "Tcp",
                             "access": "Allow",
                             "direction": "Inbound",
                             "sourceAddressPrefix": "*",
@@ -87,7 +94,7 @@
         },
         {
             "type": "Microsoft.Network/virtualNetworks",
-            "apiVersion": "2019-11-01",
+            "apiVersion": "2024-10-01",
             "name": "[variables('vnetName')]",
             "location": "[variables('location')]",
             "properties": {
