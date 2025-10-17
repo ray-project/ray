@@ -1448,6 +1448,7 @@ def init(
     enable_resource_isolation: bool = False,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
+    enable_token_auth: bool = False,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1569,6 +1570,10 @@ def init(
             By default, the min of 10% and 25GB plus object_store_memory will be reserved.
             Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
             This option only works if enable_resource_isolation is True.
+        enable_token_auth: If True, enable token-based authentication for Ray cluster
+            communication. If no token is found in the environment (RAY_AUTH_TOKEN or
+            RAY_AUTH_TOKEN_PATH) or default path (~/.ray/auth_token), a new token will be
+            automatically generated and saved to ~/.ray/auth_token.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
             The raylet must have read/write permissions to this path.
@@ -1664,6 +1669,18 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
+
+    # Handle token-based authentication
+    if enable_token_auth:
+        from ray._private.auth_token_loader import load_auth_token
+
+        # Load or generate token
+        _token = load_auth_token(generate_if_not_found=True)
+        # Only pass the flag via system_config, NOT the token
+        # C++ will load token using its own RayAuthTokenLoader
+        if _system_config is None:
+            _system_config = {}
+        _system_config["enable_token_auth"] = "true"
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
