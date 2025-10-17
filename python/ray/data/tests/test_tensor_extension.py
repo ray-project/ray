@@ -742,23 +742,18 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype, restore_data_context, tensor_format):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     # Test that ArrowTensorArray slicing works as expected.
     arr = np.array(test_arr, dtype=dtype)
     ata = ArrowTensorArray.from_numpy(arr)
-
-    np.testing.assert_array_equal(ata.to_numpy_ndarray(), arr)
-
+    np.testing.assert_array_equal(ata.to_numpy(), arr)
     slice1 = ata.slice(0, 2)
-    np.testing.assert_array_equal(slice1.to_numpy_ndarray(), arr[0:2])
-    np.testing.assert_array_equal(slice1[1].to_numpy(), arr[1])
-
+    np.testing.assert_array_equal(slice1.to_numpy(), arr[0:2])
+    np.testing.assert_array_equal(slice1[1], arr[1])
     slice2 = ata.slice(2, 2)
-    np.testing.assert_array_equal(slice2.to_numpy_ndarray(), arr[2:4])
-    np.testing.assert_array_equal(slice2[1].to_numpy(), arr[3])
+    np.testing.assert_array_equal(slice2.to_numpy(), arr[2:4])
+    np.testing.assert_array_equal(slice2[1], arr[3])
 
 
 pytest_tensor_array_concat_shapes = [(1, 2, 2), (3, 2, 2), (2, 3, 3)]

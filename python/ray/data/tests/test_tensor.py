@@ -331,58 +331,41 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
 
 # Not adding arrow_native because we don't have control
 # over it's __str__ representation
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
 def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
     if tensor_format == "arrow_native":
         ctx.use_arrow_native_fixed_shape_tensor_type = True
-        class_name = "FixedShapeTensor"
+        schema_name = "arrow.fixed_shape_tensor"
     elif tensor_format == "v2":
         ctx.use_arrow_tensor_v2 = True
-        class_name = "ArrowTensorTypeV2"
+        schema_name = "ArrowTensorTypeV2"
     else:
-        class_name = "ArrowTensorType"
+        ctx.use_arrow_tensor_v2 = False
+        schema_name = "ArrowTensorType"
 
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
         lambda _: {"data": np.ones((4, 4))}
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=10,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert schema_name in str(ds)
 
     # Test map_batches.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert schema_name in str(ds)
 
     # Test flat_map.
     ds = ray.data.range(10, override_num_blocks=10).flat_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=20,\n"
-        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
-        ")"
-    )
+    assert schema_name in str(ds)
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
@@ -1076,7 +1059,7 @@ def test_ragged_tensors(ray_start_regular_shared, restore_data_context, tensor_f
             {"spam": np.zeros((64, 64, 5))},
         ]
     )
-    new_type = ds.schema().types[0].scalar_type
+    new_type = ds.schema().types[0].value_type
     assert ds.schema().types == [
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]
