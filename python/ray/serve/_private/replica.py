@@ -172,7 +172,6 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
-        user_callable_wrapper: Optional["UserCallableWrapper"],
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
