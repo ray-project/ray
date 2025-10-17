@@ -1,5 +1,6 @@
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 import bisect
+import json
 from typing import Dict, List, Optional
 from ray.util.metrics import Histogram
 
@@ -106,15 +107,18 @@ class RuntimeMetricsHistogram:
         self,
         metric: Histogram,
         tags: Dict[str, str],
-        previous_bucket_counts: Optional[List[int]],
     ):
         """
-        This function calculates the difference between the current bucket counts and the previous bucket counts,
+        This method calculates the difference between the current bucket counts and the previous bucket counts,
         and applies those observations to the metric.
 
-        Returns:
-            The new bucket counts after applying the observations to the metric.
+        This method stores the previous_bucket_counts in the metric as `last_applied_bucket_counts_for_tags`.
         """
+        if getattr(metric, "last_applied_bucket_counts_for_tags", None) is None:
+            metric.last_applied_bucket_counts_for_tags = {}
+        tags_key = json.dumps(tags, sort_keys=True)
+        previous_bucket_counts = metric.last_applied_bucket_counts_for_tags.get(tags_key)
+
         for i in range(len(self._bucket_counts)):
             # Pick a value between the boundaries so the sample falls into the right bucket.
             # We need to calculate the mid point because choosing the exact boundary value
@@ -137,7 +141,7 @@ class RuntimeMetricsHistogram:
                 for _ in range(diff):
                     metric.observe(bucket_value, tags)
 
-        return self._bucket_counts
+        metric.last_applied_bucket_counts_for_tags[tags_key] = self._bucket_counts
 
     def _find_bucket_index(self, value: float):
         return bisect.bisect_left(self.boundaries, value)

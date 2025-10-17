@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
-import json
 
 import numpy as np
 
@@ -432,7 +431,6 @@ class _StatsActor:
                     tag_keys=tag_keys,
                     **metric.metrics_args,
                 )
-                metrics[metric.name].last_applied_bucket_counts_for_tags = {}
             elif metric.metrics_type == MetricsType.Counter:
                 metrics[metric.name] = Counter(
                     metric_name,
@@ -482,17 +480,7 @@ class _StatsActor:
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
                 if isinstance(value, RuntimeMetricsHistogram):
-                    # Normalize the tags to a string key
-                    tags_key = json.dumps(tags, sort_keys=True)
-                    last_applied_bucket_counts = (
-                        prom_metric.last_applied_bucket_counts_for_tags.get(tags_key)
-                    )
-                    new_bucket_counts = value.apply_to_metric(
-                        prom_metric, tags, last_applied_bucket_counts
-                    )
-                    prom_metric.last_applied_bucket_counts_for_tags[
-                        tags_key
-                    ] = new_bucket_counts
+                    value.apply_to_metric(prom_metric, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
