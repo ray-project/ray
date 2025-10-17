@@ -7,9 +7,9 @@ FROM $DOCKER_IMAGE_RAY_DASHBOARD AS ray_dashboard
 
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-SHELL ["/bin/bash", "-ice"]
+COPY ${PIP_REQUIREMENTS} python_depset.lock
 
-COPY "$PIP_REQUIREMENTS" python_depset.lock
+SHELL ["/bin/bash", "-ice"]
 
 RUN --mount=type=bind,from=ray_core,target=/mnt/ray-core \
     --mount=type=bind,from=ray_dashboard,target=/mnt/ray-dashboard \
