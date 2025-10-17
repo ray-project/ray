@@ -38,7 +38,8 @@ namespace gcs {
 
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
 // NOLINTNEXTLINE
-const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
+const std::string kJobDataKeyPrefix =
+    std::string(kRayInternalNamespacePrefix) + "job_info_";
 inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
 }

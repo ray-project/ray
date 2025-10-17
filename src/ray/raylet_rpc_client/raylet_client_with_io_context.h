@@ -33,11 +33,10 @@ class RayletClientWithIoContext {
   RayletClientWithIoContext(const std::string &ip_address, int port);
 
   /// Get the worker pids from raylet.
-  /// \param worker_pids The output worker pids.
+  /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  /// \return ray::Status
-  Status GetWorkerPIDs(std::shared_ptr<std::vector<int32_t>> worker_pids,
-                       int64_t timeout_ms);
+  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+                     int64_t timeout_ms);
 
  private:
   /// client call manager is created inside the raylet client, it should be kept active

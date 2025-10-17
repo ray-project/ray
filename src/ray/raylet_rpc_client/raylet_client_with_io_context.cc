@@ -47,9 +47,9 @@ RayletClientWithIoContext::RayletClientWithIoContext(const std::string &ip_addre
       rpc_address, *client_call_manager_, std::move(raylet_unavailable_timeout_callback));
 }
 
-Status RayletClientWithIoContext::GetWorkerPIDs(
-    std::shared_ptr<std::vector<int32_t>> worker_pids, int64_t timeout_ms) {
-  return raylet_client_->GetWorkerPIDs(worker_pids, timeout_ms);
+void RayletClientWithIoContext::GetWorkerPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  raylet_client_->GetWorkerPIDs(callback, timeout_ms);
 }
 
 }  // namespace rpc

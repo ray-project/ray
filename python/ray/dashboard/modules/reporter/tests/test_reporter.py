@@ -1213,7 +1213,15 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     assert resp_data["rayInitCluster"] == meta["ray_init_cluster"]
 
 
-def test_reporter_raylet_agent(ray_start_with_dashboard):
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"num_cpus": 1},
+    ],
+    indirect=True,
+)
+async def test_reporter_raylet_agent(ray_start_with_dashboard):
     @ray.remote
     class MyActor:
         def ping(self):
@@ -1228,7 +1236,7 @@ def test_reporter_raylet_agent(ray_start_with_dashboard):
         ray._private.worker.global_worker.node.node_manager_port
     )
     agent = ReporterAgent(dashboard_agent)
-    pids = agent._get_worker_pids_from_raylet()
+    pids = await agent._get_worker_pids_from_raylet()
     assert len(pids) == 2
     # check if worker is reported
     assert "ray::MyActor" in [psutil.Process(pid).cmdline()[0] for pid in pids]

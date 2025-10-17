@@ -467,36 +467,25 @@ void RayletClient::GetNodeStats(
                   /*method_timeout_ms*/ -1);
 }
 
-Status RayletClient::GetWorkerPIDs(std::shared_ptr<std::vector<int32_t>> worker_pids,
-                                   int64_t timeout_ms) {
+void RayletClient::GetWorkerPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   rpc::GetWorkerPIDsRequest request;
-  auto promise = std::make_shared<std::promise<Status>>();
-  std::weak_ptr<std::promise<Status>> weak_promise = promise;
-  std::weak_ptr<std::vector<int32_t>> weak_worker_pids = worker_pids;
-  auto future = promise->get_future();
-  auto callback = [weak_promise, weak_worker_pids](const Status &status,
-                                                   rpc::GetWorkerPIDsReply &&reply) {
-    auto p = weak_promise.lock();
-    auto workers = weak_worker_pids.lock();
-    if (p != nullptr && workers != nullptr) {
-      if (status.ok()) {
-        *workers = std::vector<int32_t>(reply.pids().begin(), reply.pids().end());
-      }
-      p->set_value(status);
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetWorkerPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> workers(reply.pids().begin(), reply.pids().end());
+      callback(status, workers);
+    } else {
+      callback(status, std::nullopt);
     }
   };
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
                             NodeManagerService,
                             GetWorkerPIDs,
                             request,
-                            callback,
+                            client_callback,
                             grpc_client_,
                             timeout_ms);
-  if (future.wait_for(std::chrono::milliseconds(timeout_ms)) ==
-      std::future_status::timeout) {
-    return Status::TimedOut("Timed out getting worker PIDs from raylet");
-  }
-  return future.get();
 }
 
 }  // namespace rpc

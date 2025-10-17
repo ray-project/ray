@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/gcs_callback_types.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
@@ -164,11 +165,10 @@ class RayletClient : public RayletClientInterface {
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
   /// Get the worker pids from raylet.
-  /// \param worker_pids The output worker pids.
+  /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  /// \return ray::Status
-  Status GetWorkerPIDs(std::shared_ptr<std::vector<int32_t>> worker_pids,
-                       int64_t timeout_ms);
+  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+                     int64_t timeout_ms);
 
  protected:
   /// gRPC client to the NodeManagerService.

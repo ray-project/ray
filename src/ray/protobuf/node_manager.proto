@@ -520,8 +520,9 @@ service NodeManagerService {
   // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
   // Get the PIDs of all workers currently alive that are managed by the local Raylet.
-  // This includes connected driver processes.
-  // Failure: Will retry with the default timeout 1000ms.
-  // If fails, reply return an empty list.
+  // This includes connected driver processes but excludes system drivers (with namespace
+  // prefix "_ray_internal_")
+  // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
+  // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
 }

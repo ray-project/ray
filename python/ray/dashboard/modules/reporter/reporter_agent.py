@@ -66,6 +66,10 @@ from ray.dashboard.modules.reporter.profile_manager import (
 from ray.dashboard.modules.reporter.reporter_models import (
     StatsPayload,
 )
+from ray.exceptions import (
+    GetTimeoutError,
+    RpcError,
+)
 
 import psutil
 
@@ -892,11 +896,11 @@ class ReporterAgent(
                 stats.write_count,
             )
 
-    def _get_worker_pids_from_raylet(self) -> List[int]:
+    async def _get_worker_pids_from_raylet(self) -> List[int]:
         try:
             # Get worker pids from raylet via gRPC.
-            return self._raylet_client.get_worker_pids()
-        except (TimeoutError, RuntimeError):
+            return await self._raylet_client.async_get_worker_pids()
+        except (GetTimeoutError, RpcError):
             logger.exception("Failed to get worker pids from raylet")
             return []
 
@@ -909,7 +913,7 @@ class ReporterAgent(
         return (proc.pid, proc.create_time())
 
     def _get_worker_processes(self):
-        pids = self._get_worker_pids_from_raylet()
+        pids = asyncio.run(self._get_worker_pids_from_raylet())
         logger.debug(f"Worker PIDs from raylet: {pids}")
         if not pids:
             return []

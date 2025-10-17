@@ -767,7 +767,7 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
 cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
     cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
         CRayletClientWithIoContext(const c_string &ip_address, int port)
-        CRayStatus GetWorkerPIDs(shared_ptr[c_vector[int32_t]] worker_pids,
+        CRayStatus GetWorkerPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
                                  int64_t timeout_ms)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
@@ -803,3 +803,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+    cdef const char[] kRayInternalNamespacePrefix
