@@ -421,7 +421,8 @@ def _get_docker_cpus(
 
 def get_num_cpus(
     override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
-) -> int:
+    truncate: bool = True,
+) -> float:
     """
     Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
@@ -432,6 +433,7 @@ def get_num_cpus(
             RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
             the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
+        truncate: truncates the return value and drops the decimal part.
     """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
@@ -473,7 +475,8 @@ def get_num_cpus(
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
                 )
-            docker_count = int(docker_count)
+            if truncate:
+                docker_count = int(docker_count)
             cpu_count = docker_count
 
     except Exception:
