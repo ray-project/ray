@@ -2,19 +2,17 @@
 
 Ray Serve LLM provides customizable request routing to optimize request distribution across replicas for different workload patterns. Request routing operates at the **replica selection level**, distinct from ingress-level model routing.
 
-## Routing vs ingress
+## Routing versus ingress
 
 You need to distinguish between two levels of routing:
 
 **Ingress routing** (model-level):
 - Maps `model_id` to deployment
 - Example: `/v1/chat/completions` with `model="gptoss"` → which deployment?
-- `OpenAiIngress` handles this
 
 **Request routing** (replica-level):
 - Chooses which replica to send the request to
-- Example: Which replica of the `gptoss` deployment (1, 2, or 3)?
-- Ray Serve's `RequestRouter` handles this
+- Example: `OpenAiIngress` handles which replica of the `gptoss` deployment (1, 2, or 3) to send the request to.
 
 This document focuses on **request routing** (replica selection).
 
@@ -55,7 +53,7 @@ Ray Serve LLM provides multiple request routing policies to optimize for differe
 
 ### Default routing: Power of Two Choices
 
-The default router uses the Power of Two Choices algorithm:
+The default router uses the Power of Two Choices algorithm to:
 1. Randomly sample two replicas
 2. Route to the replica with fewer ongoing requests
 
