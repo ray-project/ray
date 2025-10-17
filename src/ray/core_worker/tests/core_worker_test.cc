@@ -323,8 +323,9 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
   // disconnect to trigger metric recording
   core_worker_->Disconnect(rpc::WorkerExitType::SYSTEM_ERROR, "test", nullptr);
   auto tag_to_value = fake_task_by_state_gauge_.GetTagToValue();
-  // 4 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT
-  ASSERT_EQ(tag_to_value.size(), 4);
+  // 5 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT, and
+  // GETTING_AND_PINNING_ARGS
+  ASSERT_EQ(tag_to_value.size(), 5);
   for (auto &[key, value] : tag_to_value) {
     ASSERT_EQ(key.at("Name"), "Unknown task");
     ASSERT_EQ(key.at("Source"), "executor");
