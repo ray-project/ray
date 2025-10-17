@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+option cc_enable_arenas = false;
+
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/pubsub.proto";

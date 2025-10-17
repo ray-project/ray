@@ -466,6 +466,46 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
     std::optional<rpc::TaskEvents> task_event = std::nullopt;
 
+    // Filter out empty events - skip events that don't have their corresponding event
+    // data set
+    bool should_skip = false;
+    switch (event.event_type()) {
+    case rpc::events::RayEvent::TASK_DEFINITION_EVENT:
+      if (!event.has_task_definition_event()) {
+        RAY_LOG(DEBUG) << "Skipping empty TASK_DEFINITION_EVENT";
+        should_skip = true;
+      }
+      break;
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT:
+      if (!event.has_task_execution_event()) {
+        RAY_LOG(DEBUG) << "Skipping empty TASK_EXECUTION_EVENT";
+        should_skip = true;
+      }
+      break;
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT:
+      if (!event.has_task_profile_events()) {
+        RAY_LOG(DEBUG) << "Skipping empty TASK_PROFILE_EVENT";
+        should_skip = true;
+      }
+      break;
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT:
+      if (!event.has_actor_task_definition_event()) {
+        RAY_LOG(DEBUG) << "Skipping empty ACTOR_TASK_DEFINITION_EVENT";
+        should_skip = true;
+      }
+      break;
+    default:
+      // Unsupported event types are skipped rather than failing
+      RAY_LOG(DEBUG) << "Skipping unsupported event type: " << event.event_type();
+      should_skip = true;
+      break;
+    }
+
+    if (should_skip) {
+      continue;
+    }
+
+    // Convert the event based on its type
     switch (event.event_type()) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
       task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
@@ -485,6 +525,7 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
       break;
     }
     default:
+      // This should never happen due to the filter above, but keep for safety
       RAY_CHECK(false) << "Unsupported event type: " << event.event_type();
     }
 
