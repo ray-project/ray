@@ -6,10 +6,7 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import (
-    DashboardConfig,
-    Panel,
-)
+from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
@@ -224,6 +221,7 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
+    # Configure panel visualization settings
     template["yaxes"][0]["format"] = panel.unit
     template["fill"] = panel.fill
     template["stack"] = panel.stack
