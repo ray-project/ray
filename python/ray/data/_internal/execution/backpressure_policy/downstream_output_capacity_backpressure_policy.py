@@ -163,7 +163,7 @@ class DownstreamOutputCapacityBackpressurePolicy(BackpressurePolicy):
 
             # Convert blocks to approximate bytes
             # Use average block size from metrics if available
-            avg_block_size = downstream_op.metrics.average_block_bytes
+            avg_block_size = downstream_op.metrics.average_bytes_per_output
             if avg_block_size is None or avg_block_size == 0:
                 # No block size info, skip byte-based limiting
                 continue
