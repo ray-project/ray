@@ -101,6 +101,7 @@ message PrometheusMetric {
 // Wrapper for a list of Prometheus metrics
 message PrometheusCustomMetrics {
   repeated PrometheusMetric metrics = 1;
+}
 
 //[Begin] LOGGING CONFIG
 // Encoding type
