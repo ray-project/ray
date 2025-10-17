@@ -329,7 +329,7 @@ void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
   Status s = store_client_->Delete(object_ids);
   if (!s.ok()) {
-    RAY_LOG(ERROR) << "Failed to delete objects from plasma store (non-fatal): " << s;
+    RAY_LOG(ERROR) << "Failed to delete objects from plasma store: " << s;
   }
 }
 
