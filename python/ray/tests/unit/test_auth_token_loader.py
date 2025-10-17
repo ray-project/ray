@@ -4,7 +4,6 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -317,4 +316,3 @@ class TestIntegration:
         assert default_token_path.exists()
         saved_token = default_token_path.read_text().strip()
         assert saved_token == token
-
