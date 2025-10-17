@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -54,7 +55,7 @@ TEST_F(RayAuthTokenLoaderTest, TestLoadFromEnvVariable) {
 
   // Create a new instance to avoid cached state
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   EXPECT_EQ(token, "test-token-from-env");
   EXPECT_TRUE(loader.HasToken());
@@ -71,7 +72,7 @@ TEST_F(RayAuthTokenLoaderTest, TestLoadFromEnvPath) {
   setenv("RAY_AUTH_TOKEN_PATH", temp_token_path.c_str(), 1);
 
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   EXPECT_EQ(token, "test-token-from-file");
   EXPECT_TRUE(loader.HasToken());
@@ -91,7 +92,7 @@ TEST_F(RayAuthTokenLoaderTest, TestLoadFromDefaultPath) {
   token_file.close();
 
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   EXPECT_EQ(token, "test-token-from-default");
   EXPECT_TRUE(loader.HasToken());
@@ -115,7 +116,7 @@ TEST_F(RayAuthTokenLoaderTest, TestPrecedenceOrder) {
 
   // Environment variable should have highest precedence
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   EXPECT_EQ(token, "token-from-env");
 
@@ -123,30 +124,25 @@ TEST_F(RayAuthTokenLoaderTest, TestPrecedenceOrder) {
   remove(temp_token_path.c_str());
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestNoTokenFound) {
-  // No token set anywhere
+TEST_F(RayAuthTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
+  // No token set anywhere, but auth is disabled (default)
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   EXPECT_EQ(token, "");
   EXPECT_FALSE(loader.HasToken());
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestGenerateToken) {
-  // No token exists, but request generation
+TEST_F(RayAuthTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
+  // Enable token auth
+  RayConfig::instance().initialize(R"({"enable_token_auth": true})");
+
+  // No token exists, should throw an error
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(true);
+  EXPECT_THROW(loader.GetToken(), std::runtime_error);
 
-  // Token should be generated (32 character hex string)
-  EXPECT_EQ(token.length(), 32);
-  EXPECT_TRUE(loader.HasToken());
-
-  // Token should be saved to default path
-  std::ifstream token_file(default_token_path_);
-  EXPECT_TRUE(token_file.is_open());
-  std::string saved_token;
-  std::getline(token_file, saved_token);
-  EXPECT_EQ(saved_token, token);
+  // Reset config for other tests
+  RayConfig::instance().initialize(R"({"enable_token_auth": false})");
 }
 
 TEST_F(RayAuthTokenLoaderTest, TestCaching) {
@@ -154,11 +150,11 @@ TEST_F(RayAuthTokenLoaderTest, TestCaching) {
   setenv("RAY_AUTH_TOKEN", "cached-token", 1);
 
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token1 = loader.GetToken(false);
+  std::string token1 = loader.GetToken();
 
   // Change environment variable (shouldn't affect cached value)
   setenv("RAY_AUTH_TOKEN", "new-token", 1);
-  std::string token2 = loader.GetToken(false);
+  std::string token2 = loader.GetToken();
 
   // Should still return the cached token
   EXPECT_EQ(token1, token2);
@@ -176,8 +172,7 @@ TEST_F(RayAuthTokenLoaderTest, TestThreadSafety) {
   std::vector<std::string> results(10);
 
   for (int i = 0; i < 10; i++) {
-    threads.emplace_back(
-        [&loader, &results, i]() { results[i] = loader.GetToken(false); });
+    threads.emplace_back([&loader, &results, i]() { results[i] = loader.GetToken(); });
   }
 
   // Wait for all threads to complete
@@ -200,7 +195,7 @@ TEST_F(RayAuthTokenLoaderTest, TestWhitespaceHandling) {
   token_file.close();
 
   auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken(false);
+  std::string token = loader.GetToken();
 
   // Whitespace should be trimmed
   EXPECT_EQ(token, "token-with-spaces");

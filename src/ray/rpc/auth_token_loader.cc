@@ -15,10 +15,10 @@
 #include "ray/rpc/auth_token_loader.h"
 
 #include <fstream>
-#include <random>
-#include <sstream>
+#include <stdexcept>
 #include <string>
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -37,7 +37,7 @@ RayAuthTokenLoader &RayAuthTokenLoader::instance() {
   return instance;
 }
 
-const std::string &RayAuthTokenLoader::GetToken(bool generate_if_not_found) {
+const std::string &RayAuthTokenLoader::GetToken() {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   if (token_loaded_) {
@@ -48,9 +48,14 @@ const std::string &RayAuthTokenLoader::GetToken(bool generate_if_not_found) {
   cached_token_ = LoadTokenFromSources();
   token_loaded_ = true;
 
-  // If not found and generation is requested, generate a new token
-  if (cached_token_.empty() && generate_if_not_found) {
-    cached_token_ = GenerateToken();
+  // If token auth is enabled but no token is found, throw an error
+  if (RayConfig::instance().enable_token_auth() && cached_token_.empty()) {
+    RAY_LOG(ERROR) << "Token authentication is enabled but no authentication token was "
+                      "found. Please set RAY_AUTH_TOKEN environment variable, "
+                      "RAY_AUTH_TOKEN_PATH to a file containing the token, or create a "
+                      "token file at ~/.ray/auth_token";
+    throw std::runtime_error(
+        "Token authentication is enabled but no authentication token was found");
   }
 
   return cached_token_;
@@ -58,7 +63,7 @@ const std::string &RayAuthTokenLoader::GetToken(bool generate_if_not_found) {
 
 bool RayAuthTokenLoader::HasToken() {
   // This will trigger loading if not already loaded
-  const std::string &token = GetToken(false);
+  const std::string &token = GetToken();
   return !token.empty();
 }
 
@@ -111,56 +116,6 @@ std::string RayAuthTokenLoader::LoadTokenFromSources() {
   // No token found
   RAY_LOG(DEBUG) << "No authentication token found in any source";
   return "";
-}
-
-std::string RayAuthTokenLoader::GenerateToken() {
-  // Generate a UUID-like token using random hex string
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(0, 15);
-
-  const char *hex_chars = "0123456789abcdef";
-  std::stringstream ss;
-
-  // Generate a 32-character hex string (similar to UUID without dashes)
-  for (int i = 0; i < 32; i++) {
-    ss << hex_chars[dis(gen)];
-  }
-
-  std::string token = ss.str();
-  std::string token_path = GetDefaultTokenPath();
-
-  // Try to save the token to the default path
-  try {
-    // Create directory if it doesn't exist
-    std::string dir_path = token_path.substr(0, token_path.find_last_of("/\\"));
-#ifdef _WIN32
-    CreateDirectoryA(dir_path.c_str(), NULL);
-#else
-    mkdir(dir_path.c_str(), 0700);
-#endif
-
-    // Write token to file
-    std::ofstream token_file(token_path, std::ios::trunc);
-    if (token_file.is_open()) {
-      token_file << token;
-      token_file.close();
-
-#ifndef _WIN32
-      // Set file permissions to 0600 on Unix systems
-      chmod(token_path.c_str(), S_IRUSR | S_IWUSR);
-#endif
-
-      RAY_LOG(INFO) << "Generated new authentication token and saved to " << token_path;
-    } else {
-      RAY_LOG(WARNING) << "Failed to save generated token to " << token_path
-                       << ". Token will only be available in memory.";
-    }
-  } catch (const std::exception &e) {
-    RAY_LOG(WARNING) << "Exception while saving token: " << e.what();
-  }
-
-  return token;
 }
 
 std::string RayAuthTokenLoader::GetDefaultTokenPath() {

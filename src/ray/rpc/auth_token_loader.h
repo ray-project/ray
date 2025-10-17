@@ -33,10 +33,9 @@ class RayAuthTokenLoader {
   static RayAuthTokenLoader &instance();
 
   /// Get the authentication token.
-  /// \param generate_if_not_found If true, generate and save a new token if not found.
-  /// \return The authentication token, or empty string if not found and generation is
-  /// disabled.
-  const std::string &GetToken(bool generate_if_not_found = false);
+  /// If token authentication is enabled but no token is found, throws an error.
+  /// \return The authentication token, or empty string if auth is disabled.
+  const std::string &GetToken();
 
   /// Check if an authentication token exists.
   /// \return True if a token is available (cached or can be loaded).
@@ -52,9 +51,6 @@ class RayAuthTokenLoader {
 
   /// Load token from available sources (env vars and file).
   std::string LoadTokenFromSources();
-
-  /// Generate a new UUID token and save it to the default path.
-  std::string GenerateToken();
 
   /// Get the default token file path (~/.ray/auth_token).
   std::string GetDefaultTokenPath();
