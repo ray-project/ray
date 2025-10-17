@@ -15,7 +15,9 @@
 #include "ray/rpc/auth_token_loader.h"
 
 #include <fstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
