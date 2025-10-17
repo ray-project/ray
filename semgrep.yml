@@ -38,7 +38,6 @@ rules:
         - "python/ray/data/tests/test_block.py"
         - "python/ray/data/tests/test_expression_evaluator.py"
         - "python/ray/data/tests/test_hash_shuffle.py"
-        - "python/ray/data/tests/test_operator_fusion.py"
     languages:
       - python
     message: |
