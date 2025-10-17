@@ -352,27 +352,23 @@ class ReplicaMetricsManager:
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
-
         self._autoscaling_config = autoscaling_config
+        if not autoscaling_config:
+            return
 
-        if self._autoscaling_config:
-
-            if self._autoscaling_config.prometheus_metrics:
-                if not RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST:
-                    logger.error(
-                        "Prometheus metrics host is not set! Exiting..."
-                        "Please export RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST "
-                        "environment variable to enable Prometheus metrics collection."
-                    )
-                    return
+        if autoscaling_config.prometheus_metrics:
+            if RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST:
                 self._prometheus_metrics_enabled = True
                 self._prometheus_queries = autoscaling_config.prometheus_metrics
                 self.start_metrics_pusher()
                 return
+            logger.error(
+                "Prometheus metrics host is not set! Please export "
+                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST to enable collection."
+            )
 
-            elif self.should_collect_ongoing_requests():
-                self.start_metrics_pusher()
-                return
+        if self.should_collect_ongoing_requests():
+            self.start_metrics_pusher()
 
     def enable_custom_autoscaling_metrics(
         self,
