@@ -429,8 +429,11 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     stats = ds.stats()
-    assert "MapBatches(fn)->RandomizeBlockOrder" not in stats
+    assert "RandomizeBlockOrder->MapBatches(fn)" not in stats
+    assert "ReadRange" in stats
+    assert "RandomizeBlockOrder" in stats
     assert "MapBatches(fn)" in stats
+
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
