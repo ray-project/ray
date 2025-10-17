@@ -150,7 +150,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 f"--image-name {custom_byod_images[3][0]}"
                 in content["steps"][2]["commands"][6]
             )
-            assert content["steps"][4]["depends_on"] == "forge"
+            assert content["steps"][3]["depends_on"] == "forge"
 
 
 def test_get_prerequisite_step():
