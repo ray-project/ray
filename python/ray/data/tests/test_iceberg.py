@@ -293,6 +293,311 @@ def test_write_concurrency():
     assert df["col_a"].tolist() == [1, 2, 3, 4]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_overwrite_full_table():
+    """Test overwriting an entire table."""
+    import numpy as np
+    import pandas as pd
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    # Initial write
+    initial_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_b": ["a", "b", "c"],
+            "col_c": np.array([1, 1, 1], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(initial_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Verify initial write
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values("col_a")
+        .reset_index(drop=True)
+    )
+    assert df["col_a"].tolist() == [1, 2, 3]
+
+    # Overwrite with new data
+    new_data = pd.DataFrame(
+        {
+            "col_a": np.array([10, 20], dtype=np.int32),
+            "col_b": ["x", "y"],
+            "col_c": np.array([2, 2], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(new_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Verify overwrite - should only have new data
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values("col_a")
+        .reset_index(drop=True)
+    )
+    assert df["col_a"].tolist() == [10, 20]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_overwrite_with_filter():
+    """Test overwriting specific partitions with a filter."""
+    import numpy as np
+    import pandas as pd
+
+    pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+
+    # Initial write with multiple partitions
+    initial_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3, 4, 5, 6], dtype=np.int32),
+            "col_b": ["a", "b", "c", "d", "e", "f"],
+            "col_c": np.array([1, 1, 2, 2, 3, 3], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(initial_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Overwrite only partition col_c=2
+    new_data = pd.DataFrame(
+        {
+            "col_a": np.array([30, 40], dtype=np.int32),
+            "col_b": ["x", "y"],
+            "col_c": np.array([2, 2], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(new_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+        overwrite_filter=pyi_expr.EqualTo("col_c", 2),
+    )
+
+    # Verify: col_c=1 and col_c=3 should remain, col_c=2 should be replaced
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values("col_a")
+        .reset_index(drop=True)
+    )
+    assert sorted(df["col_a"].tolist()) == [1, 2, 5, 6, 30, 40]
+    assert df[df["col_c"] == 2]["col_a"].tolist() == [30, 40]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_merge_single_key():
+    """Test merge/upsert with a single merge key."""
+    import numpy as np
+    import pandas as pd
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    # Initial data
+    initial_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_b": ["a", "b", "c", "d"],
+            "col_c": np.array([1, 1, 2, 2], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(initial_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Merge new data - update row with col_a=2, insert col_a=5
+    merge_data = pd.DataFrame(
+        {
+            "col_a": np.array([2, 5], dtype=np.int32),
+            "col_b": ["updated", "new"],
+            "col_c": np.array([1, 3], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(merge_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="merge",
+        merge_keys=["col_a"],
+    )
+
+    # Verify results
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values("col_a")
+        .reset_index(drop=True)
+    )
+
+    assert df["col_a"].tolist() == [1, 2, 3, 4, 5]
+    assert df[df["col_a"] == 2]["col_b"].iloc[0] == "updated"
+    assert df[df["col_a"] == 5]["col_b"].iloc[0] == "new"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_merge_multi_column_keys():
+    """Test merge/upsert with multiple merge keys."""
+    import numpy as np
+    import pandas as pd
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    # Initial data
+    initial_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 1, 2, 2], dtype=np.int32),
+            "col_b": ["a", "b", "a", "b"],
+            "col_c": np.array([100, 200, 300, 400], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(initial_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Merge with multi-column key (col_a, col_b)
+    merge_data = pd.DataFrame(
+        {
+            "col_a": np.array(
+                [1, 3], dtype=np.int32
+            ),  # Update (1, "a"), insert (3, "c")
+            "col_b": ["a", "c"],
+            "col_c": np.array([999, 500], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(merge_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="merge",
+        merge_keys=["col_a", "col_b"],
+    )
+
+    # Verify results
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values(["col_a", "col_b"])
+        .reset_index(drop=True)
+    )
+
+    assert len(df) == 5
+    # Row (1, "a") should be updated to 999
+    assert df[(df["col_a"] == 1) & (df["col_b"] == "a")]["col_c"].iloc[0] == 999
+    # Row (1, "b") should remain unchanged at 200
+    assert df[(df["col_a"] == 1) & (df["col_b"] == "b")]["col_c"].iloc[0] == 200
+    # Row (3, "c") should be newly inserted with 500
+    assert df[(df["col_a"] == 3) & (df["col_b"] == "c")]["col_c"].iloc[0] == 500
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_merge_with_update_filter():
+    """Test merge with update_filter to conditionally update rows."""
+    import numpy as np
+    import pandas as pd
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    # Initial data
+    initial_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_b": ["a", "b", "c"],
+            "col_c": np.array([10, 20, 30], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(initial_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="overwrite",
+    )
+
+    # Merge with update_filter: only update rows where col_c >= 20
+    merge_data = pd.DataFrame(
+        {
+            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_b": ["updated1", "updated2", "updated3"],
+            "col_c": np.array([100, 200, 300], dtype=np.int16),
+        }
+    )
+    ray.data.from_pandas(merge_data).write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+        mode="merge",
+        merge_keys=["col_a"],
+        update_filter=pyi_expr.GreaterThanOrEqual("col_c", 20),
+    )
+
+    # Verify: col_a=1 should NOT be updated (col_c was 10, fails filter)
+    # col_a=2 and col_a=3 should be updated (col_c was 20 and 30)
+    df = (
+        ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        .to_pandas()
+        .sort_values("col_a")
+        .reset_index(drop=True)
+    )
+
+    assert len(df) == 3
+    # col_a=1 should have original value
+    assert df[df["col_a"] == 1]["col_b"].iloc[0] == "a"
+    assert df[df["col_a"] == 1]["col_c"].iloc[0] == 10
+    # col_a=2 should be updated
+    assert df[df["col_a"] == 2]["col_b"].iloc[0] == "updated2"
+    assert df[df["col_a"] == 2]["col_c"].iloc[0] == 200
+    # col_a=3 should be updated
+    assert df[df["col_a"] == 3]["col_b"].iloc[0] == "updated3"
+    assert df[df["col_a"] == 3]["col_c"].iloc[0] == 300
+
+
 if __name__ == "__main__":
     import sys
 

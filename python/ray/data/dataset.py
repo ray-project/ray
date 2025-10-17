@@ -4108,7 +4108,7 @@ class Dataset:
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Arguments to pass to PyIceberg's
-                :func:`~pyiceberg.catalog.load_catalog` function. Common keys:
+                ``load_catalog()`` function. Common keys:
 
                 - ``"name"``: Catalog name (default: ``"default"``)
                 - ``"type"``: Catalog type (e.g., ``"glue"``, ``"sql"``, ``"hive"``, ``"rest"``)
