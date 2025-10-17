@@ -7,8 +7,6 @@ Optimize LLM inference with cache locality using prefix-aware request routing.
 This API is in alpha and may change before becoming stable.
 :::
 
-## Overview
-
 LLM inference can benefit significantly from cache locality optimization. When one replica processes multiple prompts that share a prefix, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html) in vLLM.
 
 The `PrefixCacheAffinityRouter` routes requests with similar prefixes to the same replicas, maximizing KV cache hit rates.

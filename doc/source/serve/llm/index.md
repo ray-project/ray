@@ -2,17 +2,17 @@
 
 # Serving LLMs
 
-Ray Serve LLM provides a high-performance, scalable framework for deploying Large Language Models in production. It specializes Ray Serve primitives for distributed LLM serving workloads, offering enterprise-grade features with OpenAI API compatibility.
+Ray Serve LLM provides a high-performance, scalable framework for deploying Large Language Models (LLMs) in production. It specializes Ray Serve primitives for distributed LLM serving workloads, offering enterprise-grade features with OpenAI API compatibility.
 
 ## Why Ray Serve LLM?
 
 Ray Serve LLM excels at highly distributed multi-node inference workloads:
 
 - **Advanced parallelism strategies**: Seamlessly combine pipeline parallelism, tensor parallelism, expert parallelism, and data parallelism for models of any size.
-- **Prefill-decode disaggregation**: Separate and optimize prefill and decode phases independently for better resource utilization and cost efficiency.
-- **Custom request routing**: Implement prefix-aware, session-aware, or custom routing logic to maximize cache hits and reduce latency.
-- **Multi-node deployments**: Serve massive models that span multiple nodes with automatic placement and coordination.
-- **Production-ready**: Built-in autoscaling, monitoring, fault tolerance, and observability.
+- **Prefill-decode disaggregation**: Separates and optimizes prefill and decode phases independently for better resource utilization and cost efficiency.
+- **Custom request routing**: Implements prefix-aware, session-aware, or custom routing logic to maximize cache hits and reduce latency.
+- **Multi-node deployments**: Serves massive models that span multiple nodes with automatic placement and coordination.
+- **Production-ready**: Has built-in autoscaling, monitoring, fault tolerance, and observability.
 
 ## Features
 
@@ -40,7 +40,7 @@ Architecture <architecture/index>
 Troubleshooting <troubleshooting>
 ```
 
-## Get started
+## Next steps
 
 - {doc}`Quickstart <quick-start>` - Deploy your first LLM with Ray Serve
 - {doc}`Examples <examples>` - Production-ready deployment tutorials

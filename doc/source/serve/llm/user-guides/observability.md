@@ -3,14 +3,12 @@
 
 Monitor your LLM deployments with built-in metrics, dashboards, and logging.
 
-## Overview
+Ray Serve LLM provides comprehensive observability with the following features:
 
-Ray Serve LLM provides comprehensive observability through:
-
-- **Service-level metrics**: Track request and token behavior across deployed models.
-- **Engine metrics**: Monitor vLLM-specific performance metrics such as TTFT and TPOT.
+- **Service-level metrics**: Request and token behavior across deployed models.
+- **Engine metrics**: vLLM-specific performance metrics such as TTFT and TPOT.
 - **Grafana dashboards**: Pre-built dashboard for LLM-specific visualizations.
-- **Prometheus integration**: Export all metrics for custom monitoring and alerting.
+- **Prometheus integration**:  Export capability for all metrics for custom monitoring and alerting.
 
 ## Service-level metrics
 
@@ -26,7 +24,7 @@ These higher-level metrics track request and token behavior across deployed mode
 
 ## Grafana dashboard
 
-Ray ships with a Serve LLM-specific dashboard, which is automatically available in Grafana:
+Ray includes a Serve LLM-specific dashboard, which is automatically available in Grafana:
 
 ![](../images/serve_llm_dashboard.png)
 
@@ -39,7 +37,7 @@ The dashboard includes visualizations for:
 
 ## Engine metrics
 
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) for a complete list. These are also visualized by the Serve LLM Grafana dashboard.
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) for a complete list. The Serve LLM Grafana dashboard also visualizes these metrics.
 
 Key engine metrics include:
 
@@ -107,7 +105,7 @@ applications:
 
 ## Usage data collection
 
-We collect usage data to improve Ray Serve LLM. We collect data about the following features and attributes:
+The Ray Team collects usage data to improve Ray Serve LLM. The team collects data about the following features and attributes:
 
 - Model architecture used for serving.
 - Whether JSON mode is used.
@@ -117,7 +115,7 @@ We collect usage data to improve Ray Serve LLM. We collect data about the follow
 - Initial replicas count.
 - GPU type used and number of GPUs used.
 
-If you'd like to opt out from usage data collection, you can follow {ref}`Ray usage stats <ref-usage-stats>` to disable it.
+To opt out from usage data collection, see {ref}`Ray usage stats <ref-usage-stats>` for how to disable it.
 
 ## See also
 

@@ -7,8 +7,6 @@ Deploy LLMs with separated prefill and decode phases for better resource utiliza
 This feature requires vLLM v1, which is the default engine. For legacy deployments using vLLM v0, upgrade to v1 first.
 :::
 
-## Overview
-
 Prefill/decode disaggregation separates the prefill phase (processing input prompts) from the decode phase (generating tokens). This separation provides:
 
 - **Independent optimization**: You can optimize prefill separately from decode with different configurations.
@@ -162,7 +160,7 @@ Create the LMCache configuration for Mooncake (`lmcache_mooncake.yaml`):
 :::{warning}
 For Mooncake deployments:
 - Ensure the etcd metadata server is running and accessible at the specified address.
-- Verify that RDMA devices and storage servers are properly configured and accessible.
+- Verify that you properly configured RDMA devices and storage servers and that they are accessible.
 - In containerized deployments, mount configuration files with appropriate read permissions (for example, `chmod 644`).
 - Ensure all referenced hostnames and IP addresses in configuration files are resolvable from the deployment environment.
 :::

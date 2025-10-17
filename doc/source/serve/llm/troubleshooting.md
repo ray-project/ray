@@ -4,7 +4,7 @@ Common issues and frequently asked questions for Ray Serve LLM.
 
 ## Frequently asked questions
 
-### How do I use gated Huggingface models?
+### How do I use gated Hugging Face models?
 
 You can use `runtime_env` to specify the env variables that are required to access the model. To get the deployment options, you can use the `get_deployment_options` method on the {class}`LLMServer <ray.serve.llm.deployment.LLMServer>` class. Each deployment class has its own `get_deployment_options` method.
 
@@ -27,7 +27,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
-    # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+    # Pass the desired accelerator type (e.g., A10G, L4, etc.)
     accelerator_type="A10G",
     runtime_env=dict(
         env_vars=dict(
@@ -42,7 +42,7 @@ serve.run(app, blocking=True)
 
 ### Why is downloading the model so slow?
 
-If you're using Huggingface models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
+If you're using Hugging Face models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
 
 ```python
 from ray import serve
@@ -62,7 +62,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
-    # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+    # Pass the desired accelerator type (e.g., A10G, L4, etc.)
     accelerator_type="A10G",
     runtime_env=dict(
         env_vars=dict(

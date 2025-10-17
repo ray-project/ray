@@ -75,7 +75,7 @@ For more details, see {ref}`prefix-aware-routing-guide`.
 
 ## Design patterns for custom routing policies
 
-Customizing request routers is a feature in Ray Serve's native APIs that can be defined per deployment. For each deployment, you can customize the routing logic that executes every time you call `.remote()` on the deployment handle from a caller. Since deployment handles are globally available objects across the cluster, they can be called from any actor or task in the Ray cluster. For more details on this API, see the {ref}`custom-request-router-guide`.
+Customizing request routers is a feature in Ray Serve's native APIs that you can define per deployment. For each deployment, you can customize the routing logic that executes every time you call `.remote()` on the deployment handle from a caller. Because deployment handles are globally available objects across the cluster, you can call them from any actor or task in the Ray cluster. For more details on this API, see {ref}`custom-request-router-guide`.
 
 This allows you to run the same routing logic even if you have multiple handles. The default request router in Ray Serve is Power of Two Choices, which balances load equalization and prioritizes locality routing. However, you can customize this to use LLM-specific metrics.
 
@@ -113,17 +113,17 @@ Centralized metric store pattern for custom routing
 ```
 
 **Pros:**
-- Simple implementation - no need to modify deployment logic for recording replica stats
+- Simple implementation - no need to modify deployment logic for recording replica statistics
 - Request metrics are immediately available
 - Strong consistency guarantees
 
 **Cons:**
-- Single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s)
-- Additional network hop for every routing decision
+- A single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s)
+- Requires an additional network hop for every routing decision
 
 ### Pattern 2: Metrics broadcasted from Serve controller
 
-In this approach, the Serve controller polls each replica for local statistics that are then broadcasted to all request routers on their deployment handles. The request router can then use this globally broadcasted information to pick the right replica. After a request reaches the replica, the replica updates its local stats so it can send them back to the Serve controller when polled next time.
+In this approach, the Serve controller polls each replica for local statistics and then broadcasts them to all request routers on their deployment handles. The request router can then use this globally broadcasted information to pick the right replica. After a request reaches the replica, the replica updates its local statistics so it can send them back to the Serve controller when the controller polls it next time.
 
 ```
           ┌──────────────┐
@@ -160,28 +160,28 @@ Broadcast metrics pattern for custom routing
 **Pros:**
 - Scalable to higher throughput
 - No additional RPC overhead per routing decision
-- Distributed routing decisions
+- Distributed routing decision making
 
 **Cons:**
-- There's a lag between the request router's view of stats and the ground truth state of the replicas
-- Eventual consistency - routing decisions may be based on slightly stale data
+- Time lag between the request router's view of statistics and the ground truth state of the replicas
+- Eventual consistency - routers may base decisions on slightly stale data
 - More complex implementation requiring coordination with the Serve controller
 
 ### Choose a pattern
 
-These two architectures capture the most popular ways to customize request routers. There are clear trade-offs between them, so pick the right one and balance simplicity with performance:
+These two architectures capture the most popular ways to customize request routers. There are clear trade-offs between them, so choose the suitable one and balance simplicity with performance:
 
 - **Use Pattern 1 (Centralized store)** when you need strong consistency, have moderate throughput requirements, or want simpler implementation
 - **Use Pattern 2 (Broadcast metrics)** when you need very high throughput, can tolerate eventual consistency, or want to minimize per-request overhead
 
 ## Custom routing policies
 
-You can implement custom routing policies by extending Ray Serve's [`RequestRouter`](../../api/doc/ray.serve.request_router.RequestRouter.rst) base class. For detailed examples and step-by-step guides on implementing custom routers, see the {ref}`custom-request-router-guide`.
+You can implement custom routing policies by extending Ray Serve's [`RequestRouter`](../../api/doc/ray.serve.request_router.RequestRouter.rst) base class. For detailed examples and step-by-step guides on implementing custom routers, see {ref}`custom-request-router-guide`.
 
 Key methods to implement:
 - [`choose_replicas()`](../../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst): Select which replicas should handle a request
-- [`on_request_routed()`](../../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst): Update router state after a request is routed
-- [`on_replica_actor_died()`](../../api/doc/ray.serve.request_router.RequestRouter.on_replica_actor_died.rst): Clean up state when a replica dies
+- [`on_request_routed()`](../../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst): Update the router state after a request is routed
+- [`on_replica_actor_died()`](../../api/doc/ray.serve.request_router.RequestRouter.on_replica_actor_died.rst): Clean up the state when a replica dies
 
 ### Utility mixins
 
@@ -203,15 +203,15 @@ Ray Serve provides mixin classes that add common functionality to routers. See t
 
 #### Async operations
 
-Routers should use async operations for best performance:
+Routers should use async operations for best performance, for example:
 
 ```python
-# Good: Async operation
+# Recommended pattern: Async operation
 async def choose_replicas(self, ...):
     state = await self.state_actor.get.remote()
     return self._select(state)
 
-# Bad: Blocking operation
+# Not recommended pattern: Blocking operation
 async def choose_replicas(self, ...):
     state = ray.get(self.state_actor.get.remote())  # Blocks!
     return self._select(state)
@@ -219,7 +219,7 @@ async def choose_replicas(self, ...):
 
 #### State management
 
-For routers with state, use appropriate synchronization:
+For routers with state, use appropriate synchronization, for example:
 
 ```python
 class StatefulRouter(RequestRouter):
@@ -236,7 +236,7 @@ class StatefulRouter(RequestRouter):
 
 ## See also
 
-- {ref}`prefix-aware-routing-guide` - User guide for deploying prefix-aware routing
+- {ref}`prefix-aware-routing-guide` - user guide for deploying prefix-aware routing
 - {ref}`custom-request-router-guide` - Ray Serve guide for implementing custom routers
-- [`RequestRouter` API Reference](../../api/doc/ray.serve.request_router.RequestRouter.rst) - Complete API documentation
+- [`RequestRouter` API Reference](../../api/doc/ray.serve.request_router.RequestRouter.rst) - complete API documentation
 
