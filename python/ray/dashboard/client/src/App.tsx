@@ -59,7 +59,7 @@ import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
 dayjs.extend(duration);
-const test;
+const test
 console.log(test);
 
 // lazy loading fro prevent loading too much code at once
