@@ -4022,10 +4022,11 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
-        mode: Literal["append", "overwrite", "merge"] = "append",
+        mode: Literal["append", "overwrite", "merge", "cdf"] = "append",
         overwrite_filter: Optional["BooleanExpression"] = None,
         merge_keys: Optional[List[str]] = None,
         update_filter: Optional["BooleanExpression"] = None,
+        change_type_column: str = "_change_type",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4125,6 +4126,8 @@ class Dataset:
                 - ``"overwrite"``: Replace existing data (optionally with filter)
                 - ``"merge"``: Upsert operation - update matching rows and insert new rows
                   based on ``merge_keys``. Requires PyIceberg 0.9.0+ for optimal performance.
+                - ``"cdf"``: Change Data Feed - apply mixed INSERT/UPDATE/DELETE operations
+                  in a single transaction. Requires ``change_type_column`` and ``merge_keys``.
 
                 Defaults to ``"append"``.
             overwrite_filter: PyIceberg BooleanExpression to filter which data to
@@ -4146,6 +4149,9 @@ class Dataset:
                 existing rows that are candidates for update, but does not affect which
                 rows are deleted during the overwrite. New rows with matching keys will
                 replace ALL existing rows with those keys, regardless of filter status.
+            change_type_column: Column name containing change types when ``mode="cdf"``.
+                Valid values: ``"insert"/"I"``, ``"update"/"U"``, ``"delete"/"D"``.
+                The column is automatically removed before writing. Defaults to ``"_change_type"``.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control the number of tasks running simultaneously. This doesn't change the
@@ -4172,7 +4178,30 @@ class Dataset:
         Raises:
             ValueError: If ``mode="merge"`` but ``merge_keys`` is not provided, or if
                 invalid combinations of parameters are used.
+            ValueError: If ``mode="cdf"`` but ``merge_keys`` or ``change_type_column``
+                is not provided, or if dataset contains invalid change types.
         """
+        # Handle CDF mode - apply mixed INSERT/UPDATE/DELETE operations
+        if mode == "cdf":
+            if not merge_keys:
+                raise ValueError("merge_keys required for mode='cdf'")
+
+            from ray.data._internal.datasource.iceberg.cdf_util import (
+                write_iceberg_cdf,
+            )
+
+            write_iceberg_cdf(
+                dataset=self,
+                table_identifier=table_identifier,
+                merge_keys=merge_keys,
+                change_type_column=change_type_column,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
+            return
+
         # Handle merge mode specially - use the upsert utility
         if mode == "merge":
             if not merge_keys:

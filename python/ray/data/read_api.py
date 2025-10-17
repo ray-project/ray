@@ -4037,6 +4037,101 @@ def read_iceberg(
     return dataset
 
 
+@PublicAPI(stability="alpha")
+def read_iceberg_cdf(
+    *,
+    table_identifier: str,
+    start_snapshot_id: Optional[int] = None,
+    end_snapshot_id: Optional[int] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    catalog_kwargs: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Read incremental changes from an Iceberg table (Change Data Feed).
+
+    This function reads only the data files added between two snapshots, enabling
+    efficient incremental data processing for CDC pipelines, incremental ETL, and
+    streaming-like batch processing.
+
+    .. tip::
+
+        This is significantly faster than reading full snapshots and computing
+        differences, as it only reads files that changed between snapshots.
+
+    Examples:
+        Read changes between two snapshots:
+
+        >>> import ray
+        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
+        ...     table_identifier="db.users",
+        ...     start_snapshot_id=12345,
+        ...     end_snapshot_id=12350,
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+        Read changes since a timestamp:
+
+        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
+        ...     table_identifier="db.orders",
+        ...     start_timestamp="2024-01-01T00:00:00",
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+    Args:
+        table_identifier: Fully qualified table identifier (``db_name.table_name``)
+        start_snapshot_id: Starting snapshot ID (exclusive). If not provided, reads
+            from the beginning of table history.
+        end_snapshot_id: Ending snapshot ID (inclusive). If not provided, uses the
+            current snapshot.
+        start_timestamp: Starting timestamp (ISO format). Alternative to
+            start_snapshot_id. The snapshot at or after this timestamp is used.
+        end_timestamp: Ending timestamp (ISO format). Alternative to end_snapshot_id.
+            The snapshot at or before this timestamp is used.
+        catalog_kwargs: Arguments to pass to PyIceberg's ``load_catalog()`` function.
+            See the `PyIceberg catalog documentation
+            <https://py.iceberg.apache.org/configuration/>`_ for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks
+        num_cpus: The number of CPUs to reserve for each parallel read worker
+        num_gpus: The number of GPUs to reserve for each parallel read worker
+        memory: The heap memory in bytes to reserve for each parallel read worker
+        override_num_blocks: Override the number of output blocks from all read tasks
+
+    Returns:
+        Dataset containing rows from files added between the snapshots. Includes
+        all original columns from the table.
+
+    Note:
+        - Reads entire data files, not individual rows. All rows in added files are
+          returned.
+        - Deleted files aren't tracked in the returned dataset. Track row-level
+          primary keys to detect deletions.
+        - Start snapshot is exclusive, end snapshot is inclusive.
+        - For tables with frequent small updates, consider table maintenance
+          (compaction) for optimal performance.
+    """
+    from ray.data._internal.datasource.iceberg.cdf_util import read_iceberg_cdf
+
+    return read_iceberg_cdf(
+        table_identifier=table_identifier,
+        start_snapshot_id=start_snapshot_id,
+        end_snapshot_id=end_snapshot_id,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        catalog_kwargs=catalog_kwargs,
+        ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        override_num_blocks=override_num_blocks,
+    )
+
+
 @PublicAPI
 def read_lance(
     uri: str,
