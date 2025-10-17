@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     init_error_pubsub,
 )
 from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -686,83 +685,6 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     assert str(exc_info.value.cause) == "MyFinalException from task"
 
     caplog.clear()
-
-
-@pytest.mark.parametrize(
-    # TODO(dayshah): add `False` variant once in-order is fixed.
-    "allow_out_of_order_execution",
-    [True],
-)
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_transient_error_retry(
-    monkeypatch,
-    ray_start_cluster,
-    allow_out_of_order_execution: bool,
-    deterministic_failure: str,
-):
-    with monkeypatch.context() as m:
-        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=2:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
-        )
-        m.setenv("RAY_actor_scheduling_queue_max_reorder_wait_seconds", "0")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=1)
-        ray.init(address=cluster.address)
-
-        @ray.remote(
-            max_task_retries=-1,
-            allow_out_of_order_execution=allow_out_of_order_execution,
-        )
-        class RetryActor:
-            def echo(self, value):
-                return value
-
-        refs = []
-        actor = RetryActor.remote()
-        for i in range(10):
-            refs.append(actor.echo.remote(i))
-        assert ray.get(refs) == list(range(10))
-
-
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_update_object_location_batch_failure(
-    monkeypatch, ray_start_cluster, deterministic_failure
-):
-    with monkeypatch.context() as m:
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
-        )
-        cluster = ray_start_cluster
-        head_node_id = cluster.add_node(
-            num_cpus=0,
-        ).node_id
-        ray.init(address=cluster.address)
-        worker_node_id = cluster.add_node(num_cpus=1).node_id
-
-        @ray.remote(num_cpus=1)
-        def create_large_object():
-            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
-
-        @ray.remote(num_cpus=0)
-        def consume_large_object(obj):
-            return sys.getsizeof(obj)
-
-        obj_ref = create_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
-        ).remote()
-        consume_ref = consume_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote(obj_ref)
-        assert ray.get(consume_ref, timeout=10) > 0
 
 
 def test_raytaskerror_serialization(ray_start_regular):

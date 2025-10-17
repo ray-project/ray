@@ -9,6 +9,7 @@ from ray import serve
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
+        "metrics_interval_s": 0.1,
         "policy": {
             "policy_function": "autoscaling_policy:custom_metrics_autoscaling_policy"
         },
@@ -21,7 +22,7 @@ class CustomMetricsDeployment:
         self.memory_usage = 60.0
 
     def __call__(self) -> str:
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.cpu_usage = min(100, self.cpu_usage + 5)
         self.memory_usage = min(100, self.memory_usage + 3)
         return "Hello, world!"
@@ -39,10 +40,10 @@ class CustomMetricsDeployment:
 app = CustomMetricsDeployment.bind()
 # __serve_example_end__
 
-# TODO: uncomment after autoscaling context is populated with all metrics
-# if __name__ == "__main__":
-#     import requests  # noqa
+if __name__ == "__main__":
+    import requests  # noqa
 
-#     serve.run(app)
-#     resp = requests.get("http://localhost:8000/")
-#     assert resp.text == "Hello, world!"
+    serve.run(app)
+    for _ in range(10):
+        resp = requests.get("http://localhost:8000/")
+        assert resp.text == "Hello, world!"
