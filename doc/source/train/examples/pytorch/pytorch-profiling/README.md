@@ -94,6 +94,18 @@ import uuid
 
 
 ```python
+# Configure storage path for profiling outputs and training results.
+# This path serves two purposes:
+# 1. Ray Train RunConfig uses it as the base location for experiment artifacts,
+#    checkpoints, and logs (set via RunConfig's storage_path parameter).
+# 2. PyTorch Profiler writes TensorBoard traces and memory profiles here
+#    (used in tensorboard_trace_handler and export_memory_timeline calls).
+# All profiling results and training artifacts will be stored under this path.
+storage_path = "/mnt/cluster_storage/"
+```
+
+
+```python
 def train_func_distributed():
     """Distributed training function with enhanced profiling for Ray Train."""
     
@@ -137,7 +149,7 @@ def train_func_distributed():
     with torch.profiler.profile(
         activities=activities,
         schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler('/mnt/cluster_storage/logs/distributed'),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(f'{storage_path}/logs/distributed'),
         record_shapes=True,
         profile_memory=True,
         with_stack=True,
@@ -187,7 +199,7 @@ def train_func_distributed():
     # ==============================================================
     run_name = ray.train.get_context().get_experiment_name()
     prof.export_memory_timeline(
-        f"/mnt/cluster_storage/{run_name}/rank{world_rank}_memory_profile.html"
+        f"{storage_path}/{run_name}/rank{world_rank}_memory_profile.html"
     )
     
     if world_rank == 0:
@@ -210,9 +222,13 @@ scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 # Create a unique experiment name for this profiling run
 experiment_name = f"profiling_run_{uuid.uuid4().hex[:8]}"
 
-# Configure run settings with persistent storage for profiling outputs
+# Configure run settings with persistent storage for profiling outputs.
+# The storage_path parameter tells Ray Train where to store experiment artifacts,
+# checkpoints, and logs. This is also the same path where PyTorch Profiler outputs
+# (TensorBoard traces and memory profiles) are written to, allowing you to access
+# all training and profiling results from a single location.
 run_config = ray.train.RunConfig(
-    storage_path="/mnt/cluster_storage/",
+    storage_path=storage_path,
     name=experiment_name,
 )
 
@@ -226,7 +242,7 @@ trainer = ray.train.torch.TorchTrainer(
 print(f"Starting distributed training with profiling: {experiment_name}")
 result = trainer.fit()
 print(f"Distributed training with profiling completed successfully! Results are: {result}")
-print(f"Check '/mnt/cluster_storage/{experiment_name}/' for profiling results.")
+print(f"Check '{storage_path}/{experiment_name}/' for profiling results.")
 
 ```
 
@@ -279,7 +295,7 @@ def train_func_advanced_profiling():
     with torch.profiler.profile(
         activities=activities,
         schedule=schedule,
-        on_trace_ready=torch.profiler.tensorboard_trace_handler('/mnt/cluster_storage/logs/advanced'),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(f'{storage_path}/logs/advanced'),
         record_shapes=True,
         profile_memory=True,
         with_stack=True,
@@ -353,16 +369,16 @@ def train_func_advanced_profiling():
     
     # Export memory timeline
     prof.export_memory_timeline(
-        f"/mnt/cluster_storage/{run_name}/rank{world_rank}_advanced_memory_profile.html"
+        f"{storage_path}/{run_name}/rank{world_rank}_advanced_memory_profile.html"
     )
     
     
     if world_rank == 0:
-        print(f"Advanced profiling complete! Check '/mnt/cluster_storage/{run_name}/' for detailed profiling results.")
+        print(f"Advanced profiling complete! Check '{storage_path}/{run_name}/' for detailed profiling results.")
         print("Files generated:")
         print(f"  - rank{world_rank}_advanced_memory_profile.html (Memory analysis)")
         print(f"  - rank{world_rank}_chrome_trace.json (Chrome trace)")
-        print("  - TensorBoard logs in /mnt/cluster_storage/logs/advanced/")
+        print(f"  - TensorBoard logs in '{storage_path}/logs/advanced/'")
 
 ```
 
@@ -376,9 +392,9 @@ scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 # Create a unique experiment name for advanced profiling
 advanced_experiment_name = f"advanced_profiling_{uuid.uuid4().hex[:8]}"
 
-# Configure run settings
+# Configure run settings with storage_path for both Ray Train artifacts and profiler output
 run_config = ray.train.RunConfig(
-    storage_path="/mnt/cluster_storage/",
+    storage_path=storage_path,
     name=advanced_experiment_name,
 )
 
@@ -392,7 +408,7 @@ trainer = ray.train.torch.TorchTrainer(
 print(f"Starting advanced profiling training: {advanced_experiment_name}")
 result = trainer.fit()
 print(f"Advanced profiling training completed successfully! Results are: {result}")
-print(f"Check '/mnt/cluster_storage/{advanced_experiment_name}/' for comprehensive profiling results.")
+print(f"Check '{storage_path}/{advanced_experiment_name}/' for comprehensive profiling results.")
 
 ```
 
