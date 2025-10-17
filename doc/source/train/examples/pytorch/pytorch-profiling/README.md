@@ -192,6 +192,10 @@ def train_func_distributed():
     
     if world_rank == 0:
         print(f"Distributed profiling complete! Check '/mnt/cluster_storage/{run_name}/' for worker-specific memory profiles.")
+        print("Files generated:")
+        print(f"  - rank{world_rank}_memory_profile.html (Memory analysis)")
+        print(f"  - rank{world_rank}_chrome_trace.json (Chrome trace)")
+        print("  - TensorBoard logs in /mnt/cluster_storage/logs/distributed/")
 
 ```
 
@@ -201,7 +205,7 @@ Finally, run the distributed training function with Ray Train. The `TorchTrainer
 
 ```python
 # Configure scaling and resource requirements for distributed training
-scaling_config = ray.train.ScalingConfig(num_workers=1, use_gpu=True)
+scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
 # Create a unique experiment name for this profiling run
 experiment_name = f"profiling_run_{uuid.uuid4().hex[:8]}"
@@ -221,7 +225,7 @@ trainer = ray.train.torch.TorchTrainer(
 
 print(f"Starting distributed training with profiling: {experiment_name}")
 result = trainer.fit()
-print("Distributed training with profiling completed successfully!")
+print(f"Distributed training with profiling completed successfully! Results are: {result}")
 print(f"Check '/mnt/cluster_storage/{experiment_name}/' for profiling results.")
 
 ```
@@ -317,6 +321,7 @@ def train_func_advanced_profiling():
                     print(f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}")
 
             epoch_end_time.record()
+            # Wait for GPU operations to complete since CUDA operations are asynchronous.
             torch.cuda.synchronize()
             
             # [4] Calculate and report timing metrics.
@@ -366,7 +371,7 @@ Kick off the Ray Train job similarly to the previous step.
 
 ```python
 # Run the advanced profiling example
-scaling_config = ray.train.ScalingConfig(num_workers=1, use_gpu=True)
+scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
 # Create a unique experiment name for advanced profiling
 advanced_experiment_name = f"advanced_profiling_{uuid.uuid4().hex[:8]}"
@@ -386,7 +391,7 @@ trainer = ray.train.torch.TorchTrainer(
 
 print(f"Starting advanced profiling training: {advanced_experiment_name}")
 result = trainer.fit()
-print("Advanced profiling training completed successfully!")
+print(f"Advanced profiling training completed successfully! Results are: {result}")
 print(f"Check '/mnt/cluster_storage/{advanced_experiment_name}/' for comprehensive profiling results.")
 
 ```
@@ -395,7 +400,7 @@ print(f"Check '/mnt/cluster_storage/{advanced_experiment_name}/' for comprehensi
 
 After running the profiling examples, you have access to several types of profiling data:
 
-1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` or the persistent storage that configured. - Use these traces to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
+1. **TensorBoard traces**: Located in `/mnt/cluster_storage/logs/` or the persistent storage that you configured. Use these traces to visualize GPU/CPU utilization, kernel execution times, and memory allocation patterns.
 
 2. **Memory timeline HTML files**: Worker-specific memory profiles showing memory usage over time, helping identify memory leaks and optimization opportunities.
 
