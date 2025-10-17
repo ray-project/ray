@@ -298,11 +298,11 @@ def test_write_concurrency():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_write_overwrite_full_table():
-    # Skip if PyIceberg version is too old (needs >= 0.8.0 for overwrite_files API)
+    # Skip if PyIceberg version is too old (needs >= 0.10.0 for overwrite_files API)
     import pyiceberg
     from pkg_resources import parse_version as pkg_parse_version
 
-    if pkg_parse_version(pyiceberg.__version__) < pkg_parse_version("0.8.0"):
+    if pkg_parse_version(pyiceberg.__version__) < pkg_parse_version("0.10.0"):
         pytest.skip(
             f"PyIceberg {pyiceberg.__version__} doesn't support overwrite_files API"
         )
@@ -371,11 +371,11 @@ def test_write_overwrite_full_table():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_write_overwrite_with_filter():
-    # Skip if PyIceberg version is too old (needs >= 0.8.0 for overwrite_files API)
+    # Skip if PyIceberg version is too old (needs >= 0.10.0 for overwrite_files API)
     import pyiceberg
     from pkg_resources import parse_version as pkg_parse_version
 
-    if pkg_parse_version(pyiceberg.__version__) < pkg_parse_version("0.8.0"):
+    if pkg_parse_version(pyiceberg.__version__) < pkg_parse_version("0.10.0"):
         pytest.skip(
             f"PyIceberg {pyiceberg.__version__} doesn't support overwrite_files API"
         )

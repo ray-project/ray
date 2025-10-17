@@ -379,9 +379,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             # Supports optional filter for dynamic partition overwrites
 
             # Check if overwrite_files API is available
-            # This method was added in later PyIceberg versions
+            # This method was added in PyIceberg 0.10.0
             if hasattr(update_snapshot, "overwrite_files"):
-                # Use overwrite_files API (PyIceberg 0.9.0+)
+                # Use overwrite_files API (PyIceberg 0.10.0+)
                 with update_snapshot.overwrite_files() as overwrite_files:
                     overwrite_files.commit_uuid = self._uuid
 
@@ -404,12 +404,14 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                     for data_file in all_data_files:
                         overwrite_files.append_data_file(data_file)
             else:
-                # Fallback for older PyIceberg versions (< 0.8.0)
+                # Fallback for older PyIceberg versions (< 0.10.0)
                 # Use delete + append approach
+                import pyiceberg
+
                 logger.warning(
                     f"PyIceberg version {pyiceberg.__version__} detected. "
                     "Using fallback overwrite implementation. "
-                    "For optimal performance, upgrade to PyIceberg >= 0.8.0"
+                    "For optimal performance, upgrade to PyIceberg >= 0.10.0"
                 )
 
                 # First, delete existing data
