@@ -1323,7 +1323,7 @@ def test_tensors_in_tables_parquet(
     ctx.use_arrow_native_fixed_shape_tensor_type = new_tensor_format == "arrow_native"
     ctx.use_arrow_tensor_v2 = new_tensor_format == "v2"
 
-    tensor_v2_path = f"{tmp_path}/tensor_{new_tensor_format}"
+    tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1337,13 +1337,14 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     if new_tensor_format == "arrow_native":
-
         if FixedShapeTensorType is None:
             expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
-    else:
+    elif new_tensor_format == "v2":
         expected_tensor_type = ArrowTensorTypeV2
+    else:  # v1
+        expected_tensor_type = ArrowTensorType
 
     assert isinstance(
         ds.schema().base_schema.field_by_name(tensor_col_name).type,
