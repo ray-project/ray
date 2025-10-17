@@ -60,15 +60,22 @@ def _get_leaf_element(value: Any, max_depth: int = 10) -> Any:
 
 
 def _contains_nested_ndarrays(column_values: Sequence[Any]) -> bool:
-    """Check if column_values contains nested sequences with ndarrays at leaf level."""
+    """Return True if any sampled element contains nested sequences with ndarray(-like) leaves."""
     if not isinstance(column_values, (list, tuple)) or len(column_values) == 0:
         return False
 
-    # Get the leaf element by traversing nested sequences
-    leaf = _get_leaf_element(column_values[0])
+    # Just bounding this to a small sample size.
+    max_samples: int = 10
+    samples_checked = 0
+    for value in column_values:
+        if samples_checked >= max_samples:
+            break
+        samples_checked += 1
+        leaf = _get_leaf_element(value)
+        if isinstance(leaf, np.ndarray) or _is_ndarray_like_not_pyarrow_array(leaf):
+            return True
 
-    # Check if the leaf is an ndarray or ndarray-like (but not pyarrow)
-    return isinstance(leaf, np.ndarray) or _is_ndarray_like_not_pyarrow_array(leaf)
+    return False
 
 
 def _should_convert_to_tensor(
