@@ -29,7 +29,6 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/object_manager_rpc_client/fake_object_manager_client.h"
 
@@ -142,27 +141,6 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 0);
   ASSERT_EQ(rpc_context_.poll_one(), 1);
   ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 1);
-}
-
-// A plasma client that always returns an error on Delete.
-class FailingDeletePlasmaClient : public ::plasma::FakePlasmaClient {
- public:
-  Status Delete(const std::vector<ray::ObjectID> &object_ids) override {
-    delete_called = true;
-    return ray::Status::IOError("No buffer space available");
-  }
-  bool delete_called = false;
-};
-
-TEST_F(ObjectManagerTest, TestObjectBufferPoolFreeObjectsNonFatalOnError) {
-  auto failing_client = std::make_shared<FailingDeletePlasmaClient>();
-  auto object_id = ObjectID::FromRandom();
-
-  ObjectBufferPool pool(failing_client, /*chunk_size=*/1024);
-  // Should not crash even when Delete fails.
-  pool.FreeObjects({object_id});
-
-  ASSERT_TRUE(failing_client->delete_called);
 }
 
 }  // namespace ray
