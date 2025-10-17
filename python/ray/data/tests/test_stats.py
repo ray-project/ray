@@ -29,6 +29,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     histogram_buckets_bytes,
     histogram_buckets_s,
 )
+from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (
     DatasetStats,
@@ -2277,6 +2278,90 @@ def test_stats_manager_stale_actor_handle(ray_start_cluster):
     ).take_all()
 
     ray.shutdown()
+
+
+def test_runtime_metrics_histogram_observe():
+    """Test that RuntimeMetricsHistogram correctly places values in buckets."""
+    # Create a simple histogram with 3 boundaries: [1.0, 5.0, 10.0]
+    boundaries = [1.0, 5.0, 10.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Test values in different buckets
+    histogram.observe(0.5)  # Should go to bucket 0 (< 1.0)
+    histogram.observe(3.0)  # Should go to bucket 1 (1.0 <= x < 5.0)
+    histogram.observe(7.0)  # Should go to bucket 2 (5.0 <= x < 10.0)
+    histogram.observe(15.0)  # Should go to bucket 3 (>= 10.0)
+
+    # Test multiple observations
+    histogram.observe(2.0, num_observations=3)  # Should add 3 to bucket 1
+
+    # Verify bucket counts
+    expected_counts = [1, 4, 1, 1]  # [bucket0, bucket1, bucket2, bucket3]
+    assert histogram._bucket_counts == expected_counts
+
+
+def test_runtime_metrics_histogram_apply_to_metric():
+    """Test that apply_to_metric correctly applies observations to Ray Histogram."""
+    from ray.util.metrics import Histogram
+
+    # Create a simple histogram with 2 boundaries
+    boundaries = [1.0, 3.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Add some observations
+    histogram.observe(0.5)  # bucket 0
+    histogram.observe(2.0)  # bucket 1
+    histogram.observe(5.0)  # bucket 2
+
+    # Create a mock Ray Histogram
+    mock_metric = MagicMock(spec=Histogram)
+    mock_metric.last_applied_bucket_counts_for_tags = {}
+
+    # Apply to metric
+    tags = {"node_id": "test_node"}
+    histogram.apply_to_metric(mock_metric, tags)
+
+    # Verify that observe was called 3 times (once for each observation)
+    assert mock_metric.observe.call_count == 3
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    # Bucket 2: 3.0 to 13.0 (3.0 + 10), midpoint should be around 8.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+    assert any(3.0 <= val for val in observed_values)
+
+    # Verify that the last_applied_bucket_counts_for_tags was updated
+    tags_key = '{"node_id": "test_node"}'
+    assert tags_key in mock_metric.last_applied_bucket_counts_for_tags
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [1, 1, 1]
+
+    # Add some more observations
+    histogram.observe(0.8)  # bucket 0
+    histogram.observe(1.2)  # bucket 1
+    histogram.apply_to_metric(mock_metric, tags)
+
+    # Verify that observe was called 2 more times (once for each observation)
+    assert mock_metric.observe.call_count == 5
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls[2:]]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [2, 2, 1]
 
 
 if __name__ == "__main__":

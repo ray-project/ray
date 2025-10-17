@@ -100,9 +100,6 @@ class RuntimeMetricsHistogram:
     def observe(self, value: float, num_observations: int = 1):
         self._bucket_counts[self._find_bucket_index(value)] += num_observations
 
-    def as_dict_value(self):
-        return self._bucket_counts.copy()
-
     def apply_to_metric(
         self,
         metric: Histogram,
@@ -141,7 +138,7 @@ class RuntimeMetricsHistogram:
                 for _ in range(diff):
                     metric.observe(bucket_value, tags)
 
-        metric.last_applied_bucket_counts_for_tags[tags_key] = self._bucket_counts
+        metric.last_applied_bucket_counts_for_tags[tags_key] = self._bucket_counts.copy()
 
     def _find_bucket_index(self, value: float):
         return bisect.bisect_left(self.boundaries, value)
