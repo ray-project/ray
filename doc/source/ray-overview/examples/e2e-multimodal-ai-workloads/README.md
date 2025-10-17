@@ -76,9 +76,9 @@ pip install -e ./doggos
 Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to deploy [highly available services](https://docs.anyscale.com/platform/services) and run [reliable batch jobs](https://docs.anyscale.com/platform/jobs). Developing in an environment nearly identical to production—a multi-node cluster—drastically accelerates the dev-to-prod transition. This tutorial also introduces proprietary RayTurbo features that optimize workloads for performance, fault tolerance, scale, and observability.
 
 ```bash
-anyscale job submit -f /home/ray/default/configs/generate_embeddings.yaml
-anyscale job submit -f /home/ray/default/configs/train_model.yaml
-anyscale service deploy -f /home/ray/default/configs/service.yaml
+anyscale job submit -f configs/generate_embeddings.yaml
+anyscale job submit -f configs/train_model.yaml
+anyscale service deploy -f configs/service.yaml
 ```
 
 ## No infrastructure headaches
