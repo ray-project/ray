@@ -71,7 +71,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 results = ray.get(results)
                 # Loop over individual EnvRunner Actor's results and inspect each.
                 for episodes in results:
-                    # Assert length of all fragments is  `rollout_fragment_length`.
+                    # Assert length of all fragments >= `rollout_fragment_length * num_envs_per_env_runner` and
+                    #   `< rollout_fragment_length * (num_envs_per_env_runner + 1)
                     self.assertIn(
                         sum(len(e) for e in episodes),
                         [
@@ -262,7 +263,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             CartPoleVectorEnv,
             "tune-registered-vec",
             "TestVecEnv-v0",
-            "ale_py:ALE/Pong-v5",
+            # Todo (mark): requires gymnasium==1.2.2 due to bug in `DictInfoToList` wrapper
+            # "ale_py:ALE/Pong-v5",
         ]:
             config = (
                 AlgorithmConfig()
