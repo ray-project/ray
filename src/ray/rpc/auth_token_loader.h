@@ -66,4 +66,3 @@ class RayAuthTokenLoader {
 
 }  // namespace rpc
 }  // namespace ray
-

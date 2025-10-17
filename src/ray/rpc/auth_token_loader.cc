@@ -17,6 +17,7 @@
 #include <fstream>
 #include <random>
 #include <sstream>
+#include <string>
 
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -102,8 +103,7 @@ std::string RayAuthTokenLoader::LoadTokenFromSources() {
     token.erase(0, token.find_first_not_of(" \t\n\r\f\v"));
     token.erase(token.find_last_not_of(" \t\n\r\f\v") + 1);
     if (!token.empty()) {
-      RAY_LOG(DEBUG) << "Loaded authentication token from default path: "
-                     << default_path;
+      RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
       return token;
     }
   }
@@ -151,8 +151,7 @@ std::string RayAuthTokenLoader::GenerateToken() {
       chmod(token_path.c_str(), S_IRUSR | S_IWUSR);
 #endif
 
-      RAY_LOG(INFO) << "Generated new authentication token and saved to "
-                    << token_path;
+      RAY_LOG(INFO) << "Generated new authentication token and saved to " << token_path;
     } else {
       RAY_LOG(WARNING) << "Failed to save generated token to " << token_path
                        << ". Token will only be available in memory.";
@@ -195,4 +194,3 @@ std::string RayAuthTokenLoader::GetDefaultTokenPath() {
 
 }  // namespace rpc
 }  // namespace ray
-
