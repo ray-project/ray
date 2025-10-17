@@ -2079,6 +2079,21 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     reply->set_is_accepted(true);
   }
 
+  if (reply->is_accepted()) {
+    // Fail fast on the leases in the local lease maanger
+    // and add them back to the cluster lease manager so a new node
+    // can be selected by the scheduler.
+    auto cancelled_works = local_lease_manager_.CancelLeasesWithoutReply(
+        [&](const std::shared_ptr<internal::Work> &work) { return true; });
+    for (const auto &work : cancelled_works) {
+      cluster_lease_manager_.QueueAndScheduleLease(work->lease_,
+                                                   work->grant_or_reject_,
+                                                   work->is_selected_based_on_locality_,
+                                                   work->reply_,
+                                                   work->send_reply_callback_);
+    }
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
