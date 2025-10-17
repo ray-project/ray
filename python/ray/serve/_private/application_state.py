@@ -43,7 +43,7 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
@@ -331,6 +331,16 @@ class ApplicationState:
         # the imperatively started application is restarting with controller.
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
+
+        # Restore app-level autoscaling policy from checkpoint
+        if (
+            checkpoint_data.config
+            and checkpoint_data.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                AutoscalingPolicy(**checkpoint_data.config.autoscaling_policy),
+            )
 
     def _set_target_state(
         self,
@@ -880,6 +890,20 @@ class ApplicationState:
                         self._build_app_task_info.target_capacity_direction
                     ),
                 )
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if (
+                    self._target_state.config is not None
+                    and self._target_state.config.autoscaling_policy is not None
+                ):
+                    self._autoscaling_state_manager.register_application(
+                        self._name,
+                        AutoscalingPolicy(
+                            **self._target_state.config.autoscaling_policy
+                        ),
+                    )
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
             elif task_status == BuildAppStatus.FAILED:
                 self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
@@ -1194,6 +1218,7 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
