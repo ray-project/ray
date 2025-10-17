@@ -105,102 +105,21 @@ def check_log_args(
 
 @PublicAPI(stability="alpha")
 class MetricsLogger:
-    """A generic class collecting and processing metrics in RL training and evaluation.
+    """A generic class collecting and reducing metrics.
 
-    This class represents the main API used by all of RLlib's components (internal and
-    user facing) in order to log, collect, and (reduce) stats during training
-    and evaluation/inference.
+    Use this API to log and merge metrics.
+    Mostly metrics should be logged in parallel components with MetricsLogger.log_value().
+    RLlib will then aggregate metrics, reduce them and log them.
 
-    It supports:
-    - Logging of simple float/int values (for example a loss) over time or from
-    parallel runs (n Learner workers, each one reporting a loss from their respective
-    data shard).
-    - Logging of images, videos, or other more complex data structures over time.
-    - Reducing these collected values using a user specified reduction method (for
-    example "min" or "mean") and other settings controlling the reduction and internal
-    data, such as sliding windows or EMA coefficients.
-    - Optionally clearing all logged values after a `reduce()` call to make space for
-    new data.
-    - Tracking throughputs of logged values.
+    The MetricsLogger supports logging anything that has a corresponding reduction method.
+    These are defined natively in the Stats classes, which are used to log the metrics.
+    Please take a look ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP for the available reduction methods.
+    You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
 
-    .. testcode::
-
-        import time
-        from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-        from ray.rllib.utils.test_utils import check
-
-        logger = MetricsLogger(root=True)
-
-        # 1) Logging float values (mean over window):
-        # Log some loss under the "loss" key. By default, all logged values
-        # under that key are averaged and reported back, once `reduce()` is called.
-        logger.log_value("loss", 0.001, reduce="mean", window=10)
-        logger.log_value("loss", 0.002, reduce="mean", window=10)
-        # Peek at the current (reduced) value of "loss":
-        check(logger.peek("loss"), 0.0015)  # <- expect average value
-        # Actually reduce the underlying Stats object(s).
-        results = logger.reduce()
-        check(results["loss"], 0.0015)
-
-        # 2) Logging float values (minimum over window):
-        # Log the minimum of loss values under the "min_loss" key.
-        logger.log_value("min_loss", 0.1, reduce="min", window=2)
-        logger.log_value("min_loss", 0.01, reduce="min", window=2)
-        logger.log_value("min_loss", 0.1, reduce="min", window=2)
-        logger.log_value("min_loss", 0.02, reduce="min", window=2)
-        # Peek at the current (reduced) value of "min_loss":
-        check(logger.peek("min_loss"), 0.02)  # <- expect min value (over window=2)
-        # Actually reduce the underlying Stats object(s).
-        results = logger.reduce()
-        check(results["min_loss"], 0.02)
-
-        # 3) Log n counts in different (remote?) components and merge them on the
-        # controller side.
-        remote_logger_1 = MetricsLogger()
-        remote_logger_2 = MetricsLogger()
-        main_logger = MetricsLogger()
-        remote_logger_1.log_value("count", 2, reduce="sum", clear_on_reduce=True)
-        remote_logger_2.log_value("count", 3, reduce="sum", clear_on_reduce=True)
-        # Reduce the two remote loggers ..
-        remote_results_1 = remote_logger_1.reduce()
-        remote_results_2 = remote_logger_2.reduce()
-        # .. then merge the two results into the controller logger.
-        main_logger.aggregate([remote_results_1, remote_results_2])
-        check(main_logger.peek("count"), 5)
-
-        # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff
-        # (the closer to 1.0), the more short term the EMA turns out.
-        logger = MetricsLogger()
-
-        # First delta measurement:
-        with logger.log_time("my_block_to_be_timed", reduce="mean", ema_coeff=0.1):
-            time.sleep(1.0)
-        # EMA should be ~1sec.
-        assert 1.1 > logger.peek("my_block_to_be_timed") > 0.9
-        # Second delta measurement (note that we don't have to repeat the args again, as
-        # the stats under that name have already been created above with the correct
-        # args).
-        with logger.log_time("my_block_to_be_timed"):
-            time.sleep(2.0)
-        # EMA should be ~1.1sec.
-        assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
-
-        # When calling `reduce()`, the internal values list gets cleaned up (reduced)
-        # and reduction results are returned.
-        results = logger.reduce()
-        # EMA should be ~1.1sec.
-        assert 1.15 > results["my_block_to_be_timed"] > 1.05
-
-        # 5) Keeping track of throughputs and compiling all metrics
-        logger = MetricsLogger()
-        logger.log_value("samples", 1.0, reduce="sum", with_throughput=True, throughput_ema_coeff=1.0)
-        time.sleep(1.0)
-        logger.log_value("samples", 2.0, reduce="sum", with_throughput=True, throughput_ema_coeff=1.0)
-        results = logger.compile()
-        check(results["samples"], 3.0)
-        # Since we have an ema_coeff of 1.0, the throughput should be the same as the last value we logged (after 1 second)
-        check(results["samples_throughput"], 2.0, rtol=0.1)
-
+    Note: In our docstirngs we make heavy use of the phrae 'parallel components'.
+    This pertains to the architecture of the logging system, where we have one 'root' MetricsLogger
+    that is used to aggregate all metrics of n parallel ('non-root') MetricsLoggers that are used to log metrics for each parallel component.
+    A parallel component is typically a single Learner worker, an EnvRunner, or a ConnectorV2 or any other component of which more than one instance is running in parallel.
     """
 
     def __init__(
@@ -213,8 +132,10 @@ class MetricsLogger:
         """Initializes a MetricsLogger instance.
 
         Args:
-            root: Whether this logger is a root logger. If True, lifetime stats
-                (clear_on_reduce=False and reduction="sum") will not be cleared on reduce().
+            root: Whether this logger is a root logger. If True, lifetime stats (clear_on_reduce=False and reduction="sum") will not be cleared on reduce().
+            stats_cls_lookup: A dictionary mapping reduction method names to Stats classes.
+                If not provided, the default lookup (ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP) will be used.
+                You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
         """
         self.stats = {}
         self._tensor_mode = False
@@ -265,35 +186,6 @@ class MetricsLogger:
             compile: If True, the result is compiled into a single value if possible.
             throughput: If True, the throughput is returned instead of the
                 actual (reduced) value.
-
-        .. testcode::
-            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-            from ray.rllib.utils.test_utils import check
-
-            logger = MetricsLogger()
-            ema = 0.01
-
-            # Log some (EMA reduced) values.
-            key = ("some", "nested", "key", "sequence")
-            logger.log_value(key, 2.0, ema_coeff=ema)
-            logger.log_value(key, 3.0)
-
-            # Expected reduced value:
-            expected_reduced = (1.0 - ema) * 2.0 + ema * 3.0
-
-            # Peek at the (reduced) value under `key`.
-            check(logger.peek(key), expected_reduced)
-
-            # Peek at the (reduced) nested struct under ("some", "nested").
-            check(
-                logger.peek(("some", "nested")),
-                {"key": {"sequence": expected_reduced}},
-            )
-
-            # Log some more, check again.
-            logger.log_value(key, 4.0)
-            expected_reduced = (1.0 - ema) * expected_reduced + ema * 4.0
-            check(logger.peek(key=key), expected_reduced)
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
@@ -508,6 +400,23 @@ class MetricsLogger:
                             window=window,
                             clear_on_reduce=clear_on_reduce,
                             percentiles=percentiles,
+                        ),
+                    )
+                elif reduce == "item":
+                    self._set_key(
+                        key,
+                        ItemStats(
+                            _is_root_stats=self._is_root_logger,
+                            clear_on_reduce=clear_on_reduce,
+                        ),
+                    )
+                elif reduce == "item_series":
+                    self._set_key(
+                        key,
+                        ItemSeriesStats(
+                            _is_root_stats=self._is_root_logger,
+                            window=window,
+                            clear_on_reduce=clear_on_reduce,
                         ),
                     )
                 else:
@@ -744,11 +653,7 @@ class MetricsLogger:
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self._get_key(key)
 
-    @Deprecated(new="__reduce", error=False)
     def reduce(self) -> Dict:
-        return self.__reduce()
-
-    def __reduce(self) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
         DO NOT CALL THIS METHOD! This should be called only by RLlib when aggregating stats.
@@ -941,15 +846,11 @@ class MetricsLogger:
             """Helper function to calculate throughputs for a nested structure."""
 
             def _transform(path, value):
-                if (
-                    isinstance(value, Stats)
-                    or isinstance(value, StatsBase)
-                    and value.has_throughput
-                ):
+                if isinstance(value, StatsBase) and value.has_throughputs:
                     # Convert path to tuple for consistent key handling
                     key = force_tuple(path)
                     # Add "_throughput" to the last key in the path
-                    return key[:-1] + (key[-1] + "_throughput",), value.throughput
+                    return key[:-1] + (key[-1] + "_throughputs",), value.throughputs
                 return path, value
 
             result = {}
@@ -969,12 +870,12 @@ class MetricsLogger:
                 # Get the Stats object or nested structure for the key
                 stats = self._get_key(key, key_error=False)
 
-                if isinstance(stats, Stats) or isinstance(stats, StatsBase):
-                    if not stats.has_throughput:
+                if isinstance(stats, StatsBase):
+                    if not stats.has_throughputs:
                         raise ValueError(
                             f"Key '{key}' does not have throughput tracking enabled"
                         )
-                    return stats.throughput
+                    return stats.throughputs
                 elif stats == {}:
                     # If the key is not found, return the default value
                     return default
@@ -985,11 +886,7 @@ class MetricsLogger:
             throughputs = {}
 
             def _map(path, stats):
-                if (
-                    isinstance(stats, Stats)
-                    or isinstance(stats, StatsBase)
-                    and stats.has_throughput
-                ):
+                if isinstance(stats, StatsBase) and stats.has_throughputs:
                     # Convert path to tuple for consistent key handling
                     key = force_tuple(path)
                     # Add "_throughput" to the last key in the path
@@ -1000,7 +897,7 @@ class MetricsLogger:
                         if k not in _dict:
                             _dict[k] = {}
                         _dict = _dict[k]
-                    _dict[key[-1]] = stats.throughput
+                    _dict[key[-1]] = stats.throughputs
 
             tree.map_structure_with_path(_map, self.stats)
 

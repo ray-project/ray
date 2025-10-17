@@ -1,5 +1,7 @@
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any, Dict, List, Union, Optional, Tuple
+
+from itertools import chain
 from abc import ABCMeta
 
 import numpy as np
@@ -26,7 +28,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     def __init__(
         self,
         window: Optional[Union[int, float]] = None,
-        clear_on_reduce=False,
+        *args,
         **kwargs,
     ):
         """Initializes a SeriesStats instance.
@@ -34,18 +36,15 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Args:
             window: The window size to reduce over.
         """
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
-        self._clear_on_reduce = clear_on_reduce
-        self._has_new_values = True
         self._window = window
-
-        # Timing functionality (keep start times per thread).
-        self._start_times = defaultdict(lambda: None)
-
-        # The actual, underlying data in this Stats object.
-        self.values: Union[List, deque.Deque] = None
-        self._set_values([])
+        if window:
+            self.values = deque(maxlen=window)
+            self._set_values([])
+        else:
+            # If we dno't have a window, we want to always keep only one value.
+            self.values = [np.nan]
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -98,16 +97,18 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             reduction method).
         """
         len_before_reduce = len(self)
-
-        return_values, new_internal_values = self.reduced_values()
+        if self._window is None:
+            reduced_values = self.values
+        else:
+            reduced_values = self.window_reduce()
 
         if self._clear_on_reduce:
             self._set_values([])
         else:
-            self._set_values(new_internal_values)
+            self._set_values(reduced_values)
 
         if compile:
-            return return_values[0]
+            return reduced_values[0]
         else:
             return_stats = self.similar_to(self)
             if len_before_reduce == 0:
@@ -116,7 +117,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
                 # Stats object that we return here
                 return return_stats
             else:
-                return_stats._set_values(return_values)
+                return_stats._set_values(reduced_values)
             return
 
     @staticmethod
@@ -140,8 +141,6 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             self.values = new_values
 
-        self._has_new_values = True
-
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
@@ -150,23 +149,22 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         """
         self.check_value(value)
 
-        # For windowed operations, append to values and trim if needed
-        self.values.append(value)
-        if self._window is not None and len(self.values) > self._window:
-            self.values.popleft()
-
-        # Mark that we have new values
-        self._has_new_values = True
+        if self._window is None:
+            if self.values[0] is np.nan:
+                self.values[0] = value
+            else:
+                self.values = self.running_reduce(self.values[0], value)
+        else:
+            # For windowed operations, append to values and trim if needed
+            self.values.append(value)
+            if self._window is not None and len(self.values) > self._window:
+                self.values.popleft()
 
     @staticmethod
     def merge(self, incoming_stats: List["SeriesStats"]) -> None:
         """Merges SeriesStats objects.
 
-        If `root_stats` is None, we use the first incoming SeriesStats object as the new base SeriesStats object.
-        If `root_stats` is not None, we merge all incoming SeriesStats objects into the base SeriesStats object.
-
         Args:
-            root_stats: The base SeriesStats object to merge into.
             incoming_stats: The list of SeriesStats objects to merge.
 
         Returns:
@@ -192,12 +190,10 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             # If none of the stats have values, return.
             return
 
-        # How to merge in parallel depends on the implementation of the Stats object implementation
-        new_values = [s.values for s in stats_to_merge]
-        reduced_values = self.reduced_values(new_values)
+        all_items = [s.values for s in stats_to_merge]
+        all_items = list(chain.from_iterable(all_items))
+        reduced_values = self.window_reduce(all_items)
         self._set_values(reduced_values)
-
-        self._has_new_values = True
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
@@ -210,22 +206,34 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Returns:
             The result of reducing the internal values list.
         """
-        reduced_values, _ = self.reduced_values()
+        if self._window is None:
+            # Assume that the values are already reduced.
+            reduced_values = self.values
+        else:
+            reduced_values = self.window_reduce()
+
         return reduced_values[0] if compile else reduced_values
 
-    def reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """A non-committed reduction procedure on given values (or `self.values`).
+    def running_reduce(self, value_1, value_2) -> Tuple[Any, Any]:
+        """Reduces two values through a native python reduce function.
 
-        Note that this method does NOT alter any state of `self` or the possibly
-        provided list of `values`. It only returns new values as they should be
-        adopted after a possible, actual reduction step.
+        Args:
+            value_1: The first value to reduce.
+            value_2: The second value to reduce.
+
+        Returns:
+            The reduced value.
+        """
+        return [self.python_reduce_fn(value_1, value_2)]
+
+    def window_reduce(self, values=None) -> Tuple[Any, Any]:
+        """Reduces the internal values list according to the constructor settings.
 
         Args:
             values: The list of values to reduce. If not None, use `self.values`
 
         Returns:
-            A tuple containing 1) the reduced values and 2) the new internal values list
-            to be used. If there is no reduciton method, the reduced values will be the same as the values.
+            The reduced value.
         """
         values = values if values is not None else self.values
 
@@ -235,17 +243,22 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         if torch and torch.is_tensor(values[0]):
             self._is_tensor = True
-            if len(values[0].shape) == 0:
-                reduced = values[0]
+            if len(values) == 1:
+                # No need to reduce if there is only one value.
+                reduced = values[0].detach().cpu()
             else:
                 reduce_in = torch.stack(list(values))
-                reduced = self._torch_reduce_fn(reduce_in)
+                reduced = self._torch_reduce_fn(reduce_in).detach().cpu()
         else:
-            if np.all(np.isnan(values)):
-                # This avoids warnings for taking a mean of an empty array.
-                reduced = np.nan
+            if len(values) == 1:
+                # No need to reduce if there is only one value.
+                reduced = values[0]
             else:
-                reduced = self._np_reduce_fn(values)
+                if np.all(np.isnan(values)):
+                    # This avoids warnings for taking a mean of an empty array.
+                    reduced = np.nan
+                else:
+                    reduced = self._np_reduce_fn(values)
 
         def safe_isnan(value):
             if torch and isinstance(value, torch.Tensor):
@@ -264,4 +277,4 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             else:
                 reduced = float(reduced)
 
-        return [reduced], [reduced]
+        return [reduced]

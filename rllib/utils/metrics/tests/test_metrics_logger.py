@@ -35,6 +35,8 @@ def test_log_value(logger):
         ("sum", {"clear_on_reduce": True}, [10, 20], 30),
         ("lifetime_sum", {}, [10, 20], 30),
         ("ema", {"clear_on_reduce": True}, [1.0, 2.0], 1.01),
+        ("item", {}, [0.1, 0.2], 0.2),
+        ("item_series", {}, [0.1, 0.2], [0.1, 0.2]),
     ],
 )
 def test_basic_reduction_methods(logger, reduce_method, kwargs, values, expected):

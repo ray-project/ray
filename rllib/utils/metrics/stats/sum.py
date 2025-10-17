@@ -18,6 +18,9 @@ class SumStats(SeriesStats):
     _torch_reduce_fn = torch.nansum
     _np_reduce_fn = np.nansum
 
+    def python_reduce_fn(self, x, y):
+        return sum([x, y])
+
     def __init__(self, throughput: bool = False, **kwargs):
         """Initializes a SumStats instance.
 
@@ -32,14 +35,27 @@ class SumStats(SeriesStats):
             ), "For lifetime sum, use LifetimeSumStats class."
 
         self.track_throughput = throughput
-        # We need to initialize this to None becasue if we restart from a checkpoint, we should start over with througput calculation
-        self._series_at_last_reduce = None
+        self._last_reduce_value = 0.0
         # We initialize this to the current time which may result in a low first throughput value
         # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
         self._last_throughput_measure_time = time.perf_counter()
 
+    def has_throughputs(self) -> bool:
+        return self.track_throughput
+
+    @property
+    def throughputs(self) -> Dict[str, float]:
+        """Returns the throughput since the last reduce."""
+        assert (
+            self.has_throughputs()
+        ), "Throughput tracking is not enabled on this Stats object"
+        return {
+            "throughput": (self.peek(compile=True) - self._last_reduce_value)
+            / (time.perf_counter() - self._last_throughput_measure_time)
+        }
+
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        self._series_at_last_reduce = self.peek(compaile=False)
+        self._last_reduce_value = self.peek(compile=compile)
         return super().reduce(compile)
 
     def get_state(self) -> Dict[str, Any]:

@@ -24,10 +24,18 @@ class StatsBase(metaclass=ABCMeta):
     def __init__(self, _is_root_stats: bool = False, clear_on_reduce: bool = False):
         self._is_root_stats = _is_root_stats
         self._is_tensor = False
+        self._clear_on_reduce = clear_on_reduce
 
         assert (
             self.stats_cls_identifier is not None
         ), "stats_cls_identifier must be set in the subclass"
+
+    def has_throughput(self) -> bool:
+        """Returns True if the Stats object has throughput tracking enabled.
+
+        Some Stats classes may have throughput tracking enabled, such as SumStats.
+        """
+        return False
 
     def check_value(self, value: Any) -> None:
         """Checks if a value is valid for this Stats object."""
@@ -49,7 +57,10 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     def __float__(self):
-        return float(self.peek())
+        value = self.peek(compile=True)
+        if isinstance(value, (list, tuple, deque)):
+            raise ValueError(f"Value {value} is a list, tuple, or deque, not a scalar")
+        return float(value)
 
     def __eq__(self, other):
         return float(self) == float(other)
@@ -142,6 +153,7 @@ class StatsBase(metaclass=ABCMeta):
         return {
             "stats_cls_identifier": self.stats_cls_identifier,
             "_is_root_stats": self._is_root_stats,
+            "_clear_on_reduce": self._clear_on_reduce,
         }
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -149,6 +161,7 @@ class StatsBase(metaclass=ABCMeta):
         """Sets the state of the stats object."""
 
         self._is_root_stats = state["_is_root_stats"]
+        self._clear_on_reduce = state["_clear_on_reduce"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
 
@@ -159,10 +172,12 @@ class StatsBase(metaclass=ABCMeta):
         if state is not None:
             return {
                 "_is_root_stats": state["_is_root_stats"],
+                "_clear_on_reduce": state["_clear_on_reduce"],
             }
         elif stats_object is not None:
             return {
                 "_is_root_stats": stats_object._is_root_stats,
+                "_clear_on_reduce": stats_object._clear_on_reduce,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
@@ -200,6 +215,9 @@ class StatsBase(metaclass=ABCMeta):
     @abstractmethod
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values.
+
+        This method should NOT be called directly by users.
+        It should be called by MetricsLogger.reduce().
 
         Thereby, the internal values may be changed (note that this is different from
         `peek()`, where the internal values are NOT changed). See the docstring of this

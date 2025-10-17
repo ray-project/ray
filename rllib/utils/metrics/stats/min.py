@@ -15,6 +15,7 @@ class MinStats(SeriesStats):
 
     _torch_reduce_fn = torch.fmin
     _np_reduce_fn = np.nanmin
+    python_reduce_fn = min
 
     def __repr__(self) -> str:
         return (

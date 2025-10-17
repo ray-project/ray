@@ -14,6 +14,9 @@ class MeanStats(SeriesStats):
     stats_cls_identifier = "mean"
     _torch_reduce_fn = torch.nanmean
     _np_reduce_fn = np.nanmean
+    python_reduce_fn = (
+        None  # If we want to use no window, we should use ema stats instead.
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

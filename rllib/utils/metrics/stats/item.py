@@ -4,7 +4,6 @@ from typing import Any, List, Union, Dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
-import numpy as np
 
 torch, _ = try_import_torch()
 
@@ -19,11 +18,10 @@ class ItemStats(StatsBase):
 
     stats_cls_identifier = "item"
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         """Initializes a ItemStats instance."""
-        self._item = np.nan
-
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
+        self._item = None
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -52,7 +50,7 @@ class ItemStats(StatsBase):
         item = self._item
 
         if self._clear_on_reduce:
-            self._item = np.nan
+            self._item = None
 
         if compile:
             return item
@@ -63,33 +61,34 @@ class ItemStats(StatsBase):
         """Pushes a item into this Stats object."""
         self._item = item
 
-    def merge(root_stats: "StatsBase", *stats: "StatsBase") -> None:
-        """Merges Stats objects."""
-        if root_stats is None:
-            root_stats = stats[0].similar_to(stats[0])
-            root_stats._is_root_stats = True
-
-        assert root_stats._is_root_stats, "Stats should only be merged at root level"
-        assert type(root_stats) is type(stats[0]) and isinstance(
-            root_stats, ItemStats
-        ), "All incoming stats must be of type ItemStats"
-
-        root_stats._item = stats[0]._item
-
-        return root_stats
-
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        """Returns the result of reducing.
-
-        This does not alter the internal value.
+    @staticmethod
+    def merge(self, incoming_stats: List["ItemStats"]) -> None:
+        """Merges ItemStats objects.
 
         Args:
-            compile: If True, the result is compiled into a single value.
+            incoming_stats: The list of ItemStats objects to merge.
 
         Returns:
-            The result of reducing the internal values list.
+            The merged ItemStats object.
         """
+        assert self._is_root_stats, "ItemStats should only be merged at root level"
 
+        not_none_items = [s._item for s in incoming_stats if s._item is not None]
+
+        self._set_values(not_none_items)
+
+    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+        """Returns the internal item.
+
+        This does not alter the internal item.
+
+        Args:
+            compile: If True, return the internal item directly.
+                If False, return the internal item as a single-element list.
+
+        Returns:
+            The internal item.
+        """
         if compile:
             return self._item
         return [self._item]

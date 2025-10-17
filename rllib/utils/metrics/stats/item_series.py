@@ -1,5 +1,6 @@
 from typing import Any, List, Union, Dict, Optional
-
+from itertools import chain
+from collections import deque
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
@@ -21,31 +22,35 @@ class ItemSeriesStats(StatsBase):
 
     stats_cls_identifier = "item_series"
 
-    def __init__(
-        self, clear_on_reduce: bool = False, window: Optional[int] = 1, **kwargs
-    ):
-        super().__init__(**kwargs)
+    def __init__(self, window: Optional[int] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._window = window
-        self._clear_on_reduce = clear_on_reduce
         self.items: List[Any] = []
+
+    def _set_values(self, new_values):
+        # For stats with window, use a deque with maxlen=window.
+        # This way, we never store more values than absolutely necessary.
+        if self._window:
+            self.items = deque(new_values, maxlen=self._window)
+        # For infinite windows, use `new_values` as-is (a list).
+        else:
+            self.items = new_values
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
         state["items"] = self.items
-        state["clear_on_reduce"] = self._clear_on_reduce
         state["window"] = self._window
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
         self.items = state["items"]
-        self._clear_on_reduce = state["clear_on_reduce"]
         self._window = state["window"]
 
     def push(self, item: Any) -> None:
         """Pushes a item into this Stats object."""
         self.items.append(item)
-        if len(self.items) > self._window:
+        if self._window and len(self.items) > self._window:
             self.items.popleft()
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
@@ -69,18 +74,26 @@ class ItemSeriesStats(StatsBase):
         return items
 
     def __len__(self) -> int:
-        """Returns the length of the internal values list."""
+        """Returns the length of the internal items list."""
         return len(self.items)
 
-    @staticmethod
+    def peek(self, compile: bool = True) -> List[Any]:
+        """Returns the internal items list.
+
+        This does not alter the internal items list.
+
+        Args:
+            compile: Argument is ignored for ItemSeriesStats.
+
+        Returns:
+            The internal items list.
+        """
+        return self.items
+
     def merge(self, incoming_stats: List["ItemSeriesStats"]) -> None:
         """Merges ItemSeriesStats objects.
 
-        If `root_stats` is None, we use the first incoming ItemSeriesStats object as the new base ItemSeriesStats object.
-        If `root_stats` is not None, we merge all incoming ItemSeriesStats objects into the base ItemSeriesStats object.
-
         Args:
-            root_stats: The base ItemSeriesStats object to merge into.
             incoming_stats: The list of ItemSeriesStats objects to merge.
 
         Returns:
@@ -90,13 +103,9 @@ class ItemSeriesStats(StatsBase):
             self._is_root_stats
         ), "ItemSeriesStats should only be merged at root level"
 
-        new_values = []
-        for s in [self, *incoming_stats]:
-            new_values.extend(s.items)
-
-        # Note: At the root level, the internal item list can grow to `window * len(incoming_stats)`
-        self._set_items(new_values)
-        self._has_new_values = True
+        all_items = [s.items for s in incoming_stats]
+        all_items = list(chain.from_iterable(all_items))
+        self._set_values(all_items)
 
     def __repr__(self) -> str:
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"

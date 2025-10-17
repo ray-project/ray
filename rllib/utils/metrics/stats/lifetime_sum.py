@@ -14,29 +14,62 @@ class LifetimeSumStats(StatsBase):
 
     stats_cls_identifier = "lifetime_sum"
 
-    def __init__(self, track_throughput_since_last_restore: bool = False, **kwargs):
+    def __init__(
+        self,
+        track_throughput_since_last_restore: bool = False,
+        track_througput_since_last_reduce: bool = False,
+        *args,
+        **kwargs,
+    ):
         """Initializes a LifetimeSumStats instance.
 
         Args:
             track_throughput_since_last_restore: If True, track the throughput since the last restore from a checkpoint.
         """
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
+        if self._clear_on_reduce:
+            raise ValueError("LifetimeSumStats does not support clear_on_reduce")
 
-        self._item = 0.0
+        self._lifetime_sum = 0.0
 
         self.track_throughput_last_restore = track_throughput_since_last_restore
+        self.track_throughput_since_last_reduce = track_througput_since_last_reduce
         # We need to initialize this to None becasue if we restart from a checkpoint, we should start over with througput calculation
         self._value_at_last_reduce = None
+        self._value_at_last_restore = None
         # We initialize this to the current time which may result in a low first throughput value
         # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
         self._last_reduce_time = time.perf_counter()
         self._last_restore_time = time.perf_counter()
 
+    def has_throughputs(self) -> bool:
+        return (
+            self.track_throughput_last_restore
+            or self.track_throughput_since_last_reduce
+        )
+
+    @property
+    def throughputs(self) -> Dict[str, float]:
+        """Returns the throughput since the last reduce."""
+        assert (
+            self.has_throughput()
+        ), "Throughput tracking is not enabled on this Stats object"
+        throughputs = {}
+        if self.track_throughput_since_last_reduce:
+            throughputs[
+                "throughput_since_last_reduce"
+            ] = self.throughput_since_last_reduce
+        if self.track_throughput_last_restore:
+            throughputs[
+                "throughput_since_last_restore"
+            ] = self.throughput_since_last_restore
+        return throughputs
+
     def __len__(self) -> int:
         return 1
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        return self._item if compile else [self._item]
+        return self._lifetime_sum if compile else [self._lifetime_sum]
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
@@ -53,7 +86,7 @@ class LifetimeSumStats(StatsBase):
         self._prev_merge_values = state["prev_merge_values"]
         self._value_at_last_reduce = state["value_at_last_reduce"]
         self.track_throughput_last_restore = state["track_throughput_last_restore"]
-        self.value_at_last_restore = self._item
+        self.value_at_last_restore = self._lifetime_sum
 
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
@@ -64,14 +97,15 @@ class LifetimeSumStats(StatsBase):
         if not self._is_tensor and torch and torch.is_tensor(value):
             self._is_tensor = True
             # turn item into a tensor
-            self._item = torch.tensor(self._item)
+            self._lifetime_sum = torch.tensor(self._lifetime_sum)
 
-        self._item += value
+        self._lifetime_sum += value
 
+    @property
     def throughput_since_last_reduce(self) -> float:
         """Returns the throughput since the last reduce."""
         if self.track_throughput_last_restore:
-            return self._item / (time.perf_counter() - self._last_reduce_time)
+            return self._lifetime_sum / (time.perf_counter() - self._last_reduce_time)
         else:
             raise ValueError(
                 "Tracking of throughput since last reduce is not enabled on this Stats object"
@@ -81,7 +115,7 @@ class LifetimeSumStats(StatsBase):
     def throughput_since_last_restore(self) -> float:
         """Returns the throughput total."""
         if self.track_throughput_last_restore:
-            return self._item / (time.perf_counter() - self._last_restore_time)
+            return self._lifetime_sum / (time.perf_counter() - self._last_restore_time)
         else:
             raise ValueError(
                 "Tracking of throughput since last restore is not enabled on this Stats object"
@@ -95,15 +129,15 @@ class LifetimeSumStats(StatsBase):
                 If it is not possible, the result is a list of values.
                 If False, the result is a list of one or more values.
         """
-        value = self._item
+        value = self._lifetime_sum
 
         if not self._is_root_stats:
             # On leaves, we need to return the current value and reset it to 0
             # Otherwise, we would be adding accumulated values at the root multiple times
             if self._is_tensor:
-                self._item = torch.tensor(0.0)
+                self._lifetime_sum = torch.tensor(0.0)
             else:
-                self._item = 0.0
+                self._lifetime_sum = 0.0
 
         if self._is_tensor:
             value = value.item()

@@ -15,6 +15,7 @@ class MaxStats(SeriesStats):
 
     _torch_reduce_fn = torch.fmax
     _np_reduce_fn = np.nanmax
+    python_reduce_fn = max
 
     def __repr__(self) -> str:
         return (

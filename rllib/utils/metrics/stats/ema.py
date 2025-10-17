@@ -19,19 +19,24 @@ class EmaStats(StatsBase):
     def __init__(
         self,
         ema_coeff: float = 0.01,
-        clear_on_reduce: bool = False,
         *args,
         **kwargs,
     ):
         """Initializes a MeanStats instance.
 
+        Note that, when aggregating EmaStats objects with `EmaStats.merge()`, we take the
+        mean of the incoming means. The output of the aggregated stats is therefore not
+        the exponetially moving average of the values that are logged by parallel components
+        in order, but rather the mean of the EMA logged by parallel components.
+
         Args:
-            ema_coeff: The EMA coefficient to use if no `window` is provided. Defaults to 0.05.
+            ema_coeff: The EMA coefficient to use. Defaults to 0.01.
+            clear_on_reduce: If True, the Stats object will reset its entire values list
+                to an empty one after `EmaStats.reduce()` is called.
         """
         super().__init__(*args, **kwargs)
         self._item = np.nan
         self._ema_coeff = ema_coeff
-        self._clear_on_reduce = clear_on_reduce
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
