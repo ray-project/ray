@@ -1,7 +1,9 @@
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 import bisect
 import json
-from typing import Dict, List, Optional
+
+from typing import Dict, List
+
 from ray.util.metrics import Histogram
 
 

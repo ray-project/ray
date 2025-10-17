@@ -1,20 +1,18 @@
-import bisect
 import math
-import threading
 import time
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import ray
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.common import (
     RuntimeMetricsHistogram,
     histogram_bucket_rows,
     histogram_buckets_bytes,
     histogram_buckets_s,
 )
-import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
