@@ -5,8 +5,9 @@ Get Started with Distributed Training using JAX
 
 This guide provides an overview of the `JaxTrainer` in Ray Train.
 
-What is Jax?
+What is JAX?
 ------------
+
 `JAX <https://github.com/jax-ml/jax>`_ is a Python library for accelerator-oriented array computation and
 program transformation, designed for high-performance numerical computing and large-scale machine learning.
 
@@ -17,6 +18,7 @@ high-performance numerical programs for distributed execution.
 
 What are TPUs?
 --------------
+
 Tensor Processing Units (TPUs), are custom-designed accelerators created by Google to optimize machine learning
 workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs are highly specialized for the massive
 matrix and tensor computations involved in deep learning, making them exceptionally efficient.
@@ -29,7 +31,8 @@ To learn more about configuring TPUs with KubeRay, see :ref:`kuberay-tpu`.
 
 JaxTrainer API
 --------------
-The `JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train with TPUs.
+
+The :class:`~ray.train.v2.jax.JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train with TPUs.
 It follows the Single-Program, Multi-Data (SPMD) paradigm, where your training code is executed simultaneously
 across multiple workers, each running on a separate TPU virtual machine within a TPU slice. Ray automatically
 handles atomically reserving a TPU multi-host slice.
@@ -37,6 +40,9 @@ handles atomically reserving a TPU multi-host slice.
 The `JaxTrainer` is initialized with your training logic, defined in a `train_loop_per_worker` function, and a
 `ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` currently only supports TPU
 accelerator types.
+
+Configuring Scale and TPU
+-------------------------
 
 For TPU training, the `ScalingConfig` is where you define the specifics of your hardware slice. Key fields include:
 
@@ -70,8 +76,8 @@ For reference, the final code is as follows:
     result = trainer.fit()
 
 1. `train_func` is the Python code that executes on each distributed training worker.
-2. :class:`~ray.train.v2.ScalingConfig` defines the number of distributed training workers and whether to use TPUs.
-3. :class:`~ray.train.v2.JaxTrainer` launches the distributed training job.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs.
+3. :class:`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
 
 Compare a JAX training script with and without Ray Train.
 
@@ -238,6 +244,74 @@ This function is the entry point that Ray will execute on each remote worker.
     +    scaling_config=scaling_config
     +)
     +result = trainer.fit()
+
+Configure persistent storage
+----------------------------
+
+Create a :class:`~ray.train.RunConfig` object to specify the path where results
+(including checkpoints and artifacts) will be saved.
+
+.. testcode::
+
+    from ray.train import RunConfig
+
+    # Local path (/some/local/path/unique_run_name)
+    run_config = RunConfig(storage_path="/some/local/path", name="unique_run_name")
+
+    # Shared cloud storage URI (s3://bucket/unique_run_name)
+    run_config = RunConfig(storage_path="s3://bucket", name="unique_run_name")
+
+    # Shared NFS path (/mnt/nfs/unique_run_name)
+    run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
+
+
+.. warning::
+
+    Specifying a *shared storage location* (such as cloud storage or NFS) is
+    *optional* for single-node clusters, but it is **required for multi-node clusters.**
+    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    during checkpointing for multi-node clusters.
+
+
+For more details, see :ref:`persistent-storage-guide`.
+
+Launch a training job
+---------------------
+
+Tying it all together, you can now launch a distributed training job with a :class:`~ray.train.v2.jax.JaxTrainer`.
+
+.. testcode::
+    :hide:
+
+    from ray.train import ScalingConfig
+
+    train_func = lambda: None
+    scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
+    run_config = None
+
+.. testcode::
+
+    from ray.train.v2.jax import JaxTrainer
+
+    trainer = JaxTrainer(
+        train_func, scaling_config=scaling_config, run_config=run_config
+    )
+    result = trainer.fit()
+
+Access training results
+-----------------------
+
+After training completes, a :class:`~ray.train.Result` object is returned which contains
+information about the training run, including the metrics and checkpoints reported during training.
+
+.. testcode::
+
+    result.metrics     # The metrics reported during training.
+    result.checkpoint  # The latest checkpoint reported during training.
+    result.path        # The path where logs are stored.
+    result.error       # The exception that was raised, if training failed.
+
+For more usage examples, see :ref:`train-inspect-results`.
 
 Next steps
 ----------

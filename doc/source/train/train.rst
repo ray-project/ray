@@ -11,7 +11,7 @@ Ray Train: Scalable Model Training
     PyTorch Lightning Guide <getting-started-pytorch-lightning>
     Hugging Face Transformers Guide <getting-started-transformers>
     XGBoost Guide <getting-started-xgboost>
-    Jax Guide <getting-started-jax>
+    JAX Guide <getting-started-jax>
     more-frameworks
     User Guides <user-guides>
     Examples <examples>
