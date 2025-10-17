@@ -515,3 +515,101 @@ In your policy, access custom metrics via:
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 > Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
+
+(serve-external-scale-webhook)=
+## External Scaling Webhook
+
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
+Ray Serve exposes a REST API endpoint that you can use to dynamically scale your deployments from outside the Ray cluster. This endpoint gives you flexibility to implement custom scaling logic based on any metrics or signals you choose, such as external monitoring systems, business metrics, or predictive models.
+
+The external scaling webhook provides programmatic control over the number of replicas for any deployment in your Ray Serve application. Unlike Ray Serve's built-in autoscaling, which scales based on queue depth and ongoing requests, this webhook allows you to scale based on any external criteria you define.
+
+### Enable external scaler
+
+Before using the external scaling webhook, enable it in your application configuration by setting `external_scaler_enabled: true`:
+
+```yaml
+applications:
+  - name: my-app
+    import_path: my_module:app
+    external_scaler_enabled: true
+    deployments:
+      - name: my-deployment
+        num_replicas: 1
+```
+
+:::{warning}
+External scaling and built-in autoscaling are mutually exclusive. You can't use both for the same application.
+
+- If you set `external_scaler_enabled: true`, you **must not** configure `autoscaling_config` on any deployment in that application.
+- If you configure `autoscaling_config` on any deployment, you **must not** set `external_scaler_enabled: true` for the application.
+
+Attempting to use both will result in an error.
+:::
+
+### API endpoint
+
+The external scaling webhook requires authentication using a bearer token. You can obtain this token from the Ray Dashboard UI (typically at `http://localhost:8265`) in the Serve section.
+
+Scale a deployment by sending a POST request with the target number of replicas:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/applications/{application_name}/deployments/{deployment_name}/scale \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"target_num_replicas": 5}'
+```
+
+Replace `{application_name}` and `{deployment_name}` with your application and deployment names, and `<your_token>` with the authentication token from the Ray Dashboard.
+
+The request body must conform to the [`ScaleDeploymentRequest`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ScaleDeploymentRequest.html) schema. The `target_num_replicas` field (integer, required) specifies the target number of replicas for the deployment and must be a non-negative integer.
+
+### Example - Predictive scaling
+
+Implement predictive scaling based on historical patterns or forecasts. For instance, you can preemptively scale up before anticipated traffic spikes:
+
+```python
+import requests
+from datetime import datetime
+
+def predictive_scale(
+    application_name: str,
+    deployment_name: str,
+    auth_token: str,
+    serve_endpoint: str = "http://localhost:8000"
+) -> bool:
+    """Scale based on time of day and historical patterns."""
+    hour = datetime.now().hour
+    
+    # Define scaling profile based on historical traffic patterns
+    if 9 <= hour < 17:  # Business hours
+        target_replicas = 10
+    elif 17 <= hour < 22:  # Evening peak
+        target_replicas = 15
+    else:  # Off-peak hours
+        target_replicas = 3
+    
+    url = (
+        f"{serve_endpoint}/api/v1/applications/{application_name}"
+        f"/deployments/{deployment_name}/scale"
+    )
+    
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json"
+    }
+    
+    response = requests.post(
+        url,
+        headers=headers,
+        json={"target_num_replicas": target_replicas},
+        timeout=10
+    )
+    
+    return response.status_code == 200
+```
+
+The external scaling webhook is useful when you need custom scaling logic beyond Ray Serve's built-in autoscaling. Common scenarios include scaling based on external metrics from monitoring systems (Prometheus, Datadog, CloudWatch) or business metrics, implementing predictive scaling based on historical patterns or schedules (preemptive scaling before traffic spikes, event-driven scaling for launches or batch jobs), and maintaining operational control for tasks like load testing, cost optimization during off-peak hours, or managing development environments.

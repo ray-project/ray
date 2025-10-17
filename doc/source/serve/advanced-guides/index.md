@@ -16,7 +16,6 @@ deploy-vm
 multi-app-container
 custom-request-router
 multi-node-gpu-troubleshooting
-external-scaling-webhook
 ```
 
 If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
@@ -34,4 +33,3 @@ Use these advanced guides for more options and configurations:
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
 - [Use Custom Algorithm for Request Routing](custom-request-router)
 - [Troubleshoot multi-node GPU setups for serving LLMs](multi-node-gpu-troubleshooting)
-- [External Scaling Webhook API](external-scaling-webhook)
