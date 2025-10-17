@@ -10,7 +10,7 @@ Ray Data's transformation primitives.
 See: https://py.iceberg.apache.org/reference/pyiceberg/table/
 """
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from packaging import version
 
@@ -46,7 +46,7 @@ def upsert_to_iceberg(
     join_columns: List[str],
     catalog_kwargs: Optional[Dict[str, Any]] = None,
     snapshot_properties: Optional[Dict[str, str]] = None,
-    update_filter: Optional[Union[str, "BooleanExpression"]] = None,
+    update_filter: Optional["BooleanExpression"] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
 ) -> None:

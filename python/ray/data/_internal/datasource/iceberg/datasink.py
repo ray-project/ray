@@ -13,7 +13,7 @@ Key features:
 """
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Literal, Optional
 
 from packaging import version
 
@@ -82,7 +82,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: Literal["append", "overwrite"] = "append",
-        overwrite_filter: Optional[Union[str, "BooleanExpression"]] = None,
+        overwrite_filter: Optional["BooleanExpression"] = None,
     ):
         """
         Initialize the IcebergDatasink.

@@ -4023,9 +4023,9 @@ class Dataset:
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: Literal["append", "overwrite", "merge"] = "append",
-        overwrite_filter: Optional[Union[str, "BooleanExpression"]] = None,
+        overwrite_filter: Optional["BooleanExpression"] = None,
         merge_keys: Optional[List[str]] = None,
-        update_filter: Optional[Union[str, "BooleanExpression"]] = None,
+        update_filter: Optional["BooleanExpression"] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
