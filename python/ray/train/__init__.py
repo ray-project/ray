@@ -22,9 +22,9 @@ from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
 from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
+from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.context import get_context
-from ray.train.trainer import TrainingIterator
+from ray.train.context import TrainContext, get_context
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -40,6 +40,12 @@ if is_v2_enabled():
         FailureConfig,
         RunConfig,
         ScalingConfig,
+    )
+    from ray.train.v2.api.context import TrainContext  # noqa: F811
+    from ray.train.v2.api.exceptions import (  # noqa: F811
+        ControllerError,
+        TrainingFailedError,
+        WorkerGroupError,
     )
     from ray.train.v2.api.report_config import CheckpointUploadMode  # noqa: F811
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
@@ -67,7 +73,8 @@ __all__ = [
     "RunConfig",
     "ScalingConfig",
     "SyncConfig",
-    "TrainingIterator",
+    "TrainContext",
+    "TrainingFailedError",
     "TRAIN_DATASET_KEY",
 ]
 
@@ -84,18 +91,28 @@ Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
-TrainingIterator.__module__ = "ray.train"
+TrainContext.__module__ = "ray.train"
+TrainingFailedError.__module__ = "ray.train"
 
 # TODO: consider implementing these in v1 and raising ImportError instead.
 if is_v2_enabled():
-    __all__.append("UserCallback")
-    UserCallback.__module__ = "ray.train"
-    __all__.append("CheckpointUploadMode")
+    __all__.extend(
+        [
+            "CheckpointUploadMode",
+            "ControllerError",
+            "ReportedCheckpoint",
+            "UserCallback",
+            "WorkerGroupError",
+            "get_all_reported_checkpoints",
+        ]
+    )
+
     CheckpointUploadMode.__module__ = "ray.train"
-    __all__.append("get_all_reported_checkpoints")
-    get_all_reported_checkpoints.__module__ = "ray.train"
-    __all__.append("ReportedCheckpoint")
+    ControllerError.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
+    UserCallback.__module__ = "ray.train"
+    WorkerGroupError.__module__ = "ray.train"
+    get_all_reported_checkpoints.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
