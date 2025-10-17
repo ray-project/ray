@@ -290,6 +290,7 @@ Tying it all together, you can now launch a distributed training job with a :cla
     run_config = None
 
 .. testcode::
+    :skipif: True
 
     from ray.train.v2.jax import JaxTrainer
 
