@@ -417,7 +417,11 @@ class PhysicalOperator(Operator):
         # (not self.has_next()) because _OrderedOutputQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
-        return self._execution_finished and not self.has_next() and internal_output_queue_size == 0
+        return (
+            self._execution_finished
+            and not self.has_next()
+            and internal_output_queue_size == 0
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
