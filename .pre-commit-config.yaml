@@ -243,7 +243,7 @@ repos:
     rev: v8.56.0
     hooks:
       - id: eslint
-        files: ^python/ray/dashboard/client/src/.*\.[jt]sx?$
+        files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
         types: [file]
         args:
           - --max-warnings=0
