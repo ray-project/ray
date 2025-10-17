@@ -9,8 +9,7 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 
 SHELL ["/bin/bash", "-ice"]
 
-COPY . .
-RUN mv "$PIP_REQUIREMENTS" python_depset.lock
+COPY "$PIP_REQUIREMENTS" python_depset.lock
 
 RUN --mount=type=bind,from=ray_core,target=/mnt/ray-core \
     --mount=type=bind,from=ray_dashboard,target=/mnt/ray-dashboard \
