@@ -413,10 +413,11 @@ class PhysicalOperator(Operator):
                 #   - There are no active or pending tasks
                 self._execution_finished = True
 
-        # NOTE: We favor (internal_output_queue_size == 0) over
+        # NOTE: We check for (internal_output_queue_size == 0) and
         # (not self.has_next()) because _OrderedOutputQueue can
         # return False for self.has_next(), but have a non-empty queue size.
-        return self._execution_finished and (internal_output_queue_size == 0)
+        # Draining the internal output queue is important to free object refs.
+        return self._execution_finished and not self.has_next() and internal_output_queue_size == 0
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
