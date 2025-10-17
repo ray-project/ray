@@ -89,12 +89,12 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     # NOTE: if you change the DEFAULT_MIN_SYSTEM_* constants, you may need to modify this test.
     # if the total number of cpus is between [1,19] the system cgroup will a weight that is equal to 1 cpu core.
     # if the total amount of memory is between [0.5GB, 4.8GB] the system cgroup will get 0.5GB + object store memory.
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 2)
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 0.5 * (1024**3)
     )
     config = ResourceIsolationConfig(enable_resource_isolation=True)
-    assert config.system_reserved_cpu_weight == 10000
+    assert config.system_reserved_cpu_weight == 5000
     assert config.system_reserved_memory == 500 * (1024**2)
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 19)
@@ -176,7 +176,7 @@ def test_enabled_with_resource_overrides_less_than_minimum_defaults_raise_value_
         )
 
 
-def test_enabled_with_resource_overrides_greater_than_available_resources_raise_value_error(
+def test_enabled_with_resource_overrides_gte_than_available_resources_raise_value_error(
     monkeypatch,
 ):
     # The following values in ray_constants define the maximum reserved values to run ray with resource isolation.
@@ -186,11 +186,9 @@ def test_enabled_with_resource_overrides_greater_than_available_resources_raise_
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 32)
     with pytest.raises(
         ValueError,
-        match="The requested system_reserved_cpu=32.1 is greater than the number of cpus available=32",
+        match="The requested system_reserved_cpu=32.0 is greater than or equal to the number of cpus available=32",
     ):
-        ResourceIsolationConfig(
-            enable_resource_isolation=True, system_reserved_cpu=32.1
-        )
+        ResourceIsolationConfig(enable_resource_isolation=True, system_reserved_cpu=32)
 
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)

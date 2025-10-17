@@ -331,8 +331,6 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   return Status::OK();
 }
 
-// What's the right thing here? If the controller is specified?
-// The correct API would be specify where the controller should be enabled.
 Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
                                         const std::string &constraint,
                                         const std::string &constraint_value) {

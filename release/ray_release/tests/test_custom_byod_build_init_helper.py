@@ -50,6 +50,12 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             "custom_script.sh",
             "python_depset.lock",
         ),
+        (
+            "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321",
+            "anyscale/ray:2.50.0-py37-cpu",
+            "custom_script.sh",
+            "python_depset.lock",
+        ),
     ]
     custom_image_test_names_map = {
         "ray-project/ray-ml:abc123-custom-123456789abc123456789": ["test_1"],
@@ -61,6 +67,9 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
             "test_1",
             "test_2",
+        ],
+        "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
+            "test_3",
         ],
     }
     mock_get_images_from_tests.return_value = (
@@ -86,6 +95,16 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             team="test_team",
             working_dir="test_working_dir",
         ),
+        Test(
+            name="test_3",
+            frequency="manual",
+            group="test_group",
+            team="test_team",
+            working_dir="test_working_dir",
+            cluster={
+                "ray_version": "2.50.0",
+            },
+        ),
     ]
     with tempfile.TemporaryDirectory() as tmpdir:
         create_custom_build_yaml(
@@ -94,7 +113,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f:
             content = yaml.safe_load(f)
             assert content["group"] == "Custom images build"
-            assert len(content["steps"]) == 3
+            assert len(content["steps"]) == 4
             assert (
                 content["steps"][0]["label"]
                 == f":tapioca: build custom: ray-ml:custom ({step_keys[0]}) test_1"
@@ -127,21 +146,36 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 f"--image-name {custom_byod_images[2][0]}"
                 in content["steps"][1]["commands"][6]
             )
+            assert (
+                f"--image-name {custom_byod_images[3][0]}"
+                in content["steps"][2]["commands"][6]
+            )
+            assert content["steps"][3]["depends_on"] == "forge"
 
 
 def test_get_prerequisite_step():
     config = get_global_config()
     assert (
-        get_prerequisite_step("ray-project/ray-ml:abc123-custom")
+        get_prerequisite_step(
+            "ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base"
+        )
         == config["release_image_step_ray_ml"]
     )
     assert (
-        get_prerequisite_step("ray-project/ray-llm:abc123-custom")
+        get_prerequisite_step(
+            "ray-project/ray-llm:abc123-custom", "ray-project/ray-llm:abc123-base"
+        )
         == config["release_image_step_ray_llm"]
     )
     assert (
-        get_prerequisite_step("ray-project/ray:abc123-custom")
+        get_prerequisite_step(
+            "ray-project/ray:abc123-custom", "ray-project/ray:abc123-base"
+        )
         == config["release_image_step_ray"]
+    )
+    assert (
+        get_prerequisite_step("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base")
+        == "forge"
     )
 
 

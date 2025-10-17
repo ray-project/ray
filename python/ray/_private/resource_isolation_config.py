@@ -179,7 +179,7 @@ class ResourceIsolationConfig:
                 does not have enough available cpus.
 
         """
-        available_system_cpus = utils.get_num_cpus()
+        available_system_cpus = utils.get_num_cpus(truncate=False)
 
         if available_system_cpus < ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES:
             raise ValueError(
@@ -220,9 +220,9 @@ class ResourceIsolationConfig:
                 f"greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES}"
             )
 
-        if system_reserved_cpu > available_system_cpus:
+        if system_reserved_cpu >= available_system_cpus:
             raise ValueError(
-                f"The requested system_reserved_cpu={system_reserved_cpu} is greater than "
+                f"The requested system_reserved_cpu={system_reserved_cpu} is greater than or equal to "
                 f"the number of cpus available={available_system_cpus}. "
                 "Pick a smaller number of cpu cores to reserve for ray system processes."
             )

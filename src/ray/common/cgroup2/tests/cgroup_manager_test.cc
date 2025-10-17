@@ -282,11 +282,11 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   }
 
   // Processes must be moved third.
-  // Processes were moved both out of the system_leaf cgroup and the non_ray
-  // cgroup.
-  ASSERT_EQ(processes_moved->size(), 2);
-  std::array<std::string, 2> process_moved_cgroups{system_leaf_cgroup_path,
-                                                   non_ray_cgroup_path};
+  // Processes were moved both out of the system_leaf, workers, and non_ray
+  // cgroups.
+  ASSERT_EQ(processes_moved->size(), 3);
+  std::array<std::string, 3> process_moved_cgroups{
+      system_leaf_cgroup_path, non_ray_cgroup_path, workers_cgroup_path};
 
   // The order in which processes were moved back from leaf nodes to the base_cgroup
   // does not matter.
