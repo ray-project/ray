@@ -1249,7 +1249,7 @@ def check_version_info(
     cluster_metadata,
     this_process_address,
     raise_on_mismatch=True,
-    python_version_match_level="patch",
+    python_version_match_level=None,
 ):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
@@ -1259,7 +1259,8 @@ def check_version_info(
         raise_on_mismatch: Raise an exception on True, log a warning otherwise.
         python_version_match_level: "minor" or "patch". To which python version level we
             try to match. Note if "minor" and the patch is different, we will still log
-            a warning.
+            a warning. Default value is `RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL` if it
+            exists, otherwise "patch"
 
     Behavior:
         - We raise or log a warning, based on raise_on_mismatch, if:
@@ -1273,9 +1274,15 @@ def check_version_info(
             - Python patch versions do not match, AND
             - python_version_match_level == 'minor' AND
             - raise_on_mismatch == False.
+
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    if python_version_match_level is None:
+        python_version_match_level = os.environ.get(
+            "RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL", "patch"
+        )
+
     cluster_version_info = (
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
