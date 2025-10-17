@@ -20,7 +20,9 @@ import platform
 import re
 import subprocess
 import sys
+import yaml
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
 
@@ -114,6 +116,7 @@ class RayFossaPreprocessor:
     def filter_c_cpp_dependencies(self, all_deps: List[str]) -> List[str]:
         """Filter for C/C++ related dependencies - handles both //external/ and @repo// patterns"""
         c_cpp_deps = []
+        excluded_deps = []
         
         # External targets (//external/...) - though none found in Ray
         external_deps = [dep for dep in all_deps if dep.startswith('//external/')]
@@ -126,7 +129,8 @@ class RayFossaPreprocessor:
             'protobuf', 'grpc', 'zlib', 'openssl', 'boringssl', 'cares', 're2', 
             'absl', 'boost', 'gtest', 'gflags', 'spdlog', 'hiredis', 'redis',
             'msgpack', 'flatbuffers', 'rapidjson', 'nlohmann', 'jemalloc',
-            'opencensus', 'opentelemetry', 'prometheus'
+            'opencensus', 'opentelemetry', 'prometheus', 'arrow', 'thrift',
+            'snappy', 'lz4', 'zstd', 'brotli', 'curl', 'libevent', 'libuv'
         ]
         
         # Known C/C++ repository patterns
@@ -135,20 +139,78 @@ class RayFossaPreprocessor:
             'boringssl', 'openssl', 'zlib', 'protobuf', 'grpc', 'absl',
             'boost', 'gtest', 'gflags', 'spdlog', 'hiredis', 'redis',
             'msgpack', 'flatbuffers', 'rapidjson', 'nlohmann', 'jemalloc',
-            'prometheus', 'opencensus', 'opentelemetry'
+            'prometheus', 'opencensus', 'opentelemetry', 'arrow', 'thrift',
+            'snappy', 'lz4', 'zstd', 'brotli', 'curl', 'libevent', 'libuv'
+        ]
+        
+        # Patterns to explicitly exclude (Python, JS, etc.)
+        exclude_patterns = [
+            'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
+            'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
+            'java', 'maven', 'gradle', 'scala', 'kotlin',
+            'go_', 'rust_', 'cargo', 'crate',
+            'test_', '_test', 'testing', 'mock', 'fixture'
         ]
         
         # Check external targets
         for dep in external_deps:
             if any(pattern in dep for pattern in external_c_cpp_patterns):
                 c_cpp_deps.append(dep)
+            elif any(pattern in dep for pattern in exclude_patterns):
+                excluded_deps.append(f"{dep} (excluded: non-C/C++)")
+            else:
+                excluded_deps.append(f"{dep} (excluded: unknown)")
         
         # Check repository targets
         for dep in repo_deps:
             if any(pattern in dep for pattern in repo_c_cpp_patterns):
                 c_cpp_deps.append(dep)
+            elif any(pattern in dep for pattern in exclude_patterns):
+                excluded_deps.append(f"{dep} (excluded: non-C/C++)")
+            else:
+                excluded_deps.append(f"{dep} (excluded: unknown)")
+        
+        # Print debugging information
+        print(f"  - Total dependencies analyzed: {len(all_deps)}")
+        print(f"  - C/C++ dependencies found: {len(c_cpp_deps)}")
+        print(f"  - Excluded dependencies: {len(excluded_deps)}")
+        
+        if excluded_deps and len(excluded_deps) <= 10:  # Show first 10 excluded deps
+            print(f"  - Sample excluded deps: {excluded_deps[:5]}")
         
         return c_cpp_deps
+    
+    def get_timestamp(self) -> str:
+        """Get current timestamp in YYYYMMDD_HHMMSS format"""
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    def validate_c_cpp_dependencies(self, deps: List[str]) -> Dict[str, Any]:
+        """Validate that dependencies are actually C/C++ related"""
+        validation = {
+            'total_deps': len(deps),
+            'c_cpp_deps': 0,
+            'suspicious_deps': [],
+            'file_extensions': {},
+            'patterns': {}
+        }
+        
+        c_cpp_extensions = ['.h', '.hpp', '.c', '.cpp', '.cc', '.cxx', '.c++']
+        suspicious_patterns = ['python', 'py_', 'pip_', 'node', 'npm', 'java', 'go_', 'rust_']
+        
+        for dep in deps:
+            # Check file extensions
+            if '.' in dep:
+                ext = '.' + dep.split('.')[-1]
+                validation['file_extensions'][ext] = validation['file_extensions'].get(ext, 0) + 1
+            
+            # Check for suspicious patterns
+            is_suspicious = any(pattern in dep.lower() for pattern in suspicious_patterns)
+            if is_suspicious:
+                validation['suspicious_deps'].append(dep)
+            else:
+                validation['c_cpp_deps'] += 1
+        
+        return validation
     
     def classify_dependency_types(self, deps: List[str]) -> Dict[str, Any]:
         """Classify dependencies as runtime, build-only, test-only, etc."""
@@ -207,6 +269,14 @@ class RayFossaPreprocessor:
             
             # Filter for C/C++ dependencies
             c_cpp_deps = self.filter_c_cpp_dependencies(deps)
+            
+            # Validate the filtering
+            validation = self.validate_c_cpp_dependencies(c_cpp_deps)
+            print(f"  - Validation: {validation['c_cpp_deps']} C/C++ deps, {len(validation['suspicious_deps'])} suspicious")
+            
+            if validation['suspicious_deps']:
+                print(f"  - Suspicious dependencies found: {validation['suspicious_deps'][:3]}")
+            
             all_dependencies[target] = c_cpp_deps
             
             print(f"Found {len(c_cpp_deps)} C/C++ dependencies for {target}")
@@ -349,8 +419,52 @@ class RayFossaPreprocessor:
         """Generate .fossa.yml configuration file"""
         config = {
             'version': 3,
+            'project': {
+                'name': 'rajesh-test',
+                'branch': f'fossa-c-cpp-analysis-{self.get_timestamp()}'
+            },
             'analyze': {
-                'modules': []
+                'modules': [],
+                'exclude': [
+                    'python/**',
+                    '**/requirements.txt',
+                    '**/setup.py', 
+                    '**/pyproject.toml',
+                    '**/package.json',
+                    '**/package-lock.json',
+                    '**/yarn.lock',
+                    '**/node_modules/**',
+                    '**/__pycache__/**',
+                    '**/*.py',
+                    '**/*.js',
+                    '**/*.ts',
+                    '**/*.jsx',
+                    '**/*.tsx',
+                    '**/test/**',
+                    '**/tests/**',
+                    '**/examples/**',
+                    '**/docs/**',
+                    '**/doc/**',
+                    '**/*.md',
+                    '**/*.rst',
+                    '**/*.txt',
+                    'bazel-ray/**',
+                    'bazel-bin/**',
+                    'bazel-out/**',
+                    'bazel-testlogs/**',
+                    'bazel/**',
+                    '**/external/**',
+                    '**/Cargo.toml',
+                    '**/Gemfile',
+                    '**/Gemfile.lock',
+                    '**/Cargo.lock',
+                    '**/rust/**',
+                    '**/ruby/**',
+                    '**/go.mod',
+                    '**/go.sum',
+                    '**/pom.xml',
+                    '**/build.gradle'
+                ]
             }
         }
         
@@ -459,7 +573,8 @@ class RayFossaPreprocessor:
         # Generate .fossa.yml
         fossa_config = self.generate_fossa_config()
         with open(self.ray_root / '.fossa.yml', 'w') as f:
-            json.dump(fossa_config, f, indent=2)
+            import yaml
+            yaml.dump(fossa_config, f, default_flow_style=False, sort_keys=False)
         
         # Generate dependency manifests
         with open(self.ray_root / 'dependencies.json', 'w') as f:
