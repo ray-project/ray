@@ -95,6 +95,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: released
+      cluster:
+        ray_version: 2.50.0
 
 - name: hello_world_custom_byod
   team: reef
@@ -115,6 +118,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: released
+      cluster:
+        ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
   team: reef
