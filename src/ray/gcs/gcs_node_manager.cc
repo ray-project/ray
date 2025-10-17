@@ -116,7 +116,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
     WriteNodeExportEvent(node_info_copy, /*is_register_event*/ true);
-    gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_copy));
+    PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (node_info.is_head_node()) {
@@ -186,7 +186,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
   auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
-    gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta);
+    PublishNodeInfoToPubsub(node_id, *node_info_delta);
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
@@ -196,9 +196,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto num_drain_request = request.drain_node_data_size();
-  for (auto i = 0; i < num_drain_request; i++) {
-    const auto &node_drain_request = request.drain_node_data(i);
+  for (const auto &node_drain_request : request.drain_node_data()) {
     const auto node_id = NodeID::FromBinary(node_drain_request.node_id());
 
     DrainNode(node_id);
@@ -339,6 +337,113 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
+namespace {
+// Utility function to convert GcsNodeInfo to GcsNodeAddressAndLiveness
+rpc::GcsNodeAddressAndLiveness ConvertToGcsNodeAddressAndLiveness(
+    const rpc::GcsNodeInfo &source) {
+  rpc::GcsNodeAddressAndLiveness destination;
+  destination.set_node_id(source.node_id());
+  destination.set_node_manager_address(source.node_manager_address());
+  destination.set_node_manager_port(source.node_manager_port());
+  destination.set_object_manager_port(source.object_manager_port());
+  destination.set_state(source.state());
+  destination.mutable_death_info()->CopyFrom(source.death_info());
+  return destination;
+}
+}  // namespace
+
+void GcsNodeManager::GetAllNodeAddressAndLiveness(
+    const absl::flat_hash_set<NodeID> &node_ids,
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
+    int64_t limit,
+    const std::function<void(rpc::GcsNodeAddressAndLiveness &&)> &callback) const {
+  absl::ReaderMutexLock lock(&mutex_);
+  int64_t num_added = 0;
+
+  if (!node_ids.empty()) {
+    // optimized path if request only wants specific node ids
+    for (const auto &node_id : node_ids) {
+      if (num_added >= limit) {
+        break;
+      }
+      if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::ALIVE) {
+        auto iter = alive_nodes_.find(node_id);
+        if (iter != alive_nodes_.end()) {
+          callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
+          ++num_added;
+        }
+      }
+      if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::DEAD) {
+        auto iter = dead_nodes_.find(node_id);
+        if (iter != dead_nodes_.end()) {
+          callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
+          ++num_added;
+        }
+      }
+    }
+    return;
+  }
+
+  auto add_with_callback =
+      [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
+              &nodes) {
+        for (const auto &[node_id, node_info_ptr] : nodes) {
+          if (num_added >= limit) {
+            break;
+          }
+          callback(ConvertToGcsNodeAddressAndLiveness(*node_info_ptr));
+          num_added += 1;
+        }
+      };
+
+  if (state_filter.has_value()) {
+    switch (state_filter.value()) {
+    case rpc::GcsNodeInfo::ALIVE:
+      add_with_callback(alive_nodes_);
+      break;
+    case rpc::GcsNodeInfo::DEAD:
+      add_with_callback(dead_nodes_);
+      break;
+    default:
+      RAY_LOG(ERROR) << "Unexpected state filter: " << state_filter.value();
+      break;
+    }
+  } else {
+    add_with_callback(alive_nodes_);
+    add_with_callback(dead_nodes_);
+  }
+}
+
+void GcsNodeManager::HandleGetAllNodeAddressAndLiveness(
+    rpc::GetAllNodeAddressAndLivenessRequest request,
+    rpc::GetAllNodeAddressAndLivenessReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // Extract node IDs from the request
+  absl::flat_hash_set<NodeID> node_ids;
+  for (auto &selector : *request.mutable_node_ids()) {
+    node_ids.insert(NodeID::FromBinary(selector));
+  }
+
+  // Extract state filter from the request
+  std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter;
+  if (request.has_state_filter()) {
+    state_filter = request.state_filter();
+  }
+
+  // Extract limit from the request
+  int64_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
+
+  // Call helper method which handles its own locking and directly populates reply
+  GetAllNodeAddressAndLiveness(
+      node_ids, state_filter, limit, [reply](rpc::GcsNodeAddressAndLiveness &&node) {
+        *reply->add_node_info_list() = std::move(node);
+      });
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+}
+
 std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::SelectRandomAliveNode() const {
   absl::ReaderMutexLock lock(&mutex_);
   if (alive_nodes_.empty()) {
@@ -364,6 +469,17 @@ GcsNodeManager::GetAliveNodeFromCache(const ray::NodeID &node_id) const {
   }
 
   return iter->second;
+}
+
+std::optional<rpc::GcsNodeAddressAndLiveness> GcsNodeManager::GetAliveNodeAddress(
+    const ray::NodeID &node_id) const {
+  absl::ReaderMutexLock lock(&mutex_);
+  auto iter = alive_nodes_.find(node_id);
+  if (iter == alive_nodes_.end()) {
+    return {};
+  }
+
+  return ConvertToGcsNodeAddressAndLiveness(*iter->second.get());
 }
 
 std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
@@ -549,7 +665,7 @@ void GcsNodeManager::InternalOnNodeFailure(
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback();
       }
-      gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_delta));
+      PublishNodeInfoToPubsub(node_id, node_info_delta);
     };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
@@ -598,6 +714,15 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> 
   sorted_dead_node_list_.emplace_back(node_id, node->end_time_ms());
 }
 
+void GcsNodeManager::PublishNodeInfoToPubsub(const NodeID &node_id,
+                                             const rpc::GcsNodeInfo &node_info) const {
+  gcs_publisher_->PublishNodeInfo(node_id, node_info);
+
+  // Convert once and move to avoid copying
+  auto address_and_liveness = ConvertToGcsNodeAddressAndLiveness(node_info);
+  gcs_publisher_->PublishNodeAddressAndLiveness(node_id, std::move(address_and_liveness));
+}
+
 std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsNodeManager: "
@@ -619,6 +744,7 @@ void GcsNodeManager::UpdateAliveNode(
   }
 
   auto new_node_info = *maybe_node_info.value();
+  auto current_snapshot_state = new_node_info.state_snapshot().state();
   auto *snapshot = new_node_info.mutable_state_snapshot();
 
   if (resource_view_sync_message.idle_duration_ms() > 0) {
@@ -630,7 +756,13 @@ void GcsNodeManager::UpdateAliveNode(
         resource_view_sync_message.node_activity());
   }
   if (resource_view_sync_message.is_draining()) {
+    bool first_time_draining = current_snapshot_state != rpc::NodeSnapshot::DRAINING;
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    // Write the export event for the draining state once. Note that we explicitly do
+    // not write IDLE and ACTIVE events as they have very high cardinality.
+    if (first_time_draining) {
+      WriteNodeExportEvent(new_node_info, /*is_register_event*/ false);
+    }
   }
 
   // N.B. For thread safety, all updates to alive_nodes_ need to follow a
