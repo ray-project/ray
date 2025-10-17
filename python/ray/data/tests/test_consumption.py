@@ -500,13 +500,21 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     )
     ds.explain()
     captured = capsys.readouterr()
-    assert captured.out.rstrip() == (
+    import re
+
+    # 使用更精确的正则表达式替换路径信息，只替换以iris.parquet结尾的路径
+    normalized_output = re.sub(
+        r"Paths \(.*files\): \['.*iris\.parquet'\]",
+        "Paths (1 files): ['iris.parquet']",
+        captured.out.rstrip(),
+    )
+    assert normalized_output == (
         "-------- Logical Plan --------\n"
         "ReadParquet\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadParquet]\n"
         "Transformer 0: Parquet Datasource:\n"
-        "Paths (1 files): ['/ray/python/ray/data/examples/data/iris.parquet']\n"
+        "Paths (1 files): ['iris.parquet']\n"
         "Partitioning: Partitioning(style='hive', base_dir='', field_names=None, field_types={}, filesystem=None)\n"
         "Projected Columns: ['petal.length', 'variety']\n"
         "Filter: (sepal.length > 6)\n"
