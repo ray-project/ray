@@ -247,3 +247,13 @@ repos:
         types: [file]
         args:
           - --max-warnings=0
+        additional_dependencies:
+          - eslint@8.26.0
+          - eslint-plugin-react@7.31.10
+          - eslint-plugin-import@2.26.0
+          - eslint-config-react-app@7.0.1
+          - eslint-plugin-prefer-arrow@1.2.3
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
