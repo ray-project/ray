@@ -516,8 +516,8 @@ In your policy, access custom metrics via:
 
 > Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
 
-(serve-external-scale-webhook)=
-## External Scaling Webhook
+
+## External scaling webhook
 
 :::{warning}
 This API is in alpha and may change before becoming stable.
@@ -531,28 +531,22 @@ The external scaling webhook provides programmatic control over the number of re
 
 Before using the external scaling webhook, enable it in your application configuration by setting `external_scaler_enabled: true`:
 
-```yaml
-applications:
-  - name: my-app
-    import_path: my_module:app
-    external_scaler_enabled: true
-    deployments:
-      - name: my-deployment
-        num_replicas: 1
+```{literalinclude} ../doc_code/external_scaler_config.yaml
+---
+start-after: __external_scaler_config_begin__
+end-before: __external_scaler_config_end__
+emphasize-lines: 5
+language: yaml
+---
 ```
 
 :::{warning}
-External scaling and built-in autoscaling are mutually exclusive. You can't use both for the same application.
-
-- If you set `external_scaler_enabled: true`, you **must not** configure `autoscaling_config` on any deployment in that application.
-- If you configure `autoscaling_config` on any deployment, you **must not** set `external_scaler_enabled: true` for the application.
-
-Attempting to use both will result in an error.
+External scaling and built-in autoscaling are mutually exclusive. You can't use both for the same application. If you set `external_scaler_enabled: true`, you **must not** configure `autoscaling_config` on any deployment in that application. Attempting to use both results in an error.
 :::
 
 ### API endpoint
 
-The external scaling webhook requires authentication using a bearer token. You can obtain this token from the Ray Dashboard UI (typically at `http://localhost:8265`) in the Serve section.
+The external scaling webhook requires authentication using a bearer token. You can obtain this token from the Ray dashboard UI (typically at `http://localhost:8265`) in the Serve section.
 
 Scale a deployment by sending a POST request with the target number of replicas:
 
@@ -563,7 +557,7 @@ curl -X POST http://localhost:8000/api/v1/applications/{application_name}/deploy
   -d '{"target_num_replicas": 5}'
 ```
 
-Replace `{application_name}` and `{deployment_name}` with your application and deployment names, and `<your_token>` with the authentication token from the Ray Dashboard.
+Replace `{application_name}` and `{deployment_name}` with your application and deployment names, and `<your_token>` with the authentication token from the Ray dashboard.
 
 The request body must conform to the [`ScaleDeploymentRequest`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ScaleDeploymentRequest.html) schema. The `target_num_replicas` field (integer, required) specifies the target number of replicas for the deployment and must be a non-negative integer.
 
