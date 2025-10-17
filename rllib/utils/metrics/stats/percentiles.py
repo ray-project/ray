@@ -1,17 +1,20 @@
-import heapq
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, Dict, List, Union, Optional
 from abc import abstractmethod
 
+from collections import deque
+import numpy as np
+from itertools import chain
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.metrics.stats.series import SeriesStats
+from ray.rllib.utils.metrics.stats.series import StatsBase
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-class PercentilesStats(SeriesStats):
+class PercentilesStats(StatsBase):
     """A Stats object that tracks percentiles of a series of values."""
 
     stats_cls_identifier = "percentiles"
@@ -19,6 +22,7 @@ class PercentilesStats(SeriesStats):
     def __init__(
         self,
         percentiles: Union[List[int], bool] = None,
+        window: Optional[Union[int, float]] = None,
         *args,
         **kwargs,
     ):
@@ -36,7 +40,16 @@ class PercentilesStats(SeriesStats):
         """
         super().__init__(*args, **kwargs)
 
+        self._window = window
+        if window:
+            self.values = deque(maxlen=window)
+            self._set_values([])
+        else:
+            # If we dno't have a window, we want to always keep only one value.
+            self.values = [np.nan]
+
         if percentiles is None:
+            # We compute a bunch of default percentiles because computing one is just as expensive as computing all of them.
             percentiles = [0, 50, 75, 90, 95, 99, 100]
         elif isinstance(percentiles, list):
             percentiles = percentiles
@@ -84,53 +97,25 @@ class PercentilesStats(SeriesStats):
             "Cannot format percentiles object because percentiles are not reduced to a single value."
         )
 
-    @property
-    def reduced_values(self, values=None) -> Tuple[Any, Any]:
-        """A non-committed reduction procedure on given values (or `self.values`).
+    def push(self, value: Any) -> None:
+        value = single_value_to_cpu(value)
+        self.values.append(value)
 
-        Note that this method does NOT alter any state of `self` or the possibly
-        provided list of `values`. It only returns new values as they should be
-        adopted after a possible, actual reduction step.
+    def merge(self, incoming_stats: List["PercentilesStats"]) -> None:
+        """Merges PercentilesStats objects.
 
-        Args:
-            values: The list of values to reduce. If not None, use `self.values`
-
-        Returns:
-            A tuple containing 1) the reduced values and 2) the new internal values list
-            to be used. If there is no reduciton method, the reduced values will be the same as the values.
-        """
-        values = values if values is not None else self.values
-        # Sort values
-        values = list(values)
-        # (Artur): Numpy can sort faster than Python's built-in sort for large lists. Howoever, if we convert to an array here
-        # and then sort, this only slightly (<2x) improved the runtime of this method, even for an internal values list of 1M values.
-        values.sort()
-        return values, values
-
-    @abstractmethod
-    def _merge_in_parallel(self, *others: "PercentilesStats") -> None:
-        """Merges all internal values of `others` into `self`'s internal values list.
-
-        Thereby, the newly incoming values of `others` are treated equally with respect
-        to each other as well as with respect to the internal values of self.
-
-        Use this method to merge other `Stats` objects, which resulted from some
-        parallelly executed components, into this one. For example: n Learner workers
-        all returning a loss value in the form of `{"total_loss": [some value]}`.
-
-        The following examples demonstrate the parallel merging logic for different
-        reduce- and window settings:
+        This method assumes that the incoming stats have the same percentiles and window size.
+        It will replace the internal values with the merged values.
 
         Args:
-            others: One or more other Stats objects that need to be parallely merged
-                into `self, meaning with equal weighting as the existing values in
-                `self`.
+            incoming_stats: The list of PercentilesStats objects to merge.
         """
-        # Use heapq to sort values (assumes that the values are already sorted)
-        # and then pick the correct percentiles
-        lists_to_merge = [list(self.values), *[list(o.values) for o in others]]
-        merged = list(heapq.merge(*lists_to_merge))
-        self._set_buffer(merged)
+        assert (
+            self._is_root_stats
+        ), "PercentilesStats should only be merged at root level"
+        all_items = [s.values for s in incoming_stats]
+        all_items = list(chain.from_iterable(all_items))
+        self._set_values(all_items)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
@@ -145,10 +130,35 @@ class PercentilesStats(SeriesStats):
         Returns:
             The result of reducing the internal values list.
         """
-        reduced_values, _ = self.reduced_values
+        values = list(self.values)
+        # (Artur): Numpy can sort faster than Python's built-in sort for large lists. Howoever, if we convert to an array here
+        # and then sort, this only slightly (<2x) improved the runtime of this method, even for an internal values list of 1M values.
+        values.sort()
+
         if compile:
-            return compute_percentiles(reduced_values, self._percentiles)
-        return reduced_values
+            return compute_percentiles(values, self._percentiles)
+        return values
+
+    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
+        """Reduces the internal values list.
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+
+        Returns:
+            The reduced value.
+        """
+        values = list(self.values)
+        values.sort()
+
+        if self._clear_on_reduce:
+            self._set_values([])
+        else:
+            self._set_values(values)
+
+        if compile:
+            return compute_percentiles(values, self._percentiles)
+        return values
 
     def __repr__(self) -> str:
         return (

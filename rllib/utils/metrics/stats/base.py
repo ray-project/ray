@@ -4,7 +4,6 @@ import time
 from typing import Any, Dict, List, Union
 from abc import ABCMeta, abstractmethod
 
-import numpy as np
 
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import (
@@ -21,10 +20,12 @@ class StatsBase(metaclass=ABCMeta):
     # This is set in the subclass.
     stats_cls_identifier: str = None
 
-    def __init__(self, _is_root_stats: bool = False, clear_on_reduce: bool = False):
+    def __init__(self, _is_root_stats: bool = False, clear_on_reduce: bool = True):
         self._is_root_stats = _is_root_stats
-        self._is_tensor = False
         self._clear_on_reduce = clear_on_reduce
+        # Used to keep track of start times when using the `with` context manager.
+        # This helps us measure times with threads in parallel.
+        self._start_times = {}
 
         assert (
             self.stats_cls_identifier is not None
@@ -36,20 +37,6 @@ class StatsBase(metaclass=ABCMeta):
         Some Stats classes may have throughput tracking enabled, such as SumStats.
         """
         return False
-
-    def check_value(self, value: Any) -> None:
-        """Checks if a value is valid for this Stats object."""
-        if isinstance(value, np.ndarray) and value.shape == ():
-            return
-        elif torch and torch.is_tensor(value):
-            self._is_tensor = True
-            if tuple(value.shape) == ():
-                return
-        elif type(value) not in (list, tuple, deque):
-            return
-        raise ValueError(
-            f"Value ({value}) is required to be a scalar when using a reduce " "method!"
-        )
 
     @abstractmethod
     def __len__(self) -> int:
@@ -193,7 +180,15 @@ class StatsBase(metaclass=ABCMeta):
 
     @abstractmethod
     def push(self, value: Any) -> None:
-        """Pushes a value into this Stats object."""
+        """Pushes a value into this Stats object.
+
+        Args:
+            value: The value to push. Can be of any type.
+                Specifically, it can also be a torch GPU tensors.
+
+        Returns:
+            None
+        """
         ...
 
     @abstractmethod
@@ -208,7 +203,7 @@ class StatsBase(metaclass=ABCMeta):
             compile: If True, the result is compiled into a single value if possible.
 
         Returns:
-            The result of reducing the internal values list.
+            The result of reducing the internal values list on CPU memory.
         """
         ...
 
@@ -222,6 +217,14 @@ class StatsBase(metaclass=ABCMeta):
         Thereby, the internal values may be changed (note that this is different from
         `peek()`, where the internal values are NOT changed). See the docstring of this
         class for details on the reduction logic applied to the values, based on
-        the constructor settings, such as `window`, `reduce`, etc..
+        the constructor settings, such as `window`, `reduce`, etc.
+
+        Returned values are always on CPU memory.
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+
+        Returns:
+            The result of reducing the internal values list on CPU memory.
         """
         ...

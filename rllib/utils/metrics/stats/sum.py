@@ -15,8 +15,11 @@ class SumStats(SeriesStats):
 
     stats_cls_identifier = "sum"
 
-    _torch_reduce_fn = torch.nansum
-    _np_reduce_fn = np.nansum
+    def _torch_reduce_fn(self, values):
+        return torch.nansum(values)
+
+    def _np_reduce_fn(self, values):
+        return np.nansum(values)
 
     def python_reduce_fn(self, x, y):
         return sum([x, y])
@@ -28,11 +31,6 @@ class SumStats(SeriesStats):
             throughput: If True, track a throughput estimate based on the time between consecutive calls to reduce().
         """
         super().__init__(**kwargs)
-
-        if not self._clear_on_reduce:
-            assert (
-                self._window is not None
-            ), "For lifetime sum, use LifetimeSumStats class."
 
         self.track_throughput = throughput
         self._last_reduce_value = 0.0
@@ -55,8 +53,8 @@ class SumStats(SeriesStats):
         }
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        self._last_reduce_value = self.peek(compile=compile)
-        return super().reduce(compile)
+        self._last_reduce_value = super().reduce(compile)
+        return self._last_reduce_value
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""

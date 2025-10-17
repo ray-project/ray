@@ -4,6 +4,7 @@ import time
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 
@@ -17,7 +18,7 @@ class LifetimeSumStats(StatsBase):
     def __init__(
         self,
         track_throughput_since_last_restore: bool = False,
-        track_througput_since_last_reduce: bool = False,
+        track_throughput_since_last_reduce: bool = False,
         *args,
         **kwargs,
     ):
@@ -26,17 +27,19 @@ class LifetimeSumStats(StatsBase):
         Args:
             track_throughput_since_last_restore: If True, track the throughput since the last restore from a checkpoint.
         """
-        super().__init__(*args, **kwargs)
-        if self._clear_on_reduce:
+        # Make sure we don't accidentally set clear_on_reduce to False
+        if "clear_on_reduce" in kwargs and kwargs["clear_on_reduce"]:
             raise ValueError("LifetimeSumStats does not support clear_on_reduce")
+        super().__init__(clear_on_reduce=False, *args, **kwargs)
 
         self._lifetime_sum = 0.0
 
         self.track_throughput_last_restore = track_throughput_since_last_restore
-        self.track_throughput_since_last_reduce = track_througput_since_last_reduce
-        # We need to initialize this to None becasue if we restart from a checkpoint, we should start over with througput calculation
-        self._value_at_last_reduce = None
-        self._value_at_last_restore = None
+        self.track_throughput_since_last_reduce = track_throughput_since_last_reduce
+        # We need to initialize this to 0.0
+        # When setting state or reducing, these values are expected to be updated we calculate a throughput.
+        self._value_at_last_reduce = 0.0
+        self._value_at_last_restore = 0.0
         # We initialize this to the current time which may result in a low first throughput value
         # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
         self._last_reduce_time = time.perf_counter()
@@ -69,43 +72,48 @@ class LifetimeSumStats(StatsBase):
         return 1
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        return self._lifetime_sum if compile else [self._lifetime_sum]
+        lifetime_sum = single_value_to_cpu(self._lifetime_sum)
+        return lifetime_sum if compile else [lifetime_sum]
 
     def get_state(self) -> Dict[str, Any]:
-        """Returns the state of the stats object."""
         state = super().get_state()
-        state["id"] = self._id
-        state["prev_merge_values"] = self._prev_merge_values
-        state["value_at_last_reduce"] = self._value_at_last_reduce
+        state["lifetime_sum"] = self._lifetime_sum
         state["track_throughput_last_restore"] = self.track_throughput_last_restore
+        state[
+            "track_throughput_since_last_reduce"
+        ] = self.track_throughput_since_last_reduce
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
-        self._id = state["id"]
-        self._prev_merge_values = state["prev_merge_values"]
-        self._value_at_last_reduce = state["value_at_last_reduce"]
+        self._lifetime_sum = state["lifetime_sum"]
         self.track_throughput_last_restore = state["track_throughput_last_restore"]
-        self.value_at_last_restore = self._lifetime_sum
+        self.track_throughput_since_last_reduce = state[
+            "track_throughput_since_last_reduce"
+        ]
+
+        # We always start over with the throughput calculation after a restore
+        self._value_at_last_restore = self._lifetime_sum
+        self._value_at_last_reduce = self._lifetime_sum
 
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
+        This puts the value onto CPU memory.
+
         Args:
             value: The value to be pushed. Can be of any type.
+                Specifically, it can also be a torch GPU tensors.
         """
-        if not self._is_tensor and torch and torch.is_tensor(value):
-            self._is_tensor = True
-            # turn item into a tensor
-            self._lifetime_sum = torch.tensor(self._lifetime_sum)
-
         self._lifetime_sum += value
 
     @property
     def throughput_since_last_reduce(self) -> float:
-        """Returns the throughput since the last reduce."""
+        """Returns the throughput since the last reduce call."""
         if self.track_throughput_last_restore:
-            return self._lifetime_sum / (time.perf_counter() - self._last_reduce_time)
+            return (
+                single_value_to_cpu(self._lifetime_sum) - self._value_at_last_reduce
+            ) / (time.perf_counter() - self._last_reduce_time)
         else:
             raise ValueError(
                 "Tracking of throughput since last reduce is not enabled on this Stats object"
@@ -113,34 +121,26 @@ class LifetimeSumStats(StatsBase):
 
     @property
     def throughput_since_last_restore(self) -> float:
-        """Returns the throughput total."""
+        """Returns the total throughput since the last restore."""
         if self.track_throughput_last_restore:
-            return self._lifetime_sum / (time.perf_counter() - self._last_restore_time)
+            return (
+                single_value_to_cpu(self._lifetime_sum) - self._value_at_last_restore
+            ) / (time.perf_counter() - self._last_restore_time)
         else:
             raise ValueError(
                 "Tracking of throughput since last restore is not enabled on this Stats object"
             )
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        """Reduces the internal value.
-
-        Args:
-            compile: If True, the result is compiled into a single value if possible.
-                If it is not possible, the result is a list of values.
-                If False, the result is a list of one or more values.
-        """
         value = self._lifetime_sum
 
-        if not self._is_root_stats:
-            # On leaves, we need to return the current value and reset it to 0
-            # Otherwise, we would be adding accumulated values at the root multiple times
-            if self._is_tensor:
-                self._lifetime_sum = torch.tensor(0.0)
-            else:
-                self._lifetime_sum = 0.0
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach()
 
-        if self._is_tensor:
-            value = value.item()
+        self._value_at_last_reduce = value
+
+        self._lifetime_sum = 0.0
+        value = single_value_to_cpu(value)
 
         if compile:
             return value

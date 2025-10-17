@@ -1,7 +1,6 @@
 import time
 import pytest
 import numpy as np
-import torch
 
 import ray
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -30,7 +29,7 @@ def test_log_value(logger):
 @pytest.mark.parametrize(
     "reduce_method,kwargs,values,expected",
     [
-        ("mean", {"clear_on_reduce": True}, [0.1, 0.2], 0.101),
+        ("mean", {"clear_on_reduce": True}, [0.1, 0.2], 0.15),
         ("min", {"clear_on_reduce": True}, [0.3, 0.1, 0.2], 0.1),
         ("sum", {"clear_on_reduce": True}, [10, 20], 30),
         ("lifetime_sum", {}, [10, 20], 30),
@@ -90,25 +89,25 @@ def test_ema(logger):
 def test_windowed_reduction(logger):
     """Test window-based reduction with various window sizes."""
     # Test with window=2
-    logger.log_value("window_loss", 0.1, window=2, clear_on_reduce=True)
+    logger.log_value("window_loss", 0.1, reduce="mean", window=2, clear_on_reduce=True)
     logger.log_value("window_loss", 0.2)
     logger.log_value("window_loss", 0.3)
     check(logger.peek("window_loss"), 0.25)  # mean of [0.2, 0.3]
 
     # Test with window=3
-    logger.log_value("window3_loss", 0.1, window=3, clear_on_reduce=True)
+    logger.log_value("window3_loss", 0.1, reduce="mean", window=3, clear_on_reduce=True)
     logger.log_value("window3_loss", 0.2)
     logger.log_value("window3_loss", 0.3)
     logger.log_value("window3_loss", 0.4)
     check(logger.peek("window3_loss"), 0.3)  # mean of [0.2, 0.3, 0.4]
 
     # Test window with different reduction methods
-    logger.log_value("window_min", 0.3, window=2, reduce="min", clear_on_reduce=True)
+    logger.log_value("window_min", 0.3, reduce="min", window=2, clear_on_reduce=True)
     logger.log_value("window_min", 0.1)
     logger.log_value("window_min", 0.2)
     check(logger.peek("window_min"), 0.1)  # min of [0.1, 0.2]
 
-    logger.log_value("window_sum", 10, window=2, reduce="sum", clear_on_reduce=True)
+    logger.log_value("window_sum", 10, reduce="sum", window=2, clear_on_reduce=True)
     logger.log_value("window_sum", 20)
     logger.log_value("window_sum", 30)
     check(logger.peek("window_sum"), 50)  # sum of [20, 30]
@@ -133,7 +132,7 @@ def test_nested_keys(logger):
     check(logger.peek(["deeply", "nested", "key"]), 0.101)
 
     # Test different reduction methods with nested keys
-    logger.log_value(["nested", "sum"], 10, reduce="sum")
+    logger.log_value(["nested", "sum"], 10, reduce="lifetime_sum")
     logger.log_value(["nested", "sum"], 20)
     check(logger.peek(["nested", "sum"]), 30)
 
@@ -142,31 +141,23 @@ def test_nested_keys(logger):
     check(logger.peek(["nested", "min"]), 0.1)
 
 
-def test_tensor_mode(logger):
-    """Test tensor mode functionality."""
-    # Test with PyTorch tensors
-    logger.activate_tensor_mode()
-    logger.log_value("torch_loss", torch.tensor(0.1))
-    logger.log_value("torch_loss", torch.tensor(0.2))
-    logger.deactivate_tensor_mode()
-    value = logger.peek("torch_loss")
-    check(value, 0.101)
-    check(isinstance(value, torch.Tensor), True)
-
-
 def test_time_logging(logger):
     """Test time logging functionality."""
     # Test time logging with EMA
-    with logger.log_time("block_time", reduce="mean", ema_coeff=0.1):
+    with logger.log_time("ema_time", reduce="ema", ema_coeff=0.1):
         time.sleep(0.1)
+    with logger.log_time("ema_time", reduce="ema", ema_coeff=0.1):
+        time.sleep(0.2)
+    check(logger.peek("ema_time"), 0.101, atol=0.05)
 
     # Test time logging with window
-    with logger.log_time("window_time", reduce="mean", window=2):
+    with logger.log_time("mean_time", reduce="mean", window=2):
         time.sleep(0.2)
-
-    # Check that times are approximately correct
-    check(logger.peek("block_time"), 0.1, atol=0.05)
-    check(logger.peek("window_time"), 0.2, atol=0.05)
+    with logger.log_time("mean_time", reduce="mean", window=2):
+        time.sleep(0.3)
+    with logger.log_time("mean_time", reduce="mean", window=2):
+        time.sleep(0.4)
+    check(logger.peek("mean_time"), 0.35, atol=0.05)
 
     # Test time logging with different reduction methods
     with logger.log_time("sum_time", reduce="sum"):
@@ -174,6 +165,36 @@ def test_time_logging(logger):
     with logger.log_time("sum_time"):
         time.sleep(0.1)
     check(logger.peek("sum_time"), 0.2, atol=0.05)
+
+    # Test time logging with lifetime sum
+    with logger.log_time("lifetime_sum_time", reduce="lifetime_sum"):
+        time.sleep(0.1)
+    with logger.log_time(
+        "lifetime_sum_time_with_throughput", reduce="lifetime_sum", with_throughput=True
+    ):
+        time.sleep(0.1)
+    check(logger.peek("lifetime_sum_time"), 0.2, atol=0.05)
+
+    # Test time logging with min
+    with logger.log_time("min_time", reduce="min"):
+        time.sleep(0.1)
+    check(logger.peek("min_time"), 0.1, atol=0.05)
+
+    # Test time logging with max
+    with logger.log_time("max_time", reduce="max"):
+        time.sleep(0.1)
+    check(logger.peek("max_time"), 0.1, atol=0.05)
+
+    # Test time logging with percentiles
+    with logger.log_time(
+        "percentiles_time", reduce="percentiles", window=2, percentiles=[0.5]
+    ):
+        time.sleep(0.1)
+    with logger.log_time(
+        "percentiles_time", reduce="percentiles", window=2, percentiles=[0.5]
+    ):
+        time.sleep(0.2)
+    check(logger.peek("percentiles_time"), {0.5: 0.15}, atol=0.05)
 
 
 def test_state_management(logger):

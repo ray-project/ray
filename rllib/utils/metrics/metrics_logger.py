@@ -52,6 +52,16 @@ def check_log_args(
 ):
     """Checks the arguments for logging methods and returns the validated arguments."""
 
+    if percentiles and not reduce == "percentiles":
+        raise ValueError("percentiles is only supported for reduce=percentiles")
+
+    if reduce == "ema" and window is not None:
+        deprecation_warning(
+            "window is not supported for ema reduction. If you want to use a window, use mean reduction instead.",
+            error=True,
+        )
+        window = None
+
     if reduce_per_index_on_aggregate is not None:
         deprecation_warning(
             "reduce_per_index_on_aggregate is deprecated. Aggregation now happens over all values"
@@ -63,23 +73,14 @@ def check_log_args(
         deprecation_warning(
             "throughput_ema_coeff is deprecated. Throughput is not smoothed with ema anymore"
             "but calculate once per MetricsLogger.reduce() call.",
-            error=False,
+            error=True,
         )
 
     if reduce == "mean":
-        if window is None:
-            deprecation_warning(
-                "reduce=mean and window=None is deprecated. Use reduce=ema instead.",
-                error=False,
-            )
-            logger.warning(
-                "reduce=mean and window=None is deprecated. Use reduce=ema instead."
-            )
-            reduce = "ema"
         if ema_coeff is not None:
             deprecation_warning(
                 "ema_coeff is not supported for mean reduction. Use ema instead.",
-                error=False,
+                error=True,
             )
 
     if with_throughput and not reduce == "sum":
@@ -251,12 +252,12 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
-        reduce: Optional[str] = "ema",
+        reduce: str = "ema",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
-        percentiles: Union[List[int], bool] = False,
-        clear_on_reduce: bool = False,
-        with_throughput: bool = False,
+        percentiles: Optional[Union[List[int], bool]] = None,
+        clear_on_reduce: Optional[bool] = None,
+        with_throughput: Optional[bool] = None,
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
     ) -> None:
@@ -331,7 +332,10 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
-        value = self._detach_tensor_if_necessary(value)
+        if torch and torch.is_tensor(value):
+            value = value.detach()
+        elif tf and tf.is_tensor(value):
+            value = tf.stop_gradient(value)
 
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
@@ -339,6 +343,8 @@ class MetricsLogger:
                 if reduce == "ema":
                     if ema_coeff is None:
                         ema_coeff = 0.01
+                    if window is not None:
+                        raise ValueError("window is not supported for ema reduction")
                     self._set_key(
                         key,
                         EmaStats(
@@ -348,6 +354,10 @@ class MetricsLogger:
                         ),
                     )
                 elif reduce == "mean":
+                    if ema_coeff is not None:
+                        raise ValueError(
+                            "ema_coeff is not supported for mean reduction"
+                        )
                     self._set_key(
                         key,
                         MeanStats(
@@ -403,6 +413,7 @@ class MetricsLogger:
                         ),
                     )
                 elif reduce == "item":
+                    assert window is None, "window is not supported for item reduction"
                     self._set_key(
                         key,
                         ItemStats(
@@ -600,14 +611,20 @@ class MetricsLogger:
             clear_on_reduce = True
 
         if not self._key_in_stats(key):
-            if reduce == "mean":
+            if reduce == "ema":
+                self._set_key(
+                    key,
+                    EmaStats(
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                    ),
+                )
+            elif reduce == "mean":
                 self._set_key(
                     key,
                     MeanStats(
                         window=window,
-                        ema_coeff=ema_coeff,
                         clear_on_reduce=clear_on_reduce,
-                        throughput=with_throughput,
                     ),
                 )
             elif reduce == "min":
@@ -616,7 +633,6 @@ class MetricsLogger:
                     MinStats(
                         window=window,
                         clear_on_reduce=clear_on_reduce,
-                        throughput=with_throughput,
                     ),
                 )
             elif reduce == "max":
@@ -625,7 +641,6 @@ class MetricsLogger:
                     MaxStats(
                         window=window,
                         clear_on_reduce=clear_on_reduce,
-                        throughput=with_throughput,
                     ),
                 )
             elif reduce == "sum":
@@ -637,6 +652,14 @@ class MetricsLogger:
                         throughput=with_throughput,
                     ),
                 )
+            elif reduce == "lifetime_sum":
+                self._set_key(
+                    key,
+                    LifetimeSumStats(
+                        track_throughput_since_last_restore=with_throughput,
+                        track_throughput_since_last_reduce=with_throughput,
+                    ),
+                )
             elif reduce == "percentiles":
                 self._set_key(
                     key,
@@ -646,6 +669,16 @@ class MetricsLogger:
                         clear_on_reduce=clear_on_reduce,
                         throughput=with_throughput,
                     ),
+                )
+            elif reduce == "item":
+                raise ValueError("item reduction is not supported for time logging")
+            elif reduce == "item_series":
+                raise ValueError(
+                    "item_series reduction is not supported for time logging"
+                )
+            elif reduce == "lifetime_sum":
+                raise ValueError(
+                    "lifetime_sum reduction is not supported for time logging"
                 )
             else:
                 raise ValueError(f"Invalid reduce method: {reduce}")
@@ -674,24 +707,6 @@ class MetricsLogger:
             reduced_stats_to_return = tree.map_structure_with_path(_reduce, self.stats)
 
         return reduced_stats_to_return
-
-    def activate_tensor_mode(self):
-        self._tensor_mode = True
-
-    def deactivate_tensor_mode(self):
-        self._tensor_mode = False
-
-    @property
-    def tensor_mode(self):
-        return self._tensor_mode
-
-    def _detach_tensor_if_necessary(self, value):
-        if self.tensor_mode:
-            if torch and torch.is_tensor(value):
-                return value.detach()
-            elif tf and tf.is_tensor(value):
-                return tf.stop_gradient(value)
-        return value
 
     @Deprecated(
         new="log_value",

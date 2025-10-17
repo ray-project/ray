@@ -17,6 +17,8 @@ class ItemSeriesStats(StatsBase):
     An example would be to log actions and translate them into a chart to visualize
     the distribution of actions outside of RLlib.
 
+    This class should not handle GPU tensors.
+
     Note that at the root level, the internal item list can grow to `window * len(incoming_stats)`.
     """
 
@@ -65,9 +67,8 @@ class ItemSeriesStats(StatsBase):
             reduction method).
         """
         items = self.items
-
         if self._clear_on_reduce:
-            self.items = []
+            self._set_values([])
         else:
             self.items = self.items
 

@@ -4,6 +4,7 @@ from typing import Any, List, Union, Dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 
@@ -59,7 +60,8 @@ class ItemStats(StatsBase):
 
     def push(self, item: Any) -> None:
         """Pushes a item into this Stats object."""
-        self._item = item
+        # Put directly onto CPU memory. peek(), reduce() and merge() don't ahve to handle GPU tensors.
+        self._item = single_value_to_cpu(item)
 
     @staticmethod
     def merge(self, incoming_stats: List["ItemStats"]) -> None:

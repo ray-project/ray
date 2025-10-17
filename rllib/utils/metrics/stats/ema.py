@@ -6,6 +6,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.series import SeriesStats
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 
@@ -60,25 +61,38 @@ class EmaStats(StatsBase):
         Thus, users can call this method to get an accurate look at the reduced value(s)
         given the current internal values list.
 
+        Returned values are always on CPU memory.
+
         Args:
             compile: If True, the result is compiled into a single value if possible.
 
         Returns:
-            The result of reducing the internal values list.
+            Returns the ema value on CPU memory.
         """
+        item = single_value_to_cpu(self._item)
+
         if compile:
-            return self._item
-        return [self._item]
+            return item
+        return [item]
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values.
+
+        Returned values are always on CPU memory.
 
         Thereby, the internal values may be changed (note that this is different from
         `peek()`, where the internal values are NOT changed). See the docstring of this
         class for details on the reduction logic applied to the values, based on
         the constructor settings, such as `window`, `reduce`, etc..
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+
+        Returns:
+            The reduced ema value on CPU memory.
         """
-        item = self._item
+        item = single_value_to_cpu(self._item)
+
         if self._clear_on_reduce:
             self._item = np.nan
 
