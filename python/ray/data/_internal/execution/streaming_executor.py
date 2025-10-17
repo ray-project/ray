@@ -530,9 +530,9 @@ class StreamingExecutor(Executor, threading.Thread):
                         "Internal Input", op.name, op.internal_input_queue_size()
                     )
 
-                    # 2) Check that has_next() is False (which is what completed() guarantees)
-                    assert not op.has_next(), error_msg.format(
-                        f"Internal Output: {op.internal_output_queue_type()}",
+                    # 2) Check Internal Output Queue is empty
+                    assert op.internal_output_queue_size() == 0, error_msg.format(
+                        "Internal Output",
                         op.name,
                         op.internal_output_queue_size(),
                     )

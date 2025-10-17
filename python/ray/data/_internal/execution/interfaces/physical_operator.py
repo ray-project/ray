@@ -395,11 +395,11 @@ class PhysicalOperator(Operator):
         """
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_input_queue_size = (
-            self.internal_input_queue_size()
-            if isinstance(self, InternalQueueOperatorMixin)
-            else 0
-        )
+        internal_input_queue_size = 0
+        internal_output_queue_size = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_input_queue_size = self.internal_input_queue_size()
+            internal_output_queue_size = self.internal_output_queue_size()
 
         if not self._execution_finished:
             if (
@@ -413,13 +413,10 @@ class PhysicalOperator(Operator):
                 #   - There are no active or pending tasks
                 self._execution_finished = True
 
-        if self._execution_finished and not self.has_next():
-            if isinstance(self, InternalQueueOperatorMixin):
-                internal_output_queue_size = self.internal_output_queue_size()
-                assert (
-                    internal_output_queue_size == 0
-                ), f"Found {internal_output_queue_size} bundles, {self.internal_output_queue_type()}"
-        return self._execution_finished and not self.has_next()
+        # NOTE: We favor (internal_output_queue_size == 0) over
+        # (not self.has_next()) because _OrderedOutputQueue can
+        # return False for self.has_next(), but have a non-empty queue size.
+        return self._execution_finished and (internal_output_queue_size == 0)
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""

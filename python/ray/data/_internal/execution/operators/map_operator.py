@@ -159,9 +159,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def internal_output_queue_size(self) -> int:
         return len(self._output_queue)
 
-    def internal_output_queue_type(self) -> type:
-        return type(self._output_queue)
-
     @property
     def name(self) -> str:
         name = super().name
