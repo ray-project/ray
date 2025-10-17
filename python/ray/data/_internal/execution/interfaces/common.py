@@ -144,5 +144,8 @@ class RuntimeMetricsHistogram:
             tags_key
         ] = self._bucket_counts.copy()
 
+    def __repr__(self):
+        return f"{self._bucket_counts}"
+
     def _find_bucket_index(self, value: float):
         return bisect.bisect_left(self.boundaries, value)

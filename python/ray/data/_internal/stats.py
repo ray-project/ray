@@ -11,11 +11,11 @@ from uuid import uuid4
 
 import numpy as np
 
-from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
