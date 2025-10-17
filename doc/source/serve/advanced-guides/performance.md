@@ -86,9 +86,7 @@ This section details how to enable Ray Serve options focused on improving throug
 - Reducing overhead associated with frequent logging.
 - Disabling behavior that allowed Serve applications to include blocking operations.
 
-If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput.
-
-The following table shows examples of blocking and non-blocking code:
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
 
 <table>
 <tr>
@@ -109,7 +107,7 @@ app = FastAPI()
 @serve.ingress(app)
 class BlockingDeployment:
     @app.get("/process")
-    def process(self):
+    async def process(self):
         # ❌ Blocking operation
         time.sleep(2)
         return {"message": "Processed (blocking)"}
