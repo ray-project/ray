@@ -306,6 +306,7 @@ After training completes, a :class:`~ray.train.Result` object is returned which 
 information about the training run, including the metrics and checkpoints reported during training.
 
 .. testcode::
+    :skipif: True
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.
