@@ -904,7 +904,7 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
             assert arr.to_numpy().shape == (1000, 550)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
 def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format):
     """Simple test for fixed-shape string tensor arrays with pandas/arrow roundtrip."""
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
