@@ -46,6 +46,7 @@ namespace rpc {
           main_service_,                                                           \
           #SERVICE ".grpc_server." #HANDLER,                                       \
           AUTH_TYPE == ClusterIdAuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
+          auth_token,                                                              \
           MAX_ACTIVE_RPCS,                                                         \
           RECORD_METRICS));                                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
@@ -141,6 +142,10 @@ class GrpcServer {
     cluster_id_ = cluster_id;
   }
 
+  void SetAuthToken(const std::string &auth_token) { auth_token_ = auth_token; }
+
+  const std::string &GetAuthToken() const { return auth_token_; }
+
  protected:
   /// Initialize this server.
   void Init();
@@ -159,6 +164,8 @@ class GrpcServer {
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
+  /// Authentication token for token-based authentication.
+  std::string auth_token_;
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
@@ -210,10 +217,13 @@ class GrpcService {
   /// \param[in] cq The grpc completion queue.
   /// \param[out] server_call_factories The `ServerCallFactory` objects,
   /// and the maximum number of concurrent requests that this gRPC server can handle.
+  /// \param[in] cluster_id The cluster ID for authentication.
+  /// \param[in] auth_token The authentication token for token-based authentication.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) = 0;
+      const ClusterID &cluster_id,
+      const std::string &auth_token) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

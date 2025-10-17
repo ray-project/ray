@@ -161,6 +161,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] cluster_id The cluster ID for authentication.
+  /// \param[in] auth_token The authentication token for token-based authentication.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
@@ -171,6 +172,7 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
+      const std::string &auth_token,
       bool record_metrics,
       std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
@@ -181,9 +183,7 @@ class ServerCallImpl : public ServerCall {
         io_service_(io_service),
         call_name_(std::move(call_name)),
         cluster_id_(cluster_id),
-        auth_token_(::RayConfig::instance().enable_token_auth()
-                        ? ::RayConfig::instance().auth_token()
-                        : ""),
+        auth_token_(auth_token),
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
@@ -469,6 +469,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] cluster_id The cluster ID for authentication.
+  /// \param[in] auth_token The authentication token for token-based authentication.
   /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
   /// means no limit.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
@@ -481,6 +482,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
+      const std::string &auth_token,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -491,6 +493,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         io_service_(io_service),
         call_name_(std::move(call_name)),
         cluster_id_(cluster_id),
+        auth_token_(auth_token),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics) {}
 
@@ -504,6 +507,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         io_service_,
         call_name_,
         cluster_id_,
+        auth_token_,
         record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
@@ -542,6 +546,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// ID of the cluster to check incoming RPC calls against.
   /// Check skipped if empty.
   const ClusterID cluster_id_;
+
+  /// Authentication token for token-based authentication.
+  const std::string auth_token_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

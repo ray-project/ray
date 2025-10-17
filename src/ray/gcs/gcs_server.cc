@@ -39,6 +39,7 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/auth_token_loader.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -218,6 +219,12 @@ void GcsServer::Start() {
                               GetOrGenerateClusterId(
                                   {[this, gcs_init_data](ClusterID cluster_id) {
                                      rpc_server_.SetClusterId(cluster_id);
+                                     // Load and set authentication token if enabled
+                                     if (RayConfig::instance().enable_token_auth()) {
+                                       rpc_server_.SetAuthToken(
+                                           rpc::RayAuthTokenLoader::instance().GetToken(
+                                               false));
+                                     }
                                      DoStart(*gcs_init_data);
                                    },
                                    io_context_provider_.GetDefaultIOContext()});
