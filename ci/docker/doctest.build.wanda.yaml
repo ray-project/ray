@@ -7,7 +7,7 @@ srcs:
   - python/requirements.txt
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
-  - python/requirements/ml/core-requiremextnts.txt
+  - python/requirements/ml/core-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
   - python/requirements/ml/train-requirements.txt
   - python/requirements/ml/train-test-requirements.txt
