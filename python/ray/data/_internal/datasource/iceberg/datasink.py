@@ -377,29 +377,73 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         elif self._mode == "overwrite":
             # Overwrite mode: Delete matching files, then add new files
             # Supports optional filter for dynamic partition overwrites
-            with update_snapshot.overwrite_files() as overwrite_files:
-                overwrite_files.commit_uuid = self._uuid
 
-                # Delete existing files based on filter
-                if self._overwrite_filter is not None:
-                    # Dynamic partition overwrite: only delete files matching filter
-                    # This is more efficient when only specific partitions are being replaced
-                    overwrite_files.delete_by_predicate(self._overwrite_filter)
-                    logger.info(
-                        f"Overwriting data in table {self.table_identifier} "
-                        f"matching filter: {self._overwrite_filter}"
-                    )
-                else:
-                    # Full table overwrite: delete all files
-                    # This replaces the entire table content
-                    from pyiceberg.expressions import AlwaysTrue
+            # Check PyIceberg version for API compatibility
+            # overwrite_files() was added in PyIceberg 0.8.0+
+            import pyiceberg
+            from packaging import version
 
-                    overwrite_files.delete_by_predicate(AlwaysTrue())
-                    logger.info(f"Overwriting entire table {self.table_identifier}")
+            if version.parse(pyiceberg.__version__) >= version.parse("0.8.0"):
+                # Use overwrite_files API (PyIceberg 0.8.0+)
+                with update_snapshot.overwrite_files() as overwrite_files:
+                    overwrite_files.commit_uuid = self._uuid
 
-                # Add all new data files
-                for data_file in all_data_files:
-                    overwrite_files.append_data_file(data_file)
+                    # Delete existing files based on filter
+                    if self._overwrite_filter is not None:
+                        # Dynamic partition overwrite: only delete files matching filter
+                        overwrite_files.delete_by_predicate(self._overwrite_filter)
+                        logger.info(
+                            f"Overwriting data in table {self.table_identifier} "
+                            f"matching filter: {self._overwrite_filter}"
+                        )
+                    else:
+                        # Full table overwrite: delete all files
+                        from pyiceberg.expressions import AlwaysTrue
+
+                        overwrite_files.delete_by_predicate(AlwaysTrue())
+                        logger.info(f"Overwriting entire table {self.table_identifier}")
+
+                    # Add all new data files
+                    for data_file in all_data_files:
+                        overwrite_files.append_data_file(data_file)
+            else:
+                # Fallback for older PyIceberg versions (< 0.8.0)
+                # Use delete + append approach
+                logger.warning(
+                    f"PyIceberg version {pyiceberg.__version__} detected. "
+                    "Using fallback overwrite implementation. "
+                    "For optimal performance, upgrade to PyIceberg >= 0.8.0"
+                )
+
+                # First, delete existing data
+                with update_snapshot.delete() as delete_snapshot:
+                    delete_snapshot.commit_uuid = self._uuid
+
+                    if self._overwrite_filter is not None:
+                        delete_snapshot.delete_by_predicate(self._overwrite_filter)
+                        logger.info(
+                            f"Deleting data in table {self.table_identifier} "
+                            f"matching filter: {self._overwrite_filter}"
+                        )
+                    else:
+                        from pyiceberg.expressions import AlwaysTrue
+
+                        delete_snapshot.delete_by_predicate(AlwaysTrue())
+                        logger.info(
+                            f"Deleting all data from table {self.table_identifier}"
+                        )
+
+                # Then append new data
+                append_method = (
+                    update_snapshot.merge_append
+                    if self._manifest_merge_enabled
+                    else update_snapshot.fast_append
+                )
+
+                with append_method() as append_files:
+                    append_files.commit_uuid = self._uuid
+                    for data_file in all_data_files:
+                        append_files.append_data_file(data_file)
 
             logger.info(
                 f"Successfully overwrote table {self.table_identifier} with "
