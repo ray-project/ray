@@ -6088,6 +6088,8 @@ class Dataset:
             +- ReadRange
             -------- Physical Plan --------
             TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            Transformer 0: RangeDatasource(range(0..10), column_name=id)
+            Transformer 1: Map(<lambda>)
             +- InputDataBuffer[Input]
             <BLANKLINE>
         """
@@ -6590,7 +6592,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

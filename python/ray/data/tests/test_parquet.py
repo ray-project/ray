@@ -615,12 +615,26 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     # Test projection pushed down into read op
     ds = ray.data.read_parquet(path).select_columns("variety")
 
-    assert ds._plan.explain().strip() == (
+    import re
+
+    # use relative path to make the test pass
+    normalized_explain = re.sub(
+        r"Paths \(.*files\): \['.*iris\.parquet'\]",
+        "Paths (1 files): ['iris.parquet']",
+        ds._plan.explain().strip(),
+    )
+    assert normalized_explain == (
         "-------- Logical Plan --------\n"
         "Project\n"
         "+- ReadParquet\n"
         "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadParquet]\n"
+        "Transformer 0: Parquet Datasource:\n"
+        "Paths (1 files): ['iris.parquet']\n"
+        "Partitioning: Partitioning(style='hive', base_dir='', field_names=None, field_types={}, filesystem=None)\n"
+        "Projected Columns: ['variety']\n"
+        "File Schema : ['sepal.length', 'sepal.width', 'petal.length', 'petal.width', 'variety']\n"
+        "Performance Estimates: EncodingRatio=2.15, ReaderBatchSize=2982617\n"
         "+- InputDataBuffer[Input]"
     )
 

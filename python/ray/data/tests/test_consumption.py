@@ -502,7 +502,7 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     captured = capsys.readouterr()
     import re
 
-    # 使用更精确的正则表达式替换路径信息，只替换以iris.parquet结尾的路径
+    # use relative path to make the test pass
     normalized_output = re.sub(
         r"Paths \(.*files\): \['.*iris\.parquet'\]",
         "Paths (1 files): ['iris.parquet']",

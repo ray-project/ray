@@ -446,10 +446,11 @@ def patch_update_stats_actor():
 
 @contextmanager
 def patch_update_stats_actor_iter():
-    with patch(
-        "ray.data._internal.stats.StatsManager.update_iteration_metrics"
-    ) as update_fn, patch(
-        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
+    with (
+        patch(
+            "ray.data._internal.stats.StatsManager.update_iteration_metrics"
+        ) as update_fn,
+        patch("ray.data._internal.stats.StatsManager.clear_iteration_metrics"),
     ):
         yield update_fn
 
@@ -2095,7 +2096,7 @@ def test_op_metrics_logging():
 
         input_str = replace(
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
+            + gen_expected_metrics(is_map=False, canonicalize_histogram_values=True)
         )
         # InputDataBuffer has no inqueue, manually set to 0
         map_str = replace(
