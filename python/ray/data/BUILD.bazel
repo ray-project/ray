@@ -53,19 +53,6 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
-    size = "small",
-    files = glob(["tests/anyscale/test_*.py"]),
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 py_test(
     name = "test_formats",
     size = "medium",
@@ -1718,6 +1705,20 @@ py_test(
     name = "test_logical_plan",
     size = "small",
     srcs = ["tests/test_logical_plan.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_mcap",
+    size = "medium",
+    srcs = ["tests/test_mcap.py"],
     tags = [
         "exclusive",
         "team:data",
