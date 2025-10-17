@@ -221,9 +221,9 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         op = node.ops[0]
         if isinstance(op, ast.In):
-            return left_expr.is_in(comparators[0])
+            return pc.is_in(left_expr, comparators[0])
         elif isinstance(op, ast.NotIn):
-            return ~left_expr.is_in(comparators[0])
+            return ~pc.is_in(left_expr, comparators[0])
         elif isinstance(op, ast.Eq):
             return left_expr == comparators[0]
         elif isinstance(op, ast.NotEq):
@@ -366,7 +366,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                 nan_is_null=nan_is_null
             ),
             "is_valid": lambda arg: arg.is_valid(),
-            "is_in": lambda arg1, arg2: arg1.is_in(arg2),
+            "is_in": lambda arg1, arg2: pc.is_in(arg1, arg2),
         }
 
         if func_name in function_map:
