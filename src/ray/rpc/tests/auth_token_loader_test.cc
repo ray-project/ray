@@ -174,7 +174,8 @@ TEST_F(RayAuthTokenLoaderTest, TestThreadSafety) {
   std::vector<std::string> results(10);
 
   for (int i = 0; i < 10; i++) {
-    threads.emplace_back([&loader, &results, i]() { results[i] = loader.GetToken(false); });
+    threads.emplace_back(
+        [&loader, &results, i]() { results[i] = loader.GetToken(false); });
   }
 
   // Wait for all threads to complete
@@ -210,4 +211,3 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
