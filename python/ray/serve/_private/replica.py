@@ -35,6 +35,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
+from ray._common.prometheus_utils import (
+    extract_metric_values,
+    fetch_prometheus_metrics_async,
+    filter_samples_by_label,
+    parse_prometheus_metrics_text,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
@@ -351,6 +357,13 @@ class ReplicaMetricsManager:
         if self._autoscaling_config:
 
             if self._autoscaling_config.prometheus_metrics:
+                if not RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST:
+                    logger.error(
+                        "Prometheus metrics host is not set! Exiting..."
+                        "Please export RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST "
+                        "environment variable to enable Prometheus metrics collection."
+                    )
+                    return
                 self._prometheus_metrics_enabled = True
                 self._prometheus_queries = autoscaling_config.prometheus_metrics
                 self.start_metrics_pusher()
@@ -432,14 +445,7 @@ class ReplicaMetricsManager:
         """
         Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
         """
-        from ray._common.prometheus_utils import (
-            extract_metric_values,
-            fetch_prometheus_metrics_async,
-            filter_samples_by_label,
-            parse_prometheus_metrics_text,
-        )
-
-        logger.info(
+        logger.debug(
             f"Fetching prometheus metrics {prometheus_metrics}",
             extra={"log_to_stderr": False},
         )

@@ -10,6 +10,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
+import aiohttp
+
 try:
     from prometheus_client.core import Metric
     from prometheus_client.parser import Sample, text_string_to_metric_families
@@ -158,7 +160,7 @@ def fetch_prometheus_metric_timeseries(
 
 async def fetch_prometheus_metrics_async(
     prom_address: str,
-    timeout: Optional[float] = None,
+    timeout: float = 30,
 ) -> Optional[str]:
     """Fetch prometheus metrics asynchronously from a single address.
 
@@ -169,7 +171,6 @@ async def fetch_prometheus_metrics_async(
     Returns:
         Raw metrics text or None if fetch failed.
     """
-    import aiohttp
 
     try:
         client_timeout = aiohttp.ClientTimeout(total=timeout) if timeout else None
