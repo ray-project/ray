@@ -16,7 +16,7 @@ from ray._common.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
 
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
@@ -231,9 +231,12 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
-
+        request_router_module, request_router_class = import_module_and_attr(
+            request_router_path
+        )
+        cloudpickle.register_pickle_by_value(request_router_module)
         self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
@@ -297,7 +300,9 @@ class AutoscalingPolicy(BaseModel):
             policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
 
         if not self._serialized_policy_def:
-            self.set_serialized_policy_def(cloudpickle.dumps(import_attr(policy_path)))
+            policy_module, policy_function = import_module_and_attr(policy_path)
+            cloudpickle.register_pickle_by_value(policy_module)
+            self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
 
         self.policy_function = policy_path
 
