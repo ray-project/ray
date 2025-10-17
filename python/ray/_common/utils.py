@@ -29,6 +29,9 @@ def import_module_and_attr(
     Returns:
         A tuple of the imported module and attr.
     """
+    if full_path is None:
+        raise TypeError("import path cannot be None")
+
     if ":" in full_path:
         if full_path.count(":") > 1:
             raise ValueError(
