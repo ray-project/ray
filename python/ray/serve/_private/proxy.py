@@ -1129,7 +1129,7 @@ class ProxyActorInterface(ABC):
     def shutdown(self):
         """Shutdown the proxy to gracefully stop associated processes."""
         pass
-      
+
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(
             component_name="proxy",
