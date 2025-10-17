@@ -10,6 +10,7 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
+RUN mv "$PIP_REQUIREMENTS" python_depset.lock
 
 RUN --mount=type=bind,from=ray_core,target=/mnt/ray-core \
     --mount=type=bind,from=ray_dashboard,target=/mnt/ray-dashboard \
@@ -24,6 +25,6 @@ cp /mnt/ray-core/ray_pkg.zip /opt/ray-build/ray_pkg.zip
 cp /mnt/ray-core/ray_py_proto.zip /opt/ray-build/ray_py_proto.zip
 cp /mnt/ray-dashboard/dashboard.tar.gz /opt/ray-build/dashboard.tar.gz
 
-pip install -r "$PIP_REQUIREMENTS"
+pip install -r python_depset.lock
 
 EOF
