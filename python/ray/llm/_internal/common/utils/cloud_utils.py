@@ -417,9 +417,6 @@ class CloudFileSystem:
     ) -> None:
         """Optimized download using PyArrow's built-in copy_files function.
 
-        This leverages PyArrow's native parallel copy implementation which is
-        much simpler and more efficient than manual threading.
-
         Args:
             path: Local directory where files will be downloaded
             bucket_uri: URI of cloud directory
@@ -510,6 +507,7 @@ class CloudFileSystem:
                         future.result()
                     except Exception as e:
                         logger.error(f"Failed to copy file: {e}")
+                        raise
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
