@@ -345,9 +345,7 @@ class ServeController:
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
 
-        return await self.long_poll_host.listen_for_change(
-            keys_to_snapshot_ids, _ray_trace_ctx
-        )
+        return await self.long_poll_host.listen_for_change(keys_to_snapshot_ids)
 
     async def listen_for_change_java(
         self,
@@ -365,7 +363,7 @@ class ServeController:
             await self.done_recovering_event.wait()
 
         return await self.long_poll_host.listen_for_change_java(
-            keys_to_snapshot_ids_bytes, _ray_trace_ctx
+            keys_to_snapshot_ids_bytes
         )
 
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
