@@ -61,7 +61,7 @@ TEAM_API_CONFIGS = {
             # NOTE: These APIs are documented in a separate file (deprecated.rst).
             # These are deprecated APIs, so just white-listing them here for CI.
             "ray.train.error.SessionMisuseError",
-            "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.TrainingFailedError",
             "ray.train.context.TrainContext",
         },
     },
