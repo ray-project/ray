@@ -21,4 +21,3 @@ __all__ = [
     "IcebergDatasink",
     "upsert_to_iceberg",
 ]
-

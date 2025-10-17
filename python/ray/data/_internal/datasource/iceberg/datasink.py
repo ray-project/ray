@@ -114,9 +114,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         self._overwrite_filter = overwrite_filter
 
         if mode not in ("append", "overwrite"):
-            raise ValueError(
-                f"Invalid mode '{mode}'. Must be 'append' or 'overwrite'."
-            )
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'append' or 'overwrite'.")
 
         if overwrite_filter is not None and mode != "overwrite":
             logger.warning(
@@ -237,9 +235,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
         )
 
-    def write(
-        self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> List["DataFile"]:
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["DataFile"]:
         """
         Write Ray Data blocks to Parquet files and return DataFile metadata.
 
@@ -399,9 +395,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                     from pyiceberg.expressions import AlwaysTrue
 
                     overwrite_files.delete_by_predicate(AlwaysTrue())
-                    logger.info(
-                        f"Overwriting entire table {self.table_identifier}"
-                    )
+                    logger.info(f"Overwriting entire table {self.table_identifier}")
 
                 # Add all new data files
                 for data_file in all_data_files:
@@ -416,6 +410,4 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         # This creates exactly one snapshot/transaction log entry
         self._txn.commit_transaction()
 
-        logger.info(
-            f"Iceberg transaction committed for table {self.table_identifier}"
-        )
+        logger.info(f"Iceberg transaction committed for table {self.table_identifier}")

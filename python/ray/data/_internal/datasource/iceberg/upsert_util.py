@@ -344,9 +344,7 @@ def _upsert_native(
 
         source_keys = set()
         for i in range(len(source_keys_table)):
-            key_tuple = tuple(
-                source_keys_table[col][i].as_py() for col in join_columns
-            )
+            key_tuple = tuple(source_keys_table[col][i].as_py() for col in join_columns)
             source_keys.add(key_tuple)
 
         logger.info(
@@ -406,9 +404,7 @@ def _upsert_native(
 
     # Step 2: Read ONLY the existing rows that will be updated
     # This is much more efficient than reading the entire table
-    logger.info(
-        f"Reading existing rows matching keys from table {table_identifier}"
-    )
+    logger.info(f"Reading existing rows matching keys from table {table_identifier}")
     existing_matching_rows = ray.data.read_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
@@ -463,7 +459,9 @@ def _upsert_native(
         df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
 
         # Sort by priority to ensure we keep the correct row (new data has priority=1)
-        df.sort_values("_merge_priority", ascending=False, inplace=True, kind="mergesort")
+        df.sort_values(
+            "_merge_priority", ascending=False, inplace=True, kind="mergesort"
+        )
 
         # Drop duplicates on join keys, keeping the first occurrence (highest priority)
         df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
@@ -474,9 +472,7 @@ def _upsert_native(
         # Convert back to PyArrow table, preserving original schema
         return pa.Table.from_pandas(df, schema=batch.drop(["_merge_priority"]).schema)
 
-    deduped_data = merged_data.map_batches(
-        deduplicate_on_keys, batch_format="pyarrow"
-    )
+    deduped_data = merged_data.map_batches(deduplicate_on_keys, batch_format="pyarrow")
 
     # Step 5: Partial overwrite - only replace rows with matching keys
     # All other rows in the table remain unchanged
@@ -598,7 +594,9 @@ def _upsert_fallback(
         df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
 
         # Sort by priority to ensure we keep the newest row
-        df.sort_values("_source_priority", ascending=False, inplace=True, kind="mergesort")
+        df.sort_values(
+            "_source_priority", ascending=False, inplace=True, kind="mergesort"
+        )
 
         # Drop duplicates on join keys, keeping the first row (highest priority)
         df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
@@ -626,4 +624,3 @@ def _upsert_fallback(
         f"Completed fallback upsert on table {table_identifier} "
         f"using join columns: {join_columns}"
     )
-
