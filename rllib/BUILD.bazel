@@ -403,7 +403,6 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
-    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
@@ -506,7 +505,6 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
-    deps = [":tuned_examples_conftest"],
 )
 
 #@OldAPIStack
@@ -551,7 +549,6 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
-    deps = [":tuned_examples_conftest"],
 )
 
 py_test(
