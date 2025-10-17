@@ -3949,6 +3949,10 @@ def read_iceberg(
     parallelism: int = -1,
     selected_fields: Tuple[str, ...] = ("*",),
     snapshot_id: Optional[int] = None,
+    start_snapshot_id: Optional[int] = None,
+    end_snapshot_id: Optional[int] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
     scan_kwargs: Optional[Dict[str, str]] = None,
     catalog_kwargs: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -3967,18 +3971,40 @@ def read_iceberg(
     which can be requested from this interface or automatically chosen if
     unspecified.
 
+    For incremental reads (Change Data Feed), provide ``start_snapshot_id`` and/or
+    ``end_snapshot_id`` (or timestamps). This reads only files added between snapshots,
+    enabling efficient CDC pipelines and incremental ETL.
+
     .. tip::
 
-        For more details on PyIceberg, see
-        - URI: https://py.iceberg.apache.org/
+        For more details on PyIceberg, see https://py.iceberg.apache.org/
 
     Examples:
+        Read entire table at current snapshot:
+
         >>> import ray
         >>> from pyiceberg.expressions import EqualTo  #doctest: +SKIP
         >>> ds = ray.data.read_iceberg( #doctest: +SKIP
         ...     table_identifier="db_name.table_name",
         ...     row_filter=EqualTo("column_name", "literal_value"),
         ...     catalog_kwargs={"name": "default", "type": "glue"}
+        ... )
+
+        Read incremental changes between snapshots (CDF):
+
+        >>> ds = ray.data.read_iceberg(  # doctest: +SKIP
+        ...     table_identifier="db.users",
+        ...     start_snapshot_id=12345,
+        ...     end_snapshot_id=12350,
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+        Read changes since a timestamp:
+
+        >>> ds = ray.data.read_iceberg(  # doctest: +SKIP
+        ...     table_identifier="db.orders",
+        ...     start_timestamp="2024-01-01T00:00:00",
+        ...     catalog_kwargs={"type": "glue"}
         ... )
 
     Args:
@@ -3989,7 +4015,18 @@ def read_iceberg(
         selected_fields: Which columns from the data to read, passed directly to
             PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
-            snapshot is used
+            snapshot is used. Mutually exclusive with ``start_snapshot_id``/``end_snapshot_id``.
+        start_snapshot_id: Starting snapshot ID for incremental reads (exclusive).
+            When provided, reads only files added after this snapshot up to ``end_snapshot_id``.
+            Enables Change Data Feed functionality. Mutually exclusive with ``snapshot_id``.
+        end_snapshot_id: Ending snapshot ID for incremental reads (inclusive).
+            When provided with ``start_snapshot_id``, reads only files added between snapshots.
+            If not provided, uses the current snapshot.
+        start_timestamp: Starting timestamp for incremental reads (ISO format, e.g.,
+            "2024-01-01T00:00:00"). Alternative to ``start_snapshot_id``. The snapshot
+            at or after this timestamp is used.
+        end_timestamp: Ending timestamp for incremental reads (ISO format). Alternative
+            to ``end_snapshot_id``. The snapshot at or before this timestamp is used.
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
              (e.g., case_sensitive, limit, etc.)
         catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
@@ -4011,10 +4048,46 @@ def read_iceberg(
             cases.
 
     Returns:
-        :class:`~ray.data.Dataset` with rows from the Iceberg table.
-    """
+        :class:`~ray.data.Dataset` with rows from the Iceberg table. For incremental
+        reads, contains only rows from files added between snapshots.
 
-    # Setup the Datasource
+    Note:
+        **Incremental Reads (CDF)**: When using ``start_snapshot_id`` or timestamps,
+        the function reads entire data files added between snapshots, not individual
+        rows. All rows in added files are returned. This is significantly faster than
+        reading full snapshots and computing differences.
+
+        Start snapshot is exclusive, end snapshot is inclusive. For tables with frequent
+        small updates, consider table maintenance (compaction) for optimal performance.
+    """
+    # Check for mutually exclusive parameters
+    if snapshot_id is not None and (
+        start_snapshot_id is not None or end_snapshot_id is not None
+    ):
+        raise ValueError(
+            "snapshot_id cannot be used with start_snapshot_id or end_snapshot_id. "
+            "Use snapshot_id for point-in-time reads, or start/end for incremental reads."
+        )
+
+    # Handle incremental reads (CDF)
+    if start_snapshot_id is not None or start_timestamp is not None:
+        from ray.data._internal.datasource.iceberg.cdf_util import read_iceberg_cdf
+
+        return read_iceberg_cdf(
+            table_identifier=table_identifier,
+            start_snapshot_id=start_snapshot_id,
+            end_snapshot_id=end_snapshot_id,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            catalog_kwargs=catalog_kwargs,
+            ray_remote_args=ray_remote_args,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            override_num_blocks=override_num_blocks,
+        )
+
+    # Standard read (point-in-time)
     datasource = IcebergDatasource(
         table_identifier=table_identifier,
         row_filter=row_filter,
@@ -4035,101 +4108,6 @@ def read_iceberg(
     )
 
     return dataset
-
-
-@PublicAPI(stability="alpha")
-def read_iceberg_cdf(
-    *,
-    table_identifier: str,
-    start_snapshot_id: Optional[int] = None,
-    end_snapshot_id: Optional[int] = None,
-    start_timestamp: Optional[str] = None,
-    end_timestamp: Optional[str] = None,
-    catalog_kwargs: Optional[Dict[str, str]] = None,
-    ray_remote_args: Optional[Dict[str, Any]] = None,
-    num_cpus: Optional[float] = None,
-    num_gpus: Optional[float] = None,
-    memory: Optional[float] = None,
-    override_num_blocks: Optional[int] = None,
-) -> Dataset:
-    """
-    Read incremental changes from an Iceberg table (Change Data Feed).
-
-    This function reads only the data files added between two snapshots, enabling
-    efficient incremental data processing for CDC pipelines, incremental ETL, and
-    streaming-like batch processing.
-
-    .. tip::
-
-        This is significantly faster than reading full snapshots and computing
-        differences, as it only reads files that changed between snapshots.
-
-    Examples:
-        Read changes between two snapshots:
-
-        >>> import ray
-        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
-        ...     table_identifier="db.users",
-        ...     start_snapshot_id=12345,
-        ...     end_snapshot_id=12350,
-        ...     catalog_kwargs={"type": "glue"}
-        ... )
-
-        Read changes since a timestamp:
-
-        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
-        ...     table_identifier="db.orders",
-        ...     start_timestamp="2024-01-01T00:00:00",
-        ...     catalog_kwargs={"type": "glue"}
-        ... )
-
-    Args:
-        table_identifier: Fully qualified table identifier (``db_name.table_name``)
-        start_snapshot_id: Starting snapshot ID (exclusive). If not provided, reads
-            from the beginning of table history.
-        end_snapshot_id: Ending snapshot ID (inclusive). If not provided, uses the
-            current snapshot.
-        start_timestamp: Starting timestamp (ISO format). Alternative to
-            start_snapshot_id. The snapshot at or after this timestamp is used.
-        end_timestamp: Ending timestamp (ISO format). Alternative to end_snapshot_id.
-            The snapshot at or before this timestamp is used.
-        catalog_kwargs: Arguments to pass to PyIceberg's ``load_catalog()`` function.
-            See the `PyIceberg catalog documentation
-            <https://py.iceberg.apache.org/configuration/>`_ for details.
-        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks
-        num_cpus: The number of CPUs to reserve for each parallel read worker
-        num_gpus: The number of GPUs to reserve for each parallel read worker
-        memory: The heap memory in bytes to reserve for each parallel read worker
-        override_num_blocks: Override the number of output blocks from all read tasks
-
-    Returns:
-        Dataset containing rows from files added between the snapshots. Includes
-        all original columns from the table.
-
-    Note:
-        - Reads entire data files, not individual rows. All rows in added files are
-          returned.
-        - Deleted files aren't tracked in the returned dataset. Track row-level
-          primary keys to detect deletions.
-        - Start snapshot is exclusive, end snapshot is inclusive.
-        - For tables with frequent small updates, consider table maintenance
-          (compaction) for optimal performance.
-    """
-    from ray.data._internal.datasource.iceberg.cdf_util import read_iceberg_cdf
-
-    return read_iceberg_cdf(
-        table_identifier=table_identifier,
-        start_snapshot_id=start_snapshot_id,
-        end_snapshot_id=end_snapshot_id,
-        start_timestamp=start_timestamp,
-        end_timestamp=end_timestamp,
-        catalog_kwargs=catalog_kwargs,
-        ray_remote_args=ray_remote_args,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
-        override_num_blocks=override_num_blocks,
-    )
 
 
 @PublicAPI

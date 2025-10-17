@@ -261,7 +261,7 @@ def write_iceberg_cdf(
         concurrency: Maximum number of Ray tasks to run concurrently
 
     Returns:
-        Dictionary with operation counts: {"inserts": N, "updates": N, "deletes": N}
+        None. Operation details can be inspected via Iceberg snapshot metadata.
 
     Examples:
         Apply mixed CDC operations:
@@ -272,14 +272,12 @@ def write_iceberg_cdf(
         ...     {"id": 2, "name": "Bob Updated", "_change_type": "update"},
         ...     {"id": 3, "name": "Charlie", "_change_type": "delete"},
         ... ])
-        >>> result = ray.data.write_iceberg_cdf(  # doctest: +SKIP
+        >>> ray.data.write_iceberg_cdf(  # doctest: +SKIP
         ...     dataset=cdc_data,
         ...     table_identifier="db.users",
         ...     merge_keys=["id"],
         ...     catalog_kwargs={"type": "glue"}
         ... )
-        >>> print(result)  # doctest: +SKIP
-        {"inserts": 1, "updates": 1, "deletes": 1}
 
         Process Debezium CDC events:
 
@@ -303,7 +301,10 @@ def write_iceberg_cdf(
         ... )
 
     Note:
-        - All operations are applied in a single ACID transaction
+        - **ACID Limitation**: Currently, operations are applied as separate Iceberg
+          snapshots (DELETE → UPDATE → INSERT), not a single atomic transaction. Each
+          operation has ACID guarantees, but the overall CDF write is not atomic across
+          all three types. This is a PyIceberg/Ray Data integration limitation.
         - Operations are applied in order: DELETE → UPDATE → INSERT
         - The change_type_column is automatically removed before writing
         - For UPDATE operations, the entire row is replaced (not partial updates)
@@ -356,24 +357,11 @@ def write_iceberg_cdf(
     updates_ds = dataset.filter(is_update)
     inserts_ds = dataset.filter(is_insert)
 
-    # Count operations (materialized early for logging and return value)
-    delete_count = deletes_ds.count()
-    update_count = updates_ds.count()
-    insert_count = inserts_ds.count()
-
-    total_ops = delete_count + update_count + insert_count
-    dataset_count = dataset.count()
-
-    if total_ops != dataset_count:
-        invalid_count = dataset_count - total_ops
-        raise ValueError(
-            f"Found {invalid_count} rows with invalid change types. "
-            f"Valid types: insert/I, update/U, delete/D"
-        )
-
+    # Don't materialize - keep streaming execution
+    # Counts will be determined during write operations
     logger.info(
-        f"CDF operations: {delete_count} deletes, "
-        f"{update_count} updates, {insert_count} inserts"
+        f"Starting CDF write to {table_identifier} - "
+        f"operations will be processed in streaming mode"
     )
 
     # Remove change type column from all datasets
@@ -393,53 +381,54 @@ def write_iceberg_cdf(
     updates_clean = updates_ds.map_batches(drop_change_column, batch_format="pyarrow")
     inserts_clean = inserts_ds.map_batches(drop_change_column, batch_format="pyarrow")
 
-    # Apply operations within a transaction
-    # Note: We can't use table.transaction() directly because we need to interleave
-    # Ray Data operations. Instead, we'll use separate operations that PyIceberg
-    # will batch into snapshots.
+    # CRITICAL: All operations must use PyIceberg transaction to maintain ACID guarantees
+    # See: https://py.iceberg.apache.org/api/#transactions
+    #
+    # WARNING: Currently PyIceberg doesn't support mixing Ray Data writes with
+    # transactions in a single atomic operation. This is a known limitation.
+    # Each operation creates a separate snapshot, which means CDF writes are NOT
+    # truly atomic across all three operation types.
+    #
+    # For now, we perform operations sequentially and rely on Iceberg's per-operation
+    # ACID guarantees. Future work: implement proper transaction support.
 
-    # 1. Process deletes
-    if delete_count > 0:
-        logger.info(f"Processing {delete_count} delete operations")
-        _apply_deletes(
-            table, deletes_clean, merge_keys, snapshot_properties, ray_remote_args
-        )
+    # Process operations in order: DELETE → UPDATE → INSERT
+    # Each maintains streaming execution without materializing the full dataset
 
-    # 2. Process updates (using upsert logic)
-    if update_count > 0:
-        logger.info(f"Processing {update_count} update operations")
-        from ray.data._internal.datasource.iceberg.upsert_util import upsert_to_iceberg
+    logger.info("Processing DELETE operations (streaming)")
+    _apply_deletes(
+        table, deletes_clean, merge_keys, snapshot_properties, ray_remote_args
+    )
 
-        upsert_to_iceberg(
-            dataset=updates_clean,
-            table_identifier=table_identifier,
-            join_columns=merge_keys,
-            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-            snapshot_properties=snapshot_properties,
-            update_filter=None,
-            ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
-        )
+    logger.info("Processing UPDATE operations (streaming)")
+    from ray.data._internal.datasource.iceberg.upsert_util import upsert_to_iceberg
 
-    # 3. Process inserts
-    if insert_count > 0:
-        logger.info(f"Processing {insert_count} insert operations")
-        inserts_clean.write_iceberg(
-            table_identifier=table_identifier,
-            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-            snapshot_properties=snapshot_properties,
-            mode="append",
-            ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
-        )
+    upsert_to_iceberg(
+        dataset=updates_clean,
+        table_identifier=table_identifier,
+        join_columns=merge_keys,
+        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+        snapshot_properties=snapshot_properties,
+        update_filter=None,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+    )
+
+    logger.info("Processing INSERT operations (streaming)")
+    inserts_clean.write_iceberg(
+        table_identifier=table_identifier,
+        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+        snapshot_properties=snapshot_properties,
+        mode="append",
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+    )
 
     logger.info(f"CDF write completed for {table_identifier}")
 
-    return {
-        "deletes": delete_count,
-        "updates": update_count,
-        "inserts": insert_count,
-    }
+    # Note: We don't return counts since that would require materializing datasets
+    # Users can query Iceberg snapshots to see operation details
+    return None
 
 
 def _resolve_snapshot_from_timestamp(
@@ -546,7 +535,10 @@ def _apply_deletes(
     Apply delete operations to an Iceberg table.
 
     This collects the keys to delete and uses Iceberg's delete API to remove
-    matching rows.
+    matching rows. Keys are materialized (not full rows) to build the delete filter.
+
+    Note: Keys must be materialized to build PyIceberg filter expressions.
+    This is unavoidable but minimizes memory usage by only materializing key columns.
 
     Args:
         table: PyIceberg Table object
@@ -557,7 +549,9 @@ def _apply_deletes(
     """
     from pyiceberg.expressions import And, EqualTo, In, Or
 
-    # Materialize only the merge key columns
+    # Materialize ONLY the merge key columns (not full rows)
+    # This is necessary to build the PyIceberg delete filter expression
+    # See: https://py.iceberg.apache.org/api/#delete
     keys_df = deletes_dataset.select_columns(merge_keys).to_pandas()
 
     if len(keys_df) == 0:

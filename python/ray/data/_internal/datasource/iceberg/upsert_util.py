@@ -517,27 +517,86 @@ def _upsert_fallback(
     """
     Fallback upsert implementation for PyIceberg < 0.9.0.
 
-    This performs a read-merge-write pattern:
-    1. Read existing table data
-    2. Outer join with new data on join_columns
-    3. For matching rows, prefer new values (update)
-    4. For non-matching rows, keep them (insert)
-    5. Overwrite the table with merged result
+    Uses read-merge-write pattern with partial overwrite:
+    1. Materialize keys from source dataset
+    2. Build filter for rows matching those keys
+    3. Read ONLY matching rows from existing table
+    4. Union matching rows with new data
+    5. Deduplicate based on join columns (preferring new data)
+    6. Use partial overwrite to replace only affected rows
 
-    This approach is less efficient than native upsert but provides
-    compatibility with older PyIceberg versions.
+    This is less efficient than the native implementation but still uses
+    partial overwrite to avoid modifying unrelated data.
+
+    See: https://py.iceberg.apache.org/api/#partial-overwrites
     """
+    from pyiceberg.catalog import load_catalog
+    from pyiceberg.expressions import And, EqualTo, In, Or
+
     import ray
 
     logger.info(
-        f"Using fallback read-merge-write pattern for upsert on {table_identifier}"
+        f"Using fallback upsert for table {table_identifier} "
+        f"(PyIceberg < 0.9.0 detected)"
     )
 
-    # Read the existing table
+    # Get catalog and table
+    catalog_name = catalog_kwargs.pop("name", "default")
+    catalog = load_catalog(catalog_name, **catalog_kwargs)
+    table = catalog.load_table(table_identifier)
+
+    # Step 1: Collect unique keys from source dataset (only materialize keys)
+    logger.info("Collecting unique keys from source dataset")
+    keys_df = dataset.select_columns(join_columns).to_pandas()
+
+    if len(keys_df) == 0:
+        logger.warning("Source dataset is empty, nothing to upsert")
+        return
+
+    # Step 2: Build filter for matching rows
+    if len(join_columns) == 1:
+        # Single key: use IN expression
+        key_col = join_columns[0]
+        unique_keys = keys_df[key_col].unique().tolist()
+        if len(unique_keys) == 1:
+            read_filter = EqualTo(key_col, unique_keys[0])
+        else:
+            read_filter = In(key_col, unique_keys)
+    else:
+        # Multi-column keys: build OR of AND expressions
+        # Limit to 1000 combinations to avoid huge filter expressions
+        unique_combinations = keys_df.drop_duplicates().head(1000)
+
+        if len(unique_combinations) < len(keys_df):
+            logger.warning(
+                f"Upsert has {len(keys_df)} unique key combinations. "
+                f"Limiting to first 1000 for filter expression."
+            )
+
+        filters = []
+        for _, row in unique_combinations.iterrows():
+            key_filters = [EqualTo(key, row[key]) for key in join_columns]
+            if len(key_filters) == 1:
+                filters.append(key_filters[0])
+            else:
+                filters.append(And(*key_filters))
+
+        if len(filters) == 1:
+            read_filter = filters[0]
+        else:
+            read_filter = Or(*filters)
+
+    # Apply update_filter if provided
+    # See: https://py.iceberg.apache.org/api/#expressions
+    if update_filter is not None:
+        read_filter = And(read_filter, update_filter)
+
+    # Step 3: Read ONLY matching rows from existing table (not entire table)
+    logger.info(f"Reading existing rows matching {len(keys_df)} keys")
     existing_data = ray.data.read_iceberg(
         table_identifier=table_identifier,
-        catalog_kwargs=catalog_kwargs,
-        row_filter=update_filter,  # Apply filter if specified
+        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+        row_filter=read_filter,
     )
 
     # Perform the merge logic using Ray Data operations
@@ -610,12 +669,42 @@ def _upsert_fallback(
     # Apply deduplication
     deduped = merged.map_batches(deduplicate_batch, batch_format="pyarrow")
 
-    # Write the result back, overwriting the table
+    # Step 5: Write with partial overwrite using the same filter
+    # This ensures we only replace the rows we read, not the entire table
+    # See: https://py.iceberg.apache.org/api/#partial-overwrites
+    logger.info("Writing merged data with partial overwrite")
+
+    # Build the overwrite filter (just the key filter, not including update_filter)
+    # We want to delete all rows matching the keys, not just those matching update_filter
+    if len(join_columns) == 1:
+        key_col = join_columns[0]
+        unique_keys = keys_df[key_col].unique().tolist()
+        if len(unique_keys) == 1:
+            overwrite_filter = EqualTo(key_col, unique_keys[0])
+        else:
+            overwrite_filter = In(key_col, unique_keys)
+    else:
+        # Reuse the same filter logic
+        unique_combinations = keys_df.drop_duplicates().head(1000)
+        filters = []
+        for _, row in unique_combinations.iterrows():
+            key_filters = [EqualTo(key, row[key]) for key in join_columns]
+            if len(key_filters) == 1:
+                filters.append(key_filters[0])
+            else:
+                filters.append(And(*key_filters))
+        if len(filters) == 1:
+            overwrite_filter = filters[0]
+        else:
+            overwrite_filter = Or(*filters)
+
+    # Use partial overwrite with filter to replace only affected rows
     deduped.write_iceberg(
         table_identifier=table_identifier,
-        catalog_kwargs=catalog_kwargs,
+        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         snapshot_properties=snapshot_properties,
         mode="overwrite",
+        overwrite_filter=overwrite_filter,  # Critical: only overwrite matching rows
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
     )
