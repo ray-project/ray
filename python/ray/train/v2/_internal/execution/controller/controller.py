@@ -345,6 +345,10 @@ class TrainController:
 
     def get_state(self) -> TrainControllerState:
         return self._state
+    
+    def add_parent_actor(self, parent_actor_id: str):
+        # added to track the parent actor id
+        self._parent_actor_id = parent_actor_id
 
     def _set_state(self, state: TrainControllerState):
         previous_state = self._state
@@ -461,6 +465,13 @@ class TrainController:
 
     def _get_run_attempt_id(self):
         return self._run_attempt_id
+    
+    def __ray_shutdown__(self):
+        print(f">>> train v2 controller, we entered here to __ray_shutdown__")
+    
+    def __ray_terminate__(self):
+        print(f">>> train v2 controller, we entered here to __ray_terminate__")
+
 
     async def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.

@@ -150,15 +150,20 @@ class FunctionTrainable(Trainable):
 
     def cleanup(self):
         session = get_session()
+        print(f">>> [debugging] function trainable, we entered here to functionaTrainablecleanup, session trial id: {session.trial_info.id}")
         try:
             # session.finish raises any Exceptions from training.
             # Do not wait for thread termination here (timeout=0).
-            session.finish(timeout=0)
+            res = session.finish(timeout=2)
+            print(f">>> [debugging] function trainable, we entered here to functionaTrainablecleanup, res: {res}")
+            print(f">>> [debugging] function trainable, we entered here to functionaTrainablecleanup, thread is alive?: {session.training_thread.is_alive()}")
         finally:
             # Check for any errors that might have been missed.
             session._report_thread_runner_error()
             # Shutdown session even if session.finish() raises an Exception.
             shutdown_session()
+            print(f">>> [debugging] function trainable, we entered here to functionaTrainablecleanup, thread is alive?: {session.training_thread.is_alive()}")
+            print(f">>> [debugging] function trainable, we entered here to functionaTrainablecleanup, setting globalsession to None")
 
     def reset_config(self, new_config):
         session = get_session()
