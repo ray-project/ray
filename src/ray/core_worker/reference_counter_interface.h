@@ -286,13 +286,15 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
-  /// Sets the callback that will be run when the object reference is deleted
+  /// Stores the callback that will be run when the object reference is deleted
   /// from the reference table (all refs including lineage ref count go to 0).
+  /// There could be multiple callbacks for the same object due to retries and we store
+  /// them all to prevent the message reordering case where an earlier callback overwrites
+  /// the later one.
   /// Returns true if the object was in the reference table and the callback was added
   /// else false.
-  virtual bool SetObjectRefDeletedCallback(
-      const ObjectID &object_id,
-      const std::function<void(const ObjectID &)> callback) = 0;
+  virtual bool AddObjectRefDeletedCallback(
+      const ObjectID &object_id, std::function<void(const ObjectID &)> callback) = 0;
 
   /// So we call PublishRefRemovedInternal when we are no longer borrowing this object
   /// (when our ref count goes to 0).

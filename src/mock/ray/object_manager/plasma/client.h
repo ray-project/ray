@@ -35,7 +35,7 @@ class MockPlasmaClient : public PlasmaClientInterface {
               (const ObjectID &object_id, bool *has_object),
               (override));
 
-  MOCK_METHOD(Status, Disconnect, (), (override));
+  MOCK_METHOD(void, Disconnect, (), (override));
 
   MOCK_METHOD(Status,
               Get,

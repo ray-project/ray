@@ -18,11 +18,16 @@ from pydantic import (
 
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.callbacks.base import (
+    CallbackBase,
+    CallbackConfig,
+)
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.common.utils.import_utils import load_class, try_import
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -159,16 +164,19 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
-    )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+    )
+
+    placement_group_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Ray placement group configuration for scheduling vLLM engine workers. "
+            "Defines resource bundles and placement strategy for multi-node deployments. "
+            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
+            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+        ),
     )
 
     lora_config: Optional[Union[Dict[str, Any], LoraConfig]] = Field(
@@ -205,12 +213,18 @@ class LLMConfig(BaseModelExtended):
 
     log_engine_metrics: Optional[bool] = Field(
         default=True,
-        description="Enable additional engine metrics via Ray Prometheus port. Default is True.",
+        description="Enable additional engine metrics via Ray Prometheus port.",
+    )
+
+    callback_config: CallbackConfig = Field(
+        default_factory=CallbackConfig,
+        description="Callback configuration to use for model initialization. Can be a string path to a class or a Callback subclass.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
+    _callback_instance: Optional[CallbackBase] = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -266,6 +280,41 @@ class LLMConfig(BaseModelExtended):
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
         self._set_model_architecture(model_id_or_path)
+
+    def get_or_create_callback(self) -> Optional[CallbackBase]:
+        """Get or create the callback instance for this process.
+
+        This ensures one callback instance per process (singleton pattern).
+        The instance is cached so the same object is used across all hooks.
+
+        Returns:
+            Instance of class that implements Callback
+        """  # Return cached instance if exists
+        if self._callback_instance is not None:
+            return self._callback_instance
+
+        engine_config = self.get_engine_config()
+        assert engine_config is not None
+        pg = engine_config.get_or_create_pg()
+        runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+        # Create new instance
+        if isinstance(self.callback_config.callback_class, str):
+            callback_class = load_class(self.callback_config.callback_class)
+        else:
+            callback_class = self.callback_config.callback_class
+
+        self._callback_instance = callback_class(
+            raise_error_on_callback=self.callback_config.raise_error_on_callback,
+            llm_config=self,
+            ctx_kwargs={
+                "worker_node_download_model": NodeModelDownloadable.MODEL_AND_TOKENIZER,
+                "placement_group": pg,
+                "runtime_env": runtime_env,
+            },
+            **self.callback_config.callback_kwargs,
+        )
+        return self._callback_instance
 
     @property
     def supports_vision(self) -> bool:
@@ -372,7 +421,7 @@ class LLMConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
-        # Require disable_log_stats is not set to True when log_engine_metrics is enabled.
+        """Validate that disable_log_stats isn't enabled when log_engine_metrics is enabled."""
         if self.log_engine_metrics and self.engine_kwargs.get("disable_log_stats"):
             raise ValueError(
                 "disable_log_stats cannot be set to True when log_engine_metrics is enabled. "
