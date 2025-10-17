@@ -329,31 +329,43 @@ class ServeController:
             deployment_id
         ]._stop_one_running_replica_for_testing()
 
-    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
+    async def listen_for_change(
+        self,
+        keys_to_snapshot_ids: Dict[str, int],
+        _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+    ):
         """Proxy long pull client's listen request.
 
         Args:
             keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
+            _ray_trace_ctx (Optional[Dict[str, Any]]): Ray tracing context.
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
 
-        return await self.long_poll_host.listen_for_change(keys_to_snapshot_ids)
+        return await self.long_poll_host.listen_for_change(
+            keys_to_snapshot_ids, _ray_trace_ctx
+        )
 
-    async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
+    async def listen_for_change_java(
+        self,
+        keys_to_snapshot_ids_bytes: bytes,
+        _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+    ):
         """Proxy long pull client's listen request.
 
         Args:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
+            _ray_trace_ctx (Optional[Dict[str, Any]]): Ray tracing context.
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
 
         return await self.long_poll_host.listen_for_change_java(
-            keys_to_snapshot_ids_bytes
+            keys_to_snapshot_ids_bytes, _ray_trace_ctx
         )
 
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:

@@ -293,6 +293,7 @@ class LongPollHost:
     async def listen_for_change(
         self,
         keys_to_snapshot_ids: Dict[KeyType, int],
+        _ray_trace_ctx: Optional[Dict[str, Any]] = None,
     ) -> Union[LongPollState, Dict[KeyType, UpdatedObject]]:
         """Listen for changed objects.
 
