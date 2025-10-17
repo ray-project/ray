@@ -39,7 +39,7 @@ def _is_arrow_array(value: ArrayLike) -> bool:
     return isinstance(value, (pa.Array, pa.ChunkedArray))
 
 
-def _get_leaf_element(value, max_depth=10):
+def _get_leaf_element(value: Any, max_depth: int = 10) -> Any:
     """Recursively traverse nested sequences to find a leaf element.
 
     Args:
@@ -59,7 +59,7 @@ def _get_leaf_element(value, max_depth=10):
     return value
 
 
-def _contains_nested_ndarrays(column_values) -> bool:
+def _contains_nested_ndarrays(column_values: Sequence[Any]) -> bool:
     """Check if column_values contains nested sequences with ndarrays at leaf level."""
     if not isinstance(column_values, (list, tuple)) or len(column_values) == 0:
         return False
