@@ -933,21 +933,11 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             app_state.update_running_replica_ids(deployment_id, running_replicas)
-        else:
-            logger.warning(
-                f"Cannot update running replica ids for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
         if app_state:
             app_state.on_replica_stopped(replica_id)
-        else:
-            logger.warning(
-                f"Cannot invoke callback on replica stopped for replica "
-                f"{replica_id} because the application {replica_id.deployment_id.app_name} is not registered"
-            )
 
     def get_metrics_for_deployment(
         self, deployment_id: DeploymentID
@@ -957,10 +947,6 @@ class AutoscalingStateManager:
                 deployment_id.app_name
             ].get_replica_metrics_by_deployment_id(deployment_id)
         else:
-            logger.warning(
-                f"Cannot get metrics for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
             return {}
 
     def get_total_num_requests_for_deployment(
@@ -971,10 +957,6 @@ class AutoscalingStateManager:
                 deployment_id.app_name
             ].get_total_num_requests_for_deployment(deployment_id)
         else:
-            logger.warning(
-                f"Cannot get total number of requests for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
             return 0
 
     def is_within_bounds(
@@ -993,29 +975,17 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_replica(replica_metric_report)
-        else:
-            logger.warning(
-                f"Cannot record request metrics for replica "
-                f"{replica_metric_report.replica_id} because the application {replica_metric_report.replica_id.deployment_id.app_name} is not registered"
-            )
 
     def record_request_metrics_for_handle(
         self,
         handle_metric_report: HandleMetricReport,
     ) -> None:
         """Update request metric for a specific handle."""
-        try:
-            app_state = self._app_autoscaling_states[
-                handle_metric_report.deployment_id.app_name
-            ]
-        except KeyError:
-            logger.warning(
-                f"Cannot record request metrics for handle "
-                f"{handle_metric_report.handle_id} because the application {handle_metric_report.deployment_id.app_name} is not registered"
-            )
-            return
-
-        app_state.record_request_metrics_for_handle(handle_metric_report)
+        app_state = self._app_autoscaling_states.get(
+            handle_metric_report.deployment_id.app_name
+        )
+        if app_state:
+            app_state.record_request_metrics_for_handle(handle_metric_report)
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
