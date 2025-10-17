@@ -66,7 +66,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map1 = MapRows(read_op, lambda x: x)
     map2 = MapBatches(map1, lambda x: x)
     map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, lambda x: x)
+    map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -296,7 +296,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), lambda x: False),
+            Filter(InputData([]), fn=lambda x: False),
             False,
         ),
         (
@@ -429,7 +429,8 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    assert "ReadRange->MapBatches(fn)" in ds.stats()
+    # ReadRange cannot fuse with MapBatches due to RandomizeBlockOrder in between
+    assert "ReadRange->MapBatches(fn)" not in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
@@ -575,7 +576,7 @@ def test_read_map_chain_operator_fusion_e2e(
     ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map_batches(
         lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
