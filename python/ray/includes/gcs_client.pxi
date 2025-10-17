@@ -14,7 +14,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
+# For how async API are implemented, see src/ray/gcs_rpc_client/python_callbacks.h
 from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move
@@ -515,6 +515,7 @@ cdef class InnerGcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, cython.double]],
+            label_selectors: c_vector[unordered_map[c_string, c_string]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -523,7 +524,7 @@ cdef class InnerGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .Autoscaler()
-                .RequestClusterResourceConstraint(timeout_ms, bundles, count_array)
+                .RequestClusterResourceConstraint(timeout_ms, bundles, label_selectors, count_array)
             )
 
     def get_cluster_resource_state(

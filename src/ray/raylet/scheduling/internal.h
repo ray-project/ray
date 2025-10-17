@@ -18,7 +18,6 @@
 #include <utility>
 
 #include "ray/common/lease/lease.h"
-#include "ray/common/ray_object.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -103,6 +102,7 @@ class Work {
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
 };
 
-using NodeInfoGetter = std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)>;
+using NodeInfoGetter =
+    std::function<std::optional<rpc::GcsNodeAddressAndLiveness>(const NodeID &node_id)>;
 
 }  // namespace ray::raylet::internal

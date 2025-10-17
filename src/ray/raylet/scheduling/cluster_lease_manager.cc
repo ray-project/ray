@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
@@ -161,7 +160,7 @@ bool ClusterLeaseManager::IsWorkWithResourceShape(
   SchedulingClass scheduling_class =
       work->lease_.GetLeaseSpecification().GetSchedulingClass();
   ResourceSet resource_set =
-      TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+      SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class).resource_set;
   for (const auto &target_resource_shape : target_resource_shapes) {
     if (resource_set == target_resource_shape) {
       return true;
@@ -231,8 +230,11 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
                        << lease.GetLeaseSpecification().LeaseId() << " is infeasible?"
                        << is_infeasible;
 
-        if (lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
-            !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) {
+        auto affinity_values =
+            GetHardNodeAffinityValues(lease.GetLeaseSpecification().GetLabelSelector());
+        if ((lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
+             !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) ||
+            (affinity_values.has_value() && !affinity_values->empty())) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The lease will never be schedulable in either case so we should fail it.
           if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
@@ -319,7 +321,7 @@ void ClusterLeaseManager::TryScheduleInfeasibleLease() {
         /*requires_object_store_memory*/ false,
         &is_infeasible);
 
-    // There is no node that has available resources to run the request.
+    // There is no node that has feasible resources to run the request.
     // Move on to the next shape.
     if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for lease "
@@ -449,14 +451,12 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_ptr)
-      << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
+  auto node_info = get_node_info_(spillback_to);
+  RAY_CHECK(node_info.has_value());
   auto reply = work->reply_;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
+      (*node_info).node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port((*node_info).node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
   send_reply_callback();

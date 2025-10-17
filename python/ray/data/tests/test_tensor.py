@@ -8,8 +8,9 @@ import pytest
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data import DataContext, Schema
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
+from ray.data.dataset import Schema
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowTensorType,
@@ -335,8 +336,14 @@ def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
+    if tensor_format == "arrow_native":
+        ctx.use_arrow_native_fixed_shape_tensor_type = True
+        class_name = "FixedShapeTensor"
+    elif tensor_format == "v2":
+        ctx.use_arrow_tensor_v2 = True
+        class_name = "ArrowTensorTypeV2"
+    else:
+        class_name = "ArrowTensorType"
 
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
@@ -347,7 +354,7 @@ def test_tensors_inferred_from_map(
         "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
         ")"
     )
 
@@ -360,7 +367,7 @@ def test_tensors_inferred_from_map(
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
         ")"
     )
 
@@ -373,7 +380,7 @@ def test_tensors_inferred_from_map(
         "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=20,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        f"   schema={{data: {class_name}(shape=(4, 4), dtype=double)}}\n"
         ")"
     )
 
@@ -386,7 +393,7 @@ def test_tensors_inferred_from_map(
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
-        "   schema={a: numpy.ndarray(shape=(4, 4), dtype=float64)}\n"
+        "   schema={a: TensorDtype(shape=(4, 4), dtype=float64)}\n"
         ")"
     )
 
@@ -399,7 +406,7 @@ def test_tensors_inferred_from_map(
         "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=16,\n"
-        "   schema={a: numpy.ndarray(shape=(None, None), dtype=float64)}\n"
+        "   schema={a: TensorDtype(shape=(None, None), dtype=float64)}\n"
         ")"
     )
 

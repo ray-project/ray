@@ -17,7 +17,7 @@
 namespace ray {
 void PlacementGroupSpecification::ConstructBundles() {
   for (int i = 0; i < message_->bundles_size(); i++) {
-    bundles_.push_back(BundleSpecification(message_->bundles(i)));
+    bundles_.emplace_back(message_->bundles(i));
   }
 }
 

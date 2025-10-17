@@ -67,6 +67,41 @@ DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
 ID_SIZE = 28
 
+# The following constants are used to create default values for
+# resource isolation when it is enabled.
+# TODO(54703): Link to OSS documentation about the feature once it's available.
+DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
+# The default proportion of cpu cores to reserve for ray system processes.
+DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
+)
+# The default minimum number of cpu cores to reserve for ray system processes.
+# This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION < this value.
+DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES", 1.0
+)
+# The default maximum number of cpu cores to reserve for ray system processes.
+# This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION > this value.
+DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES", 3.0
+)
+# The values for SYSTEM_RESERVED_MEMORY do not include the memory reserveed
+# for the object store.
+# The default proportion available memory to reserve for ray system processes.
+DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
+)
+# The default minimum number of bytes to reserve for ray system processes.
+# This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
+DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+)
+# The default maximum number of bytes to reserve for ray system processes.
+# This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
+DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
+)
+
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
@@ -77,31 +112,6 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
     "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
     0.3,
 )
-
-# The following values are only used when resource isolation is enabled
-# ===== The default number of bytes to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
-)
-# The default proportion available memory to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
-    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
-)
-# The default number of cpu cores to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_CPU_CORES = env_float(
-    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
-)
-# The default proportion of cpu cores to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
-    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
-)
-# The smallest number of cores that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_CPU_CORES = 0.5
-# The smallest number of bytes that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES = (100) * (10**6)
-# The default path for cgroupv2
-DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
-
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -568,11 +578,6 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
-# Whether GPU metrics collection via `nvidia-smi` is enabled.
-# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
-# Defaults to False to use pynvml to collect usage.
-RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
-
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
 RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
@@ -584,3 +589,5 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
 FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)

@@ -431,7 +431,7 @@ Total Usage:
  0B/72.63GiB memory
  0B/33.53GiB object_store_memory
 
-Total Demands:
+Pending Demands:
  (no resource demands)
 
 Node: 40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64

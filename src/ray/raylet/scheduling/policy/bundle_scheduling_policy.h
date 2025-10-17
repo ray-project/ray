@@ -16,8 +16,6 @@
 
 #include <vector>
 
-#include "ray/common/bundle_spec.h"
-#include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"

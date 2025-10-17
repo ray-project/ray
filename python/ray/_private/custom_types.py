@@ -46,6 +46,7 @@ TASK_STATUS = [
     "RUNNING_IN_RAY_WAIT",
     "FINISHED",
     "FAILED",
+    "GETTING_AND_PINNING_ARGS",
 ]
 TypeTaskStatus = Literal[tuple(TASK_STATUS)]
 NODE_STATUS = ["ALIVE", "DEAD"]

@@ -80,7 +80,7 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
 including receiving autoscaling metrics from other Ray Serve components.
 If the Serve Controller becomes overloaded
-(symptoms might include high CPU usage and a large number of pending `ServeController.record_handle_metrics` tasks),
+(symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
 you can increase the interval between cycles of the control loop
 by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
 This setting gives the Controller more time to process requests and may help alleviate the overload.

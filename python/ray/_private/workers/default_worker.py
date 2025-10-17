@@ -271,7 +271,6 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
-        enable_resource_isolation=args.enable_resource_isolation,
     )
 
     worker = ray._private.worker.global_worker

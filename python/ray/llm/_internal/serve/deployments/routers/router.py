@@ -11,6 +11,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -27,12 +28,7 @@ from ray.llm._internal.common.utils.lora_utils import (
 )
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
-    DEFAULT_LLM_ROUTER_INITIAL_REPLICAS,
-    DEFAULT_LLM_ROUTER_MAX_REPLICAS,
-    DEFAULT_LLM_ROUTER_MIN_REPLICAS,
-    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
     DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -56,6 +52,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.deployments.protocol import DeploymentProtocol
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
@@ -69,7 +66,6 @@ from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
@@ -81,6 +77,11 @@ else:
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+
+DEFAULT_INGRESS_OPTIONS = {
+    "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+}
 
 
 def _sanitize_chat_completion_request(
@@ -111,6 +112,18 @@ StreamResponseType = Union[
     CompletionStreamResponse,
 ]
 BatchedStreamResponseType = List[StreamResponseType]
+
+
+DEFAULT_ENDPOINTS = {
+    "models": lambda app: app.get("/v1/models", response_model=ModelList),
+    "model_data": lambda app: app.get(
+        "/v1/models/{model:path}", response_model=ModelCard
+    ),
+    "completions": lambda app: app.post("/v1/completions"),
+    "chat": lambda app: app.post("/v1/chat/completions"),
+    "embeddings": lambda app: app.post("/v1/embeddings"),
+    "score": lambda app: app.post("/v1/score"),
+}
 
 
 def init() -> FastAPI:
@@ -148,7 +161,69 @@ def init() -> FastAPI:
     return _fastapi_router_app
 
 
-fastapi_router_app = init()
+def make_fastapi_ingress(
+    cls: Type,
+    *,
+    endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None,
+    app: Optional[FastAPI] = None,
+):
+    """
+    Create a Ray Serve ingress deployment from a class and endpoint mapping.
+
+    Args:
+        cls: The class to convert into an ingress deployment
+        endpoint_map: Dictionary mapping method names to FastAPI route
+            decorators. Each value is a lambda that takes a FastAPI app and
+            returns a route decorator.
+        app: Optional FastAPI app to use for the ingress deployment. If not
+            provided, a new FastAPI app will be created.
+
+    Returns:
+        A class decorated with @serve.ingress
+
+    Example:
+        endpoint_map = {
+            "increment": lambda app: app.post("/increment"),
+            "get_counter": lambda app: app.get("/counter"),
+        }
+
+        # With additional FastAPI parameters:
+        endpoint_map = {
+            "increment": lambda app: app.post("/increment", status_code=201, tags=["counter"]),
+            "get_counter": lambda app: app.get("/counter", response_model=CounterResponse),
+        }
+    """
+
+    if app is None:
+        app = init()
+
+    if endpoint_map is None:
+        endpoint_map = DEFAULT_ENDPOINTS
+
+    # Create a new class that inherits from the original to avoid modifying it
+    # in-place. We populate the new class's __dict__ with decorated methods.
+    class_dict = {}
+
+    # Apply route decorators to the class methods and store them in class_dict
+    for method_name, route_factory in endpoint_map.items():
+        # Get the route decorator from the lambda
+        route_decorator = route_factory(app)
+        # Get the original method from the class
+        original_method = getattr(cls, method_name)
+        # Apply the decorator to the original method
+        decorated_method = route_decorator(original_method)
+        # Store in the class dict so it will be properly bound to new_cls
+        class_dict[method_name] = decorated_method
+
+    # Create new class with the decorated methods in its __dict__.
+    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
+    # class so that make_fastapi_class_based_view can properly identify the routes
+    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    new_cls = type(cls.__name__, (cls,), class_dict)
+    new_cls.__qualname__ = cls.__qualname__
+
+    # Apply the serve.ingress decorator to the new class
+    return serve.ingress(app)(new_cls)
 
 
 def _apply_openai_json_format(
@@ -232,7 +307,7 @@ async def router_request_timeout(timeout_duration: float):
         )
 
 
-class LLMRouter:
+class OpenAiIngress(DeploymentProtocol):
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],
@@ -386,7 +461,6 @@ class LLMRouter:
                     "Check that adapter config file exists in cloud bucket."
                 )
 
-    @fastapi_router_app.get("/v1/models", response_model=ModelList)
     async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
@@ -407,8 +481,6 @@ class LLMRouter:
 
         return ModelList(data=list(all_models.values()))
 
-    # :path allows us to have slashes in the model name
-    @fastapi_router_app.get("/v1/models/{model:path}", response_model=ModelCard)
     async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
@@ -446,9 +518,9 @@ class LLMRouter:
 
             if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=first_chunk.message,
-                    status_code=first_chunk.code,
-                    type=first_chunk.type,
+                    message=first_chunk.error.message,
+                    status_code=first_chunk.error.code,
+                    type=first_chunk.error.type,
                 )
 
             if isinstance(first_chunk, NoneStreamingResponseType):
@@ -462,20 +534,24 @@ class LLMRouter:
                 openai_stream_generator, media_type="text/event-stream"
             )
 
-    @fastapi_router_app.post("/v1/completions")
     async def completions(self, body: CompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
+
+        Args:
+            body: The CompletionRequest object.
 
         Returns:
             A response object with completions.
         """
         return await self._process_llm_request(body, is_chat=False)
 
-    @fastapi_router_app.post("/v1/chat/completions")
     async def chat(self, body: ChatCompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
+
+        Args:
+            body: The ChatCompletionRequest object.
 
         Returns:
             A response object with completions.
@@ -483,9 +559,11 @@ class LLMRouter:
 
         return await self._process_llm_request(body, is_chat=True)
 
-    @fastapi_router_app.post("/v1/embeddings")
     async def embeddings(self, body: EmbeddingRequest) -> Response:
         """Create embeddings for the provided input.
+
+        Args:
+            body: The EmbeddingRequest object.
 
         Returns:
             A response object with embeddings.
@@ -495,15 +573,14 @@ class LLMRouter:
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
                 )
 
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
-    @fastapi_router_app.post("/v1/score")
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.
 
@@ -530,70 +607,15 @@ class LLMRouter:
                 return JSONResponse(content=result.model_dump())
 
     @classmethod
-    def as_deployment(
+    def get_deployment_options(
         cls, llm_configs: Optional[List[LLMConfig]] = None
-    ) -> serve.Deployment:
-        """Converts this class to a Ray Serve deployment with ingress.
+    ) -> Dict[str, Any]:
+        """Get the deployment options for the ingress deployment.
+
+        Args:
+            llm_configs: The LLM configs to infer the number of ingress replicas from.
 
         Returns:
-            A Ray Serve deployment.
+            A dictionary containing the deployment options for the ingress deployment.
         """
-        min_replicas = DEFAULT_LLM_ROUTER_MIN_REPLICAS
-        initial_replicas = DEFAULT_LLM_ROUTER_INITIAL_REPLICAS
-        max_replicas = DEFAULT_LLM_ROUTER_MAX_REPLICAS
-        num_router_replicas = 0
-
-        # Note (genesu): Based on our internal benchmark, we are currently bottleneck
-        # by the router replicas during high concurrency situation. We are setting the
-        # router replicas to be ~2x the total model replicas and making it scale faster.
-        if llm_configs:
-            model_min_replicas = 0
-            model_initial_replicas = 0
-            model_max_replicas = 0
-            for llm_config in llm_configs:
-                num_router_replicas = max(
-                    num_router_replicas,
-                    llm_config.experimental_configs.get("num_router_replicas", 0),
-                )
-
-                if "autoscaling_config" in llm_config.deployment_config:
-                    autoscaling_config = llm_config.deployment_config[
-                        "autoscaling_config"
-                    ]
-                    if isinstance(autoscaling_config, dict):
-                        autoscaling_config = AutoscalingConfig(
-                            **llm_config.deployment_config["autoscaling_config"]
-                        )
-                else:
-                    # When autoscaling config is not provided, we use the default.
-                    autoscaling_config = AutoscalingConfig()
-                model_min_replicas += autoscaling_config.min_replicas
-                model_initial_replicas += (
-                    autoscaling_config.initial_replicas
-                    or autoscaling_config.min_replicas
-                )
-                model_max_replicas += autoscaling_config.max_replicas
-            min_replicas = num_router_replicas or int(
-                model_min_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-            initial_replicas = num_router_replicas or int(
-                model_initial_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-            max_replicas = num_router_replicas or int(
-                model_max_replicas * DEFAULT_ROUTER_TO_MODEL_REPLICA_RATIO
-            )
-
-        ingress_cls = serve.ingress(fastapi_router_app)(cls)
-        deployment_decorator = serve.deployment(
-            autoscaling_config={
-                "min_replicas": min_replicas,
-                "initial_replicas": initial_replicas,
-                "max_replicas": max_replicas,
-                "target_ongoing_requests": DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
-            },
-            max_ongoing_requests=DEFAULT_MAX_ONGOING_REQUESTS,
-        )
-
-        deployment_cls = deployment_decorator(ingress_cls)
-
-        return deployment_cls
+        return DEFAULT_INGRESS_OPTIONS

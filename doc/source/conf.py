@@ -230,6 +230,8 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -329,6 +331,7 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
+        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
@@ -717,7 +720,10 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": (
+        "https://docs.scipy.org/doc/scipy/",
+        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
@@ -736,3 +742,5 @@ assert (
 ), "If ray is already imported, we will not render documentation correctly!"
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

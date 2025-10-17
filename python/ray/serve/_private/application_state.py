@@ -13,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -42,7 +43,7 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatus as ApplicationStatusProto,
@@ -222,20 +223,25 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
     ):
         """
+        Initialize an ApplicationState instance.
+
         Args:
             name: Application name.
-            deployment_state_manager: State manager for all deployments
-                in the cluster.
-            endpoint_state: State manager for endpoints in the system.
+            deployment_state_manager: Manages the state of all deployments in the cluster.
+            autoscaling_state_manager: Manages autoscaling decisions in the cluster.
+            endpoint_state: Manages endpoints in the system.
+            logging_config: Logging configuration schema.
         """
 
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
@@ -325,6 +331,16 @@ class ApplicationState:
         # the imperatively started application is restarting with controller.
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
+
+        # Restore app-level autoscaling policy from checkpoint
+        if (
+            checkpoint_data.config
+            and checkpoint_data.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                AutoscalingPolicy(**checkpoint_data.config.autoscaling_policy),
+            )
 
     def _set_target_state(
         self,
@@ -430,6 +446,57 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self) -> bool:
+        """Determine if autoscaling is enabled for the application.
+
+        Returns:
+            Autoscaling is enabled for the application if any of the deployments have autoscaling enabled.
+        """
+
+        return self._autoscaling_state_manager.should_autoscale_application(self._name)
+
+    def autoscale(self) -> bool:
+        """
+        Apply the autoscaling decisions for the application.
+        If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
+
+        Returns:
+            True if there is a change to number of replicas for any deployment. False otherwise.
+        """
+        target_deployments = self.target_deployments
+        if len(target_deployments) == 0:
+            return False
+
+        deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
+        for deployment_name in target_deployments:
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+            target_num_replicas = (
+                self._deployment_state_manager.get_deployment_target_num_replicas(
+                    deployment_id
+                )
+            )
+            if target_num_replicas is None:
+                continue
+            deployment_to_target_num_replicas[deployment_id] = target_num_replicas
+
+        if len(deployment_to_target_num_replicas) == 0:
+            return False
+        decisions: Dict[
+            DeploymentID, int
+        ] = self._autoscaling_state_manager.get_decision_num_replicas(
+            self._name, deployment_to_target_num_replicas
+        )
+
+        target_state_changed = False
+        for deployment_id, decision_num_replicas in decisions.items():
+            target_state_changed = (
+                self._deployment_state_manager.autoscale(
+                    deployment_id, decision_num_replicas
+                )
+                or target_state_changed
+            )
+        return target_state_changed
+
     def apply_deployment_info(
         self,
         deployment_name: str,
@@ -487,7 +554,6 @@ class ApplicationState:
             or docs path.
         """
 
-        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
@@ -722,28 +788,6 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
-    def _check_ingress_deployments(
-        self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> None:
-        """Check @serve.ingress of deployments in app.
-
-        Raises: RayServeException if more than one @serve.ingress
-            is found among deployments.
-        """
-        num_ingress_deployments = 0
-        for info in deployment_infos.values():
-            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
-                info.replica_config.deployment_def, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-
-        if num_ingress_deployments > 1:
-            raise RayServeException(
-                f'Found multiple FastAPI deployments in application "{self._name}".'
-                "Please only include one deployment with @serve.ingress"
-                "in your application to avoid this issue."
-            )
-
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
@@ -829,22 +873,39 @@ class ApplicationState:
             Whether the target state has changed.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
         target_state_changed = False
-        if task_status == BuildAppStatus.SUCCEEDED:
-            target_state_changed = True
-            self._set_target_state(
-                deployment_infos=infos,
-                code_version=self._build_app_task_info.code_version,
-                api_type=self._target_state.api_type,
-                target_config=self._build_app_task_info.config,
-                target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_direction=(
-                    self._build_app_task_info.target_capacity_direction
-                ),
-            )
-        elif task_status == BuildAppStatus.FAILED:
-            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        # If the application is being deleted, ignore any build task results to
+        # avoid flipping the state back to DEPLOYING/RUNNING.
+        if not self._target_state.deleting:
+            infos, task_status, msg = self._reconcile_build_app_task()
+            if task_status == BuildAppStatus.SUCCEEDED:
+                target_state_changed = True
+                self._set_target_state(
+                    deployment_infos=infos,
+                    code_version=self._build_app_task_info.code_version,
+                    api_type=self._target_state.api_type,
+                    target_config=self._build_app_task_info.config,
+                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_capacity_direction=(
+                        self._build_app_task_info.target_capacity_direction
+                    ),
+                )
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if (
+                    self._target_state.config is not None
+                    and self._target_state.config.autoscaling_policy is not None
+                ):
+                    self._autoscaling_state_manager.register_application(
+                        self._name,
+                        AutoscalingPolicy(
+                            **self._target_state.config.autoscaling_policy
+                        ),
+                    )
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
+            elif task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # Only reconcile deployments when the build app task is finished. If
         # it's not finished, we don't know what the target list of deployments
@@ -919,11 +980,13 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
@@ -942,6 +1005,7 @@ class ApplicationStateManager:
                 app_state = ApplicationState(
                     app_name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -988,6 +1052,7 @@ class ApplicationStateManager:
                 self._application_states[name] = ApplicationState(
                     name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1038,6 +1103,7 @@ class ApplicationStateManager:
                 self._application_states[app_config.name] = ApplicationState(
                     app_config.name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
                 )
@@ -1104,12 +1170,30 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
-    def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
-        """Return a dictionary with {app name: application info}"""
-        return {
-            name: self._application_states[name].get_application_status_info()
-            for name in self._application_states
-        }
+    def list_app_statuses(
+        self, source: Optional[APIType] = None
+    ) -> Dict[str, ApplicationStatusInfo]:
+        """Return a dictionary with {app name: application info}
+
+        Args:
+            source: Optional API type filter. If provided, only returns apps
+                   deployed via the specified API type.
+
+        Returns:
+            Dict[str, ApplicationStatusInfo]: A dictionary mapping application names
+                to their corresponding status information.
+        """
+        if source is None:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+            }
+        else:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+                if self.get_app_source(name) is source
+            }
 
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
@@ -1122,6 +1206,8 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
+            if app.should_autoscale():
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
@@ -1132,6 +1218,7 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
