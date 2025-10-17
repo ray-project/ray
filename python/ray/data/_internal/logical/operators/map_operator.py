@@ -355,19 +355,33 @@ class StreamingRepartition(AbstractMap):
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
            streaming repartition.
+        enforce_target_num_rows_per_block: Whether to enforce the target number of rows per block. Default to False.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        enforce_target_num_rows_per_block: bool = False,
     ):
         super().__init__("StreamingRepartition", input_op)
         self._target_num_rows_per_block = target_num_rows_per_block
+        self._min_rows_per_bundled_input = None
+        self._override_max_safe_rows_per_block_factor = None
+        self._enforce_target_num_rows_per_block = enforce_target_num_rows_per_block
+        if enforce_target_num_rows_per_block:
+            self._override_max_safe_rows_per_block_factor = 1
+            # Accumulate at least target rows per bundle to keep streaming while
+            # giving the single actor enough rows to emit fixed-size blocks.
+            self._min_rows_per_bundled_input = target_num_rows_per_block
 
     @property
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
+
+    @property
+    def override_max_safe_rows_per_block_factor(self) -> int:
+        return self._override_max_safe_rows_per_block_factor
 
     def can_modify_num_rows(self) -> bool:
         return False
