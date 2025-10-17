@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 namespace ray {
 namespace rpc {
