@@ -507,11 +507,13 @@ def test_tensor_array_reductions(restore_data_context, tensor_format):
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_zero_length_arrow_tensor_array_roundtrip(restore_data_context, tensor_format):
+@pytest.mark.parametrize("shape", [(2, 0), (2, 5, 0), (0, 5), (0, 0)])
+def test_zero_length_arrow_tensor_array_roundtrip(
+    restore_data_context, tensor_format, shape
+):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
-    arr = np.empty((2, 0), dtype=np.int8)
+    arr = np.empty(shape, dtype=np.int8)
     t_arr = ArrowTensorArray.from_numpy(arr)
     assert len(t_arr) == len(arr)
     out = t_arr.to_numpy()
