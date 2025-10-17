@@ -132,8 +132,7 @@ class ObjectBufferPool {
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  void FreeObjects(const std::vector<ObjectID> &object_ids)
-      ABSL_LOCKS_EXCLUDED(pool_mutex_);
+  void FreeObjects(const std::vector<ObjectID> &object_ids);
 
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
