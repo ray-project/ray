@@ -22,17 +22,12 @@
 
 #include "ray/stats/metric.h"
 
-DEFINE_stats(health_check_rpc_latency_ms,
-             "Latency of rpc request for health check.",
-             (),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-
 namespace ray::gcs {
 
 /*static*/ std::shared_ptr<GcsHealthCheckManager> GcsHealthCheckManager::Create(
     instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback,
+    ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
@@ -40,6 +35,7 @@ namespace ray::gcs {
   return std::shared_ptr<GcsHealthCheckManager>(
       new GcsHealthCheckManager(io_service,
                                 std::move(on_node_death_callback),
+                                health_check_rpc_latency_ms_histogram,
                                 initial_delay_ms,
                                 timeout_ms,
                                 period_ms,
@@ -49,6 +45,7 @@ namespace ray::gcs {
 GcsHealthCheckManager::GcsHealthCheckManager(
     instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback,
+    ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
@@ -58,7 +55,8 @@ GcsHealthCheckManager::GcsHealthCheckManager(
       initial_delay_ms_(initial_delay_ms),
       timeout_ms_(timeout_ms),
       period_ms_(period_ms),
-      failure_threshold_(failure_threshold) {
+      failure_threshold_(failure_threshold),
+      health_check_rpc_latency_ms_histogram_(health_check_rpc_latency_ms_histogram) {
   RAY_CHECK(on_node_death_callback != nullptr);
   RAY_CHECK_GE(initial_delay_ms, 0);
   RAY_CHECK_GE(timeout_ms, 0);
@@ -180,7 +178,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
         }
 
         // This callback is done in gRPC's thread pool.
-        STATS_health_check_rpc_latency_ms.Record(
+        gcs_health_check_manager->health_check_rpc_latency_ms_histogram_.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
 
         gcs_health_check_manager->io_service_.post(

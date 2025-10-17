@@ -38,6 +38,7 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &storage_operation_count_counter;
   ray::observability::MetricInterface &resource_usage_gauge;
   ray::observability::MetricInterface &scheduler_placement_time_s_histogram;
+  ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram;
 };
 
 inline ray::stats::Gauge GetRunningJobGaugeMetric() {
@@ -162,6 +163,16 @@ inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
       /*description=*/"Number of operations invoked on Gcs storage",
       /*unit=*/"",
       /*tag_keys=*/{"Operation"},
+  };
+}
+
+inline ray::stats::Histogram GetHealthCheckRpcLatencyMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"health_check_rpc_latency_ms",
+      /*description=*/"Latency of rpc request for health check.",
+      /*unit=*/"",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
   };
 }
 

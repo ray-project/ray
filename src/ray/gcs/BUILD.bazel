@@ -184,6 +184,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
+        "//src/ray/observability:metric_interface",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:thread_checker",
         "@com_github_grpc_grpc//:grpc++",
