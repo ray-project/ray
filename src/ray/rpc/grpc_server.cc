@@ -178,8 +178,8 @@ void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) 
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
-                                 bool token_auth) {
-  if (token_auth && cluster_id_.IsNil()) {
+                                 bool cluster_id_auth_enabled) {
+  if (cluster_id_auth_enabled && cluster_id_.IsNil()) {
     RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
   }
   for (int i = 0; i < num_threads_; i++) {

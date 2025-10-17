@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 #ifdef _WIN32
 #include <windows.h>

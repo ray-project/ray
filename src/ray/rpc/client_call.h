@@ -31,6 +31,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/auth_token_loader.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
@@ -70,11 +71,6 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  /// \param[in] cluster_id The cluster ID for authentication.
-  /// \param[in] auth_token The authentication token (empty = disabled).
-  /// \param[in] stats_handle Statistics handle for this call.
-  /// \param[in] record_stats Whether to record statistics.
-  /// \param[in] timeout_ms The timeout for this call in milliseconds.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           const ClusterID &cluster_id,
                           const std::string &auth_token,
@@ -224,9 +220,7 @@ class ClientCallManager {
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
       : cluster_id_(cluster_id),
-        auth_token_(::RayConfig::instance().enable_token_auth()
-                        ? ::RayConfig::instance().auth_token()
-                        : ""),
+        auth_token_(RayAuthTokenLoader::instance().GetToken()),
         main_service_(main_service),
         num_threads_(num_threads),
         record_stats_(record_stats),
@@ -375,7 +369,6 @@ class ClientCallManager {
   ClusterID cluster_id_;
 
   /// Cached authentication token for token-based authentication.
-  /// Empty string means no token authentication.
   const std::string auth_token_;
 
   /// The main event loop, to which the callback functions will be posted.

@@ -144,8 +144,6 @@ class GrpcServer {
 
   void SetAuthToken(const std::string &auth_token) { auth_token_ = auth_token; }
 
-  const std::string &GetAuthToken() const { return auth_token_; }
-
  protected:
   /// Initialize this server.
   void Init();

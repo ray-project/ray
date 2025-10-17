@@ -15,6 +15,7 @@ ray_cc_library(
         "//src/ray/core_worker:__pkg__",
     ],
     deps = [
+        ":auth_token_loader",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
@@ -106,6 +107,17 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "auth_token_loader",
+    srcs = ["auth_token_loader.cc"],
+    hdrs = ["auth_token_loader.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/util:logging",
     ],
 )
 

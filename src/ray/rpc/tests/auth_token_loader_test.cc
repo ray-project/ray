@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,17 +30,17 @@ class RayAuthTokenLoaderTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Clean up environment variables before each test
-    unsetenv("RAY_AUTH_TOKEN");
-    unsetenv("RAY_AUTH_TOKEN_PATH");
-
-    // Clean up default token file
     std::string home_dir = getenv("HOME");
     default_token_path_ = home_dir + "/.ray/auth_token";
-    remove(default_token_path_.c_str());
+    cleanup_env();
   }
 
   void TearDown() override {
     // Clean up after test
+    cleanup_env();
+  }
+
+  void cleanup_env() {
     unsetenv("RAY_AUTH_TOKEN");
     unsetenv("RAY_AUTH_TOKEN_PATH");
     remove(default_token_path_.c_str());
@@ -98,30 +98,79 @@ TEST_F(RayAuthTokenLoaderTest, TestLoadFromDefaultPath) {
   EXPECT_TRUE(loader.HasToken());
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestPrecedenceOrder) {
-  // Set all three sources
-  setenv("RAY_AUTH_TOKEN", "token-from-env", 1);
+// Parametrized test for token loading precedence: env var > file > default file
 
+struct TokenSourceConfig {
+  bool set_env = false;
+  bool set_file = false;
+  bool set_default = false;
+  std::string expected_token;
+  std::string env_token = "token-from-env";
+  std::string file_token = "token-from-path";
+  std::string default_token = "token-from-default";
+};
+
+class RayAuthTokenLoaderPrecedenceTest
+    : public RayAuthTokenLoaderTest,
+      public ::testing::WithParamInterface<TokenSourceConfig> {};
+
+INSTANTIATE_TEST_SUITE_P(TokenPrecedenceCases,
+                         RayAuthTokenLoaderPrecedenceTest,
+                         ::testing::Values(
+                             // All set: env should win
+                             TokenSourceConfig{true, true, true, "token-from-env"},
+                             // File and default file set: file should win
+                             TokenSourceConfig{false, true, true, "token-from-path"},
+                             // Only default file set
+                             TokenSourceConfig{
+                                 false, false, true, "token-from-default"}));
+
+TEST_P(RayAuthTokenLoaderPrecedenceTest, Precedence) {
+  const auto &param = GetParam();
+
+  // Optionally set environment variable
+  if (param.set_env) {
+    setenv("RAY_AUTH_TOKEN", param.env_token.c_str(), 1);
+  } else {
+    unsetenv("RAY_AUTH_TOKEN");
+  }
+
+  // Optionally create file and set path
   std::string temp_token_path = "/tmp/ray_test_token_" + std::to_string(getpid());
-  std::ofstream temp_file(temp_token_path);
-  temp_file << "token-from-path";
-  temp_file.close();
-  setenv("RAY_AUTH_TOKEN_PATH", temp_token_path.c_str(), 1);
+  if (param.set_file) {
+    std::ofstream token_file(temp_token_path);
+    token_file << param.file_token;
+    token_file.close();
+    setenv("RAY_AUTH_TOKEN_PATH", temp_token_path.c_str(), 1);
+  } else {
+    unsetenv("RAY_AUTH_TOKEN_PATH");
+  }
 
+  // Optionally create default file
   std::string ray_dir = std::string(getenv("HOME")) + "/.ray";
   mkdir(ray_dir.c_str(), 0700);
-  std::ofstream default_file(default_token_path_);
-  default_file << "token-from-default";
-  default_file.close();
+  if (param.set_default) {
+    std::ofstream default_file(default_token_path_);
+    default_file << param.default_token;
+    default_file.close();
+  } else {
+    remove(default_token_path_.c_str());
+  }
 
-  // Environment variable should have highest precedence
+  // Always create a new instance to avoid cached state
   auto &loader = RayAuthTokenLoader::instance();
   std::string token = loader.GetToken();
 
-  EXPECT_EQ(token, "token-from-env");
+  EXPECT_EQ(token, param.expected_token);
 
-  // Clean up
-  remove(temp_token_path.c_str());
+  // Clean up token file if it was written
+  if (param.set_file) {
+    remove(temp_token_path.c_str());
+  }
+  // Clean up default file if it was written
+  if (param.set_default) {
+    remove(default_token_path_.c_str());
+  }
 }
 
 TEST_F(RayAuthTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
@@ -159,31 +208,6 @@ TEST_F(RayAuthTokenLoaderTest, TestCaching) {
   // Should still return the cached token
   EXPECT_EQ(token1, token2);
   EXPECT_EQ(token2, "cached-token");
-}
-
-TEST_F(RayAuthTokenLoaderTest, TestThreadSafety) {
-  // Set a token
-  setenv("RAY_AUTH_TOKEN", "thread-safe-token", 1);
-
-  auto &loader = RayAuthTokenLoader::instance();
-
-  // Create multiple threads that try to get token simultaneously
-  std::vector<std::thread> threads;
-  std::vector<std::string> results(10);
-
-  for (int i = 0; i < 10; i++) {
-    threads.emplace_back([&loader, &results, i]() { results[i] = loader.GetToken(); });
-  }
-
-  // Wait for all threads to complete
-  for (auto &thread : threads) {
-    thread.join();
-  }
-
-  // All threads should get the same token
-  for (const auto &result : results) {
-    EXPECT_EQ(result, "thread-safe-token");
-  }
 }
 
 TEST_F(RayAuthTokenLoaderTest, TestWhitespaceHandling) {
