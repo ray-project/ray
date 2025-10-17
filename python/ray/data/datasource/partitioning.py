@@ -280,7 +280,7 @@ class PathPartitionParser:
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
         # url decode the partition values
-        kv_pairs = [[pair[0], urllib.parse.unquote_plus(pair[1])] for pair in kv_pairs]
+        kv_pairs = [[key, urllib.parse.unquote_plus(value)] for key, value in kv_pairs]
 
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
