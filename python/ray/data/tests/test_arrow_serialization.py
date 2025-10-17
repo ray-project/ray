@@ -598,6 +598,10 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert len(s_view) > 0.8 * len(s_t)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() <= parse_version("9.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow <= 9.0.0",
+)
 def test_fixed_shape_tensor_array_serialization():
     a = pa.FixedShapeTensorArray.from_numpy_ndarray(
         np.arange(4 * 2 * 3).reshape(4, 2, 3)
@@ -635,6 +639,9 @@ class _VariableShapeTensorType(pa.ExtensionType):
         return cls(value_type, ndim)
 
 
+@pytest.mark.skipif(
+    not _object_extension_type_allowed(), reason="Object extension not supported."
+)
 def test_variable_shape_tensor_serialization():
     t = _VariableShapeTensorType(pa.float32(), 2)
     ar = pa.array(
