@@ -259,9 +259,11 @@ To transform data with a Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
-   :meth:`~ray.data.Dataset.flat_map`. Pass the number of concurrent workers to use with the ``concurrency`` argument. Each worker transforms a partition of data in parallel.
-   Fixing the number of concurrent workers gives the most predictable performance, but you can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
-   scale the number of concurrent workers.
+   :meth:`~ray.data.Dataset.flat_map`. Pass a compute strategy with the ``compute``
+   argument to control how many workers Ray uses. Each worker transforms a partition
+   of data in parallel. Use ``ray.data.TaskPoolStrategy(size=n)`` to cap the number of
+   concurrent tasks, or ``ray.data.ActorPoolStrategy(...)`` to run callable classes on
+   a fixed or autoscaling actor pool.
 
 .. tab-set::
 
@@ -288,7 +290,10 @@ To transform data with a Python class, complete these steps:
 
             ds = (
                 ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, concurrency=2)
+                .map_batches(
+                    TorchPredictor,
+                    compute=ray.data.ActorPoolStrategy(size=2),
+                )
             )
 
         .. testcode::
@@ -322,7 +327,7 @@ To transform data with a Python class, complete these steps:
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
-                    concurrency=2,
+                    compute=ray.data.ActorPoolStrategy(size=2),
                     # Batch size is required if you're using GPUs.
                     batch_size=4,
                     num_gpus=1

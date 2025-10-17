@@ -186,7 +186,7 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
         mock_gcs_client_,
-        fake_task_by_state_counter_,
+        fake_task_by_state_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
@@ -273,7 +273,8 @@ class CoreWorkerTest : public ::testing::Test {
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
                                                 getpid(),
-                                                fake_task_by_state_counter_);
+                                                fake_task_by_state_gauge_,
+                                                fake_actor_by_state_gauge_);
   }
 
  protected:
@@ -294,7 +295,8 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ActorCreator> actor_creator_;
   std::shared_ptr<CoreWorker> core_worker_;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_task_by_state_gauge_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
@@ -320,7 +322,7 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
   ASSERT_TRUE(status.ok());
   // disconnect to trigger metric recording
   core_worker_->Disconnect(rpc::WorkerExitType::SYSTEM_ERROR, "test", nullptr);
-  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  auto tag_to_value = fake_task_by_state_gauge_.GetTagToValue();
   // 4 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT
   ASSERT_EQ(tag_to_value.size(), 4);
   for (auto &[key, value] : tag_to_value) {
@@ -654,10 +656,8 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   absl::flat_hash_set<ObjectID> idset(ids.begin(), ids.end());
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  bool got_exception = false;
-  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
-  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, ctx, &results, &got_exception).ok());
+  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, &results).ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);

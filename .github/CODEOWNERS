@@ -78,6 +78,7 @@
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /python/ray/dashboard/modules/serve/ @ray-project/ray-serve
 /doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
+/doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
