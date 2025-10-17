@@ -421,7 +421,8 @@ def _get_docker_cpus(
 
 def get_num_cpus(
     override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
-) -> int:
+    truncate: bool = True,
+) -> float:
     """
     Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
@@ -432,6 +433,7 @@ def get_num_cpus(
             RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
             the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
+        truncate: truncates the return value and drops the decimal part.
     """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
@@ -473,7 +475,8 @@ def get_num_cpus(
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
                 )
-            docker_count = int(docker_count)
+            if truncate:
+                docker_count = int(docker_count)
             cpu_count = docker_count
 
     except Exception:
@@ -947,28 +950,25 @@ def get_wheel_filename(
 
     architecture = architecture or platform.processor()
 
-    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
-        darwin_os_string = "macosx_12_0_arm64"
-    else:
-        darwin_os_string = "macosx_12_0_x86_64"
+    assert sys_platform in ["darwin", "linux", "win32"], sys_platform
 
-    if architecture == "aarch64":
-        linux_os_string = "manylinux2014_aarch64"
-    else:
-        linux_os_string = "manylinux2014_x86_64"
-
-    os_strings = {
-        "darwin": darwin_os_string,
-        "linux": linux_os_string,
-        "win32": "win_amd64",
-    }
-
-    assert sys_platform in os_strings, sys_platform
+    if sys_platform == "darwin":
+        if architecture == "x86_64":
+            os_string = "macosx_12_0_x86_64"
+        else:
+            os_string = "macosx_12_0_arm64"
+    elif sys_platform == "linux":
+        if architecture == "aarch64" or architecture == "arm64":
+            os_string = "manylinux2014_aarch64"
+        else:
+            os_string = "manylinux2014_x86_64"
+    elif sys_platform == "win32":
+        os_string = "win_amd64"
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
         f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
-        f"-{os_strings[sys_platform]}.whl"
+        f"-{os_string}.whl"
     )
 
     return wheel_filename
