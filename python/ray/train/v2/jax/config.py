@@ -3,9 +3,14 @@ import os
 from dataclasses import dataclass
 
 import ray
+from ray._private import ray_constants
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.constants import (
+    DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
+    JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
+)
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -80,7 +85,10 @@ class _JaxBackend(Backend):
         # Shutdown JAX distributed on all workers
         shutdown_futures = worker_group.execute_async(_shutdown_jax_distributed)
 
-        timeout_s = 30
+        timeout_s = ray_constants.env_integer(
+            JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
+            DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
+        )
         try:
             ray.get(shutdown_futures, timeout=timeout_s)
             logger.debug("JAX distributed shutdown completed")
