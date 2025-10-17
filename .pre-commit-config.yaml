@@ -215,6 +215,12 @@ repos:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
 
+  - repo: https://github.com/MarcoGorelli/cython-lint
+    rev: v0.17.0
+    hooks:
+      - id: cython-lint
+        args: [--no-pycodestyle]
+
   - repo: local
     hooks:
       - id: check-import-order
