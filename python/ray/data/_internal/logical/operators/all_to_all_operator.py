@@ -1,6 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorContainsPartitionKeys,
+)
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -74,12 +77,14 @@ class RandomShuffle(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
+        num_outputs: Optional[int] = None,
         seed: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name,
             input_op,
+            num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -101,18 +106,20 @@ class RandomShuffle(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Repartition(AbstractAllToAll):
+class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for repartition."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
         num_outputs: int,
-        shuffle: bool,
+        full_shuffle: bool,
+        name: str = "Repartition",
+        random_permute: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ):
-        if shuffle:
+        if full_shuffle:
             sub_progress_bar_names = [
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -122,14 +129,21 @@ class Repartition(AbstractAllToAll):
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         super().__init__(
-            "Repartition",
+            name,
             input_op,
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        self._shuffle = shuffle
+        # If True, each output block will get rows from the input block
+        self._full_shuffle = full_shuffle
+        # If True, will randomly shuffle the block's orders
+        self._random_permute = random_permute
         self._keys = keys
         self._sort = sort
+
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the partition keys for this repartition operation."""
+        return self._keys
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
@@ -144,17 +158,18 @@ class Repartition(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Sort(AbstractAllToAll):
+class Sort(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for sort."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        name: str = "Sort",
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Sort",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
@@ -165,6 +180,10 @@ class Sort(AbstractAllToAll):
         self._sort_key = sort_key
         self._batch_format = batch_format
 
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the columns used for sorting as partition keys."""
+        return self._sort_key._columns
+
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
@@ -178,19 +197,20 @@ class Sort(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Aggregate(AbstractAllToAll):
+class Aggregate(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
     """Logical operator for aggregate."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
+        key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
+        name: str = "Aggregate",
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Aggregate",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
@@ -202,3 +222,12 @@ class Aggregate(AbstractAllToAll):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
+
+    def get_partition_keys(self) -> Optional[List[str]]:
+        """Return the groupby keys for this aggregate operation."""
+        if self._key is None:
+            return None
+        elif isinstance(self._key, str):
+            return [self._key]
+        else:
+            return self._key
