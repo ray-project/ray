@@ -6,17 +6,10 @@ from ray.train.v2._internal.util import ray_get_safe
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
-@pytest.fixture(scope="module")
-def ray_start_4_cpus():
-    ray.init(num_cpus=4)
-    yield
-    ray.shutdown()
-
-
 @pytest.mark.parametrize("type", ["task", "actor_task"])
 @pytest.mark.parametrize("failing", [True, False])
 @pytest.mark.parametrize("task_list", [True, False])
-def test_ray_get_safe(type, failing, task_list):
+def test_ray_get_safe(ray_start_4_cpus, type, failing, task_list):
     num_tasks = 4
 
     if type == "task":
