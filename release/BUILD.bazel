@@ -479,6 +479,7 @@ py_library(
         "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
         "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
         "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
+        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
