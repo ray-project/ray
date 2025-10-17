@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray._common.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
@@ -1388,10 +1388,16 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         num_ingress_deployments = 0
+
+        def _get_serialized_def(attr_path: str) -> bytes:
+            module, attr = import_module_and_attr(attr_path)
+            cloudpickle.register_pickle_by_value(module)
+            return cloudpickle.dumps(attr)
+
         application_serialized_autoscaling_policy_def = None
         if application_autoscaling_policy_function is not None:
-            application_serialized_autoscaling_policy_def = cloudpickle.dumps(
-                import_attr(application_autoscaling_policy_function)
+            application_serialized_autoscaling_policy_def = _get_serialized_def(
+                application_autoscaling_policy_function
             )
         for deployment in built_app.deployments:
             if inspect.isclass(deployment.func_or_class) and issubclass(
@@ -1402,14 +1408,12 @@ def build_serve_application(
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
             if deployment.name in deployment_to_autoscaling_policy_function:
-                deployment_to_serialized_autoscaling_policy_def = cloudpickle.dumps(
-                    import_attr(
-                        deployment_to_autoscaling_policy_function[deployment.name]
-                    )
+                deployment_to_serialized_autoscaling_policy_def = _get_serialized_def(
+                    deployment_to_autoscaling_policy_function[deployment.name]
                 )
             if deployment.name in deployment_to_request_router_cls:
-                deployment_to_serialized_request_router_cls = cloudpickle.dumps(
-                    import_attr(deployment_to_request_router_cls[deployment.name])
+                deployment_to_serialized_request_router_cls = _get_serialized_def(
+                    deployment_to_request_router_cls[deployment.name]
                 )
             deploy_args_list.append(
                 get_deploy_args(
