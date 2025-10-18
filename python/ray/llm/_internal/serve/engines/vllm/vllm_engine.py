@@ -469,7 +469,11 @@ class VLLMEngine(LLMEngine):
         # so that the create_transcription API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/audio/transcriptions")
 
+        # Extract audio data from the request file
+        audio_data = await request.file.read()
+
         transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
+            audio_data,
             request,
             raw_request=raw_request,
         )
