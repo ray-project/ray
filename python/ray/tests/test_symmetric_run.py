@@ -1,5 +1,7 @@
 import sys
+import threading
 from contextlib import contextmanager
+from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +31,85 @@ def _setup_mock_network_utils(curr_ip, head_ip):
                 ]
             }
             yield
+
+
+def _run_head_and_workers(
+    symmetric_run_cmd, args: List[str], head_ip: str, worker_ips: List[str]
+):
+    """Run symmetric_run concurrently on head and worker nodes."""
+    expected_workers = len(worker_ips)
+    head_ready = threading.Event()
+    workers_ready = threading.Event()
+    worker_counter = {"count": 0}
+    counter_lock = threading.Lock()
+
+    def mark_worker_ready():
+        with counter_lock:
+            worker_counter["count"] += 1
+            if worker_counter["count"] == expected_workers:
+                workers_ready.set()
+
+    def fake_check_head_node_ready(address, timeout=None):
+        # Wait until head reports readiness.
+        if not head_ready.wait(timeout):
+            return False
+        mark_worker_ready()
+        return True
+
+    def fake_check_cluster_ready(nnodes, timeout=None):
+        head_ready.set()
+        if expected_workers == 0:
+            return True
+        ready = workers_ready.wait(timeout)
+        return ready
+
+    head_result = {}
+    worker_results = [{} for _ in worker_ips]
+
+    def run_head():
+        runner = CliRunner()
+        with _setup_mock_network_utils(head_ip, head_ip):
+            head_result["result"] = runner.invoke(symmetric_run_cmd, args)
+
+    def run_worker(idx, worker_ip):
+        runner = CliRunner()
+        with _setup_mock_network_utils(head_ip, worker_ip):
+            worker_results[idx]["result"] = runner.invoke(symmetric_run_cmd, args)
+
+    threads = []
+    try:
+        with patch(
+            "ray.scripts.symmetric_run.check_ray_already_started", return_value=False
+        ), patch(
+            "ray.scripts.symmetric_run.check_cluster_ready",
+            side_effect=fake_check_cluster_ready,
+        ), patch(
+            "ray.scripts.symmetric_run.check_head_node_ready",
+            side_effect=fake_check_head_node_ready,
+        ):
+            head_thread = threading.Thread(target=run_head, name="head-thread")
+            threads.append(head_thread)
+            for idx, worker_ip in enumerate(worker_ips):
+                t = threading.Thread(
+                    target=run_worker,
+                    args=(idx, worker_ip),
+                    name=f"worker-thread-{idx}",
+                )
+                threads.append(t)
+
+            for t in threads:
+                t.start()
+
+            for t in threads:
+                t.join(timeout=15)
+    finally:
+        head_ready.set()
+        workers_ready.set()
+
+    for t in threads:
+        assert not t.is_alive(), f"Thread {t.name} did not finish in time"
+
+    return head_result.get("result"), [r.get("result") for r in worker_results]
 
 
 @pytest.fixture
@@ -175,6 +256,35 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 ]
                 assert len(ray_start_calls) > 0
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
+
+
+def test_symmetric_run_multi_node(monkeypatch, cleanup_ray):
+    """
+    Test symmetric_run with a simulated 3-node (1 head + 2 workers) cluster.
+    """
+    from ray.scripts.symmetric_run import symmetric_run
+
+    head_ip = "127.0.0.1"
+    address = f"{head_ip}:6379"
+    worker_ips = ["10.0.0.2", "10.0.0.3"]
+
+    common_args = ["--address", address, "--min-nodes", "3", "--", "echo", "ok"]
+
+    head_result, worker_results = _run_head_and_workers(
+        symmetric_run, common_args, head_ip, worker_ips
+    )
+
+    assert head_result is not None
+    assert all(result is not None for result in worker_results)
+    assert head_result.exception is None
+    assert all(result.exception is None for result in worker_results)
+    assert head_result.exit_code == 0
+    assert all(result.exit_code == 0 for result in worker_results)
+    assert "On head node. Starting Ray cluster head..." in head_result.output
+    assert "Running command on head node: ['echo', 'ok']" in head_result.output
+    for result in worker_results:
+        assert "On worker node. Connecting to Ray cluster" in result.output
+        assert address in result.output
 
 
 if __name__ == "__main__":
