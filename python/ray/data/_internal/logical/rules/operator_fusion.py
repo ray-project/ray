@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
 )
+from ray.util.annotations import DeveloperAPI
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -197,7 +198,7 @@ class FuseOperators(Rule):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not _are_remote_args_compatible(
+        if not are_remote_args_compatible(
             getattr(up_logical_op, "_ray_remote_args", {}),
             getattr(down_logical_op, "_ray_remote_args", {}),
         ):
@@ -505,7 +506,10 @@ class FuseOperators(Rule):
         return True
 
 
-def _are_remote_args_compatible(prev_args, next_args):
+@DeveloperAPI
+def are_remote_args_compatible(
+    prev_args: Dict[str, Any], next_args: Dict[str, Any]
+) -> bool:
     """Check if Ray remote arguments are compatible for merging."""
     prev_args = _canonicalize(prev_args)
     next_args = _canonicalize(next_args)
