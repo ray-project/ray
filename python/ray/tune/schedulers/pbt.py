@@ -964,7 +964,11 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {}, state {}".format(trial, state))
             if trial.is_finished():
                 logger.debug("Trial {} is finished".format(trial))
-            if state.last_score is not None and not trial.is_finished():
+            if (
+                state.last_score is not None
+                and not math.isnan(state.last_score)
+                and not trial.is_finished()
+            ):
                 trials.append(trial)
         # last_score is by construction never None
         trials.sort(key=lambda t: self._trial_state[t].last_score)  # type: ignore[arg-type,return-value]
