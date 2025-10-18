@@ -75,7 +75,9 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) override {}
 
   void KillActor(const KillActorRequest &request,
-                 const ClientCallback<KillActorReply> &callback) override {}
+                 const ClientCallback<KillActorReply> &callback) override {
+    num_kill_actor_requests++;
+  }
 
   void CancelTask(const CancelTaskRequest &request,
                   const ClientCallback<CancelTaskReply> &callback) override {}
@@ -159,6 +161,7 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
   }
 
   std::list<ClientCallback<PushTaskReply>> callbacks_ ABSL_GUARDED_BY(mutex_);
+  size_t num_kill_actor_requests = 0;
   absl::Mutex mutex_;
 };
 

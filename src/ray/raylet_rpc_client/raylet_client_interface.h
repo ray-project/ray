@@ -211,6 +211,10 @@ class RayletClientInterface {
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
 
+  virtual void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) = 0;
+
   virtual int64_t GetPinsInFlight() const = 0;
 
   virtual ~RayletClientInterface() = default;
