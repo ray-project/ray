@@ -434,7 +434,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManagerInterface> cluster_lease_manager_;
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
@@ -1102,6 +1102,40 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
 size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
   return local_lease_manager.waiting_lease_queue_.size() +
          local_lease_manager.leases_to_grant_.size();
+}
+
+TEST_F(NodeManagerTest, TestReschedulingLeasesDuringHandleDrainRaylet) {
+  // Test that when the node is being drained, leases inside local lease manager
+  // will be cancelled and re-added to the cluster lease manager for rescheduling.
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_FALSE(true) << "This callback should not be called.";
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 1);
+  rpc::DrainRayletRequest drain_raylet_request;
+  rpc::DrainRayletReply drain_raylet_reply;
+  drain_raylet_request.set_reason(
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  node_manager_->HandleDrainRaylet(
+      drain_raylet_request,
+      &drain_raylet_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  // The lease is infeasible now since the local node is draining.
+  ASSERT_EQ(cluster_lease_manager_->GetInfeasibleQueueSize(), 1);
 }
 
 TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {

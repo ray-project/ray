@@ -53,6 +53,9 @@ class LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
+  virtual std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) = 0;
+
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
       &GetLeasesToGrant() const = 0;
@@ -112,6 +115,11 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) override {
     return false;
+  }
+
+  std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) override {
+    return {};
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>

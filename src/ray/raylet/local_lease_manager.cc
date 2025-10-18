@@ -32,6 +32,18 @@
 namespace ray {
 namespace raylet {
 
+namespace {
+void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
+                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                    const std::string &scheduling_failure_message) {
+  auto reply = work->reply_;
+  reply->set_canceled(true);
+  reply->set_failure_type(failure_type);
+  reply->set_scheduling_failure_message(scheduling_failure_message);
+  work->send_reply_callback_(Status::OK(), nullptr, nullptr);
+}
+}  // namespace
+
 LocalLeaseManager::LocalLeaseManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
@@ -410,10 +422,10 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                      << front_lease.DebugString();
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
-        CancelLeaseToGrant(
-            *leases_to_grant_queue_iter,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-            "Lease granting failed due to the lease becoming infeasible.");
+        CancelLeaseToGrantWithoutReply(*leases_to_grant_queue_iter);
+        ReplyCancelled(*leases_to_grant_queue_iter,
+                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                       "Lease granting failed due to the lease becoming infeasible.");
         leases_to_grant_queue_iter =
             leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
@@ -536,7 +548,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     const rpc::Address &owner_address,
     const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply_;
-  const auto &callback = work->callback_;
+  const auto &send_reply_callback = work->send_reply_callback_;
   const bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &lease = work->lease_;
   bool granted = false;
@@ -650,7 +662,12 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Granting lease " << lease_id << " to worker "
                    << worker->WorkerId();
 
-    Grant(worker, leased_workers_, work->allocated_instances_, lease, reply, callback);
+    Grant(worker,
+          leased_workers_,
+          work->allocated_instances_,
+          lease,
+          reply,
+          send_reply_callback);
     erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     granted = true;
   }
@@ -660,11 +677,11 @@ bool LocalLeaseManager::PoppedWorkerHandler(
 
 void LocalLeaseManager::Spillback(const NodeID &spillback_to,
                                   const std::shared_ptr<internal::Work> &work) {
-  auto send_reply_callback = work->callback_;
+  auto send_reply_callback = work->send_reply_callback_;
 
   if (work->grant_or_reject_) {
     work->reply_->set_rejected(true);
-    send_reply_callback();
+    send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
 
@@ -690,7 +707,7 @@ void LocalLeaseManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
-  send_reply_callback();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void LocalLeaseManager::LeasesUnblocked(const std::vector<LeaseID> &ready_ids) {
@@ -843,61 +860,52 @@ void LocalLeaseManager::ReleaseLeaseArgs(const LeaseID &lease_id) {
   }
 }
 
-namespace {
-void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
-                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                    const std::string &scheduling_failure_message) {
-  auto reply = work->reply_;
-  auto callback = work->callback_;
-  reply->set_canceled(true);
-  reply->set_failure_type(failure_type);
-  reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
-}
-}  // namespace
-
-bool LocalLeaseManager::CancelLeases(
-    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
-    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-    const std::string &scheduling_failure_message) {
-  bool tasks_cancelled = false;
+std::vector<std::shared_ptr<internal::Work>> LocalLeaseManager::CancelLeasesWithoutReply(
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) {
+  std::vector<std::shared_ptr<internal::Work>> cancelled_works;
 
   ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
       leases_to_grant_, [&](const std::shared_ptr<internal::Work> &work) {
         if (!predicate(work)) {
           return false;
         }
-        CancelLeaseToGrant(work, failure_type, scheduling_failure_message);
-        tasks_cancelled = true;
+        CancelLeaseToGrantWithoutReply(work);
+        cancelled_works.push_back(work);
         return true;
       });
 
   ray::erase_if<std::shared_ptr<internal::Work>>(
       waiting_lease_queue_, [&](const std::shared_ptr<internal::Work> &work) {
-        if (predicate(work)) {
-          ReplyCancelled(work, failure_type, scheduling_failure_message);
-          if (!work->lease_.GetLeaseSpecification().GetDependencies().empty()) {
-            lease_dependency_manager_.RemoveLeaseDependencies(
-                work->lease_.GetLeaseSpecification().LeaseId());
-          }
-          waiting_leases_index_.erase(work->lease_.GetLeaseSpecification().LeaseId());
-          tasks_cancelled = true;
-          return true;
-        } else {
+        if (!predicate(work)) {
           return false;
         }
+        if (!work->lease_.GetLeaseSpecification().GetDependencies().empty()) {
+          lease_dependency_manager_.RemoveLeaseDependencies(
+              work->lease_.GetLeaseSpecification().LeaseId());
+        }
+        waiting_leases_index_.erase(work->lease_.GetLeaseSpecification().LeaseId());
+        cancelled_works.push_back(work);
+        return true;
       });
 
-  return tasks_cancelled;
+  return cancelled_works;
 }
 
-void LocalLeaseManager::CancelLeaseToGrant(
-    const std::shared_ptr<internal::Work> &work,
+bool LocalLeaseManager::CancelLeases(
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
+  auto cancelled_works = CancelLeasesWithoutReply(predicate);
+  for (const auto &work : cancelled_works) {
+    ReplyCancelled(work, failure_type, scheduling_failure_message);
+  }
+  return !cancelled_works.empty();
+}
+
+void LocalLeaseManager::CancelLeaseToGrantWithoutReply(
+    const std::shared_ptr<internal::Work> &work) {
   const LeaseID lease_id = work->lease_.GetLeaseSpecification().LeaseId();
   RAY_LOG(DEBUG) << "Canceling lease " << lease_id << " from leases_to_grant_queue.";
-  ReplyCancelled(work, failure_type, scheduling_failure_message);
   if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
@@ -962,7 +970,7 @@ void LocalLeaseManager::Grant(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
     rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(void)> send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback) {
   const auto &lease_spec = lease.GetLeaseSpecification();
 
   if (lease_spec.IsActorCreationTask()) {
@@ -1011,7 +1019,7 @@ void LocalLeaseManager::Grant(
     }
   }
   // Send the result back.
-  send_reply_callback();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void LocalLeaseManager::ClearWorkerBacklog(const WorkerID &worker_id) {
