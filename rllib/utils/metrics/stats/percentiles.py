@@ -1,16 +1,12 @@
 from typing import Any, Dict, List, Union, Optional
-from abc import abstractmethod
 
 from collections import deque
 import numpy as np
 from itertools import chain
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.series import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
-
-torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -41,12 +37,7 @@ class PercentilesStats(StatsBase):
         super().__init__(*args, **kwargs)
 
         self._window = window
-        if window:
-            self.values = deque(maxlen=window)
-            self._set_values([])
-        else:
-            # If we dno't have a window, we want to always keep only one value.
-            self.values = [np.nan]
+        self._set_values([np.nan])
 
         if percentiles is None:
             # We compute a bunch of default percentiles because computing one is just as expensive as computing all of them.
@@ -57,6 +48,19 @@ class PercentilesStats(StatsBase):
             raise ValueError("`percentiles` must be a list or None")
 
         self._percentiles = percentiles
+
+    def _set_values(self, new_values):
+        # For stats with window, use a deque with maxlen=window.
+        # This way, we never store more values than absolutely necessary.
+        if self._window:
+            self.values = deque(new_values, maxlen=self._window)
+        # For infinite windows, use `new_values` as-is (a list).
+        else:
+            self.values = new_values
+
+    def __len__(self) -> int:
+        """Returns the length of the internal values list."""
+        return len(self.values)
 
     def __float__(self):
         raise ValueError(
@@ -139,7 +143,7 @@ class PercentilesStats(StatsBase):
             return compute_percentiles(values, self._percentiles)
         return values
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def reduce(self, compile: bool = True) -> Union[Any, "PercentilesStats"]:
         """Reduces the internal values list.
 
         Args:
@@ -152,13 +156,16 @@ class PercentilesStats(StatsBase):
         values.sort()
 
         if self._clear_on_reduce:
-            self._set_values([])
+            self._set_values([np.nan])
         else:
             self._set_values(values)
 
         if compile:
             return compute_percentiles(values, self._percentiles)
-        return values
+
+        return_stats = self.similar_to(self)
+        return_stats.values = values
+        return return_stats
 
     def __repr__(self) -> str:
         return (
@@ -166,7 +173,6 @@ class PercentilesStats(StatsBase):
             f"clear_on_reduce={self._clear_on_reduce})"
         )
 
-    @abstractmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
         super_args = super()._get_init_args(stats_object=stats_object, state=state)

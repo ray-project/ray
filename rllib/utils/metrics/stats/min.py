@@ -13,14 +13,8 @@ class MinStats(SeriesStats):
 
     stats_cls_identifier = "min"
 
-    def _torch_reduce_fn(self, values):
-        return torch.fmin(values)
-
     def _np_reduce_fn(self, values):
         return np.nanmin(values)
-
-    def python_reduce_fn(self, x, y):
-        return min([x, y])
 
     def __repr__(self) -> str:
         return (

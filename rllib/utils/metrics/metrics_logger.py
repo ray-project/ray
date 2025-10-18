@@ -307,6 +307,11 @@ class MetricsLogger:
                 of incoming stats objects once per MetricsLogger.reduce() call, treating each incoming value with equal weight.
         """
 
+        if "reduce" == "lifetime_sum" and clear_on_reduce is None:
+            clear_on_reduce = False
+        else:
+            clear_on_reduce = True
+
         (
             reduce,
             window,
@@ -348,7 +353,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         EmaStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             ema_coeff=ema_coeff,
                             clear_on_reduce=clear_on_reduce,
                         ),
@@ -361,7 +366,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         MeanStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             window=window,
                             clear_on_reduce=clear_on_reduce,
                         ),
@@ -370,7 +375,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         MinStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             clear_on_reduce=clear_on_reduce,
                             window=window,
                         ),
@@ -379,7 +384,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         MaxStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             clear_on_reduce=clear_on_reduce,
                             window=window,
                         ),
@@ -388,7 +393,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         SumStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             window=window,
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
@@ -398,7 +403,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         LifetimeSumStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             track_throughput_since_last_restore=with_throughput,
                         ),
                     )
@@ -406,7 +411,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         PercentilesStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             window=window,
                             clear_on_reduce=clear_on_reduce,
                             percentiles=percentiles,
@@ -417,7 +422,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         ItemStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             clear_on_reduce=clear_on_reduce,
                         ),
                     )
@@ -425,7 +430,7 @@ class MetricsLogger:
                     self._set_key(
                         key,
                         ItemSeriesStats(
-                            _is_root_stats=self._is_root_logger,
+                            is_root_stats=self._is_root_logger,
                             window=window,
                             clear_on_reduce=clear_on_reduce,
                         ),
@@ -527,9 +532,9 @@ class MetricsLogger:
                 own_stats = incoming_stats[0].similar_to(incoming_stats[0])
                 own_stats._is_root_stats = True
 
-            merged_stats = own_stats.merge(incoming_stats=incoming_stats)
+            own_stats.merge(incoming_stats=incoming_stats)
 
-            self._set_key(key, merged_stats)
+            self._set_key(key, own_stats)
 
     def log_time(
         self,
@@ -667,7 +672,6 @@ class MetricsLogger:
                         window=window,
                         percentiles=percentiles,
                         clear_on_reduce=clear_on_reduce,
-                        throughput=with_throughput,
                     ),
                 )
             elif reduce == "item":
@@ -686,27 +690,20 @@ class MetricsLogger:
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self._get_key(key)
 
-    def reduce(self) -> Dict:
+    def reduce(self, compile: bool = False) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
         DO NOT CALL THIS METHOD! This should be called only by RLlib when aggregating stats.
 
         Returns:
-            A dict containing all ever logged nested keys to this MetricsLogger with the leafs being the reduced values.
+            A dict containing all ever logged nested keys to this MetricsLogger with the leafs being the reduced stats.
         """
-        # For better error message, catch the last key-path (reducing of which might
-        # throw an error).
-        PATH = None
 
-        def _reduce(path, stats: StatsBase):
-            nonlocal PATH
-            PATH = path
-            return stats.reduce(compile=self._is_root_logger)
+        def _reduce(stats: StatsBase):
+            return stats.reduce(compile=compile)
 
         with self._threading_lock:
-            reduced_stats_to_return = tree.map_structure_with_path(_reduce, self.stats)
-
-        return reduced_stats_to_return
+            return tree.map_structure(_reduce, self.stats)
 
     @Deprecated(
         new="log_value",

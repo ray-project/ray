@@ -2,11 +2,8 @@ from typing import Any, List, Union, Dict, Optional
 from itertools import chain
 from collections import deque
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.series import StatsBase
-
-torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -29,14 +26,14 @@ class ItemSeriesStats(StatsBase):
         self._window = window
         self.items: List[Any] = []
 
-    def _set_values(self, new_values):
+    def _set_items(self, new_items):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
         if self._window:
-            self.items = deque(new_values, maxlen=self._window)
+            self.items = deque(new_items, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
-            self.items = new_values
+            self.items = new_items
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -50,12 +47,18 @@ class ItemSeriesStats(StatsBase):
         self._window = state["window"]
 
     def push(self, item: Any) -> None:
-        """Pushes a item into this Stats object."""
+        """Pushes a item into this Stats object.
+
+        This method does not handle GPU tensors.
+
+        Args:
+            item: The item to push. Can be of any type but data should be in CPU memory.
+        """
         self.items.append(item)
         if self._window and len(self.items) > self._window:
             self.items.popleft()
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def reduce(self, compile: bool = True) -> Union[Any, "ItemSeriesStats"]:
         """Reduces the internal values list according to the constructor settings.
 
         Args:
@@ -68,11 +71,13 @@ class ItemSeriesStats(StatsBase):
         """
         items = self.items
         if self._clear_on_reduce:
-            self._set_values([])
+            self._set_items([])
         else:
             self.items = self.items
 
-        return items
+        return_stats = self.similar_to(self)
+        return_stats.items = items
+        return return_stats
 
     def __len__(self) -> int:
         """Returns the length of the internal items list."""
@@ -106,7 +111,7 @@ class ItemSeriesStats(StatsBase):
 
         all_items = [s.items for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
-        self._set_values(all_items)
+        self._set_items(all_items)
 
     def __repr__(self) -> str:
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"

@@ -1,12 +1,9 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Union
 import time
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.series import SeriesStats
-
-torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -15,14 +12,8 @@ class SumStats(SeriesStats):
 
     stats_cls_identifier = "sum"
 
-    def _torch_reduce_fn(self, values):
-        return torch.nansum(values)
-
     def _np_reduce_fn(self, values):
         return np.nansum(values)
-
-    def python_reduce_fn(self, x, y):
-        return sum([x, y])
 
     def __init__(self, throughput: bool = False, **kwargs):
         """Initializes a SumStats instance.
@@ -38,6 +29,7 @@ class SumStats(SeriesStats):
         # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
         self._last_throughput_measure_time = time.perf_counter()
 
+    @property
     def has_throughputs(self) -> bool:
         return self.track_throughput
 
@@ -52,9 +44,15 @@ class SumStats(SeriesStats):
             / (time.perf_counter() - self._last_throughput_measure_time)
         }
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        self._last_reduce_value = super().reduce(compile)
-        return self._last_reduce_value
+    def reduce(self, compile: bool = True) -> Union[Any, "SumStats"]:
+        self._last_reduce_value = super().reduce(compile=True)
+
+        if compile:
+            return self._last_reduce_value
+
+        return_stats = self.similar_to(self)
+        return_stats.values = [self._last_reduce_value]
+        return return_stats
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""

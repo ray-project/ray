@@ -5,23 +5,23 @@ from typing import Any, Dict, List, Union
 from abc import ABCMeta, abstractmethod
 
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-torch, _ = try_import_torch()
-
 
 class StatsBase(metaclass=ABCMeta):
-    """A base class for Stats."""
+    """A base class for Stats.
+
+    Stats are meant to be used in conjunction with the MetricsLogger class.
+    """
 
     # In order to restore from a checkpoint, we need to know the class of the Stats object.
     # This is set in the subclass.
     stats_cls_identifier: str = None
 
-    def __init__(self, _is_root_stats: bool = False, clear_on_reduce: bool = True):
-        self._is_root_stats = _is_root_stats
+    def __init__(self, is_root_stats: bool = False, clear_on_reduce: bool = True):
+        self._is_root_stats = is_root_stats
         self._clear_on_reduce = clear_on_reduce
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
@@ -31,7 +31,8 @@ class StatsBase(metaclass=ABCMeta):
             self.stats_cls_identifier is not None
         ), "stats_cls_identifier must be set in the subclass"
 
-    def has_throughput(self) -> bool:
+    @property
+    def has_throughputs(self) -> bool:
         """Returns True if the Stats object has throughput tracking enabled.
 
         Some Stats classes may have throughput tracking enabled, such as SumStats.
@@ -158,13 +159,13 @@ class StatsBase(metaclass=ABCMeta):
         """Returns the initialization arguments for this Stats object."""
         if state is not None:
             return {
-                "_is_root_stats": state["_is_root_stats"],
-                "_clear_on_reduce": state["_clear_on_reduce"],
+                "is_root_stats": state["_is_root_stats"],
+                "clear_on_reduce": state["_clear_on_reduce"],
             }
         elif stats_object is not None:
             return {
-                "_is_root_stats": stats_object._is_root_stats,
-                "_clear_on_reduce": stats_object._clear_on_reduce,
+                "is_root_stats": stats_object._is_root_stats,
+                "clear_on_reduce": stats_object._clear_on_reduce,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
@@ -184,7 +185,7 @@ class StatsBase(metaclass=ABCMeta):
 
         Args:
             value: The value to push. Can be of any type.
-                Specifically, it can also be a torch GPU tensors.
+                GPU tensors are moved to CPU memory.
 
         Returns:
             None
@@ -208,23 +209,19 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def reduce(self, compile: bool = True) -> Union[Any, "StatsBase"]:
         """Reduces the internal values.
 
         This method should NOT be called directly by users.
-        It should be called by MetricsLogger.reduce().
+        It can be used as a hook to prepare the stats object for sending it to the root metrics logger and starting a new 'reduce cycle'.
 
-        Thereby, the internal values may be changed (note that this is different from
-        `peek()`, where the internal values are NOT changed). See the docstring of this
-        class for details on the reduction logic applied to the values, based on
-        the constructor settings, such as `window`, `reduce`, etc.
-
-        Returned values are always on CPU memory.
+        The reduction logic depends on the implementation of the subclass.
+        Meaning that some classes may reduce to a single value, while others do not or don't even contain values.
 
         Args:
             compile: If True, the result is compiled into a single value if possible.
-
+                If False, the result is a Stats object similar to itself, but with the internal values reduced.
         Returns:
-            The result of reducing the internal values list on CPU memory.
+            The reduced value or a Stats object similar to itself, but with the internal values reduced.
         """
         ...

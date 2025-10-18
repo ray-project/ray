@@ -1,12 +1,9 @@
 from typing import Any, Dict, List, Union
 import time
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
-
-torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -45,6 +42,7 @@ class LifetimeSumStats(StatsBase):
         self._last_reduce_time = time.perf_counter()
         self._last_restore_time = time.perf_counter()
 
+    @property
     def has_throughputs(self) -> bool:
         return (
             self.track_throughput_last_restore
@@ -55,7 +53,7 @@ class LifetimeSumStats(StatsBase):
     def throughputs(self) -> Dict[str, float]:
         """Returns the throughput since the last reduce."""
         assert (
-            self.has_throughput()
+            self.has_throughputs
         ), "Throughput tracking is not enabled on this Stats object"
         throughputs = {}
         if self.track_throughput_since_last_reduce:
@@ -103,9 +101,8 @@ class LifetimeSumStats(StatsBase):
 
         Args:
             value: The value to be pushed. Can be of any type.
-                Specifically, it can also be a torch GPU tensors.
         """
-        self._lifetime_sum += value
+        self._lifetime_sum += single_value_to_cpu(value)
 
     @property
     def throughput_since_last_reduce(self) -> float:
@@ -131,11 +128,8 @@ class LifetimeSumStats(StatsBase):
                 "Tracking of throughput since last restore is not enabled on this Stats object"
             )
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def reduce(self, compile: bool = True) -> Union[Any, "LifetimeSumStats"]:
         value = self._lifetime_sum
-
-        if torch and isinstance(value, torch.Tensor):
-            value = value.detach()
 
         self._value_at_last_reduce = value
 
@@ -144,8 +138,10 @@ class LifetimeSumStats(StatsBase):
 
         if compile:
             return value
-        else:
-            return [value]
+
+        return_stats = self.similar_to(self)
+        return_stats._lifetime_sum = value
+        return return_stats
 
     def merge(
         self: "LifetimeSumStats", incoming_stats: List["LifetimeSumStats"]

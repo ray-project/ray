@@ -169,9 +169,7 @@ def test_time_logging(logger):
     # Test time logging with lifetime sum
     with logger.log_time("lifetime_sum_time", reduce="lifetime_sum"):
         time.sleep(0.1)
-    with logger.log_time(
-        "lifetime_sum_time_with_throughput", reduce="lifetime_sum", with_throughput=True
-    ):
+    with logger.log_time("lifetime_sum_time", reduce="lifetime_sum"):
         time.sleep(0.1)
     check(logger.peek("lifetime_sum_time"), 0.2, atol=0.05)
 
@@ -218,15 +216,14 @@ def test_aggregate(logger):
     """Test merging multiple stats dictionaries."""
     # Create two loggers with different values
     logger1 = MetricsLogger(root=True)
-    logger1.log_value("loss", 0.1, window=2)
-    logger1.log_value("loss", 0.2, window=2)
+    logger1.log_value("loss", 0.1, reduce="mean", window=2)
+    logger1.log_value("loss", 0.2)
 
     logger2 = MetricsLogger()
-    logger2.log_value("loss", 0.3, window=2)
-    logger2.log_value("loss", 0.4, window=2)
+    logger2.log_value("loss", 0.3, reduce="mean", window=2)
+    logger2.log_value("loss", 0.4)
 
-    logger.log_value("loss", 0.5, window=2)
-    logger.log_value("loss", 0.6, window=2)
+    logger.log_value("loss", 0.5, reduce="mean", window=2)
 
     # Reduce both loggers
     results1 = logger1.reduce()
@@ -236,10 +233,8 @@ def test_aggregate(logger):
     logger.aggregate([results1, results2])
 
     # Check merged results
-    # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
-    # However, we are aggregating in logger, so values from logger1 and logger2 are merged in parallel and are given priority over already existing values in logger.
-    # Therefore, mean(0.2, 0.4) = 0.3
-    check(logger.peek("loss"), 0.3, rtol=0.01)
+    # This should ignore the 0.5 value in `logger`
+    check(logger.peek("loss"), 0.25)
 
 
 def test_throughput_tracking(logger):

@@ -6,16 +6,12 @@ from abc import ABCMeta
 
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.metrics.stats.base import StatsBase
-
-
-torch, _ = try_import_torch()
-_, tf, _ = try_import_tf()
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 
 @DeveloperAPI
@@ -23,9 +19,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     """A base class for Stats that represent a series of values."""
 
     # Set by subclasses
-    _torch_reduce_fn = None
     _np_reduce_fn = None
-    _python_reduce_fn = None
 
     def __init__(
         self,
@@ -41,12 +35,9 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         super().__init__(*args, **kwargs)
 
         self._window = window
-        if window:
-            self.values = deque(maxlen=window)
-            self._set_values([])
-        else:
-            # If we dno't have a window, we want to always keep only one value.
-            self.values = [np.nan]
+
+        self.values: Union[List[Any], deque[Any]] = []
+        self._set_values([np.nan])
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -84,60 +75,25 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             raise ValueError("Either stats_object or state must be provided")
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        """Reduces the internal values list according to the constructor settings.
+    def reduce(self, compile: bool = True) -> Union[Any, "SeriesStats"]:
+        """Reduces the internal values list according to the constructor settings."""
 
-        Returned values are always on CPU memory.
-
-        Args:
-            compile: If True, the result is compiled into a single value if possible.
-                If it is not possible, the result is a list of values.
-                If False, the result is a list of one or more values.
-
-        Returns:
-            The reduced value (can be of any type, depending on the input values and
-            reduction method).
-        """
-        len_before_reduce = len(self)
         if self._window is None:
-            # Assume we are dealing with single value
-            if torch and torch.is_tensor(self.values[0]):
-                reduced_values = [self.values[0].detach()]
-            elif tf and tf.is_tensor(self.values[0]):
-                reduced_values = [self.values[0].numpy()]
-            else:
-                # self.values should just be a list with a single python value
-                reduced_values = self.values
+            reduced_values = self.values
         else:
             reduced_values = self.window_reduce()
 
         if self._clear_on_reduce:
-            self._set_values([])
+            self._set_values([np.nan])
         else:
             self._set_values(reduced_values)
 
         if compile:
-            if torch and torch.is_tensor(reduced_values[0]):
-                return reduced_values[0].cpu()
             return reduced_values[0]
-        else:
-            return_stats = self.similar_to(self)
-            if len_before_reduce == 0:
-                # return_values will be be 0 if we reduce a sum over zero elements
-                # But we don't want to create such a zero out of nothing for our new
-                # Stats object that we return here
-                return return_stats
-            else:
-                return_stats._set_values(reduced_values)
-            return
 
-    @staticmethod
-    def _numpy_if_necessary(values):
-        # Torch tensor handling. Convert to CPU/numpy first.
-        if torch and len(values) > 0 and torch.is_tensor(values[0]):
-            # Convert all tensors to numpy values.
-            values = [v.cpu().numpy() for v in values]
-        return values
+        return_stats = self.similar_to(self)
+        return_stats.values = reduced_values
+        return return_stats
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -158,10 +114,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Args:
             value: The value to be pushed. Can be of any type.
         """
-        if torch and torch.is_tensor(value):
-            value = value.detach()
-        elif tf and tf.is_tensor(value):
-            value = tf.stop_gradient(value).numpy()
+        value = single_value_to_cpu(value)
 
         if self._window is None:
             if self.values[0] is np.nan:
@@ -174,7 +127,6 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             if self._window is not None and len(self.values) > self._window:
                 self.values.popleft()
 
-    @staticmethod
     def merge(self, incoming_stats: List["SeriesStats"]) -> None:
         """Merges SeriesStats objects.
 
@@ -191,9 +143,13 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             # If none of the stats have values, return.
             return
 
-        all_items = [s.values for s in incoming_stats]
+        try:
+            all_items = [s.values for s in incoming_stats]
+        except Exception:
+            breakpoint()
         all_items = list(chain.from_iterable(all_items))
         reduced_values = self.window_reduce(all_items)
+
         self._set_values(reduced_values)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
@@ -208,13 +164,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             The result of reducing the internal values list.
         """
         if self._window is None:
-            # Assume that the values are already reduced.
-            if torch and isinstance(self.values, torch.Tensor):
-                # Value should already be detached
-                reduced_values = [self.values[0].cpu()]
-            else:
-                # self.values should just be a list with a single python value
-                reduced_values = self.values
+            # self.values should just be a list with a single python value
+            reduced_values = self.values
         else:
             reduced_values = self.window_reduce()
 
@@ -232,7 +183,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Returns:
             The reduced value.
         """
-        return [self.python_reduce_fn(value_1, value_2)]
+        return [self._np_reduce_fn([value_1, value_2])]
 
     def window_reduce(self, values=None) -> Tuple[Any, Any]:
         """Reduces the internal values list according to the constructor settings.
@@ -248,26 +199,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         values = values if values is not None else self.values
 
         # Special case: Internal values list is empty -> return NaN or 0.0 for max.
-        if len(values) == 0:
-            return [np.nan], []
-
-        if torch and torch.is_tensor(values[0]):
-            self._is_tensor = True
-            if len(values) == 1:
-                # No need to reduce if there is only one value.
-                reduced = values[0].detach().cpu()
-            else:
-                reduce_in = torch.stack(list(values))
-                reduced = self._torch_reduce_fn(reduce_in).detach().cpu().item()
+        if len(values) == 0 or np.all(np.isnan(values)):
+            return [np.nan]
         else:
-            if len(values) == 1:
-                # No need to reduce if there is only one value.
-                reduced = values[0]
-            else:
-                if np.all(np.isnan(values)):
-                    # This avoids warnings for taking a mean of an empty array.
-                    reduced = np.nan
-                else:
-                    reduced = self._np_reduce_fn(values).item()
-
-        return [reduced]
+            return [self._np_reduce_fn(values)]

@@ -1,12 +1,9 @@
 from typing import Any, List, Union, Dict
 
 
-from ray.rllib.utils.framework import try_import_torch
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
-
-torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -36,18 +33,7 @@ class ItemStats(StatsBase):
     def __len__(self) -> int:
         return 1
 
-    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
-        """Returns the internal item directly or as a list.
-
-        If `clear_on_reduce` is True, the internal item is set to None.
-
-        Args:
-            compile: If True, the value is returned directly.
-                If False, the value is returned as a single-element list.
-
-        Returns:
-            The value (can be of any type, depending on the input value).
-        """
+    def reduce(self, compile: bool = True) -> Union[Any, "ItemStats"]:
         item = self._item
 
         if self._clear_on_reduce:
@@ -56,14 +42,14 @@ class ItemStats(StatsBase):
         if compile:
             return item
 
-        return [item]
+        return_stats = self.similar_to(self)
+        return_stats._item = item
+        return return_stats
 
     def push(self, item: Any) -> None:
-        """Pushes a item into this Stats object."""
-        # Put directly onto CPU memory. peek(), reduce() and merge() don't ahve to handle GPU tensors.
+        # Put directly onto CPU memory. peek(), reduce() and merge() don't handle GPU tensors.
         self._item = single_value_to_cpu(item)
 
-    @staticmethod
     def merge(self, incoming_stats: List["ItemStats"]) -> None:
         """Merges ItemStats objects.
 
