@@ -29,7 +29,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import ControllerError
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -169,7 +168,7 @@ async def test_failure_handling():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
-    DummyWorkerGroup.set_poll_failure(ControllerError)
+    DummyWorkerGroup.set_poll_failure(RuntimeError("Simulated poll failure"))
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
