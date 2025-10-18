@@ -47,7 +47,6 @@ def test_average_max_uss_per_task():
     assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
 
 
-
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
     metrics = OpRuntimeMetrics(MagicMock())
@@ -110,7 +109,9 @@ def test_block_completion_time_histogram():
         metrics.on_task_finished(i, None)  # None means no exception
 
         # Check that the correct bucket was incremented by the number of blocks
-        assert metrics.block_completion_time._bucket_counts[expected_bucket] == num_blocks
+        assert (
+            metrics.block_completion_time._bucket_counts[expected_bucket] == num_blocks
+        )
 
         # Reset for next test
         metrics.block_completion_time._bucket_counts[expected_bucket] = 0
