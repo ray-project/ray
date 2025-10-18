@@ -95,6 +95,10 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
       frequency: manual
@@ -112,7 +116,6 @@
 
   cluster:
     byod:
-      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
@@ -123,6 +126,10 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: released
       cluster:
         ray_version: 2.50.0
