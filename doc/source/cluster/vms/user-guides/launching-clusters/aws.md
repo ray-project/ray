@@ -1,3 +1,39 @@
+```{note}
+**Quickstart Checklist (AWS)**
+
+Follow these steps to launch a basic Ray cluster on AWS.
+
+**1) Configure AWS credentials locally** (so Ray can use `boto3`):
+
+```bash
+aws configure
+```
+
+**2) Download the example cluster configuration file**:
+
+```console
+curl -O https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml
+```
+
+**3) Bring up a cluster** using the example configuration:
+
+```bash
+ray up example-full.yaml
+```
+
+See the Cluster Configuration section for details.
+
+**4) Access the Ray Dashboard** at `http://<head-node-ip>:8265`.
+Ensure inbound TCP **8265** is allowed in your AWS Security Group.
+
+**5) Check cluster status:**
+
+```bash
+ray status
+```
+
+Optional: enable autoscaling by adjusting node settings in `cluster.yaml`.
+```
 
 # Launching Ray Clusters on AWS
 
@@ -63,7 +99,6 @@ Congrats, you have started a Ray cluster on AWS!
 
 
 If you want to learn more about the Ray cluster launcher, see this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1).
-
 
 ## AWS Configurations
 
@@ -145,7 +180,7 @@ secret_key     ****************YYYY         iam-role
 
 Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.
 
-## Monitor Ray using Amazon CloudWatch
+# Monitor Ray using Amazon CloudWatch
 
 ```{eval-rst}
 Amazon CloudWatch is a monitoring and observability service that provides data and actionable insights to monitor your applications, respond to system-wide performance changes, and optimize resource utilization.
