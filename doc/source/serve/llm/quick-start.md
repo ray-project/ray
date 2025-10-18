@@ -206,8 +206,6 @@ serve.run(ingress_deployment, blocking=True)
 
 ::::
 
-See also {ref}`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
-
 ## Production deployment
 
 For production deployments, Ray Serve LLM provides utilities for config-driven deployments. You can specify your deployment configuration with YAML files:
