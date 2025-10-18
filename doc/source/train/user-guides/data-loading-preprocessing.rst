@@ -149,16 +149,18 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: HuggingFace Transformers
 
         .. code-block:: python
-            :emphasize-lines: 7-8,13-14,17-18,24,30-31,41
+            :emphasize-lines: 7-9,14-15,18-19,25,31-32,42
 
             import ray
             import ray.train
+            from huggingface_hub import HfFileSystem
 
             ...
 
-            # Create the train and evaluation datasets.
-            train_data = ray.data.from_huggingface(hf_train_ds)
-            eval_data = ray.data.from_huggingface(hf_eval_ds)
+            # Create the train and evaluation datasets using HfFileSystem.
+            fs = HfFileSystem()
+            train_data = ray.data.read_parquet("hf://datasets/your-dataset/train/", filesystem=fs)
+            eval_data = ray.data.read_parquet("hf://datasets/your-dataset/validation/", filesystem=fs)
 
             def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.

@@ -156,9 +156,13 @@ For more on how to read this output, see :ref:`Monitoring Your Workload with the
     def g(row):
         return True
 
-    hf_ds = datasets.load_dataset("mnist", "mnist")
+    from huggingface_hub import HfFileSystem
+
+    path = "hf://datasets/ylecun/mnist/mnist/"
+    fs = HfFileSystem()
+    train_files = [f for f in fs.ls(path) if "train" in f and f.endswith(".parquet")]
     ds = (
-        ray.data.from_huggingface(hf_ds["train"])
+        ray.data.read_parquet(train_files, filesystem=fs)
         .map_batches(f)
         .filter(g)
         .materialize()
