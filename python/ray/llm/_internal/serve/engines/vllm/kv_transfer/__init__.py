@@ -3,10 +3,10 @@ from typing import Dict
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
-from ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache_connector_v1 import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache import (
     LMCacheConnectorV1Backend,
 )
-from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl_connector import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
     NixlConnectorBackend,
 )
 
