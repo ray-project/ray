@@ -66,6 +66,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const std::string &socket_name,
                const std::string &node_ip_address,
                const std::string &node_name,
+               const std::string &temp_dir,
+               const std::string &session_dir,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                gcs::GcsClient &gcs_client,
@@ -84,6 +86,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_node_manager_address(node_ip_address);
   self_node_info_.set_node_name(node_name);
   self_node_info_.set_raylet_socket_name(socket_name);
+  self_node_info_.set_temp_dir(temp_dir);
+  self_node_info_.set_session_dir(session_dir);
   self_node_info_.set_object_store_socket_name(object_manager_config.store_socket_name);
   self_node_info_.set_object_manager_port(node_manager_.GetObjectManagerPort());
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());

@@ -37,6 +37,8 @@ class Raylet {
   /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param socket_name The Unix domain socket to listen on for local clients.
   /// \param node_ip_address The IP address of this node.
+  /// \param temp_dir The path of the temporary directory Ray will use.
+  /// \param session_dir The path of the session directory.
   /// \param node_manager_config Configuration to initialize the node manager.
   /// scheduler with.
   /// \param object_manager_config Configuration to initialize the object
@@ -49,6 +51,8 @@ class Raylet {
          const std::string &socket_name,
          const std::string &node_ip_address,
          const std::string &node_name,
+         const std::string &temp_dir,
+         const std::string &session_dir,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          gcs::GcsClient &gcs_client,

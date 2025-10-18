@@ -111,6 +111,6 @@ class ProgressTracker:
 
 def export_timeline():
     timestr = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"/tmp/ray-timeline-{timestr}.json"
-    ray.timeline(filename=filename)
+    filename = f"ray-timeline-{timestr}.json"
+    ray.timeline(filename=filename, store_in_ray_temp=True)
     logging.info(f"Exported Ray timeline to {filename}")

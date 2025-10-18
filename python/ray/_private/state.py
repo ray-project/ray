@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 from collections import defaultdict
 from typing import Dict, Optional
@@ -1010,7 +1011,47 @@ def actors(
 
 @DeveloperAPI
 @client_mode_hook
-def timeline(filename=None):
+def timeline(filename=None, store_in_ray_temp=False):
+    """Return a list of profiling events that can viewed as a timeline.
+
+    Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
+    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
+
+    To view this information as a timeline, simply dump it as a json file by
+    passing in "filename" or using json.dump, and then load go to
+    chrome://tracing in the Chrome web browser and load the dumped file.
+
+    Args:
+        filename: If a filename is provided, the timeline is dumped to that
+            file.
+        store_in_ray_temp: If True, the timeline is dumped to the user's ray temp directory.
+            If False, the timeline is dumped to the default ray temp directory.
+
+    Returns:
+        If filename is not provided, this returns a list of profiling events.
+            Each profile event is a dictionary.
+    """
+
+    if store_in_ray_temp and filename is not None:
+        # try to fetch gcs address and node id
+        if ray.is_initialized():
+            gcs_address = ray.get_gcs_client().gcs_address
+            node_id = ray.get_runtime_context().node_id
+            resolved_filename = os.path.join(
+                ray._common.utils.resolve_user_ray_temp_dir(gcs_address, node_id),
+                filename,
+            )
+        else:
+            resolved_filename = os.path.join(
+                ray._private.utils.get_default_ray_temp_dir(), filename
+            )
+    else:
+        resolved_filename = filename
+
+    return timeline_internal(resolved_filename)
+
+
+def timeline_internal(filename: str = None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
@@ -1028,6 +1069,7 @@ def timeline(filename=None):
         If filename is not provided, this returns a list of profiling events.
             Each profile event is a dictionary.
     """
+
     return state.chrome_tracing_dump(filename=filename)
 
 
