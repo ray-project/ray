@@ -203,6 +203,12 @@ repos:
         language: system
         types: [python]
 
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: semgrep
+        args: [--config=semgrep.yml, --error]
+
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
     hooks:
