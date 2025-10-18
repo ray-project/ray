@@ -60,12 +60,12 @@ class LifetimeSumStats(StatsBase):
         if state is not None:
             return {
                 **super_args,
-                "with_throughput": state["track_throughput"],
+                "with_throughput": state["track_throughputs"],
             }
         elif stats_object is not None:
             return {
                 **super_args,
-                "with_throughput": stats_object.track_throughput,
+                "with_throughput": stats_object.track_throughputs,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
