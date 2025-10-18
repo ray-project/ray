@@ -19,7 +19,6 @@
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
-#include <deque>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -131,7 +130,12 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   };
 
   auto transform_func = [](const auto &pair) {
-    return std::make_pair(pair.first, pair.second.size());
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t num_tasks_queued = 0;
+    for (const auto &[_, queue] : priority_map) {
+      num_tasks_queued += queue.size();
+    }
+    return std::make_pair(scheduling_class, num_tasks_queued);
   };
 
   fill_resource_usage_helper(
@@ -146,7 +150,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
             cnt--;
           }
         }
-        return std::make_pair(pair.first, cnt);
+        return std::make_pair(pair.first, count);
       });
   fill_resource_usage_helper(leases_to_grant_range, false);
 

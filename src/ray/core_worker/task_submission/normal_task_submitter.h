@@ -16,6 +16,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>
@@ -309,10 +310,19 @@ class NormalTaskSubmitter {
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
+    // TODO(dayshah): Consider a map wrapper that keeps track of this and handles erasing
+    // when queue is empty.
+    // Keep track of the number of tasks that are queued for execution.
+    size_t num_tasks_queued = 0;
+
+    // Map of priority -> tasks queued for execution. We keep an individual map
+    // per scheduling class to ensure fairness.
+    absl::btree_map<int32_t, std::deque<TaskSpecification>> task_queue_map;
+
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     bool CanDelete() const {
-      if (pending_lease_requests.empty() && task_queue.empty() &&
+      if (pending_lease_requests.empty() && task_queue_map.empty() &&
           active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
       }
@@ -334,7 +344,8 @@ class NormalTaskSubmitter {
       }
 
       // Subtract tasks with pending lease requests so we don't double count them.
-      return task_queue.size() - pending_lease_requests.size();
+      // Make sure we don't return negative if a worker is reused.
+      return std::max(num_tasks_queued - pending_lease_requests.size(), 0ul);
     }
   };
 

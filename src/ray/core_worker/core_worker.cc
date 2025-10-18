@@ -2006,7 +2006,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
-                            root_detached_actor_id);
+                            root_detached_actor_id,
+                            task_options.priority);
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
