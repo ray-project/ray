@@ -17,20 +17,20 @@ Use multi-LoRA when your application needs to support multiple domains, users, o
 When a request for a given LoRA adapter arrives, Ray Serve:
 
 1. Checks if any replica has already loaded that adapter
-2. If a replica with the adapter is found and isn't overloaded, routes the request to it
+2. Finds a replica with the adapter but isn't overloaded and routes the request to it
 3. If all replicas with the adapter are overloaded, routes the request to a less busy replica, which loads the adapter
 4. If no replica has the adapter loaded, routes the request to a replica according to the default request router logic (for example Power of 2) and loads it there
 
-The adapter is then cached for subsequent requests. The cache of LoRA adapters on each replica is controlled through a Least Recently Used (LRU) mechanism with a max size controlled by the `max_num_adapters_per_replica` variable.
+Ray Serve LLM then caches the adapter for subsequent requests. Ray Serve LLM controls the cache of LoRA adapters on each replica through a Least Recently Used (LRU) mechanism with a max size, which you control with the `max_num_adapters_per_replica` variable.
 
 
 ## Configure Ray Serve LLM with multi-LoRA
 
-To enable multi-LoRA on your deployment, update your Ray Serve LLM configuration with a few extra settings.
+To enable multi-LoRA on your deployment, update your Ray Serve LLM configuration with these additional settings.
 
 ### LoRA configuration
 
-Specify `dynamic_lora_loading_path` to your AWS or GCS storage path:
+Set `dynamic_lora_loading_path` to your AWS or GCS storage path:
 
 ```python
 lora_config=dict(
@@ -39,8 +39,8 @@ lora_config=dict(
 )
 ```
 
-- `dynamic_lora_loading_path`: Path to directory containing LoRA checkpoint subdirectories
-- `max_num_adapters_per_replica`: Maximum number of LoRA adapters cached per replica (must match `max_loras`)
+- `dynamic_lora_loading_path`: Path to the directory containing LoRA checkpoint subdirectories.
+- `max_num_adapters_per_replica`: Maximum number of LoRA adapters cached per replica. Must match `max_loras`.
 
 
 ### Engine arguments
@@ -55,11 +55,11 @@ engine_kwargs=dict(
 )
 ```
 
-- `enable_lora`: Enable LoRA support in the vLLM engine
-- `max_lora_rank`: Maximum LoRA rank supported (set to the highest rank you plan to use)
-- `max_loras`: Maximum number of LoRAs per batch (must match `max_num_adapters_per_replica`)
+- `enable_lora`: Enable LoRA support in the vLLM engine.
+- `max_lora_rank`: Maximum LoRA rank supported. Set to the highest rank you plan to use.
+- `max_loras`: Maximum number of LoRAs per batch. Must match `max_num_adapters_per_replica`.
 
-### Complete example
+### Example
 
 The following example shows a complete multi-LoRA configuration:
 
@@ -74,13 +74,13 @@ llm_config = LLMConfig(
         model_source="Qwen/Qwen2.5-0.5B-Instruct",
     ),
     lora_config=dict(
-        # Let's pretend this is where LoRA weights are stored on S3.
+        # Assume this is where LoRA weights are stored on S3.
         # For example
         # s3://my_dynamic_lora_path/lora_model_1_ckpt
         # s3://my_dynamic_lora_path/lora_model_2_ckpt
         # are two of the LoRA checkpoints
         dynamic_lora_loading_path="s3://my_dynamic_lora_path",
-        max_num_adapters_per_replica=16,
+        max_num_adapters_per_replica=16, # Need to set this to the same value as `max_loras`.
     ),
     engine_kwargs=dict(
         enable_lora=True,
@@ -104,14 +104,14 @@ serve.run(app, blocking=True)
 
 To query the base model, call your service as you normally would.
 
-To use a specific LoRA adapter at inference time, include the adapter name in your request using the format:
+To use a specific LoRA adapter at inference time, include the adapter name in your request using the following format:
 
 ```
 <base_model_id>:<adapter_name>
 ```
 
-Here:
-- `<base_model_id>` is the `model_id` defined in your Ray Serve LLM configuration
+where
+- `<base_model_id>` is the `model_id` that you define in the Ray Serve LLM configuration
 - `<adapter_name>` is the adapter's folder name in your cloud storage
 
 ### Example queries
@@ -146,10 +146,6 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hello!"}],
 )
 ```
-
-## Best practices
-
-Follow these suggestions to get more reliable and efficient behavior when using multi-LoRA in Ray Serve LLM:
 
 ## See also
 

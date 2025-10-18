@@ -3,8 +3,6 @@
 
 Configure model loading from Hugging Face, remote storage, or gated repositories.
 
-## Overview
-
 Ray Serve LLM supports loading models from multiple sources:
 
 - **Hugging Face Hub**: Load models directly from Hugging Face (default)
@@ -43,7 +41,7 @@ Enable fast downloads with Hugging Face's `hf_transfer` library:
 pip install hf_transfer
 ```
 
-2. Set the environment variable:
+2. Set the `HF_HUB_ENABLE_HF_TRANSFER` environment variable:
 
 ```python
 from ray import serve
@@ -141,7 +139,7 @@ $ aws s3 ls air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/
 2025-03-25 11:37:53      54528 tokenizer_config.json
 ```
 
-### Configure S3 loading
+### Configure S3 loading (YAML)
 
 Use the `bucket_uri` parameter in `model_loading_config`:
 
@@ -168,7 +166,7 @@ Deploy with:
 serve deploy config.yaml
 ```
 
-### Python API for S3
+### Configure S3 loading (Python API)
 
 You can also configure S3 loading with Python:
 
@@ -193,7 +191,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 ```
 
-### GCS bucket loading
+### Configure GCS bucket loading (YAML)
 
 For Google Cloud Storage, use the `gs://` protocol:
 
