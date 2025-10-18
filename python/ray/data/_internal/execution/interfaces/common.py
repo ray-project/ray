@@ -1,10 +1,10 @@
-# Node id string returned by `ray.get_runtime_context().get_node_id()`.
 import bisect
 import json
 from typing import Dict, List, Tuple
 
 from ray.util.metrics import Histogram
 
+# Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
 
 # Used for time-based histograms (e.g. task completion time, block completion time)
