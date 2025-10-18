@@ -490,5 +490,26 @@ def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
     assert result_with == expected
 
 
+def test_limit_pushdown_preserve_row_count_with_map_batches(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that limit pushdown preserves the row count with map batches."""
+    ds = ray.data.range(100).map_batches(lambda x: x, preserve_row_count=True).limit(10)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=10] -> MapBatches[MapBatches(<lambda>)]",
+        [{"id": i} for i in range(10)],
+    )
+
+    ds = (
+        ray.data.range(100).map_batches(lambda x: x, preserve_row_count=False).limit(10)
+    )
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=10]",
+        [{"id": i} for i in range(10)],
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
