@@ -2,6 +2,8 @@ import copy
 import dataclasses
 from enum import Enum
 import logging
+
+import gymnasium
 import math
 import sys
 from typing import (
@@ -328,7 +330,7 @@ class AlgorithmConfig(_Config):
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
-        self.gym_env_vectorize_mode = "SYNC"
+        self.gym_env_vectorize_mode = "sync"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -1844,7 +1846,9 @@ class AlgorithmConfig(_Config):
         create_local_env_runner: Optional[bool] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
-        gym_env_vectorize_mode: Optional[str] = NotProvided,
+        gym_env_vectorize_mode: Optional[
+            Union[str, gym.envs.registration.VectorizeMode]
+        ] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1907,7 +1911,10 @@ class AlgorithmConfig(_Config):
                 Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
                 Default is SYNC. Set this to ASYNC to parallelize the individual sub
                 environments within the vector. This can speed up your EnvRunners
-                significantly when using heavier environments.
+                significantly when using heavier environments. Set this to
+                VECTOR_ENTRY_POINT in case your env creator, also known as
+                "gym entry point", already returns a gym.vector.VectorEnv and you
+                don't need RLlib to take care of the vectorization anymore.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -4815,14 +4822,14 @@ class AlgorithmConfig(_Config):
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
-            list(gym.envs.registration.VectorizeMode.__members__.keys())
-            + list(gym.envs.registration.VectorizeMode.__members__.values())
+            list(gymnasium.VectorizeMode)
+            + [mode.value for mode in gymnasium.VectorizeMode]
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
             self._value_error(
-                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
-                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
-                f"are {allowed_vectorize_modes}."
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) "
+                "must be a member of `gymnasium.VectorizeMode`! "
+                f"Allowed values are {allowed_vectorize_modes}."
             )
 
     def _validate_callbacks_settings(self) -> None:
