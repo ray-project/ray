@@ -47,7 +47,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             np.array(sorted(self._agent_ids)), num_agents_step, replace=False
         )
         # Initialize observations.
-        init_obs = {agent_id: 0 for agent_id in agents_step}
+        init_obs = dict.fromkeys(agents_step, 0)
         init_info = {agent_id: {} for agent_id in agents_step}
 
         # Reset all alive agents to all agents.
@@ -75,9 +75,9 @@ class MultiAgentTestEnv(MultiAgentEnv):
             agents_step = self._agents_alive
 
         # Initialize observations.
-        obs = {agent_id: self.t for agent_id in agents_step}
+        obs = dict.fromkeys(agents_step, self.t)
         info = {agent_id: {} for agent_id in agents_step}
-        reward = {agent_id: 1.0 for agent_id in agents_step}
+        reward = dict.fromkeys(agents_step, 1.0)
         # Add also agents without observations.
         reward.update(
             {
@@ -91,9 +91,9 @@ class MultiAgentTestEnv(MultiAgentEnv):
 
         # Use tha last terminateds/truncateds.
         is_truncated = {"__all__": False}
-        is_truncated.update({agent_id: False for agent_id in agents_step})
+        is_truncated.update(dict.fromkeys(agents_step, False))
         is_terminated = {"__all__": False}
-        is_terminated.update({agent_id: False for agent_id in agents_step})
+        is_terminated.update(dict.fromkeys(agents_step, False))
 
         if self.t == 50:
             # Let agent 1 die.
@@ -120,7 +120,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         # Truncate the episode if too long.
         if self.t >= 200 and self.truncate:
             is_truncated["__all__"] = True
-            is_truncated.update({agent_id: True for agent_id in agents_step})
+            is_truncated.update(dict.fromkeys(agents_step, True))
 
         return obs, reward, is_terminated, is_truncated, info
 
@@ -221,7 +221,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             agents_to_step_next = [
                 aid for aid in obs.keys() if aid in env._agents_alive
             ]
-            action = {agent_id: i + 1 for agent_id in agents_to_step_next}
+            action = dict.fromkeys(agents_to_step_next, i + 1)
 
             obs, reward, terminated, truncated, info = env.step(action)
 
@@ -489,9 +489,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         observation = {"agent_1": 3, "agent_2": 3}
         infos = {"agent_1": {}, "agent_2": {}}
 
-        terminated = {k: False for k in observation.keys()}
+        terminated = dict.fromkeys(observation.keys(), False)
         terminated.update({"__all__": False})
-        truncated = {k: False for k in observation.keys()}
+        truncated = dict.fromkeys(observation.keys(), False)
         truncated.update({"__all__": False})
         episode.add_env_step(
             observations=observation,
@@ -1700,7 +1700,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         # Now, generate 100 samples.
         for i in range(100):
-            action = {agent_id: i for agent_id in obs}
+            action = dict.fromkeys(obs, i)
             obs, reward, terminated, truncated, info = env.step(action)
             episode_1.add_env_step(
                 observations=obs,
@@ -2736,9 +2736,9 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # add this to the buffer and to the global reward history.
         reward = {"agent_1": 2.0, "agent_2": 2.0, "agent_3": 2.0, "agent_5": 2.0}
         info = {"agent_1": {}, "agent_2": {}}
-        terminateds = {k: False for k in observation.keys()}
+        terminateds = dict.fromkeys(observation.keys(), False)
         terminateds.update({"__all__": False})
-        truncateds = {k: False for k in observation.keys()}
+        truncateds = dict.fromkeys(observation.keys(), False)
         truncateds.update({"__all__": False})
         episode_1.add_env_step(
             observations=observation,
