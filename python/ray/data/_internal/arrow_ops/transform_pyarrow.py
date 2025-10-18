@@ -592,25 +592,25 @@ def _concat_cols_with_null_list(
     # For each opaque list column, iterate through all schemas until
     # we find a valid value_type that can be used to override the
     # column types in the following for-loop.
-    scalar_type = None
+    value_type = None
     for arr in col_chunked_arrays:
         if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
-            scalar_type = arr.type
+            value_type = arr.type
             break
 
-    if scalar_type is not None:
+    if value_type is not None:
         for c_idx in range(len(col_chunked_arrays)):
             c = col_chunked_arrays[c_idx]
             if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
-                if pa.types.is_list(scalar_type):
+                if pa.types.is_list(value_type):
                     # If we are dealing with a list input,
-                    # cast the array to the scalar_type found above.
-                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                    # cast the array to the value_type found above.
+                    col_chunked_arrays[c_idx] = c.cast(value_type)
                 else:
                     # If we are dealing with a single value, construct
                     # a new array with null values filled.
                     col_chunked_arrays[c_idx] = pa.chunked_array(
-                        [pa.nulls(c.length(), type=scalar_type)]
+                        [pa.nulls(c.length(), type=value_type)]
                     )
 
     return _concatenate_chunked_arrays(col_chunked_arrays)
@@ -826,9 +826,14 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.air.util.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
@@ -914,6 +919,7 @@ def combine_chunked_array(
 
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
+        _is_native_tensor_type,
         _is_pa_extension_type,
     )
 
@@ -921,7 +927,7 @@ def combine_chunked_array(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    if _is_pa_extension_type(array.type):
+    if _is_pa_extension_type(array.type) or _is_native_tensor_type(array.type):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array, ensure_copy)
