@@ -1110,8 +1110,8 @@ class TestDataOpTask:
         def remove_and_add_back_worker_node(_):
             cluster.remove_node(worker_node)
 
-            new_worker_node = cluster.add_node(num_cpus=1)
-            cluster.add_node(new_worker_node)
+            new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+            cluster.wait_for_nodes()
 
         data_op_task = DataOpTask(
             0, streaming_gen, **{preempt_on: remove_and_add_back_worker_node}
