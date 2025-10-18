@@ -249,7 +249,7 @@ stop = {
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    results = run_rllib_example_script_experiment(
+    run_rllib_example_script_experiment(
         base_config=config,
         args=args,
         stop=stop,
