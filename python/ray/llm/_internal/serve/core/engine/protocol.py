@@ -1,13 +1,13 @@
 import abc
 from typing import TYPE_CHECKING, AsyncGenerator, Union
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
 )
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.openai_api_models import (
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
         ChatCompletionResponse,
         CompletionRequest,

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
     ModelLoadingConfig,

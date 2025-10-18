@@ -10,14 +10,14 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.openai_api_models import (
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
         ErrorResponse,
     )
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
 class DeploymentProtocol(Protocol):

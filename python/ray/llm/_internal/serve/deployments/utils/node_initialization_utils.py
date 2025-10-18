@@ -7,7 +7,7 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig, LLMEngine
 from ray.llm._internal.serve.observability.logging import get_logger
 
 torch = try_import("torch")

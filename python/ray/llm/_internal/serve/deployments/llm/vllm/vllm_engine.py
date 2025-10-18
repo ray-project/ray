@@ -11,7 +11,7 @@ from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
@@ -23,7 +23,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ScoreRequest,
     ScoreResponse,
 )
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
 )

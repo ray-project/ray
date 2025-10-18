@@ -28,7 +28,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
 )
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,

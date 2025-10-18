@@ -4,7 +4,7 @@ from typing import Optional
 
 from ray import serve
 from ray.experimental.collective.util import get_address_and_port
-from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.deployments.data_parallel.dp_rank_assigner import (
     DPRankAssigner,
 )

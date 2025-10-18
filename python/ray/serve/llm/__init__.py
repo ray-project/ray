@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional, Type
 
 from ray._common.deprecation import Deprecated
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
     LoraConfig as _LoraConfig,

@@ -3,12 +3,12 @@ from typing import Optional, Type
 
 from ray import serve
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
 )
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer

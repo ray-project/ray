@@ -3,8 +3,8 @@
 import logging
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
-from ray.llm._internal.serve.configs.constants import DEFAULT_MAX_ONGOING_REQUESTS
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,

@@ -16,13 +16,13 @@ from typing import (
 import ray
 from ray import serve
 from ray._common.utils import import_attr
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
 )
@@ -42,7 +42,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 )
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.openai_api_models import (
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
         ChatCompletionResponse,
         CompletionRequest,

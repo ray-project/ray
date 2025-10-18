@@ -26,11 +26,11 @@ from ray.llm._internal.common.utils.lora_utils import (
     get_base_model_id,
     get_lora_model_ids,
 )
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
 )
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionStreamResponse,
@@ -51,7 +51,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ScoreResponse,
     to_model_metadata,
 )
-from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.protocol import DeploymentProtocol
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,

@@ -4,7 +4,7 @@ import string
 from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
 class BaseConnectorBackend(abc.ABC):

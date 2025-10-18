@@ -1,7 +1,7 @@
 import asyncio
 from typing import AsyncGenerator, Generic, Iterable, List, Optional, TypeVar
 
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger

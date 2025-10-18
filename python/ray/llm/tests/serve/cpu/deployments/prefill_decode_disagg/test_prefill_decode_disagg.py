@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import ModelLoadingConfig
+from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
     PDServingArgs,
     ProxyClsConfig,

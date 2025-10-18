@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import ModelCard
+from ray.llm._internal.serve.core.configs.openai_api_models import ModelCard
 from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve.handle import DeploymentHandle

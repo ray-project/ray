@@ -10,7 +10,7 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )

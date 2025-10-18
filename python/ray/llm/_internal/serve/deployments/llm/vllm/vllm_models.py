@@ -10,11 +10,11 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.configs.constants import (
+from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     GPUType,
     LLMConfig,
 )

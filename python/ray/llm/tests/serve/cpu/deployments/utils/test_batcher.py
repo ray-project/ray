@@ -6,7 +6,7 @@ from typing import List, Optional
 import numpy as np
 import pytest
 
-from ray.llm._internal.serve.configs.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
+from ray.llm._internal.serve.constants import MODEL_RESPONSE_BATCH_TIMEOUT_MS
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 
 TEXT_VALUE = "foo"

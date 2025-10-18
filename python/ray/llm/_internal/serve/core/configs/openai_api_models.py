@@ -29,7 +29,7 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.utils import random_uuid
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
 class ChatCompletionRequest(vLLMChatCompletionRequest):
