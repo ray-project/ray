@@ -38,6 +38,7 @@ pre_commit() {
     cpplint
     buildifier
     buildifier-lint
+    eslint
   )
 
   for HOOK in "${HOOKS[@]}"; do
