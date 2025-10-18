@@ -127,7 +127,7 @@ class ResizingState(TrainControllerState):
 
 
 class ShuttingDownState(TrainControllerState):
-    def __init__(self, next_state: TrainControllerStateType):
+    def __init__(self, next_state: "TrainControllerState"):
         super().__init__(state_type=TrainControllerStateType.SHUTTING_DOWN)
         self.next_state = next_state
 
