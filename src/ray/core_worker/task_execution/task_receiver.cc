@@ -146,8 +146,11 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
           }
         }
       }
+      RAY_CHECK(!status.IsTimedOut())
+          << "Timeout unexpected! We assume calls to the raylet don't timeout!";
       if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
-          status.IsCreationTaskError()) {
+          status.IsCreationTaskError() || status.IsInterrupted() || status.IsIOError() ||
+          status.IsDisconnected()) {
         reply->set_worker_exiting(true);
         if (objects_valid) {
           accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
