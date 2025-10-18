@@ -16,6 +16,9 @@ Utility
    ray.util.accelerators.tpu.get_current_pod_name
    ray.util.accelerators.tpu.get_num_tpu_chips_on_node
 
+   ray.util.accelerators.types.all_types
+   ray.util.accelerators.types.vendor_types
+
    ray.nodes
    ray.cluster_resources
    ray.available_resources
