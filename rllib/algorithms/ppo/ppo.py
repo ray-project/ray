@@ -10,9 +10,11 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+
 from typing_extensions import Self
 
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -21,13 +23,13 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
-    train_one_step,
     multi_gpu_train_one_step,
+    train_one_step,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     LEARNER_RESULTS,
@@ -35,10 +37,9 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
-    ALL_MODULES,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules.scheduler import Scheduler
