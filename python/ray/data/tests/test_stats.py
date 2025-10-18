@@ -71,36 +71,13 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
-def gen_histogram_metrics_value_str(histogram_buckets: List[float], *vals):
-    """
-    For a histogram with 5 buckets, generate a string like:
-    [Z, Z, Z, Z, Z, Z]
-    (The extra element is for the +Inf bucket)
-
-    *vals can be used to prefill the elements in the list starting from the first element.
-    For example, if *vals is [N, N, N, N, N], the string will be:
-    [N, N, N, N, N, Z]
-
-    """
-    return f"[{', '.join([*vals, *['Z' for _ in range(len(histogram_buckets) + 1 - len(vals))]])}]"
-
-
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
-    canonicalize_histogram_values: bool = False,
 ):
-    # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
-    # Otherwise, we generate a list of values that we expect to see in the metrics.
-    gen_histogram_values = (
-        gen_histogram_metrics_value_str
-        if not canonicalize_histogram_values
-        else lambda *args: "HB"
-    )
-
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
@@ -151,26 +128,14 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             "'task_completion_time_total': N",
-            (
-                "'task_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            (
-                "'block_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
+            "'task_completion_time': (samples: N, avg: N)",
+            "'block_completion_time': (samples: N, avg: N)",
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
-            (
-                "'block_size_bytes': "
-                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
-            ),
-            (
-                "'block_size_rows': "
-                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
-            ),
+            "'block_size_bytes': (samples: N, avg: N)",
+            "'block_size_rows': (samples: N, avg: N)",
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -231,27 +196,15 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            "'task_completion_time_total': N",
-            (
-                "'task_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            (
-                "'block_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
+            "'task_completion_time_total': Z",
+            "'task_completion_time': (samples: Z, avg: Z)",
+            "'block_completion_time': (samples: Z, avg: Z)",
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
-            (
-                "'block_size_bytes': "
-                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
-            ),
-            (
-                "'block_size_rows': "
-                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
-            ),
+            "'block_size_bytes': (samples: Z, avg: Z)",
+            "'block_size_rows': (samples: Z, avg: Z)",
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -296,18 +249,6 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
-)
-
-STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = (
-    gen_expected_metrics(
-        is_map=True,
-        spilled=False,
-        task_backpressure=True,
-        canonicalize_histogram_values=True,
-        extra_metrics=[
-            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
-        ],
-    )
 )
 
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
@@ -363,20 +304,20 @@ EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 def canonicalize(
     stats: str,
     filter_global_stats: bool = True,
-    canonicalize_histogram_values: bool = False,
 ) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
-
-    if canonicalize_histogram_values:
-        # Replace the histogram entire histogram bucket values list with HB since it's
-        # hard to predict which buckets will have values vs which will have zeroes.
-        canonicalized_stats = re.sub(r": \[.*?\]", ": HB", canonicalized_stats)
-
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    # Histogram expressions.
+    canonicalized_stats = re.sub(
+        r"\(samples: 0, avg: 0.00\)", "(samples: Z, avg: Z)", canonicalized_stats
+    )
+    canonicalized_stats = re.sub(
+        r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
+    )
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
     canonicalized_stats = re.sub(
@@ -471,6 +412,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
+    print(stats)
     assert (
         canonicalize(stats)
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
@@ -810,11 +752,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total: N,\n"
-        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_without_backpressure: N,\n"
-        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -948,11 +890,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total: N,\n"
-        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_without_backpressure: N,\n"
-        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -1041,11 +983,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_total: N,\n"
-        f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "            task_completion_time: (samples: N, avg: N),\n"
+        "            block_completion_time: (samples: N, avg: N),\n"
         "            task_completion_time_without_backpressure: N,\n"
-        f"            block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"            block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "            block_size_bytes: (samples: N, avg: N),\n"
+        "            block_size_rows: (samples: N, avg: N),\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"

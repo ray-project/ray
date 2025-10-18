@@ -1,7 +1,7 @@
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 import bisect
 import json
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from ray.util.metrics import Histogram
 
@@ -96,9 +96,11 @@ class RuntimeMetricsHistogram:
         self.boundaries = boundaries
         # Initialize bucket counts to 0 (+1 additional bucket to represent the +Inf bucket)
         self._bucket_counts = [0 for _ in range(len(boundaries) + 1)]
+        self._calculated_average_values = None
 
     def observe(self, value: float, num_observations: int = 1):
         self._bucket_counts[self._find_bucket_index(value)] += num_observations
+        self._calculated_average_values = None
 
     def apply_to_metric(
         self,
@@ -145,7 +147,35 @@ class RuntimeMetricsHistogram:
         ] = self._bucket_counts.copy()
 
     def __repr__(self):
-        return f"{self._bucket_counts}"
+        if self._calculated_average_values is None:
+            self._calculated_average_values = self._calculate_average_value()
+        total_samples, average = self._calculated_average_values
+        return f"(samples: {total_samples}, avg: {average:.2f})"
+
+    def _calculate_average_value(self) -> Tuple[int, float]:
+        # Calculate the average value of all samples
+        total_samples = sum(self._bucket_counts)
+        if total_samples == 0:
+            return total_samples, 0
+
+        weighted_sum = 0.0
+        for i, count in enumerate(self._bucket_counts):
+            if count > 0:
+                # Calculate representative value for this bucket
+                if i == 0:
+                    # First bucket: 0 to first boundary
+                    bucket_value = self.boundaries[0] / 2
+                elif i == len(self._bucket_counts) - 1:
+                    # Last bucket: last boundary to +inf
+                    bucket_value = self.boundaries[-1] * 1.5
+                else:
+                    # Middle buckets: between boundaries
+                    bucket_value = (self.boundaries[i - 1] + self.boundaries[i]) / 2
+
+                weighted_sum += bucket_value * count
+
+        average = weighted_sum / total_samples
+        return total_samples, average
 
     def _find_bucket_index(self, value: float):
         return bisect.bisect_left(self.boundaries, value)
