@@ -162,7 +162,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers) const override {
+      bool filter_dead_drivers, bool filter_system_drivers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }

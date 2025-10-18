@@ -18,7 +18,8 @@ from aiohttp.web import Request, Response
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
+from ray._private.ray_constants import env_bool
+from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if

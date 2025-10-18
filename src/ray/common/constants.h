@@ -150,3 +150,6 @@ constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
 
 /// PID of GCS process to record metrics.
 constexpr char kGcsPidKey[] = "gcs_pid";
+
+// Prefix for namespaces which are used internally by ray.
+constexpr char kRayInternalNamespacePrefix[] = "_ray_internal_";  // NOLINT
