@@ -35,6 +35,38 @@ class BaseConnectorBackend(abc.ABC):
         """
         return "".join(random.choices(string.ascii_letters + string.digits, k=len))
 
+    def _compute_port_offset(self) -> int:
+        """Compute a deterministic port offset for this replica/process.
+
+        Priority:
+        1) data_parallel_rank if present (set by DPServer).
+        2) Stable hash of Serve replica tag (avoids cross-replica collisions when TP/PP only).
+
+        Returns:
+            A small non-negative integer to add to a base port.
+        """
+        # Prefer explicit DP rank when available
+        dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
+        if isinstance(dp_rank, int) and dp_rank >= 0:
+            return dp_rank
+
+        # Fall back to a stable hash of the Serve replica tag if available
+        try:
+            # Import locally to avoid import-time side effects
+            from ray import serve  # type: ignore
+
+            rc = serve.get_replica_context()
+            if rc and getattr(rc, "replica_tag", None):
+                import zlib
+
+                # Keep the offset bounded to avoid large jumps
+                return zlib.adler32(rc.replica_tag.encode("utf-8")) % 1024
+        except Exception:
+            # Best-effort fallback; avoid introducing failures in setup paths
+            pass
+
+        return 0
+
     @abc.abstractmethod
     def setup(self) -> None:
         """Setup the connector backend.

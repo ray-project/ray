@@ -15,11 +15,8 @@ class NixlConnectorBackend(BaseConnectorBackend):
                     "NIXL_SIDE_CHANNEL_PORT_BASE", vllm_utils.get_open_port()
                 )
             )
-            # If dp_rank is set, we should use the
-            # base port + dp_rank as the side channel port
-            # due to a potential ray condition for getting the free ports.
-            dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank", 0)
-            port = base_port + dp_rank
+            # Use a deterministic rank-based offset (DP rank if set; else replica hash)
+            port = base_port + self._compute_port_offset()
             os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
     def _set_side_channel_host(self):
