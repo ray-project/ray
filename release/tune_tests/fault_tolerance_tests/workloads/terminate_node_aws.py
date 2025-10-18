@@ -5,7 +5,6 @@ import time
 import logging
 
 import ray
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # from ray._private.test_utils import safe_write_to_results_json
 
@@ -50,7 +49,7 @@ def terminate_current_instance():
 def terminate_node(node_id: str):
     killer_task = ray.remote(terminate_current_instance).options(
         num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+        label_selector={"ray.io/node-id": node_id},
     )
     ray.get(killer_task.remote())
 
@@ -137,9 +136,7 @@ def create_instance_killer(
     warmup_time_s: float = 0,
 ):
     killer_actor_cls = InstanceKillerActor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
-        ),
+        label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
     )
     actor = killer_actor_cls.remote(
         probability=probability,
