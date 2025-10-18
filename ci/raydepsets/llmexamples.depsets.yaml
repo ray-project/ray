@@ -1,0 +1,20 @@
+build_arg_sets:
+  gpu_py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+    CUDA_VERSION: "gpu"
+
+
+depsets:
+  - name: distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - doc/source/train/examples/pytorch/distributing-pytorch/requirements.in
+    output: release/ray_release/byod/distributing_pytorch_py${PYTHON_SHORT}_${CUDA_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+    build_arg_sets:
+      - gpu_py39
