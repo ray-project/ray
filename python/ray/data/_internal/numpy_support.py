@@ -153,6 +153,16 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 # Use `np.asarray` instead of `np.array` to avoid copying if possible.
                 column_values = [np.asarray(e) for e in column_values]
 
+            # Handle nested lists of ndarrays by recursively flattening them
+            # For example: [[img1, img2], [img3, img4]] becomes [list_of_imgs1, list_of_imgs2]
+            # Also handle mixed cases like [img1, [img2]]
+            if any(isinstance(e, list) for e in column_values):
+                # Recursively convert any nested lists
+                column_values = [
+                    convert_to_numpy(e) if isinstance(e, list) else e
+                    for e in column_values
+                ]
+
             shapes = set()
             has_object = False
             for e in column_values:
