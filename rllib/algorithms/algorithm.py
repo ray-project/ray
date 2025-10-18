@@ -483,7 +483,9 @@ class Algorithm(Checkpointable, Trainable):
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
-        self.metrics = MetricsLogger(root=True)
+        self.metrics: MetricsLogger = MetricsLogger(
+            root=True, stats_cls_lookup=config.custom_stats_cls_lookup
+        )
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:

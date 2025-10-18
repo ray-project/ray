@@ -269,7 +269,9 @@ class Learner(Checkpointable):
         # custom user-defined ones (e.g. custom loss values). When returning from an
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
-        self.metrics = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.custom_stats_cls_lookup
+        )
 
         # In case of offline learning and multiple learners, each learner receives a
         # repeatable iterator that iterates over a split of the streamed data.
@@ -1559,7 +1561,9 @@ class Learner(Checkpointable):
         self._named_optimizers = {}
         self._module_optimizers = defaultdict(list)
         self._optimizer_lr_schedules = {}
-        self.metrics = MetricsLogger()
+        self.metrics = MetricsLogger(
+            stats_cls_lookup=self.config.custom_stats_cls_lookup
+        )
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
