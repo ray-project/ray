@@ -1,7 +1,7 @@
+import time
 import unittest
 
 import ray
-import time
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
@@ -128,7 +128,8 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
