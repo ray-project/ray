@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pyarrow.compute as pc
@@ -887,6 +887,88 @@ class Unique(AggregateFnV2):
             return set(x)
         else:
             return {x}
+
+
+@PublicAPI
+class ValueCounter(AggregateFnV2):
+    """Counts the number of times each value appears in a column.
+
+    This aggregation computes value counts for a specified column, similar to pandas'
+    `value_counts()` method. It returns a dictionary with two lists: "values" containing
+    the unique values found in the column, and "counts" containing the corresponding
+    count for each value.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ValueCounter
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count occurrences of each category
+            result = ds.aggregate(ValueCounter(on="category"))
+            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+
+    Args:
+        on: The name of the column to count values in. Must be provided.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "value_counter({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"value_counter({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+
+        col_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        return col_accessor.value_counts()
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new_accumulator: Dict[str, List],
+    ) -> Dict[str, List]:
+
+        values = current_accumulator["values"]
+        counts = current_accumulator["counts"]
+
+        # Build a value → index map once (avoid repeated lookups)
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+            if v_new in value_to_index:
+                idx = value_to_index[v_new]
+                counts[idx] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return current_accumulator
 
 
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
