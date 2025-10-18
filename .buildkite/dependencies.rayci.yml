@@ -47,3 +47,12 @@ steps:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux
+
+  - label: ":tapioca: build: raydepsets: compile doc dependencies"
+    key: raydepsets_compile_doc_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux
