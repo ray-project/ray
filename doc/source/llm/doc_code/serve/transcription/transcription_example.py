@@ -105,7 +105,8 @@ with open("audio.wav", "wb") as f:
     f.write(response.content)
 
 client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-file = open("/audio.wav", "rb")
+file = open("audio.wav", "rb")
+
 try:
     response = client.audio.transcriptions.create(
         model="whisper-large",
@@ -114,6 +115,8 @@ try:
         language="en",
     )
 except Exception as e:
-    raise AssertionError(f"Error while querying models: {e}. Check the logs for more details.")
+    raise AssertionError(
+        f"Error while querying models: {e}. Check the logs for more details."
+    )
 
 serve.shutdown()
