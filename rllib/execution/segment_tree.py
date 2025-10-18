@@ -136,7 +136,7 @@ class SegmentTree:
         Inserts/overwrites a value in/into the tree.
 
         Args:
-            idx: The index to insert to. Must be in [0, `self.capacity`[
+            idx: The index to insert to. Must be in [0, `self.capacity`)
             val: The value to insert.
         """
         assert 0 <= idx < self.capacity, f"idx={idx} capacity={self.capacity}"
@@ -191,6 +191,11 @@ class SumSegmentTree(SegmentTree):
         assert 0 <= prefixsum <= self.sum() + 1e-5
         # Global sum node.
         idx = 1
+
+        # Edge case when prefixsum can clip into the invalid regions
+        #   https://github.com/ray-project/ray/issues/54284
+        if prefixsum >= self.value[idx]:
+            prefixsum = self.value[idx] - 1e-5
 
         # While non-leaf (first half of tree).
         while idx < self.capacity:
