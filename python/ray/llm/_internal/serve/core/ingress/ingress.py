@@ -57,7 +57,7 @@ from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+from ray.llm._internal.serve.utils.server_utils import replace_prefix
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,

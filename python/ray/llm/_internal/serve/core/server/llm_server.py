@@ -29,8 +29,8 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol
-from ray.llm._internal.serve.deployments.utils.batcher import Batcher
-from ray.llm._internal.serve.deployments.utils.server_utils import (
+from ray.llm._internal.serve.utils.batcher import Batcher
+from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
 from ray.llm._internal.serve.observability.logging import get_logger

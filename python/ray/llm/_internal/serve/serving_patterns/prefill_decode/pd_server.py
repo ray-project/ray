@@ -14,7 +14,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorResponse,
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol
-from ray.llm._internal.serve.deployments.utils.server_utils import (
+from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
 from ray.serve.handle import DeploymentHandle
