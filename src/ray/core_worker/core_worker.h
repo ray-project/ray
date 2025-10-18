@@ -1860,6 +1860,12 @@ class CoreWorker {
   // Number of failed argument pinning requests used for metric reporting only
   std::atomic<int64_t> num_failed_get_pin_args_;
 
+  // Number of spilled objects for metric reporting
+  std::atomic<int64_t> num_spilled_objects_;
+
+  // Total size of spilled objects in bytes for metric reporting
+  std::atomic<int64_t> spilled_objects_total_size_;
+
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.

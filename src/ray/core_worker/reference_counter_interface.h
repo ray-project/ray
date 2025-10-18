@@ -330,6 +330,10 @@ class ReferenceCounterInterface {
   /// Returns the total number of actors owned by this worker.
   virtual size_t NumActorsOwnedByUs() const = 0;
 
+  /// Returns the total size of objects owned by this worker. This calulcation maybe best
+  /// effort
+  virtual int64_t TotalOwnedObjectsSize() const = 0;
+
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   virtual std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const = 0;
 

@@ -52,7 +52,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        is_node_dead_(std::move(is_node_dead)) {}
+        is_node_dead_(std::move(is_node_dead)),
+        total_owned_objects_size_(0) {}
 
   ~ReferenceCounter() override = default;
 
@@ -165,6 +166,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   size_t NumObjectsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  int64_t TotalOwnedObjectsSize() const override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -774,6 +777,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  /// Keep track of total size of objects owned by this worker.
+  std::atomic<int64_t> total_owned_objects_size_;
 };
 
 }  // namespace core

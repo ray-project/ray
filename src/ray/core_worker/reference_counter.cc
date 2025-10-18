@@ -329,6 +329,9 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     num_actors_owned_by_us_++;
   } else {
     num_objects_owned_by_us_++;
+    if (object_size > 0) {
+      total_owned_objects_size_ += object_size;
+    }
   }
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
@@ -371,6 +374,14 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
+    // Update total owned objects size if this is an object we own
+    if (it->second.owned_by_us_ && !ObjectID::IsActorID(object_id)) {
+      int64_t old_size = it->second.object_size_;
+      int64_t delta = object_size - (old_size > 0 ? old_size : 0);
+      if (delta != 0) {
+        total_owned_objects_size_ += delta;
+      }
+    }
     it->second.object_size_ = object_size;
     PushToLocationSubscribers(it);
   }
@@ -769,6 +780,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_actors_owned_by_us_--;
     } else {
       num_objects_owned_by_us_--;
+      if (it->second.object_size_ > 0) {
+        total_owned_objects_size_ -= it->second.object_size_;
+      }
     }
   }
   for (const auto &callback : it->second.object_ref_deleted_callbacks) {
@@ -935,6 +949,10 @@ size_t ReferenceCounter::NumObjectsOwnedByUs() const {
 size_t ReferenceCounter::NumActorsOwnedByUs() const {
   absl::MutexLock lock(&mutex_);
   return num_actors_owned_by_us_;
+}
+
+int64_t ReferenceCounter::TotalOwnedObjectsSize() const {
+  return total_owned_objects_size_.load();
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
