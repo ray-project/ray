@@ -107,6 +107,15 @@ LightGBM
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
 
+JAX
+~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.jax.JaxTrainer
+
 
 .. _ray-train-configs-api:
 
