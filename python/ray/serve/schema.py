@@ -1197,6 +1197,7 @@ class TargetGroup(BaseModel, frozen=True):
     targets: List[Target] = Field(description="List of targets for the given route.")
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
+    app_name: str = Field("", description="Name of the application.")
 
 
 @PublicAPI(stability="stable")
