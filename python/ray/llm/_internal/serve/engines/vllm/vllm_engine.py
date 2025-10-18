@@ -28,7 +28,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (

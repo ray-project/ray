@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.base import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
 from ray.llm._internal.serve.observability.logging import get_logger

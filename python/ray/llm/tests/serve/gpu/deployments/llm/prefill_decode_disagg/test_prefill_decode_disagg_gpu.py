@@ -6,7 +6,7 @@ import pytest
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     VLLMEngine,
 )
 

@@ -33,7 +33,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer import (
     SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -455,7 +455,7 @@ class LLMConfig(BaseModelExtended):
             return self._engine_config
 
         if self.llm_engine == LLMEngine.vLLM:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+            from ray.llm._internal.serve.engines.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
 

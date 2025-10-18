@@ -17,7 +17,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingCompletionRequest,
     ScoreRequest,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.serve.llm import (
