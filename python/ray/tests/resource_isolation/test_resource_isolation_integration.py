@@ -69,6 +69,22 @@ _LEAF_GROUP = _BASE_CGROUP / "leaf"
 
 _MOUNT_FILE_PATH = "/proc/mounts"
 
+# The names are here to help debug test failures. Tests should
+# only use the size of this list. These processes are expected to be moved
+# into the the system cgroup.
+_EXPECTED_DASHBOARD_MODULES = [
+    "ray.dashboard.modules.usage_stats.usage_stats_head.UsageStatsHead",
+    "ray.dashboard.modules.metrics.metrics_head.MetricsHead",
+    "ray.dashboard.modules.data.data_head.DataHead",
+    "ray.dashboard.modules.event.event_head.EventHead",
+    "ray.dashboard.modules.job.job_head.JobHead",
+    "ray.dashboard.modules.node.node_head.NodeHead",
+    "ray.dashboard.modules.reporter.reporter_head.ReportHead",
+    "ray.dashboard.modules.serve.serve_head.ServeHead",
+    "ray.dashboard.modules.state.state_head.StateHead",
+    "ray.dashboard.modules.train.train_head.TrainHead",
+]
+
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
 _EXPECTED_SYSTEM_PROCESSES_RAY_START = [
@@ -345,7 +361,7 @@ def assert_system_processes_are_in_system_cgroup(
         lines = cgroup_procs_file.readlines()
         assert (
             len(lines) == expected_count
-        ), f"Expected only system process passed into the raylet. Found {lines}"
+        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard module in which case you need to update _EXPECTED_DASHBOARD_MODULES"
 
 
 def assert_worker_processes_are_in_workers_cgroup(
@@ -457,7 +473,9 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
+        node_id,
+        resource_isolation_config,
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START) + len(_EXPECTED_DASHBOARD_MODULES),
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
@@ -520,7 +538,9 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
     assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
+        node_id,
+        resource_isolation_config,
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT) + len(_EXPECTED_DASHBOARD_MODULES),
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
