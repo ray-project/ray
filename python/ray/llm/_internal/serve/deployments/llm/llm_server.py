@@ -26,9 +26,9 @@ from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
+from ray.llm._internal.serve.core.protocol import LLMServerProtocol
 from ray.llm._internal.serve.deployments.utils.batcher import Batcher
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,

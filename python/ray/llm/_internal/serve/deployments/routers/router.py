@@ -52,7 +52,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
-from ray.llm._internal.serve.deployments.protocol import DeploymentProtocol
+from ray.llm._internal.serve.core.protocol import DeploymentProtocol
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,

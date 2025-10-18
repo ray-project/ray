@@ -13,7 +13,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
-from ray.llm._internal.serve.deployments.protocol import LLMServerProtocol
+from ray.llm._internal.serve.core.protocol import LLMServerProtocol
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_serve_request_id,
 )
