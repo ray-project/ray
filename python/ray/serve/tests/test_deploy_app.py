@@ -720,7 +720,6 @@ def test_update_autoscaling_config(serve_instance):
                     "target_ongoing_requests": 1,
                     "min_replicas": 1,
                     "max_replicas": 10,
-                    "metrics_interval_s": 15,
                     "upscale_delay_s": 0.5,
                     "downscale_delay_s": 0.5,
                     "look_back_period_s": 2,
@@ -746,8 +745,8 @@ def test_update_autoscaling_config(serve_instance):
     with pytest.raises(RuntimeError, match="timeout"):
         wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    print(time.ctime(), "Redeploying with `metrics_interval_s` updated to 0.5s.")
-    config_template["deployments"][0]["autoscaling_config"]["metrics_interval_s"] = 0.5
+    print(time.ctime(), "Redeploying with `look_back_period_s` updated to 0.5s.")
+    config_template["deployments"][0]["autoscaling_config"]["look_back_period_s"] = 0.5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)

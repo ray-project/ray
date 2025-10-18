@@ -130,27 +130,32 @@ def test_autoscaling_config():
     v1 = DeploymentVersion(
         "1",
         DeploymentConfig(
-            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 10}
+            autoscaling_config={"max_replicas": 2, "look_back_period_s": 10}
         ),
         {},
     )
     v2 = DeploymentVersion(
         "1",
         DeploymentConfig(
-            autoscaling_config={"max_replicas": 5, "metrics_interval_s": 10}
+            autoscaling_config={"max_replicas": 5, "look_back_period_s": 10}
         ),
         {},
     )
     v3 = DeploymentVersion(
         "1",
         DeploymentConfig(
-            autoscaling_config={"max_replicas": 2, "metrics_interval_s": 3}
+            autoscaling_config={"max_replicas": 2, "look_back_period_s": 3}
         ),
         {},
     )
 
+    # v1 and v2 have different max_replicas,
+    # but this doesn't require a restart so they should be considered equal.
     assert v1 == v2
     assert hash(v1) == hash(v2)
+
+    # v1 and v3 have different look_back_period_s,
+    # which requires a replica restart so they should be considered different.
     assert v1 != v3
     assert hash(v1) != hash(v3)
 

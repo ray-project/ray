@@ -32,7 +32,6 @@ deployment_config:
     initial_replicas: 1
     max_replicas: 8
     target_ongoing_requests: 5
-    metrics_interval_s: 10.0
     look_back_period_s: 30.0
     smoothing_factor: 1.0
     downscale_delay_s: 300.0
