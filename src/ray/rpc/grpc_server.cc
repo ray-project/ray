@@ -178,12 +178,13 @@ void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) 
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
-                                 bool token_auth) {
+                                 bool cluster_id_auth_enabled) {
+  if (cluster_id_auth_enabled && cluster_id_.IsNil()) {
+    RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
+  }
   for (int i = 0; i < num_threads_; i++) {
-    if (token_auth && cluster_id_.IsNil()) {
-      RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
-    }
-    service->InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
+    service->InitServerCallFactories(
+        cqs_[i], &server_call_factories_, cluster_id_, auth_token_);
   }
   services_.push_back(std::move(service));
 }

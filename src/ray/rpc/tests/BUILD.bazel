@@ -40,3 +40,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "auth_token_loader_test",
+    size = "small",
+    srcs = [
+        "auth_token_loader_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc:auth_token_loader",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
