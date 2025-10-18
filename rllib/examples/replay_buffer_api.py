@@ -13,11 +13,11 @@ import argparse
 
 import ray
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+from ray.tune.result import TRAINING_ITERATION
 
 tf1, tf, tfv = try_import_tf()
 

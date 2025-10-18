@@ -48,7 +48,6 @@ Number of experiences recorded: 26644
 """
 
 import ray
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns

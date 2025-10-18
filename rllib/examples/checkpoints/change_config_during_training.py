@@ -80,8 +80,8 @@ And if you are using the `--as-test` option, you should see a finel message:
 `env_runners/episode_return_mean` of 450.0 reached! ok
 ```
 """
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
@@ -97,7 +97,6 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import register_env
-
 
 parser = add_rllib_example_script_args(
     default_reward=450.0, default_timesteps=10000000, default_iters=2000
