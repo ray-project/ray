@@ -172,7 +172,6 @@ class CgroupDriverInterface {
     supported or the value not correct.
    */
   virtual Status AddConstraint(const std::string &cgroup,
-                               const std::string &controller,
                                const std::string &constraint,
                                const std::string &value) = 0;
   /**
@@ -228,4 +227,5 @@ class CgroupDriverInterface {
   virtual Status AddProcessToCgroup(const std::string &cgroup,
                                     const std::string &pid) = 0;
 };
+
 }  // namespace ray

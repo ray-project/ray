@@ -1,11 +1,12 @@
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter as _LLMRouter,
+    OpenAiIngress as _OpenAiIngress,
+    make_fastapi_ingress,
 )
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class OpenAiIngress(_LLMRouter):
+class OpenAiIngress(_OpenAiIngress):
 
     """The implementation of the OpenAI compatiple model router.
 
@@ -24,38 +25,56 @@ class OpenAiIngress(_LLMRouter):
             from ray import serve
             from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
-            from ray.serve.llm.ingress import OpenAiIngress
-            from ray.serve.llm.openai_api_models import ChatCompletionRequest
-
+            from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
-                    served_model_name="llama-3.1-8b",  # Name shown in /v1/models
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
-                        min_replicas=1, max_replicas=8,
+                        min_replicas=1, max_replicas=2,
                     )
                 ),
-            )
-            llm_config2 = LLMConfig(
-                model_loading_config=dict(
-                    served_model_name="llama-3.2-3b",  # Name shown in /v1/models
-                    model_source="meta-llama/Llama-3.2-3b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1, max_replicas=8,
-                    )
-                ),
+                accelerator_type="A10G",
             )
 
-            # Deploy the application
-            vllm_deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-            vllm_deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
-            llm_app = OpenAiIngress.as_deployment().bind([vllm_deployment1, vllm_deployment2])
-            serve.run(llm_app)
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            # deployment #1
+            server_options1 = LLMServer.get_deployment_options(llm_config1)
+            server_deployment1 = serve.deployment(LLMServer).options(
+                **server_options1).bind(llm_config1)
+
+            # deployment #2
+            server_options2 = LLMServer.get_deployment_options(llm_config2)
+            server_deployment2 = serve.deployment(LLMServer).options(
+                **server_options2).bind(llm_config2)
+
+            # ingress
+            ingress_options = OpenAiIngress.get_deployment_options(
+                llm_configs=[llm_config1, llm_config2])
+            ingress_cls = make_fastapi_ingress(OpenAiIngress)
+            ingress_deployment = serve.deployment(ingress_cls).options(
+                **ingress_options).bind([server_deployment1, server_deployment2])
+
+            # run
+            serve.run(ingress_deployment, blocking=True)
     """
 
     pass
+
+
+__all__ = ["OpenAiIngress", "make_fastapi_ingress"]

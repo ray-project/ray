@@ -135,7 +135,8 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.v2.api.context.TrainContext
+    ~train.CheckpointUploadMode
+    ~train.TrainContext
 
 **Functions**
 
@@ -177,8 +178,9 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.ControllerError
-    ~train.v2.api.exceptions.WorkerGroupError
+    ~train.ControllerError
+    ~train.WorkerGroupError
+    ~train.v2.api.exceptions.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------

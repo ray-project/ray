@@ -208,7 +208,8 @@ class ParquetDatasource(Datasource):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
-
+        # Need this property for lineage tracking
+        self._source_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
@@ -329,7 +330,9 @@ class ParquetDatasource(Datasource):
 
         return self._estimate_in_mem_size(self._pq_fragments)
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -406,6 +409,7 @@ class ParquetDatasource(Datasource):
                     ),
                     meta,
                     schema=target_schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
 

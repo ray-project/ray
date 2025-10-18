@@ -4,11 +4,15 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
+
+import pyarrow
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+T = TypeVar("T")
 
 
 @DeveloperAPI(stability="alpha")
@@ -59,6 +63,131 @@ class Operation(Enum):
     NOT_IN = "not_in"
 
 
+class _ExprVisitor(ABC, Generic[T]):
+    """Base visitor with generic dispatch for Ray Data expressions."""
+
+    def visit(self, expr: "Expr") -> T:
+        if isinstance(expr, ColumnExpr):
+            return self.visit_column(expr)
+        elif isinstance(expr, LiteralExpr):
+            return self.visit_literal(expr)
+        elif isinstance(expr, BinaryExpr):
+            return self.visit_binary(expr)
+        elif isinstance(expr, UnaryExpr):
+            return self.visit_unary(expr)
+        elif isinstance(expr, AliasExpr):
+            return self.visit_alias(expr)
+        elif isinstance(expr, UDFExpr):
+            return self.visit_udf(expr)
+        elif isinstance(expr, DownloadExpr):
+            return self.visit_download(expr)
+        elif isinstance(expr, StarExpr):
+            return self.visit_star(expr)
+        else:
+            raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
+
+    @abstractmethod
+    def visit_column(self, expr: "ColumnExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_literal(self, expr: "LiteralExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_binary(self, expr: "BinaryExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_unary(self, expr: "UnaryExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_alias(self, expr: "AliasExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_udf(self, expr: "UDFExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_star(self, expr: "StarExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_download(self, expr: "DownloadExpr") -> T:
+        pass
+
+
+class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
+    """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
+
+    def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
+        import pyarrow.compute as pc
+
+        return pc.field(expr.name)
+
+    def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
+        import pyarrow.compute as pc
+
+        return pc.scalar(expr.value)
+
+    def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            left = self.visit(expr.left)
+            if isinstance(expr.right, LiteralExpr):
+                right_value = expr.right.value
+                right = (
+                    pa.array(right_value)
+                    if isinstance(right_value, list)
+                    else pa.array([right_value])
+                )
+            else:
+                raise ValueError(
+                    f"is_in/not_in operations require the right operand to be a "
+                    f"literal list, got {type(expr.right).__name__}."
+                )
+            result = pc.is_in(left, right)
+            return pc.invert(result) if expr.op == Operation.NOT_IN else result
+
+        left = self.visit(expr.left)
+        right = self.visit(expr.right)
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        if expr.op in _ARROW_EXPR_OPS_MAP:
+            return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
+        raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
+
+    def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
+        operand = self.visit(expr.operand)
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        if expr.op in _ARROW_EXPR_OPS_MAP:
+            return _ARROW_EXPR_OPS_MAP[expr.op](operand)
+        raise ValueError(f"Unsupported unary operation for PyArrow: {expr.op}")
+
+    def visit_alias(self, expr: "AliasExpr") -> "pyarrow.compute.Expression":
+        return self.visit(expr.expr)
+
+    def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
+
+    def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Download expressions cannot be converted to PyArrow expressions"
+        )
+
+    def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("Star expressions cannot be converted to PyArrow expressions")
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class Expr(ABC):
@@ -100,6 +229,18 @@ class Expr(ABC):
     def structurally_equals(self, other: Any) -> bool:
         """Compare two expression ASTs for structural equality."""
         raise NotImplementedError
+
+    def to_pyarrow(self) -> "pyarrow.compute.Expression":
+        """Convert this Ray Data expression to a PyArrow compute expression.
+
+        Returns:
+            A PyArrow compute expression equivalent to this Ray Data expression.
+
+        Raises:
+            ValueError: If the expression contains operations not supported by PyArrow.
+            TypeError: If the expression type cannot be converted to PyArrow.
+        """
+        return _PyArrowExpressionVisitor().visit(self)
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
@@ -555,6 +696,30 @@ class AliasExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class StarExpr(Expr):
+    """Expression that represents all columns from the input.
+
+    This is a special expression used in projections to indicate that
+    all existing columns should be preserved at this position in the output.
+    It's typically used internally by operations like with_column() and
+    rename_columns() to maintain existing columns.
+
+    Example:
+        When with_column("new_col", expr) is called, it creates:
+        Project(exprs=[star(), expr.alias("new_col")])
+
+        This means: keep all existing columns, then add/overwrite "new_col"
+    """
+
+    # TODO: Add UnresolvedExpr. Both StarExpr and UnresolvedExpr won't have a defined data_type.
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, StarExpr)
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -617,6 +782,21 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@PublicAPI(stability="beta")
+def star() -> StarExpr:
+    """
+    References all input columns from the input.
+
+    This is a special expression used in projections to preserve all
+    existing columns. It's typically used with operations that want to
+    add or modify columns while keeping the rest.
+
+    Returns:
+        A StarExpr that represents all input columns.
+    """
+    return StarExpr()
+
+
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -662,8 +842,10 @@ __all__ = [
     "UDFExpr",
     "DownloadExpr",
     "AliasExpr",
+    "StarExpr",
     "udf",
     "col",
     "lit",
     "download",
+    "star",
 ]
