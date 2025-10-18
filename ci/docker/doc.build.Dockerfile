@@ -1,13 +1,14 @@
 ARG DOCKER_IMAGE_RAY_CORE=cr.ray.io/rayproject/ray-core-py3.9
 ARG DOCKER_IMAGE_RAY_DASHBOARD=cr.ray.io/rayproject/ray-dashboard
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
-ARG PIP_REQUIREMENTS
+ARG PIP_REQUIREMENTS=python/deplocks/docs/docbuild_depset_py3.10.lock
 FROM $DOCKER_IMAGE_RAY_CORE AS ray_core
 FROM $DOCKER_IMAGE_RAY_DASHBOARD AS ray_dashboard
 
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-COPY ${PIP_REQUIREMENTS} python_depset.lock
+RUN echo "PIP_REQUIREMENTS: $PIP_REQUIREMENTS"
+COPY "$PIP_REQUIREMENTS" python_depset.lock
 
 SHELL ["/bin/bash", "-ice"]
 
