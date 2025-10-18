@@ -31,7 +31,7 @@ class LifetimeSumStats(StatsBase):
 
         self._lifetime_sum = 0.0
 
-        self.track_throughput = with_throughput
+        self.track_throughputs = with_throughput
         # We need to initialize this to 0.0
         # When setting state or reducing, these values are expected to be updated we calculate a throughput.
         self._value_at_last_reduce = 0.0
@@ -43,7 +43,7 @@ class LifetimeSumStats(StatsBase):
 
     @property
     def has_throughputs(self) -> bool:
-        return self.track_throughput
+        return self.track_throughputs
 
     def initialize_throughput_reference_time(self, time: float) -> None:
         assert (
@@ -91,13 +91,13 @@ class LifetimeSumStats(StatsBase):
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
         state["lifetime_sum"] = self._lifetime_sum
-        state["track_throughput"] = self.throughput
+        state["track_throughputs"] = self.track_throughputs
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
         self._lifetime_sum = state["lifetime_sum"]
-        self.track_throughput = state["track_throughput"]
+        self.track_throughputs = state["track_throughputs"]
 
         # We always start over with the throughput calculation after a restore
         self._value_at_last_restore = self._lifetime_sum
@@ -116,7 +116,7 @@ class LifetimeSumStats(StatsBase):
     @property
     def throughput_since_last_reduce(self) -> float:
         """Returns the throughput since the last reduce call."""
-        if self.track_throughput_last_restore:
+        if self.track_throughputs:
             return (
                 single_value_to_cpu(self._lifetime_sum) - self._value_at_last_reduce
             ) / (time.perf_counter() - self._last_reduce_time)
@@ -128,7 +128,7 @@ class LifetimeSumStats(StatsBase):
     @property
     def throughput_since_last_restore(self) -> float:
         """Returns the total throughput since the last restore."""
-        if self.track_throughput_last_restore:
+        if self.track_throughputs:
             return (
                 single_value_to_cpu(self._lifetime_sum) - self._value_at_last_restore
             ) / (time.perf_counter() - self._last_restore_time)
@@ -161,4 +161,4 @@ class LifetimeSumStats(StatsBase):
         self.push(sum([stat._item for stat in incoming_stats]))
 
     def __repr__(self) -> str:
-        return f"LifetimeSumStats({self.peek()}; track_throughput_since_last_restore={self.track_throughput_since_last_restore})"
+        return f"LifetimeSumStats({self.peek()}; track_throughputs={self.track_throughputs})"

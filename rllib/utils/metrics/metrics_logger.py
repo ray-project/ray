@@ -746,11 +746,11 @@ class MetricsLogger:
             metrics. The structure matches self.stats, with throughput values having
             "_throughput" suffix in their keys.
         """
-        # Get all current values
-        values = self.reduce(compile=True)
-
         # Get all throughputs
         throughputs = self._get_throughputs()
+
+        # Get all current values
+        values = self.reduce(compile=True)
 
         deep_update(values, throughputs or {}, new_keys_allowed=True)
 

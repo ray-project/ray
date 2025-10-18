@@ -307,32 +307,48 @@ def test_reset_and_delete(logger):
 
 def test_compile(logger):
     """Test the compile method that combines values and throughputs."""
+    # Override the initialization time to make the test more accurate.
+    logger._time_when_initialized = time.perf_counter()
+    start_time = time.perf_counter()
+
     # Log some values with throughput tracking
     logger.log_value("count", 1, reduce="sum", with_throughput=True)
-    time.sleep(0.1)
-    logger.log_value("count", 2, reduce="sum", with_throughput=True)
+    logger.log_value("count", 2)
 
     # Log some nested values with throughput tracking
-    logger.log_value(["nested", "count"], 3, reduce="sum", with_throughput=True)
-    time.sleep(0.1)
-    logger.log_value(["nested", "count"], 4, reduce="sum", with_throughput=True)
+    logger.log_value(
+        ["nested", "count"], 1, reduce="lifetime_sum", with_throughput=True
+    )
+    logger.log_value(["nested", "count"], 2)
 
     # Log some values without throughput tracking
-    logger.log_value("simple", 5.0)
-    logger.log_value("simple", 6.0)
+    logger.log_value("simple", 1)
+    logger.log_value("simple", 2)
+
+    time.sleep(1)
+
+    end_time = time.perf_counter()
+    throughput = 3 / (end_time - start_time)
 
     # Get compiled results
     compiled = logger.compile()
 
-    breakpoint()
-
     # Check that values and throughputs are correctly combined
     check(compiled["count"], 3)  # sum of [1, 2]
-    check(compiled["count_throughput"], 20, rtol=0.1)  # initial throughput
-    check(compiled["nested"]["count"], 7)  # sum of [3, 4]
-    check(compiled["nested"]["count_throughput"], 40, rtol=0.1)  # initial throughput
+    check(compiled["count_throughput"], throughput, rtol=0.1)  # initial throughput
+    check(compiled["nested"]["count"], 3)  # sum of [1, 2]
+    check(
+        compiled["nested"]["count_throughput"]["throughput_since_last_reduce"],
+        throughput,
+        rtol=0.1,
+    )  # initial throughput
+    check(
+        compiled["nested"]["count_throughput"]["throughput_since_last_restore"],
+        throughput,
+        rtol=0.1,
+    )  # initial throughput
 
-    check(compiled["simple"], 5.01)
+    check(compiled["simple"], 1.01)
     assert (
         "simple_throughput" not in compiled
     )  # no throughput for non-throughput metric
