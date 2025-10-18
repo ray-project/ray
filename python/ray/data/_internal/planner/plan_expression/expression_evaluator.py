@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, TypeVar, Union
+from typing import Any, Callable, Dict, List, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -691,3 +691,93 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     """
     evaluator = NativeExpressionEvaluator(block)
     return evaluator.visit(expr)
+
+
+def eval_projection(exprs: List[Expr], block: Block) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    Handles projection semantics including:
+    - Empty projections
+    - Star() expressions for preserving existing columns
+    - Rename detection
+    - Column ordering
+
+    Args:
+        exprs: List of expressions to evaluate (may include StarColumnsExpr)
+        block: The block to project
+
+    Returns:
+        A new block with the projected schema
+    """
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Skip projection only for schema-less empty blocks.
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
+    existing_cols = list(block_accessor.column_names())
+
+    # Empty projection.
+    if len(exprs) == 0:
+        return block_accessor.select([])
+
+    # Optimization: Skip star expansion for single star() with no other expressions.
+    if len(exprs) == 1 and isinstance(exprs[0], StarExpr):
+        return block
+
+    # Phase 0: Compute rename map up front for aliases that rename existing columns.
+    # Keep parity with current behavior (only treat alias-of-existing-col as rename).
+    rename_map: Dict[str, str] = {}
+    for expr in exprs:
+        if (
+            isinstance(expr, AliasExpr)
+            and expr.expr.name != expr.name
+            and expr.expr.name in existing_cols
+        ):
+            rename_map[expr.expr.name] = expr.name
+
+    # Expand stars into an explicit output order (apply renames).
+    # This respects the star position(s) in the expression list.
+    order_spec: List[str] = []
+    for expr in exprs:
+        if isinstance(expr, StarExpr):
+            order_spec.extend([rename_map.get(c, c) for c in existing_cols])
+        else:
+            order_spec.append(expr.name)
+
+    # Phase 1: Compute non-star() expressions.
+    new_output_cols: List[str] = []
+    seen_output_names = set()
+    computed_outputs: Dict[str, Any] = {}
+
+    for expr in exprs:
+        # Still need this check, since the `exprs` list was not mutated during the expansion step.
+        if isinstance(expr, StarExpr):
+            continue
+
+        output_name = expr.name
+
+        # Evaluate and record computed outputs; enforce duplicate check among computed.
+        computed_outputs[output_name] = eval_expr(expr, block)
+        if output_name in seen_output_names:
+            raise ValueError(f"Column name '{output_name}' is a duplicate.")
+        new_output_cols.append(output_name)
+        seen_output_names.add(output_name)
+
+    # Phase 2: Upsert computed columns.
+    cur_block = block
+    for output_name in new_output_cols:
+        cur_block = BlockAccessor.for_block(cur_block).fill_column(
+            output_name, computed_outputs[output_name]
+        )
+
+    # Phase 3: Finalize output schema from order_spec (deduplicate).
+    final_cols: List[str] = []
+    final_seen = set()
+    for name in order_spec:
+        if name not in final_seen:
+            final_cols.append(name)
+            final_seen.add(name)
+
+    return BlockAccessor.for_block(cur_block).select(final_cols)

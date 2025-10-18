@@ -508,7 +508,10 @@ class UnaryExpr(Expr):
     op: Operation
     operand: Expr
 
-    data_type: DataType = field(init=False)
+    # Default to bool return dtype for unary operations like is_null() and NOT.
+    # This enables chaining operations such as col("x").is_not_null().alias("valid"),
+    # where downstream expressions (like AliasExpr) need the data type.
+    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
