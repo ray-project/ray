@@ -46,6 +46,8 @@ def patch_worker_group(monkeypatch):
     # Make polling interval 0 to speed up tests
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     yield
+    DummyWorkerGroup.set_poll_failure(None)
+    DummyWorkerGroup.set_start_failure(None)
 
 
 @pytest.fixture(autouse=True)
@@ -178,7 +180,7 @@ async def test_failure_handling():
     "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
 )
 @pytest.mark.asyncio
-async def test_worker_group_start_failure(monkeypatch, error_type):
+async def test_worker_group_start_failure(error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
@@ -190,7 +192,6 @@ async def test_worker_group_start_failure(monkeypatch, error_type):
         failure_policy=failure_policy,
     )
     DummyWorkerGroup.set_start_failure(error_type)
-    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
 
     assert isinstance(controller.get_state(), InitializingState)
 
@@ -209,7 +210,6 @@ async def test_worker_group_start_failure(monkeypatch, error_type):
 
     # Let the worker group start successfully the 2nd time.
     DummyWorkerGroup.set_start_failure(None)
-    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
