@@ -77,7 +77,7 @@ class ModelConfig(abc.ABC):
             a slow-down and should only be used for debugging.
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     always_check_shapes: bool = False
 
     @abc.abstractmethod
@@ -90,7 +90,7 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
     @property
-    def output_dims(self) -> Optional[Tuple[int]]:
+    def output_dims(self) -> Optional[Tuple[int, ...]]:
         """Read-only `output_dims` are inferred automatically from other settings."""
         return None
 
@@ -168,7 +168,7 @@ class _MLPConfig(ModelConfig):
             stds are clipped in between -20 and 20.
     """
 
-    hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
+    hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256)
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
@@ -567,8 +567,8 @@ class CNNTransposeHeadConfig(ModelConfig):
         # )
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
-    initial_image_dims: Union[List[int], Tuple[int]] = field(
+    input_dims: Union[List[int], Tuple[int, ...]] = None
+    initial_image_dims: Union[List[int], Tuple[int, ...]] = field(
         default_factory=lambda: [4, 4, 96]
     )
     initial_dense_weights_initializer: Optional[Union[str, Callable]] = None
@@ -733,7 +733,7 @@ class CNNEncoderConfig(ModelConfig):
             different activation and bias settings).
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     cnn_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
