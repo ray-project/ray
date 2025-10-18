@@ -306,6 +306,70 @@ def test_streaming_repartition_write_no_operator_fusion(
     assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
 
 
+@pytest.mark.parametrize(
+    "num_rows,override_num_blocks_list,target_num_rows_per_block",
+    [
+        (128 * 4, [1, 2, 4, 8, 16], 128),
+        (128 * 4 + 2, [1, 2, 4, 8, 16], 128),
+        (128 * 4 + 1, [1, 2, 4, 8, 16], 128),
+        (64 * 4, [1, 2, 4, 8], 64),
+        (64 * 4 + 1, [1, 2, 4, 8], 64),
+        (32 * 5, [1, 2, 5], 10),
+        (32 * 5 + 1, [1, 2, 5], 10),
+    ],
+)
+def test_repartition_guarantee_row_num_to_be_exact(
+    ray_start_regular_shared_2_cpus,
+    num_rows,
+    override_num_blocks_list,
+    target_num_rows_per_block,
+    disable_fallback_to_object_extension,
+):
+    """Test that repartition with enforce_target_num_rows_per_block=True guarantees exact row counts per block."""
+    for override_num_blocks in override_num_blocks_list:
+        ds = ray.data.range(num_rows, override_num_blocks=override_num_blocks)
+        ds = ds.repartition(
+            target_num_rows_per_block=target_num_rows_per_block,
+            enforce_target_num_rows_per_block=True,
+        )
+        ds = ds.materialize()
+
+        block_row_counts = []
+        # Assert that every block has exactly target_num_rows_per_block rows except the last block
+        # The last block may have fewer rows if the total doesn't divide evenly
+        expected_full_blocks = num_rows // target_num_rows_per_block
+        expected_remaining_rows = num_rows % target_num_rows_per_block
+
+        # All blocks except possibly the last should have exactly target_num_rows_per_block rows
+        for i, count in enumerate(block_row_counts):
+            if i < expected_full_blocks:
+                # These should all be exactly target_num_rows_per_block
+                assert count == target_num_rows_per_block, (
+                    f"Block {i} should have exactly {target_num_rows_per_block} rows, got {count} rows. "
+                    f"Block counts: {block_row_counts}"
+                )
+            elif expected_remaining_rows > 0:
+                # The last block should have the remaining rows
+                assert count == expected_remaining_rows, (
+                    f"Last block should have {expected_remaining_rows} rows, got {count} rows. "
+                    f"Block counts: {block_row_counts}"
+                )
+                break
+            else:
+                # No remaining rows, all blocks should be exactly target_num_rows_per_block
+                assert count == target_num_rows_per_block, (
+                    f"All blocks should have exactly {target_num_rows_per_block} rows, but block {i} has {count} rows. "
+                    f"Block counts: {block_row_counts}"
+                )
+
+        # Assert that no block exceeds the target size
+        max_rows_in_block = max(block_row_counts) if block_row_counts else 0
+        assert max_rows_in_block <= target_num_rows_per_block, (
+            f"Expected no block to exceed {target_num_rows_per_block} rows, got max of {max_rows_in_block}. "
+            f"Block counts: {block_row_counts}"
+        )
+
+
 if __name__ == "__main__":
     import sys
 
