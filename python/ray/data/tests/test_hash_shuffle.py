@@ -566,3 +566,9 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
 
         # Verify that memory is still present
         assert "memory" in op._aggregator_pool._aggregator_ray_remote_args
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
