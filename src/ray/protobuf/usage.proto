@@ -102,6 +102,8 @@ enum TagKey {
   SERVE_CUSTOM_REQUEST_ROUTER_USED = 32;
   // Whether num_replicas changed via manual API call
   SERVE_NUM_REPLICAS_VIA_API_CALL_UPDATED = 33;
+  // Whether task consumer wrapper was used ("1" if used)
+  SERVE_NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE = 34;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

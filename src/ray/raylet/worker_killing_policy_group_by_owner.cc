@@ -25,7 +25,8 @@
 #include <vector>
 
 #include "absl/time/time.h"
-#include "ray/raylet/worker.h"
+#include "ray/common/lease/lease.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
