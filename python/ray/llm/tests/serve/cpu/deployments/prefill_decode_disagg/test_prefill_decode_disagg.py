@@ -3,12 +3,12 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
+from ray.llm._internal.serve.serving_patterns.prefill_decode.builder_pd import (
     PDServingArgs,
     ProxyClsConfig,
     build_pd_openai_app,
 )
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,
 )
 from ray.llm._internal.serve.core.ingress.builder import (
