@@ -1,12 +1,12 @@
-from collections import deque
-import threading
-from typing import Dict, Set
 import logging
+import threading
+from collections import deque
+from typing import Dict, Set
 
 import ray
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import PolicyID
