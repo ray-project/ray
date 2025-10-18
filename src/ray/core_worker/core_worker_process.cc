@@ -349,8 +349,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // raylet side, we never proactively close the plasma store connection even
   // during shutdown. So any error from the raylet side should be a sign of raylet
   // death.
-  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
-      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
+  auto plasma_client =
+      std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -359,7 +359,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
-      /*store_client=*/plasma_client,
+      /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
@@ -397,7 +397,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #if defined(__APPLE__) || defined(__linux__)
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
-    auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
+    auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
@@ -406,7 +406,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider->store_client(),
+          plasma_store_provider->store_client(),
           raylet_channel_client_factory,
           options.check_signals);
 #endif
@@ -470,27 +470,28 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
-      task_by_state_counter_,
+      task_by_state_gauge_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
         core_worker->free_actor_object_callback_(object_id);
       });
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id,
+                                   const std::string &actor_name,
+                                   int64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
     auto core_worker = GetCoreWorker();
-    std::ostringstream stream;
-    stream << "Warning: More than " << num_queued
-           << " tasks are pending submission to actor " << actor_id
-           << ". To reduce memory usage, wait for these tasks to finish before sending "
-              "more.";
-    RAY_CHECK_OK(core_worker->PushError(core_worker->options_.job_id,
-                                        "excess_queueing_warning",
-                                        stream.str(),
-                                        timestamp));
+    auto message = absl::StrFormat(
+        "Warning: More than %d tasks are pending submission to actor %s with actor_id "
+        "%s. To reduce memory usage, wait for these tasks to finish before sending more.",
+        num_queued,
+        actor_name,
+        actor_id.Hex());
+    RAY_CHECK_OK(core_worker->PushError(
+        core_worker->options_.job_id, "excess_queueing_warning", message, timestamp));
   };
 
   auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());
@@ -512,7 +513,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
     std::optional<rpc::Address> address_opt;
-    if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
+    if (auto node_info =
+            core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id)) {
       auto &address = address_opt.emplace();
       address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
@@ -583,8 +585,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info =
-            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+            node_id, /*filter_dead_nodes=*/false);
         if (node_info == nullptr) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
@@ -608,9 +610,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       callback(object_id, std::move(locations));
       return;
     }
-    core_worker->gcs_client_->Nodes().AsyncGetAll(
+    core_worker->gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
         [callback, object_id, locations = std::move(locations)](
-            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+            const Status &,
+            const std::vector<rpc::GcsNodeAddressAndLiveness> &node_infos) mutable {
           for (const auto &node_info : node_infos) {
             if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
               rpc::Address addr;
@@ -680,7 +683,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    task_execution_service_,
                                    std::move(task_event_buffer),
                                    pid,
-                                   task_by_state_counter_);
+                                   task_by_state_gauge_,
+                                   actor_by_state_gauge_);
   return core_worker;
 }
 

@@ -77,7 +77,10 @@ steps:
   - name: docbuild
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
-    depends_on: oss-ci-base_build-multipy
+    depends_on:
+      - oss-ci-base_build-multipy
+      - ray-core-build
+      - ray-dashboard-build
     matrix:
       - "3.9"
       - "3.12"
