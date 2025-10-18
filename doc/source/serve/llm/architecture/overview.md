@@ -13,7 +13,7 @@ Ray Serve LLM takes the performance of a single inference engine (such as vLLM) 
 
 Ray Serve LLM excels at highly distributed multi-node inference workloads where the unit of scale spans multiple nodes:
 
-- **Pipeline parallelism across nodes**: Serve large models that don't fit on a single node (such as DeepSeek-V3).
+- **Pipeline parallelism across nodes**: Serve large models that don't fit on a single node.
 - **Disaggregated prefill and decode**: Scale prefill and decode phases independently for better resource utilization.
 - **Cluster-wide parallelism**: Combine data parallelism with expert parallelism for throughput-bound MoE architectures.
 
@@ -203,7 +203,7 @@ See: {doc}`routing-policies`
 Ray Serve LLM follows these key design principles:
 
 1. **Engine agnostic**: Support multiple inference engines (vLLM, SGLang, etc.) through the `LLMEngine` protocol.
-2. **Composable patterns**: Combine serving patterns (data parallel, prefill-decode, custom routing) for complex deployments (such as deploying DeepSeek-V3 style models efficiently).
+2. **Composable patterns**: Combine serving patterns (data parallel, prefill-decode, custom routing) for complex deployments.
 3. **Builder pattern**: Use builders to construct complex deployment graphs declaratively.
 4. **Separation of concerns**: Keep infrastructure logic (placement, scaling) separate from application logic (routing, processing).
 5. **Protocol-based extensibility**: Define clear protocols for engines, servers, and ingress to enable custom implementations.
