@@ -246,7 +246,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             input_seq_id=1, partition_id=partition_id
         ).build()
 
-
         # Get supported columns
         supported_l, unsupported_l = self._split_unsupported_columns(left_seq_partition)
         supported_r, unsupported_r = self._split_unsupported_columns(
