@@ -639,24 +639,23 @@ class _VariableShapeTensorType(pa.ExtensionType):
         return cls(value_type, ndim)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension not supported."
-)
 def test_variable_shape_tensor_serialization():
     t = _VariableShapeTensorType(pa.float32(), 2)
-    ar = pa.array(
-        [
-            {
-                "data": np.arange(2 * 3),
-                "shape": [2, 3],
-            },
-            {
-                "data": np.arange(4 * 5),
-                "shape": [4, 5],
-            },
-        ],
-        type=t,
-    )
+    values = [
+        {
+            "data": np.arange(2 * 3, dtype=np.float32).tolist(),
+            "shape": [2, 3],
+        },
+        {
+            "data": np.arange(4 * 5, dtype=np.float32).tolist(),
+            "shape": [4, 5],
+        },
+    ]
+    if parse_version(pa.__version__) < parse_version("10.0.0"):
+        storage = pa.array(values, type=t.storage_type)
+        ar = pa.ExtensionArray.from_storage(t, storage)
+    else:
+        ar = pa.array(values, type=t)
     payload = PicklableArrayPayload.from_array(ar)
     ar2 = payload.to_array()
     assert ar == ar2
