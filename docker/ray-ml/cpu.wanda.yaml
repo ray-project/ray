@@ -15,6 +15,7 @@ srcs:
   - python/requirements/ml/tune-test-requirements.txt
   - python/requirements/docker/ray-docker-requirements.txt
   - docker/ray-ml/install-ml-docker-requirements.sh
+  - docker/ray-ml/install-gdrcopy.sh
 build_args:
   - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base
 tags:
