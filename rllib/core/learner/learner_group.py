@@ -1,8 +1,9 @@
 import copy
-from functools import partial
 import itertools
 import pathlib
+from functools import partial
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,11 +12,11 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -34,7 +35,6 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
