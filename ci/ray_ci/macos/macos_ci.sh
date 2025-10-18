@@ -86,11 +86,15 @@ run_core_dashboard_test() {
 }
 
 run_ray_cpp_and_java() {
-  # clang-format is needed by java/test.sh
   # 42 is the universal rayci exit code for test failures
-  pip install clang-format==12.0.1
-  export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
-  ./java/test.sh || exit 42
+
+  # Java tests are only supported on old Intel Macs so far
+  if [[ "$(uname -m)" != "arm64" ]]; then
+    # clang-format is needed by java/test.sh
+    pip install clang-format==12.0.1
+    export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
+    ./java/test.sh || exit 42
+  fi
   ./ci/ci.sh test_cpp || exit 42
 }
 

@@ -273,7 +273,10 @@ cc_test(
         "//java:libio_ray_ray_test.jar",
     ],
     linkstatic = True,
-    tags = ["team:core"],
+    tags = [
+        "no_macos",
+        "team:core",
+    ],
     deps = [
         "ray_api_lib",
         "@com_google_googletest//:gtest_main",
