@@ -219,8 +219,16 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("pipeline_parallel_size", 1)
 
     @property
+    def data_parallel_degree(self) -> int:
+        return self.engine_kwargs.get("data_parallel_size", 1)
+
+    @property
     def num_devices(self) -> int:
-        return self.tensor_parallel_degree * self.pipeline_parallel_degree
+        return (
+            self.tensor_parallel_degree
+            * self.pipeline_parallel_degree
+            * self.data_parallel_degree
+        )
 
     @property
     def placement_strategy(self) -> str:

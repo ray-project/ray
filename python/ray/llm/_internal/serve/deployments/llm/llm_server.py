@@ -141,8 +141,40 @@ class LLMServer(LLMServerProtocol):
                 Defaults to `LoraModelLoader`.
         """
         super().__init__()
+        
+        # Handle data parallel configuration
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if dp_size > 1:
+            self._validate_and_setup_data_parallel(llm_config, dp_size)
+        
         self._init_shared(llm_config, engine_cls, model_downloader)
         await self.start()
+
+    def _validate_and_setup_data_parallel(
+        self, llm_config: LLMConfig, dp_size: int
+    ) -> None:
+        """Validate and setup data parallel configuration.
+        
+        Args:
+            llm_config: LLM configuration to validate and update.
+            dp_size: The data parallel size from engine_kwargs.
+        
+        Raises:
+            ValueError: If data_parallel_backend isn't set to 'ray' when dp_size > 1.
+        """
+        logger.info(
+            f"Initializing DP group with {dp_size} workers "
+            "(vLLM will spawn them internally via Ray backend)"
+        )
+        
+        # Enforce that data_parallel_backend is set to "ray"
+        dp_backend = llm_config.engine_kwargs.get("data_parallel_backend", None)
+        if dp_backend is None:
+            llm_config.update_engine_kwargs(data_parallel_backend="ray")
+        elif dp_backend != "ray":
+            raise ValueError(
+                f"data_parallel_backend must be set to 'ray' when data_parallel_size > 1, but got: {dp_backend}"
+            )
 
     def _init_shared(
         self,
@@ -442,6 +474,29 @@ class LLMServer(LLMServerProtocol):
         engine_config = llm_config.get_engine_config()
         deployment_options = copy.deepcopy(llm_config.deployment_config)
 
+        # Handle data parallel configuration
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if not (isinstance(dp_size, int) and dp_size > 0):
+            raise ValueError(
+                f"Invalid data_parallel_size: {dp_size}, expecting positive integer."
+            )
+
+        if dp_size > 1:
+            if "autoscaling_config" in deployment_options:
+                raise ValueError(
+                    "autoscaling_config isn't supported when data_parallel_size > 1."
+                )
+
+            # Each Serve replica is one independent DP group with dp_size workers
+            # num_replicas controls how many independent DP groups to create
+            num_replicas = deployment_options.get("num_replicas", 1)
+
+            logger.info(
+                f"DP deployment: {num_replicas} Serve replica(s), "
+                f"each with data_parallel_size={dp_size} "
+                f"(vLLM will spawn {dp_size} workers per replica)"
+            )
+
         # Handle the ray_actor_options that could be passed in to
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
@@ -468,10 +523,19 @@ class LLMServer(LLMServerProtocol):
             engine_config.placement_bundles, replica_actor_resources
         )
 
+        # Override placement strategy for DP deployments
+        placement_strategy = engine_config.placement_strategy
+        if dp_size > 1 and placement_strategy != "STRICT_PACK":
+            logger.warning(
+                f"DP deployment with placement_strategy={placement_strategy} "
+                "isn't supported. Using STRICT_PACK instead."
+            )
+            placement_strategy = "STRICT_PACK"
+
         deployment_options.update(
             {
                 "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
+                "placement_group_strategy": placement_strategy,
             }
         )
 
