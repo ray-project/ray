@@ -1357,6 +1357,7 @@ def build_serve_application(
         application_autoscaling_policy_function: the application autoscaling policy function name
         deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
         deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
+
     Returns:
         Serialized application autoscaling policy def: a serialized autoscaling
             policy def for the application if it was built successfully, otherwise None.
