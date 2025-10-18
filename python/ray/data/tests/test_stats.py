@@ -412,7 +412,6 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
-    print(stats)
     assert (
         canonicalize(stats)
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
@@ -2245,6 +2244,9 @@ def test_runtime_metrics_histogram_observe():
     # Verify bucket counts
     expected_counts = [1, 4, 1, 1]  # [bucket0, bucket1, bucket2, bucket3]
     assert histogram._bucket_counts == expected_counts
+
+    # Verify the average value
+    assert f"{histogram}" == "(samples: 7, avg: 5.00)"
 
 
 def test_runtime_metrics_histogram_apply_to_metric():

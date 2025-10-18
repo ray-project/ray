@@ -96,11 +96,11 @@ class RuntimeMetricsHistogram:
         self.boundaries = boundaries
         # Initialize bucket counts to 0 (+1 additional bucket to represent the +Inf bucket)
         self._bucket_counts = [0 for _ in range(len(boundaries) + 1)]
-        self._calculated_average_values = None
+        self._memoized_avg = None
 
     def observe(self, value: float, num_observations: int = 1):
         self._bucket_counts[self._find_bucket_index(value)] += num_observations
-        self._calculated_average_values = None
+        self._memoized_avg = None
 
     def apply_to_metric(
         self,
@@ -147,9 +147,9 @@ class RuntimeMetricsHistogram:
         ] = self._bucket_counts.copy()
 
     def __repr__(self):
-        if self._calculated_average_values is None:
-            self._calculated_average_values = self._calculate_average_value()
-        total_samples, average = self._calculated_average_values
+        if self._memoized_avg is None:
+            self._memoized_avg = self._calculate_average_value()
+        total_samples, average = self._memoized_avg
         return f"(samples: {total_samples}, avg: {average:.2f})"
 
     def _calculate_average_value(self) -> Tuple[int, float]:
