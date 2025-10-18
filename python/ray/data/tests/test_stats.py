@@ -150,9 +150,7 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            (
-                "'task_completion_time_total': N"
-            ),
+            "'task_completion_time_total': N",
             (
                 "'task_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
@@ -233,9 +231,7 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            (
-                "'task_completion_time_total': N"
-            ),
+            "'task_completion_time_total': N",
             (
                 "'task_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
