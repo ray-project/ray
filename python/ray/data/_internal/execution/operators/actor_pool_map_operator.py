@@ -543,7 +543,7 @@ class _MapWorker:
         src_fn_name: str,
         map_transformer: MapTransformer,
         logical_actor_id: str,
-        actor_location_tracker: ActorLocationTracker,
+        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
