@@ -344,3 +344,38 @@ def metrics_start_shutdown(request):
     serve.shutdown()
     ray.shutdown()
     reset_ray_address()
+
+
+# Helper function to return the node ID of a remote worker.
+@ray.remote(num_cpus=0)
+def _get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+# Test fixture to start a Serve instance in a RayCluster with two labelled nodes
+@pytest.fixture
+def serve_instance_with_labeled_nodes():
+    cluster = Cluster()
+    node1_config = {
+        "num_cpus": 1,
+        "resources": {"worker1": 1},
+        "labels": {"region": "us-west", "gpu-type": "A100"},
+    }
+    cluster.add_node(**node1_config)
+    ray.init(address=cluster.address)
+    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
+
+    node2_config = {
+        "num_cpus": 1,
+        "resources": {"worker2": 1},
+        "labels": {"region": "us-east", "gpu-type": "H100"},
+    }
+    cluster.add_node(**node2_config)
+    node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
+
+    serve.start()
+    yield _get_global_client(), node_1_id, node_2_id
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
