@@ -31,6 +31,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -42,6 +43,7 @@
 #include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/raylet.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -329,6 +331,33 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
+  ray::stats::Gauge resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
+  ray::stats::Gauge object_store_memory_gauge = ray::GetObjectStoreMemoryGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_gauge =
+      ray::raylet::GetSpillManagerObjectsGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_bytes_gauge =
+      ray::raylet::GetSpillManagerObjectsBytesGaugeMetric();
+  ray::stats::Gauge spill_manager_request_total_gauge =
+      ray::raylet::GetSpillManagerRequestTotalGaugeMetric();
+  ray::stats::Gauge spill_manager_throughput_mb_gauge =
+      ray::raylet::GetSpillManagerThroughputMBGaugeMetric();
+  ray::stats::Gauge memory_manager_worker_eviction_total_gauge =
+      ray::raylet::GetMemoryManagerWorkerEvictionTotalGaugeMetric();
+  ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
+  ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
+      ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
+  ray::stats::Gauge scheduler_failed_worker_startup_total_gauge =
+      ray::raylet::GetSchedulerFailedWorkerStartupTotalGaugeMetric();
+  ray::stats::Gauge internal_num_spilled_tasks_gauge =
+      ray::raylet::GetInternalNumSpilledTasksGaugeMetric();
+  ray::stats::Gauge internal_num_infeasible_scheduling_classes_gauge =
+      ray::raylet::GetInternalNumInfeasibleSchedulingClassesGaugeMetric();
+  ray::raylet::SchedulerMetrics scheduler_metrics = {
+      scheduler_tasks_gauge,
+      scheduler_unscheduleable_tasks_gauge,
+      scheduler_failed_worker_startup_total_gauge,
+      internal_num_spilled_tasks_gauge,
+      internal_num_infeasible_scheduling_classes_gauge};
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
@@ -795,7 +824,12 @@ int main(int argc, char *argv[]) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
         },
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
-        object_directory.get());
+        object_directory.get(),
+        object_store_memory_gauge,
+        spill_manager_objects_gauge,
+        spill_manager_objects_bytes_gauge,
+        spill_manager_request_total_gauge,
+        spill_manager_throughput_mb_gauge);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
@@ -809,6 +843,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().GetNodeAddressAndLiveness(
                      ray::NodeID::FromBinary(id.Binary())) != nullptr;
         },
+        resource_usage_gauge,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -893,7 +928,8 @@ int main(int argc, char *argv[]) {
             std::vector<std::unique_ptr<ray::RayObject>> *results) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
-        max_task_args_memory);
+        max_task_args_memory,
+        scheduler_metrics);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
@@ -939,7 +975,8 @@ int main(int argc, char *argv[]) {
         shutdown_raylet_gracefully,
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
-        shutting_down);
+        shutting_down,
+        memory_manager_worker_eviction_total_gauge);
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -76,6 +77,15 @@ struct StatsHandle {
   // Metric emission specific configurations
   const bool emit_stats;
   const std::optional<std::string> context_name;
+
+  mutable ray::stats::Count operation_count_metric_{
+      ray::GetOperationCountCounterMetric()};
+  mutable ray::stats::Gauge operation_active_gauge_metric_{
+      ray::GetOperationActiveCountGaugeMetric()};
+  mutable ray::stats::Histogram operation_run_time_ms_histogram_metric_{
+      ray::GetOperationRunTimeMsHistogramMetric()};
+  mutable ray::stats::Histogram operation_queue_time_ms_histogram_metric_{
+      ray::GetOperationQueueTimeMsHistogramMetric()};
 
   StatsHandle(std::string event_name_,
               const int64_t start_time_,

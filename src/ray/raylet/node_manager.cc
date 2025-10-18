@@ -48,7 +48,6 @@
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -148,7 +147,8 @@ NodeManager::NodeManager(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
     std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-    std::atomic_bool &shutting_down)
+    std::atomic_bool &shutting_down,
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -202,7 +202,9 @@ NodeManager::NodeManager(
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
-      shutting_down_(shutting_down) {
+      shutting_down_(shutting_down),
+      memory_manager_worker_eviction_total_gauge_(
+          memory_manager_worker_eviction_total_gauge) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -2979,17 +2981,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
             // TODO(sang): Add the job entrypoint to the name.
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_gauge_.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_gauge_.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_gauge_.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});

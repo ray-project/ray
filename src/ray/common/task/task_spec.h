@@ -25,6 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/metrics.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_class_util.h"
@@ -357,7 +358,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
-  void EmitTaskMetrics() const;
+  void EmitTaskMetrics(
+      ray::observability::MetricInterface &scheduler_placement_time_s_histogram) const;
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;

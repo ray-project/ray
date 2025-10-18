@@ -22,7 +22,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

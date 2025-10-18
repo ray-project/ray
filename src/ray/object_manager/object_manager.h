@@ -27,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/metrics.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/pull_manager.h"
@@ -521,31 +522,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
 
-  /// Metrics
-  ray::stats::Gauge ray_metric_object_store_available_memory_{
-      /*name=*/"object_store_available_memory",
-      /*description=*/"Amount of memory currently available in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_used_memory_{
-      /*name=*/"object_store_used_memory",
-      /*description=*/"Amount of memory currently occupied in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_fallback_memory_{
-      /*name=*/"object_store_fallback_memory",
-      /*description=*/"Amount of memory in fallback allocations in the filesystem.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_local_objects_{
-      /*name=*/"object_store_num_local_objects",
-      /*description=*/"Number of objects currently in the object store.",
-      /*unit=*/"objects"};
-
-  ray::stats::Gauge ray_metric_object_manager_pull_requests_{
-      /*name=*/"object_manager_num_pull_requests",
-      /*description=*/"Number of active pull requests for objects.",
-      /*unit=*/"requests"};
+  ray::stats::Gauge object_store_available_memory_gauge_{
+      GetObjectStoreAvailableMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_used_memory_gauge_{
+      GetObjectStoreUsedMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_fallback_memory_gauge_{
+      GetObjectStoreFallbackMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_local_objects_gauge_{
+      GetObjectStoreLocalObjectsGaugeMetric()};
+  ray::stats::Gauge object_manager_pull_requests_gauge_{
+      GetObjectManagerPullRequestsGaugeMetric()};
+  ray::stats::Gauge object_manager_bytes_gauge_{GetObjectManagerBytesGaugeMetric()};
+  ray::stats::Gauge object_manager_received_chunks_gauge_{
+      GetObjectManagerReceivedChunksGaugeMetric()};
 };
 
 }  // namespace ray
