@@ -66,6 +66,12 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
 )
+# flag to control whether preserve the proto field name when converting the events to
+# JSON. If True, the proto field name will be preserved. If False, the proto field name
+# will be converted to camel case.
+PRESERVE_PROTO_FIELD_NAME = ray_constants.env_bool(
+    f"{env_var_prefix}_PRESERVE_PROTO_FIELD_NAME", False
+)
 
 
 class AggregatorAgent(
@@ -124,6 +130,7 @@ class AggregatorAgent(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
                     events_filter_fn=self._can_expose_event,
+                    preserve_proto_field_name=PRESERVE_PROTO_FIELD_NAME,
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,
