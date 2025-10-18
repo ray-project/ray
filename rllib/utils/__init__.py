@@ -1,11 +1,12 @@
-from collections import deque
 import contextlib
+from collections import deque
 from functools import partial
-import tree
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+import tree
+
 from ray._common.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.framework import (
@@ -15,30 +16,30 @@ from ray.rllib.utils.framework import (
     try_import_torch,
 )
 from ray.rllib.utils.numpy import (
-    sigmoid,
-    softmax,
-    relu,
-    one_hot,
+    LARGE_INTEGER,
+    MAX_LOG_NN_OUTPUT,
+    MIN_LOG_NN_OUTPUT,
+    SMALL_NUMBER,
     fc,
     lstm,
-    SMALL_NUMBER,
-    LARGE_INTEGER,
-    MIN_LOG_NN_OUTPUT,
-    MAX_LOG_NN_OUTPUT,
+    one_hot,
+    relu,
+    sigmoid,
+    softmax,
 )
 from ray.rllib.utils.schedules import (
+    ConstantSchedule,
+    ExponentialSchedule,
     LinearSchedule,
     PiecewiseSchedule,
     PolynomialSchedule,
-    ExponentialSchedule,
-    ConstantSchedule,
 )
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
 )
-from ray.tune.utils import merge_dicts, deep_update
+from ray.tune.utils import deep_update, merge_dicts
 
 
 @DeveloperAPI

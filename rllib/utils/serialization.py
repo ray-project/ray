@@ -1,8 +1,8 @@
 import base64
-from collections import OrderedDict
 import importlib
 import io
 import zlib
+from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence, Type, Union
 
 import gymnasium as gym

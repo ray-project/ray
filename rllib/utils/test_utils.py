@@ -18,29 +18,34 @@ from typing import (
 )
 
 import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
-from gymnasium.spaces import Dict as GymDict
-from gymnasium.spaces import Tuple as GymTuple
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.spaces import (
+    Box,
+    Dict as GymDict,
+    Discrete,
+    MultiBinary,
+    MultiDiscrete,
+    Tuple as GymTuple,
+)
 
 import ray
 from ray import tune
-from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
+from ray.air.integrations.wandb import WANDB_ENV_VAR, WandbLoggerCallback
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune import CLIReporter
 from ray.tune.result import TRAINING_ITERATION
 
