@@ -1056,6 +1056,18 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests.
+
+        Args:
+            wait_for_applications_running: Whether to wait for the applications to be running
+
+        Returns:
+            None
+        """
+        pass
+
+    @abstractmethod
     async def update_draining(
         self, draining: bool, _after: Optional[Any] = None
     ) -> None:
@@ -1307,6 +1319,10 @@ class ProxyActor(ProxyActorInterface):
                 get_component_logger_file_path(),
             ]
         )
+
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests."""
+        return
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
         """Update the draining status of the HTTP and gRPC proxies.
