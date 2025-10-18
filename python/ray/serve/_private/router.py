@@ -650,7 +650,10 @@ class AsyncioRouter:
 
             # Log usage telemetry to indicate that custom request router
             # feature is being used in this cluster.
-            if self._request_router_class is not PowerOfTwoChoicesRequestRouter:
+            if (
+                self._request_router_class.__name__
+                != PowerOfTwoChoicesRequestRouter.__name__
+            ):
                 ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
 
