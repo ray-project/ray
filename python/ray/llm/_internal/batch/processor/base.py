@@ -193,6 +193,10 @@ class Processor:
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
     """
 
     # The internal used data column name ("__data"). Your input
@@ -206,10 +210,14 @@ class Processor:
         stages: List[StatefulStage],
         preprocess: Optional[UserDefinedFunction] = None,
         postprocess: Optional[UserDefinedFunction] = None,
+        preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+        postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     ):
         self.config = config
         self.preprocess = None
         self.postprocess = None
+        self.preprocess_map_kwargs = preprocess_map_kwargs or {}
+        self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
         # FIXES: https://github.com/ray-project/ray/issues/53124
@@ -251,7 +259,7 @@ class Processor:
             The output dataset.
         """
         if self.preprocess is not None:
-            dataset = dataset.map(self.preprocess)
+            dataset = dataset.map(self.preprocess, **self.preprocess_map_kwargs)
 
         # Apply stages.
         for stage in self.stages.values():
@@ -262,7 +270,7 @@ class Processor:
             dataset = dataset.map_batches(stage.fn, **kwargs)
 
         if self.postprocess is not None:
-            dataset = dataset.map(self.postprocess)
+            dataset = dataset.map(self.postprocess, **self.postprocess_map_kwargs)
         return dataset
 
     def _append_stage(self, stage: StatefulStage) -> None:
@@ -360,7 +368,12 @@ class ProcessorBuilder:
         """
         if builder_kwargs is not None:
             # Check for conflicts with explicitly passed arguments
-            reserved_keys = {"preprocess", "postprocess"}
+            reserved_keys = {
+                "preprocess",
+                "postprocess",
+                "preprocess_map_kwargs",
+                "postprocess_map_kwargs",
+            }
             conflicting_keys = reserved_keys & builder_kwargs.keys()
             if conflicting_keys:
                 raise ValueError(
