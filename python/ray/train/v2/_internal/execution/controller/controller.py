@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -263,7 +263,7 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
 
-    async def _poll_workers(self) -> WorkerGroupPollStatus:
+    async def _poll_workers(self) -> Tuple[WorkerGroupPollStatus, Optional[Exception]]:
         # Ensure that the time between polls is at least HEALTH_CHECK_INTERVAL_S.
         time_since_last_poll = time_monotonic() - self._latest_poll_time
         if time_since_last_poll < self._health_check_interval_s:
@@ -272,9 +272,11 @@ class TrainController:
             )
             await asyncio.sleep(remaining_time)
 
-        status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
+        status, exception = self._worker_group.poll_status(
+            timeout=self._health_check_interval_s
+        )
         self._latest_poll_time = time_monotonic()
-        return status
+        return status, exception
 
     def _start_worker_group(
         self, num_workers: int, resources_per_worker: dict
@@ -408,21 +410,25 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            worker_group_status, callback_exception = await self._poll_workers()
+            poll_failed = bool(worker_group_status.errors or callback_exception)
 
-            if worker_group_status.finished and not worker_group_status.errors:
+            if worker_group_status.finished and not poll_failed:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
                     next_state=FinishedState(),
                 )
-            if worker_group_status.errors:
-                worker_group_error = worker_group_status.get_worker_group_error()
+            if poll_failed:
+                if worker_group_status.errors:
+                    training_failed_error = worker_group_status.get_worker_group_error()
+                else:
+                    training_failed_error = ControllerError(callback_exception)
                 failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=worker_group_error,
+                    training_failed_error=training_failed_error,
                 )
                 return self._execute_failure_decision(
-                    failure_decision, training_failed_error=worker_group_error
+                    failure_decision, training_failed_error=training_failed_error
                 )
             else:
                 scaling_decision = self._scaling_policy.make_decision_for_running_worker_group(

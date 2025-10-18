@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -27,7 +27,9 @@ from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
+from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.api.exceptions import ControllerError
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -167,7 +169,7 @@ async def test_failure_handling():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
-    controller.get_worker_group().error_worker(3)
+    DummyWorkerGroup.set_poll_failure(ControllerError)
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
@@ -239,7 +241,11 @@ async def test_poll_frequency(monkeypatch):
         failure_policy=None,
     )
     # Mock worker group to avoid actual polling
-    controller._worker_group = MagicMock()
+    controller._worker_group = create_autospec(DummyWorkerGroup, instance=True)
+    controller._worker_group.poll_status.return_value = (
+        WorkerGroupPollStatus(worker_statuses={}),
+        None,
+    )
 
     num_polls = 5
     for _ in range(num_polls):

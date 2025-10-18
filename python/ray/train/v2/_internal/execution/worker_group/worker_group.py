@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -485,7 +485,9 @@ class WorkerGroup(BaseWorkerGroup):
     # Polling Worker Group
     #####################################################################################
 
-    def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupPollStatus:
+    def poll_status(
+        self, timeout: Optional[float] = None
+    ) -> Tuple[WorkerGroupPollStatus, Optional[Exception]]:
         """Poll the status of all workers in the worker group.
 
         Args:
@@ -499,11 +501,15 @@ class WorkerGroup(BaseWorkerGroup):
             worker_statuses=dict(enumerate(poll_results)),
         )
 
-        for callback in self._callbacks:
-            callback.after_worker_group_poll_status(worker_group_poll_status)
+        callback_exception = None
+        try:
+            for callback in self._callbacks:
+                callback.after_worker_group_poll_status(worker_group_poll_status)
+        except Exception as e:
+            callback_exception = e
 
         self._latest_poll_status = worker_group_poll_status
-        return worker_group_poll_status
+        return worker_group_poll_status, callback_exception
 
     def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]

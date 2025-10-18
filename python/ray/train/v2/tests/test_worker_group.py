@@ -193,7 +193,7 @@ def test_poll_status_running():
     )
     wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
     wg._start()
-    status = wg.poll_status()
+    status, _ = wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -210,10 +210,10 @@ def test_poll_status_finished():
 
     # Wait for the workers to finish the training fn before polling.
     # Otherwise, the poll_status call may return before the workers finish.
-    while not wg.poll_status().finished:
+    while not wg.poll_status()[0].finished:
         time.sleep(0.01)
 
-    status = wg.poll_status()
+    status, _ = wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -245,10 +245,10 @@ def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
     wg._start()
 
     dummy_file.touch()
-    while not wg.poll_status().finished:
+    while not wg.poll_status()[0].finished:
         time.sleep(0.01)
 
-    status = wg.poll_status()
+    status, _ = wg.poll_status()
     wg.shutdown()
 
     assert len(status.worker_statuses) == 4
@@ -284,7 +284,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
     for _ in range(2):
         wg._start()
 
-        status = wg.poll_status(timeout=0.01)
+        status, _ = wg.poll_status(timeout=0.01)
 
         assert len(status.errors) == 4
         assert all(
@@ -311,14 +311,14 @@ def test_flush_worker_result_queue(queue_backlog_length):
     for _ in range(queue_backlog_length):
         wg.execute(populate_result_queue)
 
-        status = wg.poll_status()
+        status, _ = wg.poll_status()
         assert all(
             worker_status.training_report
             for worker_status in status.worker_statuses.values()
         )
         assert not status.finished
 
-    status = wg.poll_status()
+    status, _ = wg.poll_status()
     assert status.finished
 
     wg.shutdown()
@@ -484,6 +484,7 @@ def test_worker_group_callback():
         def after_worker_group_poll_status(self, worker_group_status):
             assert len(worker_group_status.worker_statuses) == 4
             self.poll_status_hook_called = True
+            raise ValueError("Encountered error while processing poll")
 
     hooks = AssertCallback()
     wg = _default_inactive_worker_group(callbacks=[hooks])
@@ -491,7 +492,8 @@ def test_worker_group_callback():
     wg._start()
     assert hooks.start_hook_called
     assert hooks.training_start_hook_called
-    wg.poll_status()
+    _, exception = wg.poll_status()
+    assert isinstance(exception, ValueError)
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called

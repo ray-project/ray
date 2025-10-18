@@ -2,7 +2,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from unittest.mock import MagicMock
 
 from ray.train import Checkpoint
@@ -45,6 +45,7 @@ from ray.train.v2.api.exceptions import TrainingFailedError
 class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
+    _poll_failure = None
 
     # TODO: Clean this up and use Mocks instead.
     def __init__(
@@ -57,9 +58,14 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_group_state = None
         self._worker_statuses = {}
 
-    def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
-        return WorkerGroupPollStatus(
-            worker_statuses=self._worker_statuses,
+    def poll_status(
+        self, *args, **kwargs
+    ) -> Tuple[WorkerGroupPollStatus, Optional[Exception]]:
+        return (
+            WorkerGroupPollStatus(
+                worker_statuses=self._worker_statuses,
+            ),
+            self._poll_failure,
         )
 
     def _start(self):
@@ -96,6 +102,10 @@ class DummyWorkerGroup(WorkerGroup):
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure
+
+    @classmethod
+    def set_poll_failure(cls, poll_failure):
+        cls._poll_failure = poll_failure
 
 
 class MockScalingPolicy(ScalingPolicy):
