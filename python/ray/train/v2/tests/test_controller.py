@@ -20,6 +20,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
@@ -170,7 +171,8 @@ async def test_failure_handling():
     controller.get_worker_group().error_worker(3)
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), ErroredState)
+    assert isinstance(controller.get_state(), ShuttingDownState)
+    assert isinstance(controller.get_state().next_state, ErroredState)
 
 
 @pytest.mark.parametrize(
@@ -324,7 +326,8 @@ async def test_controller_callback():
     await controller._run_control_loop_iteration()
     assert callback.failure_decision_called
     assert isinstance(callback.latest_state_update[0], RunningState)
-    assert isinstance(callback.latest_state_update[1], ErroredState)
+    assert isinstance(callback.latest_state_update[1], ShuttingDownState)
+    assert isinstance(callback.latest_state_update[1].next_state, ErroredState)
 
     controller._shutdown()
     assert callback.shutdown_called
