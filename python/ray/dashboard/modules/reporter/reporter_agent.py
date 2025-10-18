@@ -896,7 +896,7 @@ class ReporterAgent(
                 stats.write_count,
             )
 
-    async def _get_worker_pids_from_raylet(self) -> List[int]:
+    async def _async_get_worker_pids_from_raylet(self) -> List[int]:
         try:
             # Get worker pids from raylet via gRPC.
             return await self._raylet_client.async_get_worker_pids()
@@ -912,8 +912,8 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    def _get_worker_processes(self):
-        pids = asyncio.run(self._get_worker_pids_from_raylet())
+    async def _async_get_worker_processes(self):
+        pids = await self._async_get_worker_pids_from_raylet()
         logger.debug(f"Worker PIDs from raylet: {pids}")
         if not pids:
             return []
@@ -927,8 +927,8 @@ class ReporterAgent(
                 continue
         return workers
 
-    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
-        workers = self._get_worker_processes()
+    async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+        workers = await self._async_get_worker_processes()
         if not workers:
             return []
         else:
@@ -1067,7 +1067,7 @@ class ReporterAgent(
             return None
         return mem.shared
 
-    def _collect_stats(self):
+    async def _async_collect_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
         self._network_stats_hist.append((now, network_stats))
@@ -1088,7 +1088,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": self._get_workers(gpus),
+            "workers": await self._async_get_workers(gpus),
             "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
@@ -1751,7 +1751,14 @@ class ReporterAgent(
     def _compose_stats_payload(
         self, cluster_autoscaling_stats_json: Optional[bytes]
     ) -> str:
-        stats = self._collect_stats()
+        return asyncio.run(
+            self._async_compose_stats_payload(cluster_autoscaling_stats_json)
+        )
+
+    async def _async_compose_stats_payload(
+        self, cluster_autoscaling_stats_json: Optional[bytes]
+    ) -> str:
+        stats = await self._async_collect_stats()
 
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:

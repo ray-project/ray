@@ -899,7 +899,8 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             assert root_usage.free == 1
 
 
-def test_reporter_worker_cpu_percent():
+@pytest.mark.asyncio
+async def test_reporter_worker_cpu_percent():
     raylet_dummy_proc_f = psutil.Process
     agent_mock = Process(target=random_work)
     children = [Process(target=random_work) for _ in range(2)]
@@ -916,11 +917,11 @@ def test_reporter_worker_cpu_percent():
         def _generate_worker_key(self, proc):
             return (proc.pid, proc.create_time())
 
-        def _get_worker_pids_from_raylet(self):
+        async def _async_get_worker_pids_from_raylet(self):
             return [p.pid for p in children]
 
-        def _get_worker_processes(self):
-            return ReporterAgent._get_worker_processes(self)
+        async def _async_get_worker_processes(self):
+            return await ReporterAgent._async_get_worker_processes(self)
 
     obj = ReporterAgentDummy()
 
@@ -929,12 +930,12 @@ def test_reporter_worker_cpu_percent():
         for child_proc in children:
             child_proc.start()
         children_pids = {p.pid for p in children}
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         # In the first run, the percent should be 0.
         assert all([worker["cpu_percent"] == 0.0 for worker in workers])
         for _ in range(10):
             time.sleep(0.1)
-            workers = ReporterAgent._get_workers(obj)
+            workers = await ReporterAgent._async_get_workers(obj)
             workers_pids = {w["pid"] for w in workers}
 
             # Make sure all children are registered.
@@ -950,14 +951,14 @@ def test_reporter_worker_cpu_percent():
         print("killed ", children[0].pid)
         children[0].kill()
         wait_for_condition(lambda: not children[0].is_alive())
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid in workers_pids
 
         children[1].kill()
         wait_for_condition(lambda: not children[1].is_alive())
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid not in workers_pids
@@ -1236,7 +1237,7 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
         ray._private.worker.global_worker.node.node_manager_port
     )
     agent = ReporterAgent(dashboard_agent)
-    pids = await agent._get_worker_pids_from_raylet()
+    pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2
     # check if worker is reported
     assert "ray::MyActor" in [psutil.Process(pid).cmdline()[0] for pid in pids]
