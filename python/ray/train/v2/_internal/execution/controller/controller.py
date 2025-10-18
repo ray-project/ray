@@ -42,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -251,8 +252,10 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -414,7 +417,9 @@ class TrainController:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(),
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
+                    ),
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
@@ -494,6 +499,8 @@ class TrainController:
 
         # Call after_controller_finish with the final result
         result = self._build_result()
+        if isinstance(self.get_state(), ShuttingDownState):
+            self._set_state(self.get_state().next_state)
         for callback in self._controller_callbacks:
             callback.after_controller_finish(result)
 
