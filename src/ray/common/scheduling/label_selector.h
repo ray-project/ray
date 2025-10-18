@@ -84,6 +84,8 @@ class LabelSelector {
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 
+  std::string DebugString() const;
+
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
 
