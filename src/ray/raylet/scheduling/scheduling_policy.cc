@@ -25,7 +25,8 @@ namespace raylet_scheduling_policy {
 namespace {
 
 bool IsGPURequest(const ResourceRequest &resource_request) {
-  return resource_request.Has(ResourceID::GPU());
+  return resource_request.Has(ResourceID::GPU()) ||
+         resource_request.Has(ResourceID::GPU_Memory());
 }
 
 bool DoesNodeHaveGPUs(const NodeResources &resources) {

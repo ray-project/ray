@@ -27,6 +27,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
+    kLabelKeyAcceleratorMemoryPerAccelerator
 )
 
 from ray.exceptions import (
@@ -159,3 +160,5 @@ RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
 RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
 RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
 RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
+
+RAY_ACCELERATOR_MEMORY_PER_ACCELERATOR_KEY = kLabelKeyAcceleratorMemoryPerAccelerator.decode()

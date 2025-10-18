@@ -797,3 +797,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+    cdef const char[] kLabelKeyAcceleratorMemoryPerAccelerator

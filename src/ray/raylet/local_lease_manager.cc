@@ -548,7 +548,9 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       // This is to make sure PG resource is not deleted during popping worker
       // unless the lease request is cancelled.
       RAY_CHECK(cluster_resource_scheduler_.GetLocalResourceManager().ResourcesExist(
-          scheduling::ResourceID(entry.first)))
+                    scheduling::ResourceID(entry.first)) ||
+                scheduling::ResourceID(entry.first) ==
+                    scheduling::ResourceID::GPU_Memory())
           << entry.first;
     }
   }

@@ -55,6 +55,22 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         return device_count
 
     @staticmethod
+    def get_current_node_accelerator_memory_per_accelerator() -> Optional[int]:
+        import ray._private.thirdparty.pynvml as pynvml
+
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return None  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_device_memory = 0
+        if device_count > 0:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            cuda_device_memory = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total)
+        pynvml.nvmlShutdown()
+        return cuda_device_memory
+
+    @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         import ray._private.thirdparty.pynvml as pynvml
 
