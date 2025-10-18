@@ -429,4 +429,5 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+  bool external_scaler_enabled = 8;
 }
