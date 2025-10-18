@@ -52,6 +52,8 @@ if TYPE_CHECKING:
         ErrorResponse,
         ScoreRequest,
         ScoreResponse,
+        TranscriptionRequest,
+        TranscriptionResponse,
     )
 
 logger = get_logger(__name__)
@@ -251,7 +253,10 @@ class LLMServer(LLMServerProtocol):
     async def _maybe_add_request_id_to_request(
         self,
         request: Union[
-            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+            "ChatCompletionRequest",
+            "CompletionRequest",
+            "EmbeddingRequest",
+            "TranscriptionRequest",
         ],
     ):
         """Add the request id to the request."""
@@ -282,6 +287,7 @@ class LLMServer(LLMServerProtocol):
             "ChatCompletionRequest",
             "CompletionRequest",
             "EmbeddingRequest",
+            "TranscriptionRequest",
             "ScoreRequest",
         ],
         *,
@@ -355,7 +361,7 @@ class LLMServer(LLMServerProtocol):
     ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
         """Runs an embeddings request to the engine and returns the response.
 
-        Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, and embeddings.
+        Returns an AsyncGenerator over the EmbeddingResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
 
         Args:
             request: An EmbeddingRequest object.
@@ -365,7 +371,30 @@ class LLMServer(LLMServerProtocol):
         """
         # NOTE: Embeddings does not need batching.
         return await self._run_request(
-            request, engine_method="embeddings", batch_output_stream=False
+            request,
+            engine_method="embeddings",
+            batch_output_stream=False,
+        )
+
+    async def transcriptions(
+        self, request: "TranscriptionRequest"
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "TranscriptionResponse"], None
+    ]:
+        """Runs an transcriptions request to the engine and returns the response.
+
+        Returns an AsyncGenerator over the TranscriptionResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
+
+        Args:
+            request: An TranscriptionRequest object.
+
+        Returns:
+            An AsyncGenerator over the TranscriptionResponse object.
+        """
+        return await self._run_request(
+            request,
+            engine_method="transcriptions",
+            batch_output_stream=True,
         )
 
     async def score(
