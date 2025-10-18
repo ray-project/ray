@@ -17,6 +17,7 @@ from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     List,
     Mapping,
@@ -799,6 +800,97 @@ def set_sigterm_handler(sigterm_handler):
         signal.signal(signal.SIGBREAK, sigterm_handler)
     else:
         signal.signal(signal.SIGTERM, sigterm_handler)
+
+
+_signal_handler_installed = False
+_graceful_shutdown_in_progress = False
+
+
+def install_driver_signal_handler() -> None:
+    """Install SIGTERM handler for Ray driver processes.
+
+    Implements graceful-then-forced shutdown semantics:
+    - First SIGTERM: trigger graceful shutdown via sys.exit() (allows atexit handlers)
+    - Second SIGTERM: escalate to immediate forced shutdown via os._exit(1)
+
+    Must be called from the main thread (Python signal handlers requirement).
+    Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details.
+    """
+    global _signal_handler_installed, _graceful_shutdown_in_progress
+    if _signal_handler_installed:
+        return
+
+    if threading.current_thread() is not threading.main_thread():
+        logger.warning(
+            "Signal handlers not installed because current thread is not the main thread. Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details."
+        )
+        return
+
+    def _handler(signum, _frame):
+        global _graceful_shutdown_in_progress
+        if not _graceful_shutdown_in_progress:
+            _graceful_shutdown_in_progress = True
+            sys.exit(signum)
+        else:
+            logger.warning(
+                "Received second SIGTERM signal; escalating to immediate forced shutdown."
+            )
+            os._exit(1)
+
+    set_sigterm_handler(_handler)
+    _signal_handler_installed = True
+
+
+def install_worker_signal_handler(force_shutdown_fn: Callable[[str], None]) -> None:
+    """Install SIGTERM handler for Ray worker processes.
+
+    Workers receive external SIGTERM as a forced shutdown signal to avoid hangs
+    during blocking operations like ray.get()/wait(). This is different from
+    driver semantics where the first signal is graceful.
+
+    Must be called from the main thread (Python signal handlers requirement).
+    Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details.
+
+    Args:
+        force_shutdown_fn: Function to call for forced shutdown. Should accept a
+            single string argument (detail message).
+
+    Raises:
+        AssertionError: If force_shutdown_fn is None.
+
+    Only installs on the main thread; logs a warning otherwise.
+    """
+    global _signal_handler_installed
+    assert (
+        force_shutdown_fn is not None
+    ), "Worker signal handlers require force_shutdown_fn"
+
+    if _signal_handler_installed:
+        return
+
+    if threading.current_thread() is not threading.main_thread():
+        logger.warning(
+            "Signal handlers not installed because current thread is not the main thread. Refer to https://docs.python.org/3/library/signal.html#signals-and-threads for more details."
+        )
+        return
+
+    def _handler(signum, _frame):
+        # Workers treat external SIGTERM as immediate forced exit to avoid hangs.
+        signal_name = signal.Signals(signum).name
+        force_shutdown_fn(signal_name)
+
+    set_sigterm_handler(_handler)
+    _signal_handler_installed = True
+
+
+def reset_signal_handler_state() -> None:
+    """Reset signal handler module flags for subsequent ray.init() in same process.
+
+    Called during ray.shutdown() to allow re-initialization of signal handlers.
+    """
+    global _signal_handler_installed, _graceful_shutdown_in_progress
+    _signal_handler_installed = False
+    _graceful_shutdown_in_progress = False
 
 
 def try_to_symlink(symlink_path, target_path):
