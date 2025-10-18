@@ -151,6 +151,9 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             (
+                "'task_completion_time_total': N"
+            ),
+            (
                 "'task_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
@@ -229,6 +232,9 @@ def gen_expected_metrics(
             (
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
+            ),
+            (
+                "'task_completion_time_total': N"
             ),
             (
                 "'task_completion_time': "
@@ -807,6 +813,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
+        "      task_completion_time_total: N,\n"
         f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "      task_completion_time_without_backpressure: N,\n"
@@ -944,6 +951,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
+        "      task_completion_time_total: N,\n"
         f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "      task_completion_time_without_backpressure: N,\n"
@@ -1036,6 +1044,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
+        "            task_completion_time_total: N\n"
         f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "            task_completion_time_without_backpressure: N,\n"
