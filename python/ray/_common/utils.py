@@ -9,7 +9,6 @@ import string
 import sys
 import tempfile
 from inspect import signature
-from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
 import psutil
@@ -17,21 +16,11 @@ import psutil
 
 def import_module_and_attr(
     full_path: str, *, reload_module: bool = False
-) -> Tuple[ModuleType, Any]:
+) -> Tuple[Any, Any]:  # type: ignore
     """Given a full import path to a module attr, return the imported module and attr.
 
     If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    Args:
-        full_path: The full import path to the module and attr.
-        reload_module: Whether to reload the module.
-
-    Returns:
-        A tuple of the imported module and attr.
     """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
     if ":" in full_path:
         if full_path.count(":") > 1:
             raise ValueError(
