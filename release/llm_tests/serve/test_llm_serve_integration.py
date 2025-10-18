@@ -182,6 +182,8 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
 
 
 @pytest.mark.asyncio(scope="function")
