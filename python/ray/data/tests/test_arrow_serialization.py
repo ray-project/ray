@@ -599,8 +599,8 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() <= parse_version("9.0.0"),
-    reason="FixedShapeTensorArray is not supported in PyArrow <= 9.0.0",
+    parse_version(pa.__version__) < parse_version("10.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
 )
 def test_fixed_shape_tensor_array_serialization():
     a = pa.FixedShapeTensorArray.from_numpy_ndarray(
