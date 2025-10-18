@@ -100,17 +100,18 @@ def _plan_hash_shuffle_distinct(
     assert len(logical_op._input_dependencies) == 1
     schema = logical_op._input_dependencies[0].infer_schema()
 
-    # Handle schema inference failure for empty datasets
-    if schema is None or len(schema.names) == 0:
+    # Handle schema inference failure
+    if schema is None:
         raise ValueError(
             "Cannot perform distinct operation: unable to infer schema from input. "
-            "Schema inference returned None or empty schema. This may occur if the "
-            "dataset is empty or if the schema cannot be determined at planning time."
+            "Schema inference returned None. This may occur if the schema cannot be "
+            "determined at planning time."
         )
 
+    # Empty datasets with valid schemas are allowed - they will return empty results
     # Determine key columns - use all columns if none specified
     if logical_op._key is None:
-        key_columns = tuple(schema.names)
+        key_columns = tuple(schema.names) if schema.names else ()
     else:
         key_columns = tuple(logical_op._key)
 

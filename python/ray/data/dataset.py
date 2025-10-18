@@ -1057,15 +1057,10 @@ class Dataset:
         if all_cols is None:
             raise ValueError(
                 "Cannot perform distinct operation: unable to determine dataset schema. "
-                "Schema inference failed. This may occur if the dataset is empty or "
-                "if the schema cannot be determined."
+                "Schema inference failed."
             )
 
-        # Handle empty column list
-        if not all_cols:
-            raise ValueError(
-                "Cannot perform distinct operation: dataset has no columns."
-            )
+        # Empty datasets with valid schemas are allowed - they will return empty results
 
         # Validate keys parameter
         if keys is not None:
