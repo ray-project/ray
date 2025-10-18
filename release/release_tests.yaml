@@ -4121,7 +4121,7 @@
 
   cluster:
     byod:
-      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
+      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4344,7 +4344,7 @@
 
   cluster:
     byod:
-      type: cu123
+      type: cu128
       post_build_script: byod_e2e_timeseries.sh
     cluster_compute: ci/aws.yaml
 
@@ -4366,7 +4366,7 @@
 
   cluster:
     byod:
-      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py312-cu128
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
