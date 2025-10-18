@@ -11,10 +11,10 @@ from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
     PDProxyServer,
 )
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
 )
-from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
+from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve.llm import LLMConfig
 
 

@@ -10,11 +10,11 @@ from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
     PDProxyServer,
 )
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.serve.deployment import Application

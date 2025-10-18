@@ -12,7 +12,7 @@ from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )

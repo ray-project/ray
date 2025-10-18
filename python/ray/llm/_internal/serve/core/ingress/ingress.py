@@ -53,7 +53,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.protocol import DeploymentProtocol
-from ray.llm._internal.serve.deployments.routers.middleware import (
+from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
