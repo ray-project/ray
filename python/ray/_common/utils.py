@@ -8,6 +8,8 @@ import random
 import string
 import sys
 import tempfile
+import time
+from abc import ABC, abstractmethod
 from inspect import signature
 from typing import Any, Coroutine, Dict, Optional
 
@@ -352,3 +354,15 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     return byte_str.decode(encode_type)
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()
