@@ -137,6 +137,16 @@ class MapTransformFn(ABC):
         else:
             return repr(self)
 
+    def __getstate__(self):
+        """Exclude explain_fn during pickling as it may contain bound methods."""
+        state = self.__dict__.copy()
+        state["_explain_fn"] = None
+        return state
+
+    def __setstate__(self, state):
+        """Restore state after unpickling."""
+        self.__dict__.update(state)
+
 
 class MapTransformer:
     """Encapsulates the data transformation logic of a physical MapOperator.
