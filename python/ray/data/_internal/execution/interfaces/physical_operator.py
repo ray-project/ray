@@ -203,7 +203,7 @@ class DataOpTask(OpTask):
                     # yet.
                     break
 
-                self._metadata_ready_callback(self._pending_block_ref)
+                self._metadata_ready_callback(self._pending_meta_ref)
 
             try:
                 # The timeout for `ray.get` includes the time required to ship the
