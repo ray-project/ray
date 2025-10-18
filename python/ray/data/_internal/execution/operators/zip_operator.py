@@ -79,8 +79,14 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
 
-    def internal_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+    def internal_input_queue_size(self) -> int:
+        return sum(len(buf) for buf in self._input_buffers)
+
+    def internal_output_queue_size(self) -> int:
+        return len(self._output_buffer)
+
+    def internal_output_queue_type(self) -> type:
+        return type(self._output_buffer)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
