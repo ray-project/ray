@@ -59,9 +59,11 @@ serve.run(app, blocking=True)
 
 ## Configuration parameters
 
+Use the following parameters to configure fractional GPU allocation. The placement group configuration is required for fractional GPU setup. The memory management and performance settings are vLLM-specific optimizations that you can adjust based on your model and workload requirements.
+
 ### Placement group configuration
 
-- `placement_group_config`: Specifies the GPU fraction each replica uses. Set `GPU` to the fraction (for example, `0.49` for approximately half a GPU).
+- `placement_group_config`: Specifies the GPU fraction each replica uses. Set `GPU` to the fraction (for example, `0.49` for approximately half a GPU). Use slightly less than the theoretical fraction to account for system overhead—this headroom prevents out-of-memory errors.
 - `VLLM_RAY_PER_WORKER_GPUS`: Environment variable that tells vLLM GPU workers to claim the specified fraction of GPU resources.
 
 ### Memory management

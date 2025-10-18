@@ -8,11 +8,11 @@ You need to distinguish between two levels of routing:
 
 **Ingress routing** (model-level):
 - Maps `model_id` to deployment
-- Example: `/v1/chat/completions` with `model="gptoss"` → which deployment?
+- Example: `OpenAiIngress` gets `/v1/chat/completions` with `model="gptoss"` and maps it to the `gptoss` deployment.
 
 **Request routing** (replica-level):
 - Chooses which replica to send the request to
-- Example: `OpenAiIngress` handles which replica of the `gptoss` deployment (1, 2, or 3) to send the request to.
+- Example: The `gptoss` deployment handle inside the `OpenAiIngress` replica decides which replica of the deployment (1, 2, or 3) to send the request to.
 
 This document focuses on **request routing** (replica selection).
 
@@ -77,7 +77,7 @@ Customizing request routers is a feature in Ray Serve's native APIs that you can
 
 This allows you to run the same routing logic even if you have multiple handles. The default request router in Ray Serve is Power of Two Choices, which balances load equalization and prioritizes locality routing. However, you can customize this to use LLM-specific metrics.
 
-Ray Serve LLM includes prefix-aware routing in the framework. There are two distinct architectural patterns for customizing request routers:
+Ray Serve LLM includes prefix-aware routing in the framework. There are two common architectural patterns for customizing request routers. There are clear trade-offs between them, so choose the suitable one and balance simplicity with performance:
 
 ### Pattern 1: Centralized singleton metric store
 
@@ -165,9 +165,6 @@ Broadcast metrics pattern for custom routing
 - Eventual consistency - routers may base decisions on slightly stale data
 - More complex implementation requiring coordination with the Serve controller
 
-### Choose a pattern
-
-These two architectures capture the most popular ways to customize request routers. There are clear trade-offs between them, so choose the suitable one and balance simplicity with performance:
 
 - **Use Pattern 1 (Centralized store)** when you need strong consistency, have moderate throughput requirements, or want simpler implementation
 - **Use Pattern 2 (Broadcast metrics)** when you need very high throughput, can tolerate eventual consistency, or want to minimize per-request overhead
@@ -192,6 +189,8 @@ Ray Serve provides mixin classes that add common functionality to routers. See t
 
 
 ### Router lifecycle
+
+The typical lifecycle of request routers includes the following stages:
 
 1. **Initialization**: Router created with list of replicas
 2. **Request routing**: `choose_replicas()` called for each request

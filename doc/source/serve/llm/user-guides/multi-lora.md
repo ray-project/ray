@@ -147,10 +147,6 @@ response = client.chat.completions.create(
 )
 ```
 
-## Best practices
-
-Follow these suggestions to get more reliable and efficient behavior when using multi-LoRA in Ray Serve LLM:
-
 ## See also
 
 - {doc}`Quickstart <../quick-start>`
