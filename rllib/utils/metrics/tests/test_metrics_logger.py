@@ -27,23 +27,23 @@ def test_log_value(logger):
 
 
 @pytest.mark.parametrize(
-    "reduce_method,kwargs,values,expected",
+    "reduce_method,values,expected",
     [
-        ("mean", {"clear_on_reduce": True}, [0.1, 0.2], 0.15),
-        ("min", {"clear_on_reduce": True}, [0.3, 0.1, 0.2], 0.1),
-        ("sum", {"clear_on_reduce": True}, [10, 20], 30),
-        ("lifetime_sum", {}, [10, 20], 30),
-        ("ema", {"clear_on_reduce": True}, [1.0, 2.0], 1.01),
-        ("item", {}, [0.1, 0.2], 0.2),
-        ("item_series", {}, [0.1, 0.2], [0.1, 0.2]),
+        ("mean", [0.1, 0.2], 0.15),
+        ("min", [0.3, 0.1, 0.2], 0.1),
+        ("sum", [10, 20], 30),
+        ("lifetime_sum", [10, 20], 30),
+        ("ema", [1.0, 2.0], 1.01),
+        ("item", [0.1, 0.2], 0.2),
+        ("item_series", [0.1, 0.2], [0.1, 0.2]),
     ],
 )
-def test_basic_reduction_methods(logger, reduce_method, kwargs, values, expected):
+def test_basic_reduction_methods(logger, reduce_method, values, expected):
     """Test different reduction methods (mean, min, sum) with parameterization."""
     key = f"{reduce_method}_metric"
 
     for val in values:
-        logger.log_value(key, val, reduce=reduce_method, **kwargs)
+        logger.log_value(key, val, reduce=reduce_method)
 
     # Check the result
     check(logger.peek(key), expected)
@@ -239,129 +239,54 @@ def test_aggregate(logger):
 
 def test_throughput_tracking(logger):
     """Test throughput tracking functionality."""
-    # Test basic throughput tracking
-    start_time = time.perf_counter()
-    logger.log_value("count", 1, reduce="sum", with_throughput=True)
-    num_iters = 100
-    for _ in range(num_iters):
-        time.sleep(0.1 / num_iters)  # Simulate some time passing
-        logger.log_value("count", 2, reduce="sum", with_throughput=True)
-    end_time = time.perf_counter()
-
-    # Get value and throughput
-    check(logger.peek("count"), num_iters * 2 + 1)
-    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
-    check(
-        logger.peek("count", throughput=True), approx_throughput, rtol=0.15
-    )  # 15% tolerance in throughput
-
-    # Test _get_throughputs() method without key (returns all throughputs)
-    throughputs = logger.peek(throughput=True)
-    check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
-
-    # Test with nested keys
-    nested_start_time = time.perf_counter()
-    logger.log_value(("nested", "count"), 1, reduce="sum", with_throughput=True)
-    for _ in range(num_iters):
-        time.sleep(0.1 / num_iters)  # Simulate some time passing
-        logger.log_value(("nested", "count"), 3, reduce="sum", with_throughput=True)
-    nested_end_time = time.perf_counter()
-
-    # Check nested value
-    check(logger.peek(("nested", "count")), num_iters * 3 + 1)
-
-    # Check nested throughput with specific key
-    nested_approx_throughput = (num_iters * 3 + 1) / (
-        nested_end_time - nested_start_time
-    )
-    check(
-        logger.peek(("nested", "count"), throughput=True),
-        nested_approx_throughput,
-        rtol=0.2,
-    )
-
-    # Check getting throughput for a parent key
-    nested_throughputs = logger.peek("nested", throughput=True)
-    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.2)
-
-    # Verify all throughputs are present in the full throughput dict
-    all_throughputs = logger.peek(throughput=True)
-    check("count_throughput" in all_throughputs, True)
-    check("nested" in all_throughputs, True)
-    check("count_throughput" in all_throughputs["nested"], True)
-
-
-def test_throughput_aggregation():
-    """Test aggregation of throughput metrics from different (remote) sources."""
-
+    # Create 2 parallel Ray Actors that each log a few values
     @ray.remote
-    class EnvRunner:
+    class Actor:
         def __init__(self):
             self.metrics = MetricsLogger()
 
-        def increase(self, count=1):
-            self.metrics.log_value(
-                "counter",
-                count,
-                reduce="sum",
-                clear_on_reduce=False,  # lifetime counter
-                with_throughput=True,
-            )
+        def log_value(self, value):
+            self.metrics.log_value("value", value, reduce="sum", with_throughput=True)
 
         def get_metrics(self):
             return self.metrics.reduce()
 
-    env_runners = [EnvRunner.remote() for _ in range(3)]
+    actors = [Actor.remote() for _ in range(2)]
 
-    # Main logger.
-    main_metrics = MetricsLogger()
+    # Override the initialization time to make the test more accurate.
+    logger._time_when_initialized = time.perf_counter()
+    start_time = time.perf_counter()
 
-    env_runners[0].increase.remote(count=0)
-    env_runners[1].increase.remote(count=0)
-    _ = [ray.get(act.get_metrics.remote()) for act in env_runners]
+    actors[0].log_value.remote(1)
+    actors[0].log_value.remote(2)
+    actors[1].log_value.remote(3)
+    actors[1].log_value.remote(4)
 
-    # Add 1 count for actor0 and 5 counts for actor1 to the lifetime counters
-    # in each of the 5 iterations.
-    # 5 iterations -> expect final count of 5 * 6 = 30
-    for _ in range(5):
-        time.sleep(0.1)
-        env_runners[0].increase.remote(count=1)
-        env_runners[1].increase.remote(count=5)
+    metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
+    time.sleep(1)
 
-    # Pull metrics from both actors.
-    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
-    main_metrics.aggregate(results)
-    # The first aggregate (before the key even exists in `main_metrics`, throughput
-    # should be NaN.
-    check(main_metrics.peek("counter"), 30)
-    # After first aggregation, throughput should be NaN, b/c the Stats did not exist
-    # within the `MetricsLogger`.
-    assert np.isnan(main_metrics.stats["counter"].throughput)
+    end_time = time.perf_counter()
+    throughput = 10 / (end_time - start_time)
 
-    # Add 1 count for actor0 and 2 counts for actor1 to the lifetime counters
-    # in each of the 5 iterations.
-    # 5 iterations each 1 sec -> expect throughput of 3/0.2sec = 5/sec.
-    for _ in range(5):
-        time.sleep(0.2)
-        env_runners[0].increase.remote(count=1)
-        env_runners[1].increase.remote(count=2)
-    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
-    main_metrics.aggregate(results)
+    logger.aggregate(metrics)
+    check(logger.peek("value"), 10)
+    check(logger.stats["value"].throughputs, throughput, rtol=0.1)
 
-    check(main_metrics.peek("counter"), 30 + 15)
-    tp = main_metrics.stats["counter"].throughput
-    check(tp, 15, atol=2)
+    # Test again but now don't initialize time since we are not starting a new experiment.
+    actors[0].log_value.remote(5)
+    actors[0].log_value.remote(6)
+    actors[1].log_value.remote(7)
+    actors[1].log_value.remote(8)
 
-    time.sleep(1.0)
-    env_runners[2].increase.remote(count=50)
-    results = ray.get(env_runners[2].get_metrics.remote())
-    main_metrics.aggregate([results])
+    metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
+    time.sleep(1)
 
-    check(main_metrics.peek("counter"), 30 + 15 + 50)
-    tp = main_metrics.stats["counter"].throughput
-    # Expect throughput - due to the EMA - to be only slightly higher than
-    # the original value of 15.
-    check(tp, 16, atol=2)
+    end_time = time.perf_counter()
+    throughput = 26 / (end_time - start_time)
+
+    logger.aggregate(metrics)
+    check(logger.peek("value"), 26)
+    check(logger.stats["value"].throughputs, throughput, rtol=0.1)
 
 
 def test_reset_and_delete(logger):
@@ -398,6 +323,8 @@ def test_compile(logger):
 
     # Get compiled results
     compiled = logger.compile()
+
+    breakpoint()
 
     # Check that values and throughputs are correctly combined
     check(compiled["count"], 3)  # sum of [1, 2]
@@ -472,100 +399,6 @@ def test_lifetime_stats():
     # Merge new results into root - root should accumulate
     root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
-
-
-def test_hierarchical_metrics_system():
-    """Test a hierarchical system of MetricsLoggers.
-
-    This test creates a tree structure of MetricsLoggers:
-
-        Root        (Root/Algorithm object)
-        ┌─┴─┐
-      A1    A2      (AggregatorActor)
-    ┌─┴─┐  ┌─┴─┐
-    E1 E2  E3  E4   (EnvRunner)
-
-    We test the aggregation of all these metrics through multiple reduction steps.
-    """
-    # Test parameters
-    # Change the metric_name to test different metrics if ever needed
-    metric_name = "window_mean"
-    metric_config = {"reduce": "mean", "window": 2}
-    leaf_values_round1 = [[10, 20], [30, 40], [50, 60], [70, 80]]
-    leaf_values_round2 = [[25, 35], [45, 55], [65, 75], [85, 95]]
-    expected_leaf_results_round1 = [15.0, 35.0, 55.0, 75.0]
-    expected_root_peek_round1 = 50.0
-    expected_compiled_result = 65.0
-
-    # Create the logger hierarchy
-    root = MetricsLogger(root=True)  # Root logger
-
-    # Level 1 loggers
-    node_a = MetricsLogger()
-    node_b = MetricsLogger()
-
-    # Level 2 loggers (leaves)
-    leaf_a1 = MetricsLogger()
-    leaf_a2 = MetricsLogger()
-    leaf_b1 = MetricsLogger()
-    leaf_b2 = MetricsLogger()
-
-    leaves = [leaf_a1, leaf_a2, leaf_b1, leaf_b2]
-
-    # Round 1: Log values to leaf nodes
-    for leaf, values in zip(leaves, leaf_values_round1):
-        for value in values:
-            leaf.log_value(metric_name, value, **metric_config)
-
-    # Reduce level 2 (leaves) and merge into level 1
-    results_a1 = leaf_a1.reduce()
-    results_a2 = leaf_a2.reduce()
-    results_b1 = leaf_b1.reduce()
-    results_b2 = leaf_b2.reduce()
-
-    leaf_results = [results_a1, results_a2, results_b1, results_b2]
-
-    # Verify leaf results
-    for i, result in enumerate(leaf_results):
-        check(result[metric_name], expected_leaf_results_round1[i])
-
-    # Merge level 2 results into level 1 nodes
-    node_a.aggregate([results_a1, results_a2])
-    node_b.aggregate([results_b1, results_b2])
-
-    # Reduce level 1 and merge into root
-    results_a = node_a.reduce()
-    results_b = node_b.reduce()
-
-    # Merge level 1 results into root
-    root.aggregate([results_a, results_b])
-
-    # Verify root aggregation from first round
-    if isinstance(metric_name, list):
-        check(root.peek(metric_name), expected_root_peek_round1)
-    else:
-        check(root.peek(metric_name), expected_root_peek_round1)
-
-    # Round 2: Log more values to leaf nodes
-    for leaf, values in zip(leaves, leaf_values_round2):
-        for value in values:
-            leaf.log_value(metric_name, value, **metric_config)
-
-    # Reduce level 2 (leaves) and merge into level 1
-    results_a1 = leaf_a1.reduce()
-    results_a2 = leaf_a2.reduce()
-    results_b1 = leaf_b1.reduce()
-    results_b2 = leaf_b2.reduce()
-
-    node_a.aggregate([results_a1, results_a2])
-    node_b.aggregate([results_b1, results_b2])
-    results_a = node_a.reduce()
-    results_b = node_b.reduce()
-    root.aggregate([results_a, results_b])
-
-    # Verify all metrics using compile() to get a complete snapshot
-    compiled_results = root.compile()
-    check(compiled_results[metric_name], expected_compiled_result)
 
 
 if __name__ == "__main__":

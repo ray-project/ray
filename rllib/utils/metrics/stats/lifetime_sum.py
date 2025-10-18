@@ -14,25 +14,24 @@ class LifetimeSumStats(StatsBase):
 
     def __init__(
         self,
-        track_throughput_since_last_restore: bool = False,
-        track_throughput_since_last_reduce: bool = False,
+        with_throughput: bool = False,
         *args,
         **kwargs,
     ):
         """Initializes a LifetimeSumStats instance.
 
         Args:
-            track_throughput_since_last_restore: If True, track the throughput since the last restore from a checkpoint.
+            with_throughput: If True, track the throughput since the last restore from a checkpoint.
         """
         # Make sure we don't accidentally set clear_on_reduce to False
         if "clear_on_reduce" in kwargs and kwargs["clear_on_reduce"]:
             raise ValueError("LifetimeSumStats does not support clear_on_reduce")
-        super().__init__(clear_on_reduce=False, *args, **kwargs)
+
+        super().__init__(*args, **kwargs)
 
         self._lifetime_sum = 0.0
 
-        self.track_throughput_last_restore = track_throughput_since_last_restore
-        self.track_throughput_since_last_reduce = track_throughput_since_last_reduce
+        self.track_throughput = with_throughput
         # We need to initialize this to 0.0
         # When setting state or reducing, these values are expected to be updated we calculate a throughput.
         self._value_at_last_reduce = 0.0
@@ -44,10 +43,32 @@ class LifetimeSumStats(StatsBase):
 
     @property
     def has_throughputs(self) -> bool:
-        return (
-            self.track_throughput_last_restore
-            or self.track_throughput_since_last_reduce
-        )
+        return self.track_throughput
+
+    def initialize_throughput_reference_time(self, time: float) -> None:
+        assert (
+            self._is_root_stats
+        ), "initialize_throughput_reference_time can only be called on root stats"
+        self._last_reduce_time = time
+        self._last_restore_time = time
+
+    @staticmethod
+    def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
+        """Returns the initialization arguments for this Stats object."""
+        super_args = StatsBase._get_init_args(stats_object=stats_object, state=state)
+        del super_args["clear_on_reduce"]
+        if state is not None:
+            return {
+                **super_args,
+                "with_throughput": state["track_throughput"],
+            }
+        elif stats_object is not None:
+            return {
+                **super_args,
+                "with_throughput": stats_object.track_throughput,
+            }
+        else:
+            raise ValueError("Either stats_object or state must be provided")
 
     @property
     def throughputs(self) -> Dict[str, float]:
@@ -55,16 +76,10 @@ class LifetimeSumStats(StatsBase):
         assert (
             self.has_throughputs
         ), "Throughput tracking is not enabled on this Stats object"
-        throughputs = {}
-        if self.track_throughput_since_last_reduce:
-            throughputs[
-                "throughput_since_last_reduce"
-            ] = self.throughput_since_last_reduce
-        if self.track_throughput_last_restore:
-            throughputs[
-                "throughput_since_last_restore"
-            ] = self.throughput_since_last_restore
-        return throughputs
+        return {
+            "throughput_since_last_reduce": self.throughput_since_last_reduce,
+            "throughput_since_last_restore": self.throughput_since_last_restore,
+        }
 
     def __len__(self) -> int:
         return 1
@@ -76,19 +91,13 @@ class LifetimeSumStats(StatsBase):
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
         state["lifetime_sum"] = self._lifetime_sum
-        state["track_throughput_last_restore"] = self.track_throughput_last_restore
-        state[
-            "track_throughput_since_last_reduce"
-        ] = self.track_throughput_since_last_reduce
+        state["track_throughput"] = self.throughput
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
         self._lifetime_sum = state["lifetime_sum"]
-        self.track_throughput_last_restore = state["track_throughput_last_restore"]
-        self.track_throughput_since_last_reduce = state[
-            "track_throughput_since_last_reduce"
-        ]
+        self.track_throughput = state["track_throughput"]
 
         # We always start over with the throughput calculation after a restore
         self._value_at_last_restore = self._lifetime_sum

@@ -39,6 +39,13 @@ class StatsBase(metaclass=ABCMeta):
         """
         return False
 
+    def initialize_throughput_reference_time(self, time: float) -> None:
+        """If the Stats object has throughput tracking enabled, this method is called by the MetricsLogger to set the initial time for throughput calculation."""
+        if self.has_throughputs:
+            raise ValueError(
+                "initialize_throughput_reference_time must be overridden for stats objects that have throughputs."
+            )
+
     @abstractmethod
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
