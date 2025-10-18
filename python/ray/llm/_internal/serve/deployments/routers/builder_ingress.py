@@ -9,7 +9,7 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.common.utils.import_utils import load_class
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
 from ray.llm._internal.serve.deployments.routers.router import (

@@ -10,7 +10,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.deployments.routers.router import (
     OpenAiIngress,
     make_fastapi_ingress,

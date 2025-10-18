@@ -11,7 +11,7 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 

@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.deployments.llm.llm_server import (
+from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
 

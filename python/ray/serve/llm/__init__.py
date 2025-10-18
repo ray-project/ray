@@ -9,7 +9,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 
 # For backward compatibility
-from ray.llm._internal.serve.deployments.llm.llm_server import (
+from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as _LLMServer,
 )
 from ray.llm._internal.serve.deployments.routers.builder_ingress import (
@@ -161,7 +161,7 @@ def build_llm_deployment(
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+    from ray.llm._internal.serve.core.server.builder import (
         build_llm_deployment,
     )
 

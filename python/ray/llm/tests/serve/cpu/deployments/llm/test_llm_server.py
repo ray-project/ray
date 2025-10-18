@@ -13,7 +13,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
