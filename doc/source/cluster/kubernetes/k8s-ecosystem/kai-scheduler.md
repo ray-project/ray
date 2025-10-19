@@ -117,37 +117,10 @@ Note: To make this demo easier to follow, we combined these queue definitions wi
 The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
 ```yaml
-apiVersion: ray.io/v1
-kind: RayCluster
 metadata:
   name: raycluster-sample
   labels:
     kai.scheduler/queue: team-a    # This is the essential configuration.
-spec:
-  headGroupSpec:
-    template:
-      spec:
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.41.0
-          resources:
-            requests:
-              cpu: "1"
-              memory: "2Gi"
-  workerGroupSpecs:
-  - groupName: worker
-    replicas: 2
-    minReplicas: 2
-    template:
-      spec:
-        containers:
-        - name: ray-worker
-          image: rayproject/ray:2.41.0
-          resources:
-            requests:
-              cpu: "1"
-              memory: "1Gi"
-
 ```
 
 Apply this RayCluster with queues:
