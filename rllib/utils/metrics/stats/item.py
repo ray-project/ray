@@ -59,11 +59,10 @@ class ItemStats(StatsBase):
         Returns:
             The merged ItemStats object.
         """
-        assert self._is_root_stats, "ItemStats should only be merged at root level"
-
-        not_none_items = [s._item for s in incoming_stats if s._item is not None]
-
-        self._set_values(not_none_items)
+        assert (
+            len(incoming_stats) == 1
+        ), "ItemStats should only be merged with one other ItemStats object"
+        self._item = incoming_stats[0]._item
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the internal item.

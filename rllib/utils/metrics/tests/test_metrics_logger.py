@@ -323,7 +323,7 @@ def test_throughput_tracking(root_logger, actors):
 
     root_logger.aggregate(metrics)
     check(root_logger.peek("value"), 26)
-    check(root_logger.stats["value"].throughputs, throughput, rtol=0.1)
+    check(root_logger.peek("value", throughput=True), throughput, rtol=0.1)
 
 
 def test_reset_and_delete(root_logger):

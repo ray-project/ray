@@ -20,7 +20,7 @@ from ray.rllib.utils.metrics.stats import (
 )
 from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -43,6 +43,7 @@ DEFAULT_STATS_CLS_LOOKUP = {
 
 
 # Note(Artur): Delete this in a couple of Ray releases.
+@DeveloperAPI
 def stats_from_legacy_state(
     state: Dict[str, Any], is_root_stats: bool = False
 ) -> StatsBase:
@@ -274,7 +275,7 @@ class MetricsLogger:
         reduce_per_index_on_aggregate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
-        """Prepare the kwargs for stats object creation and create it if it doesn't exist."""
+        """Prepare the kwargs and create the stats object if it doesn't exist."""
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
             if not self._key_in_stats(key):
@@ -361,11 +362,11 @@ class MetricsLogger:
         reduce_per_index_on_aggregate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
-        """Logs a new value under a (possibly nested) key to the logger.
+        """Logs a new value or item under a (possibly nested) key to the logger.
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
-            value: The value to log. This should be a numeric value.
+            value: A numeric value or an item to log.
             reduce: The reduction method to apply when compiling metrics at the root logger.
                 By default, the reduction methods to choose from here are the keys
                 of rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP.
@@ -418,10 +419,59 @@ class MetricsLogger:
         stats.push(value)
 
     @Deprecated(
-        new="log_value", help="Use log_value multiple times instead.", error=True
+        new="log_value",
+        help="Use MetricsLogger.log_value multiple times instead.",
+        error=False,
     )
-    def log_dict(self, *args, **kwargs) -> None:
-        ...
+    def log_dict(
+        self,
+        value_dict,
+        *,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
+        reduce: Optional[str] = "mean",
+        window: Optional[Union[int, float]] = None,
+        ema_coeff: Optional[float] = None,
+        percentiles: Union[List[int], bool] = False,
+        clear_on_reduce: bool = False,
+        with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = None,
+        reduce_per_index_on_aggregate: bool = False,
+    ) -> None:
+        """Logs all leafs of a possibly nested dict of values to this logger.
+
+        Traverses through all leafs of `stats_dict` and - if a path cannot be found in
+        this logger yet, will add the `Stats` found at the leaf under that new key.
+        If a path already exists, will merge the found leaf (`Stats`) with the ones
+        already logged before. This way, `stats_dict` does NOT have to have
+        the same structure as what has already been logged to `self`, but can be used to
+        log values under new keys or nested key paths.
+
+        See MetricsLogger.log for more details on the arguments.
+        """
+        assert isinstance(
+            value_dict, dict
+        ), f"`stats_dict` ({value_dict}) must be dict!"
+
+        prefix_key = force_tuple(key)
+
+        def _map(path, stat_or_value):
+            extended_key = prefix_key + force_tuple(tree.flatten(path))
+
+            self.log_value(
+                extended_key,
+                value=stat_or_value,
+                reduce=reduce,
+                window=window,
+                ema_coeff=ema_coeff,
+                percentiles=percentiles,
+                clear_on_reduce=clear_on_reduce,
+                with_throughput=with_throughput,
+                throughput_ema_coeff=throughput_ema_coeff,
+                reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
+            )
+
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, value_dict)
 
     @Deprecated(new="aggregate", error=False)
     def merge_and_log_n_dicts(self, *args, **kwargs):
