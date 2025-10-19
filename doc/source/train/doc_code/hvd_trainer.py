@@ -1,4 +1,8 @@
+# TODO: [V2] Deprecated doc code to delete.
 import os
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "0"
+
 import tempfile
 
 import horovod.torch as hvd
