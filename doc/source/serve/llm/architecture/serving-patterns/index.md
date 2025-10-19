@@ -13,7 +13,7 @@ Prefill-decode disaggregation <prefill-decode>
 
 Ray Serve LLM supports several serving patterns that can be combined for complex deployment scenarios:
 
-- **Data parallel**: Scale throughput by running multiple independent engine instances.
+- **Data parallel**: Scale throughput by running multiple coordinated engine instances.
 - **Prefill-decode disaggregation**: Optimize resource utilization by separating prompt processing from token generation.
 
 These patterns are composable and can be mixed to meet specific requirements for throughput, latency, and cost optimization.

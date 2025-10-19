@@ -3,7 +3,7 @@
 
 Data parallelism (DP) is a serving pattern that creates multiple inference engine instances to process requests in parallel. This pattern is most useful when you combine it with expert parallelism for sparse MoE models. In this case, the experts are parallelized across multiple machines and attention (QKV) layers are replicated across GPUs, providing an opportunity to shard across requests. 
 
-In this serving pattern, engine replicas aren't isolated. In fact, they need to run in sync together to serve a large number of requests concurrently. 
+In this serving pattern, engine replicas aren't isolated. In fact, they need to run in sync with each other to serve a large number of requests concurrently. 
 
 ## Architecture overview
 
@@ -16,12 +16,12 @@ Data parallel architecture showing DPRankAssigner coordinating multiple LLMServe
 ```
 
 In data parallel serving:
+
 - The system creates `dp_size` replicas of the LLM server.
 - Each replica runs an independent inference engine with the same model.
 - Requests are distributed across replicas through Ray Serve's routing.
 - All replicas work together as a cohesive unit.
 
-## Why use data parallelism?
 
 ### When to use DP
 
@@ -29,7 +29,7 @@ Data parallel serving works best when:
 
 - **Large sparse MoE with MLA**: Allows reaching larger batch sizes by utilizing the sparsity of the experts more efficiently. MLA (Multi-head Latent Attention) reduces KV cache memory requirements. 
 - **High throughput required**: You need to serve many concurrent requests.
-- **KV-cache limited**: Adding more KV cache capacity increases throughput.
+- **KV-cache limited**: Adding more KV cache capacity increases throughput, so that parallelization of experts could effectively increase the capacity of KV-cache for handling concurrent requests.
 
 ### When not to use DP
 
@@ -41,9 +41,11 @@ Consider alternatives when:
 
 ## Components
 
+The following are the main components of DP deployments: 
+
 ### DPServer
 
-`DPServer` extends `LLMServer` with data parallel coordination (Pseudocode):
+`DPServer` extends `LLMServer` with data parallel coordination. The following pseudocode shows the structure:
 
 ```python
 class DPServer(LLMServer):
@@ -67,6 +69,7 @@ class DPServer(LLMServer):
 ```
 
 Key responsibilities:
+
 - Register with the rank assigner coordinator.
 - Obtain a unique rank (0 to `dp_size-1`).
 - Coordinate with other replicas for collective operations.
@@ -74,7 +77,7 @@ Key responsibilities:
 
 ### DPRankAssigner
 
-`DPRankAssigner` is a singleton coordinator that manages rank assignment (Pseudocode):
+`DPRankAssigner` is a singleton coordinator that manages rank assignment. The following pseudocode shows the structure:
 
 ```python
 class DPRankAssigner:
@@ -108,6 +111,7 @@ class DPRankAssigner:
 ```
 
 Key responsibilities:
+
 - Assign unique ranks to replicas.
 - Ensure exactly `dp_size` replicas are serving.
 
@@ -134,19 +138,14 @@ The following is the request flow through a data parallel deployment:
 
 The key difference from basic serving is that all the `dp_size` replicas are working in coordination with each other rather than in isolation.
 
-## Scaling and fault tolerance
+## Scaling
 
 ### Scaling behavior
 
 Data parallel deployments scale in units of `dp_size`:
 
-- **Minimum replicas**: Must be a multiple of `dp_size`, fix to `dp_size` for now as we only support static.
-- **Maximum replicas**: Must be a multiple of `dp_size`, fix to `dp_size` for now as we only support static.
-
-
-### Fault tolerance
-
-To be designed.
+- **Minimum replicas**: Must be a multiple of `dp_size` (fixed to `dp_size` as only static scaling is supported).
+- **Maximum replicas**: Must be a multiple of `dp_size` (fixed to `dp_size` as only static scaling is supported).
 
 
 ## Design considerations
@@ -154,6 +153,7 @@ To be designed.
 ### Coordination overhead
 
 The `DPRankAssigner` introduces minimal coordination overhead:
+
 - **Startup**: Each replica makes one RPC to get its rank.
 - **Runtime**: No coordination overhead during request processing.
 
@@ -162,6 +162,7 @@ The singleton actor pattern ensures consistency during startup time.
 ### Placement strategy
 
 The PACK strategy places each replica's resources together:
+
 - Tensor parallel workers for one replica pack on the same node when possible.
 - Different replicas can be on different nodes.
 - This minimizes inter-node communication within each replica.

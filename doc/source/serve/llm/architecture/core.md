@@ -12,9 +12,9 @@ Beyond `LLMServer` and `OpenAiIngress`, Ray Serve LLM defines several core abstr
 The `LLMEngine` abstract base class defines the contract for all inference engines. This abstraction allows Ray Serve LLM to support multiple engine implementations (vLLM, SGLang, TensorRT-LLM, etc.) with a consistent interface.
 
 The engine operates at the **OpenAI API level**, not at the raw prompt level. This means:
-- It accepts OpenAI-formatted requests (`ChatCompletionRequest`, `CompletionRequest`, etc.)
-- It returns OpenAI-formatted responses
-- Engine-specific details (such as tokenization, sampling) are hidden behind this interface
+- It accepts OpenAI-formatted requests (`ChatCompletionRequest`, `CompletionRequest`, etc.).
+- It returns OpenAI-formatted responses.
+- Engine-specific details (such as tokenization, sampling) are hidden behind this interface.
 
 #### Key methods
 
@@ -69,8 +69,8 @@ class LLMEngine(ABC):
 Ray Serve LLM provides:
 
 - **VLLMEngine**: Production-ready implementation using vLLM.
-  - Supports continuous batching and paged attention
-  - Supports all kinds of parallelism
+  - Supports continuous batching and paged attention.
+  - Supports all kinds of parallelism.
   - KV cache transfer for prefill-decode disaggregation.
   - Automatic prefix caching (APC).
   - LoRA adapter support.
@@ -94,7 +94,7 @@ class LLMConfig:
     model_loading_config: Union[dict, ModelLoadingConfig]
     
     # Hardware requirements
-    accelerator_type: Optional[str] = None  # e.g., "A10G", "L4", "H100"
+    accelerator_type: Optional[str] = None  # For example, "A10G", "L4", "H100"
     
     # Placement group configuration
     placement_group_config: Optional[dict] = None
@@ -115,7 +115,7 @@ class LLMConfig:
 
 #### Model loading configuration
 
-The `ModelLoadingConfig` specifies where and how to load the model:
+The `ModelLoadingConfig` specifies where and how to load the model. The following code shows the configuration structure:
 
 ```python
 @dataclass
@@ -134,7 +134,7 @@ class ModelLoadingConfig:
 
 #### LoRA configuration
 
-For serving multiple LoRA adapters with a shared base model:
+The following code shows the configuration structure for serving multiple LoRA adapters with a shared base model:
 
 ```python
 @dataclass
@@ -218,7 +218,9 @@ Ray Serve LLM uses the builder pattern to separate class definition from deploym
 
 **Key principle**: Classes aren't decorated with `@serve.deployment`. Decoration happens in builder functions.
 
-### Why builders?
+### Why use builders?
+
+Builders provide two key benefits:
 
 1. **Flexibility**: Different deployment configurations for the same class.
 2. **Production readiness**: You can use builders in YAML files and run `serve run config.yaml` with the target builder module.
@@ -241,13 +243,73 @@ def my_build_function(
     ).bind(llm_config)
 ```
 
-Usage:
+You can use the builder function in two ways:
+
+::::{tab-set}
+
+:::{tab-item} Python
+:sync: python
+
+```python
+# serve.py
+from ray import serve
+from ray.serve.llm import LLMConfig
+from my_module import my_build_function
+
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="qwen-0.5b",
+        model_source="Qwen/Qwen2.5-0.5B-Instruct",
+    ),
+    accelerator_type="A10G",
+    deployment_config=dict(
+        autoscaling_config=dict(
+            min_replicas=1,
+            max_replicas=2,
+        )
+    ),
+)
+
+app = my_build_function(llm_config)
+serve.run(app)
+```
+
+Run the deployment:
+
+```bash
+python serve.py
+```
+:::
+
+:::{tab-item} YAML
+:sync: yaml
 
 ```yaml
-
-<to be filled>
-
+# config.yaml
+applications:
+- args:
+    llm_config:
+      model_loading_config:
+        model_id: qwen-0.5b
+        model_source: Qwen/Qwen2.5-0.5B-Instruct
+      accelerator_type: A10G
+      deployment_config:
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 2
+  import_path: my_module:my_build_function
+  name: custom_llm_deployment
+  route_prefix: /
 ```
+
+Run the deployment:
+
+```bash
+serve run config.yaml
+```
+:::
+
+::::
 
 ## Async constructor pattern
 
@@ -293,7 +355,9 @@ class LLMServer(LLMServerProtocol):
         return instance  # Not started yet!
 ```
 
-### Why async constructors?
+### Why use async constructors?
+
+Async constructors provide several benefits:
 
 1. **Engine initialization is async**: Loading models and allocating GPU memory takes time.
 2. **Failure detection**: If the engine fails to start, the replica fails immediately.

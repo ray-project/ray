@@ -15,7 +15,7 @@ Ray Serve LLM excels at highly distributed multi-node inference workloads where 
 
 - **Pipeline parallelism across nodes**: Serve large models that don't fit on a single node.
 - **Disaggregated prefill and decode**: Scale prefill and decode phases independently for better resource utilization.
-- **Cluster-wide parallelism**: Combine data parallelism with expert parallelism for throughput-bound MoE architectures.
+- **Cluster-wide parallelism**: Combine data parallelism with expert parallelism for serving large-scale sparse MoE architectures such as Deepseek-v3, GPT OSS, etc.
 
 
 ## Ray Serve primitives
@@ -23,7 +23,7 @@ Ray Serve LLM excels at highly distributed multi-node inference workloads where 
 Before diving into the architecture, you should understand these Ray Serve primitives:
 
 - **Deployment**: A class that defines the unit of scale.
-- **Replica**: An instance of a deployment. Multiple replicas can be distributed across a cluster.
+- **Replica**: An instance of a deployment which corresponds to a Ray actor. Multiple replicas can be distributed across a cluster.
 - **Deployment handle**: An object that allows one replica to call into replicas of other deployments.
 
 For more details, see the {ref}`Ray Serve core concepts <serve-key-concepts>`.
@@ -34,21 +34,14 @@ Ray Serve LLM provides two primary components that work together to serve LLM wo
 
 ### LLMServer
 
-`LLMServer` is a Ray Serve deployment that manages a single inference engine instance. Replicas can operate in three modes:
+`LLMServer` is a Ray Serve _deployment_ that manages a single inference engine instance. _Replicas_ of this _deployment_ can operate in three modes:
 
-- **Isolated**: Each replica handles requests independently (horizontal scaling).
-- **Coordinated within deployment**: Multiple replicas work together (data parallelism).
+- **Isolated**: Each _replica_ handles requests independently (horizontal scaling).
+- **Coordinated within deployment**: Multiple _replicas_ work together (data parallelism).
 - **Coordinated across deployments**: Replicas coordinate with different deployments (prefill-decode disaggregation).
 
-```{figure} ../images/llmserver.png
----
-width: 600px
-name: llmserver
----
-LLMServer manages inference engine instances
-```
 
-The following example demonstrates how to use `LLMServer` standalone:
+The following example demonstrates the sketch of how to use `LLMServer` standalone:
 
 ```python
 from ray import serve
@@ -76,7 +69,7 @@ result = serve_handle.chat.remote(request=...).result()
 
 #### Physical placement
 
-`LLMServer` controls physical placement through placement groups. By default, it uses:
+`LLMServer` controls physical placement of its constituent actors through placement groups. By default, it uses:
 
 - `{CPU: 1}` for the replica actor itself (no GPU resources).
 - `world_size` number of `{GPU: 1}` bundles for the GPU workers.
@@ -102,15 +95,23 @@ When `LLMServer` starts, it:
 3. Uses the parent actor's placement group to instantiate child GPU worker actors.
 4. Executes the model's forward pass on these GPU workers.
 
+```{figure} ../images/llmserver.png
+---
+width: 600px
+name: llmserver
+---
+Illustration of `LLMServer` managing vLLM engine instance.
+```
+
 ### OpenAiIngress
 
 `OpenAiIngress` provides an OpenAI-compatible FastAPI ingress that routes traffic to the appropriate model. It handles:
 
 - **Standard endpoint definitions**: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, etc.
-- **Request routing logic**: Custom routers for prefix-aware or session-aware routing.
+- **Request routing logic**: The execution of custom routers logic (for example, prefix-aware or session-aware routing).
 - **Model multiplexing**: LoRA adapter management and routing.
 
-The following example shows a complete deployment with ingress:
+The following example shows a complete deployment with `OpenAiIngress`:
 
 ```python
 from ray import serve
@@ -147,7 +148,7 @@ You can create your own ingress deployments and connect them to existing LLMServ
 
 #### Network topology and RPC patterns
 
-When the ingress makes an RPC call to `LLMServer` through the deployment handle, it can reach any replica across any node. However, the default request router prioritizes replicas on the same node to minimize cross-node RPC overhead.
+When the ingress makes an RPC call to `LLMServer` through the deployment handle, it can reach any replica across any node. However, the default request router prioritizes replicas on the same node to minimize cross-node RPC overhead, which is insignificant in LLM serving applications (only a few milliseconds impact on TTFT at high concurrency).
 
 The following figure illustrates the data flow:
 
@@ -161,13 +162,13 @@ Request routing from ingress to LLMServer replicas. Solid lines represent prefer
 
 #### Scaling considerations
 
-**Ingress-to-LLMServer ratio**: The ingress event loop can become the bottleneck at high concurrency. In such situations, upscaling the number of ingress replicas can mitigate CPU contention. We recommend keeping at least a 2:1 ratio between the number of ingress replicas and LLMServer replicas. This architecture allows the system to dynamically scale the component that's the bottleneck.
+**Ingress-to-LLMServer ratio**: The ingress event loop can become the bottleneck at high concurrency. In such situations, upscaling the number of ingress replicas can mitigate CPU contention. We recommend keeping at least a 2:1 ratio between the number of ingress replicas and LLMServer replicas. This architecture allows the system to dynamically scale the component that is the bottleneck.
 
 **Autoscaling coordination**: To maintain proper ratios during autoscaling, configure `target_ongoing_requests` proportionally:
 
 - Profile your vLLM configuration to find the maximum concurrent requests (for example, 64 requests).
 - Choose an ingress-to-LLMServer ratio (for example, 2:1).
-- Set LLMServer's `target_ongoing_requests` to 75% of max capacity (for example, 48).
+- Set LLMServer's `target_ongoing_requests` to say 75% of max capacity (for example, 48).
 - Set ingress's `target_ongoing_requests` to maintain the ratio (for example, 24).
 
 ## Architecture patterns
@@ -176,7 +177,7 @@ Ray Serve LLM supports several deployment patterns for different scaling scenari
 
 ### Data parallel pattern
 
-Create multiple inference engine instances that process requests in parallel for high-throughput workloads.
+Create multiple inference engine instances that process requests in parallel while coordinating across expert layers. Useful for serving sparse MoE models for high-throughput workloads.
 
 **When to use**: High request volume, kv-cache limited, need to maximize throughput.
 
@@ -202,7 +203,7 @@ See: {doc}`routing-policies`
 
 Ray Serve LLM follows these key design principles:
 
-1. **Engine agnostic**: Support multiple inference engines (vLLM, SGLang, etc.) through the `LLMEngine` protocol.
+1. **Engine-agnostic**: Support multiple inference engines (vLLM, SGLang, etc.) through the `LLMEngine` protocol.
 2. **Composable patterns**: Combine serving patterns (data parallel, prefill-decode, custom routing) for complex deployments.
 3. **Builder pattern**: Use builders to construct complex deployment graphs declaratively.
 4. **Separation of concerns**: Keep infrastructure logic (placement, scaling) separate from application logic (routing, processing).

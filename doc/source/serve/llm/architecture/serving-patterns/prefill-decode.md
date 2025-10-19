@@ -14,6 +14,7 @@ Prefill-decode disaggregation architecture with PDProxyServer coordinating prefi
 ```
 
 In prefill-decode disaggregation:
+
 - **Prefill deployment**: Processes input prompts and generates initial KV cache.
 - **Decode deployment**: Uses transferred KV cache to generate output tokens.
 - **Independent scaling**: Each phase scales based on its own load.
@@ -37,6 +38,7 @@ Prefill and decode have different computational patterns:
 ### Scaling benefits
 
 Disaggregation enables:
+
 - **Cost optimization**: The correct ratio of prefill to decode instances improves overall throughput per node.
 - **Dynamic traffic adjustment**: Scale prefill and decode independently depending on workloads (prefill-heavy versus decode-heavy) and traffic volume.
 - **Efficiency**: Prefill serves multiple requests while decode generates, allowing one prefill instance to feed multiple decode instances.
@@ -85,6 +87,7 @@ class PDProxyServer:
 ```
 
 Key responsibilities:
+
 - Route requests between prefill and decode.
 - Handle KV cache metadata transfer.
 - Stream responses from decode to client.
@@ -133,7 +136,7 @@ decode_config = LLMConfig(
 
 ### Request flow
 
-```{figure} ../../images/dp_flow.png
+```{figure} ../../images/pd_flow.png
 ---
 width: 700px
 name: pd-flow
@@ -166,10 +169,10 @@ The KV cache transfer is transparent to the client. From the client's perspectiv
 
 Prefill-decode disaggregation works best when:
 
-- **Long generations**: Decode phase dominates total latency.
+- **Long generations**: Decode phase dominates total end-to-end latency.
 - **Imbalanced phases**: Prefill and decode need different resources.
-- **Cost optimization**: Want to use different GPU types for each phase.
-- **High decode load**: Many requests in decode phase simultaneously.
+- **Cost optimization**: Use different GPU types for each phase.
+- **High decode load**: Many requests are in decode phase simultaneously.
 - **Batch efficiency**: Prefill can batch multiple requests efficiently.
 
 ### When not to use PD
@@ -177,7 +180,6 @@ Prefill-decode disaggregation works best when:
 Consider alternatives when:
 
 - **Short outputs**: Decode latency minimal, overhead not worth it.
-- **Simple workload**: Single-phase serving sufficient.
 - **Network limitations**: KV transfer overhead too high.
 - **Small models**: Both phases fit comfortably on same resources.
 
@@ -191,6 +193,7 @@ The latency of KV cache transfer between prefill and decode affects overall requ
 ### Phase load balancing
 
 The system must balance load between prefill and decode phases. Mismatched scaling can lead to:
+
 - **Prefill bottleneck**: Requests queue at prefill, decode replicas idle.
 - **Decode bottleneck**: Prefill completes quickly, decode can't keep up.
 
