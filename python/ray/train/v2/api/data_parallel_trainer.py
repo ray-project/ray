@@ -156,11 +156,11 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in
-                the Ray Train controller itself, or if the number of retries configured in
-                `FailureConfig` is exhausted.
-            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during
-                training and the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
+                This returns a :class:`ray.train.ControllerError` if internal Ray Train controller logic
+                encounters a non-retryable error or reaches the controller failure limit configured in `FailureConfig`.
+                This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
+                training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
         train_fn = self._get_train_func()
         if self.running_in_local_mode:

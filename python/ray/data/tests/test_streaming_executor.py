@@ -119,14 +119,10 @@ def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo, num_progress_bars = build_streaming_topology(
+    topo = build_streaming_topology(
         o3, ExecutionOptions(verbose_progress=verbose_progress)
     )
     assert len(topo) == 3, topo
-    if verbose_progress:
-        assert num_progress_bars == 3, num_progress_bars
-    else:
-        assert num_progress_bars == 1, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].input_queues, topo
     assert topo[o1].output_queue == topo[o2].input_queues[0], topo
@@ -172,7 +168,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
         o1,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
@@ -221,7 +217,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
@@ -246,7 +242,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
     process_completed_tasks(topo, [], 0)
@@ -291,7 +287,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         DataContext.get_current(),
         name="O3",
     )
-    topo, _ = build_streaming_topology(o3, opts)
+    topo = build_streaming_topology(o3, opts)
 
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
@@ -432,7 +428,7 @@ def test_select_ops_to_run(ray_start_regular_shared):
         # Case 1: Should pick the `o4` since it has throttling disabled
         _mock.return_value = [o1, o2, o3, o4]
 
-        topo, _ = build_streaming_topology(o4, opts)
+        topo = build_streaming_topology(o4, opts)
 
         selected = select_operator_to_run(
             topo, resource_manager, [], ensure_liveness=ensure_liveness
@@ -443,7 +439,7 @@ def test_select_ops_to_run(ray_start_regular_shared):
         # Case 2: Should pick the `o1` since it has lowest object store usage
         _mock.return_value = [o1, o2, o3]
 
-        topo, _ = build_streaming_topology(o3, opts)
+        topo = build_streaming_topology(o3, opts)
 
         selected = select_operator_to_run(
             topo, resource_manager, [], ensure_liveness=ensure_liveness
@@ -492,7 +488,7 @@ def test_debug_dump_topology(ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
     resource_manager = ResourceManager(
         topo,
         ExecutionOptions(),
@@ -887,7 +883,7 @@ def test_create_topology_metadata():
     executor = StreamingExecutor(DataContext.get_current())
 
     # Initialize the topology on the executor
-    executor._topology, _ = build_streaming_topology(o3, ExecutionOptions())
+    executor._topology = build_streaming_topology(o3, ExecutionOptions())
 
     # Call the _dump_dag_structure method
     op_to_id = {
@@ -950,7 +946,7 @@ def test_create_topology_metadata_with_sub_stages():
 
     # Create the executor and set up topology
     executor = StreamingExecutor(DataContext.get_current())
-    executor._topology, _ = build_streaming_topology(o2, ExecutionOptions())
+    executor._topology = build_streaming_topology(o2, ExecutionOptions())
 
     # Get the DAG structure
     op_to_id = {
