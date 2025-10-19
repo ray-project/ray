@@ -435,7 +435,9 @@ class TestCloudFileSystem:
         # Create temp directory for testing
         with tempfile.TemporaryDirectory() as tempdir:
             # Test downloading model
-            with patch.object(CloudFileSystem, "download_files") as mock_download:
+            with patch.object(
+                CloudFileSystem, "download_files_parallel"
+            ) as mock_download:
                 CloudFileSystem.download_model(tempdir, "gs://bucket/model", False)
 
                 # Check that hash file was processed
@@ -443,7 +445,7 @@ class TestCloudFileSystem:
                 with open(os.path.join(tempdir, "refs", "main"), "r") as f:
                     assert f.read() == "abcdef1234567890"
 
-                # Check that download_files was called correctly
+                # Check that download_files_parallel was called correctly
                 mock_download.assert_called_once()
                 call_args = mock_download.call_args[1]
                 assert call_args["path"] == os.path.join(
@@ -451,6 +453,9 @@ class TestCloudFileSystem:
                 )
                 assert call_args["bucket_uri"] == "gs://bucket/model"
                 assert call_args["substrings_to_include"] == []
+                assert call_args["suffixes_to_exclude"] is None
+                assert call_args["use_threads"] is True
+                assert call_args["chunk_size"] == 64 * 1024 * 1024
 
     @patch("pyarrow.fs.copy_files")
     def test_upload_files(self, mock_copy_files):
