@@ -142,7 +142,7 @@ class TestLLMServingArgs:
         args_str = LLMServingArgs(
             llm_configs=[llm_config],
             ingress_cls_config={
-                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+                "ingress_cls": "ray.llm._internal.serve.core.ingress.ingress:OpenAiIngress"
             },
         )
         assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress

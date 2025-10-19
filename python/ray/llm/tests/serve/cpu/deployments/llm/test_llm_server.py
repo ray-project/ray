@@ -377,7 +377,7 @@ class TestLLMServer:
     async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
-            "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
+            "ray.llm._internal.serve.core.server.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
             server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
             await server.start()

@@ -108,7 +108,7 @@ class TestPDServingArgs:
             prefill_config=prefill,
             decode_config=decode,
             proxy_cls_config={
-                "proxy_cls": "ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server:PDProxyServer"
+                "proxy_cls": "ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server:PDProxyServer"
             },
         )
         assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
@@ -146,7 +146,7 @@ class TestPDServingArgs:
             prefill_config=prefill,
             decode_config=decode,
             ingress_cls_config={
-                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+                "ingress_cls": "ray.llm._internal.serve.core.ingress.ingress:OpenAiIngress"
             },
         )
         assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress
