@@ -21,6 +21,9 @@ def import_module_and_attr(
 
     If `reload_module` is set, the module will be reloaded using `importlib.reload`.
     """
+    if full_path is None:
+        raise TypeError("import path cannot be None")
+
     if ":" in full_path:
         if full_path.count(":") > 1:
             raise ValueError(
