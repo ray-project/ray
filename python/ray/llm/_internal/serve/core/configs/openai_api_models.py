@@ -177,7 +177,7 @@ def to_model_metadata(
         model_config: The model's YAML config.
         overrides: should only be set for LoRA fine-tuned models. The
             overrides of the fine-tuned model metadata.
-            
+
     Returns:
         A ModelCard object.
     """
