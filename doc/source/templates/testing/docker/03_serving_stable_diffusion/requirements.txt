@@ -5,4 +5,4 @@ ipywidgets
 matplotlib==3.7.1
 numpy==1.24.3
 torch==2.0.1
-transformers==4.30.1
+transformers==4.53.0
