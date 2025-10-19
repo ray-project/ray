@@ -6,7 +6,7 @@ ray_cc_library(
     # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/raylet:worker",
+        "//src/ray/raylet:worker_interface",
     ],
 )
 
@@ -32,6 +32,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
