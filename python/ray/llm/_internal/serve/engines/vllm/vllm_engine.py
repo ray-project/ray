@@ -11,6 +11,10 @@ from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -23,18 +27,14 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ScoreRequest,
     ScoreResponse,
 )
-from ray.llm._internal.serve.core.configs.llm_config import (
-    DiskMultiplexConfig,
-    LLMConfig,
-)
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,
 )
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 

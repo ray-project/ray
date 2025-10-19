@@ -30,6 +30,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
 )
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -51,13 +52,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ScoreResponse,
     to_model_metadata,
 )
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.protocol import DeploymentProtocol
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from ray.llm._internal.serve.utils.server_utils import replace_prefix
+from ray.llm._internal.serve.core.protocol import DeploymentProtocol
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -66,6 +65,7 @@ from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     get_lora_model_metadata,
 )
+from ray.llm._internal.serve.utils.server_utils import replace_prefix
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version

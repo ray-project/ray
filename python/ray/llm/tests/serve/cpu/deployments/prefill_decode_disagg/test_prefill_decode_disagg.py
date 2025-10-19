@@ -3,6 +3,10 @@ import sys
 import pytest
 
 from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
+from ray.llm._internal.serve.core.ingress.builder import (
+    IngressClsConfig,
+)
+from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder_pd import (
     PDServingArgs,
     ProxyClsConfig,
@@ -11,10 +15,6 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.builder_pd import (
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,
 )
-from ray.llm._internal.serve.core.ingress.builder import (
-    IngressClsConfig,
-)
-from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve.llm import LLMConfig
 
 

@@ -7,16 +7,16 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
-
-# For backward compatibility
-from ray.llm._internal.serve.core.server.llm_server import (
-    LLMServer as _LLMServer,
-)
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.util.annotations import PublicAPI
 

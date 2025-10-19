@@ -7,15 +7,15 @@ from pydantic import Field, field_validator, model_validator
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
-from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
-    PDProxyServer,
-)
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
+)
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    PDProxyServer,
 )
 from ray.serve.deployment import Application
 from ray.serve.llm import (
