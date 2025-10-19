@@ -161,46 +161,6 @@ See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/p
 
 This example creates two workers that share a single GPU (0.5 each, with time-slicing) within a RayCluster. See the [YAML file](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
 
-```yaml
-apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  name: raycluster-half-gpu
-  labels:
-    kai.scheduler/queue: team-a
-spec:
-  headGroupSpec:
-    template:
-      spec:
-        containers:
-        - name: head
-          image: rayproject/ray:2.46.0
-          resources:
-            limits:
-              cpu: "1"
-              memory: "2Gi"
-
-  # ---- Two workers share one GPU (0.5 each) ----
-  workerGroupSpecs:
-  - groupName: shared-gpu
-    replicas: 2
-    minReplicas: 2
-    rayStartParams:
-      num-gpus: "0.5"
-    template:
-      metadata:
-        annotations:
-          gpu-fraction: "0.5"   
-      spec:
-        containers:
-        - name: worker
-          image: rayproject/ray:2.46.0
-          resources:
-            limits:
-              cpu: "1"
-              memory: "2Gi"
-```
-
 ```bash
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
 
