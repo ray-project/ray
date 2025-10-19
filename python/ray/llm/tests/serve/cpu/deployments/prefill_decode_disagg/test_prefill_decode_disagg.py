@@ -7,7 +7,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
-from ray.llm._internal.serve.serving_patterns.prefill_decode.builder_pd import (
+from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
     ProxyClsConfig,
     build_pd_openai_app,

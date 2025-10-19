@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl_connector import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
     NixlConnectorBackend,
 )
 from ray.serve.llm import LLMConfig
