@@ -174,7 +174,7 @@ py_test(
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
-        "--log-frequency=60",
+        "--log-frequency=20",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -511,9 +511,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     size = "large",
-    srcs = [
-        "tests/run_regression_tests.py",
-    ],
+    srcs = ["tests/run_regression_tests.py"],
     args = ["--dir=tuned_examples/appo"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     main = "tests/run_regression_tests.py",
