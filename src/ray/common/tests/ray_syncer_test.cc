@@ -57,7 +57,7 @@ constexpr size_t kTestComponents = 1;
 using work_guard_type =
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
 
-InnerRaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
+InnerRaySyncMessage MakeInnerMessage(MessageType cid, int64_t version, const NodeID &id) {
   auto inner_msg = InnerRaySyncMessage();
   inner_msg.set_version(version);
   inner_msg.set_message_type(cid);
@@ -127,6 +127,44 @@ class RaySyncerTest : public ::testing::Test {
   NodeID local_id_;
 };
 
+TEST_F(RaySyncerTest, NodeStateCreateInnerSyncMessage) {
+  auto node_status = std::make_unique<NodeState>();
+  node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, nullptr);
+  ASSERT_EQ(std::nullopt,
+            node_status->CreateInnerSyncMessage(MessageType::RESOURCE_VIEW));
+
+  auto reporter = std::make_unique<MockReporterInterface>();
+  ASSERT_TRUE(node_status->SetComponent(
+      MessageType::RESOURCE_VIEW, GetReporter(MessageType::RESOURCE_VIEW), nullptr));
+
+  // Take a snapshot
+  auto inner_msg = node_status->CreateInnerSyncMessage(MessageType::RESOURCE_VIEW);
+  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW), inner_msg->version());
+  // Revert one version back.
+  LocalVersion(MessageType::RESOURCE_VIEW) -= 1;
+  inner_msg = node_status->CreateInnerSyncMessage(MessageType::RESOURCE_VIEW);
+  ASSERT_EQ(std::nullopt, inner_msg);
+}
+
+TEST_F(RaySyncerTest, NodeStateConsume) {
+  auto node_status = std::make_unique<NodeState>();
+  node_status->SetComponent(
+      MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
+  auto from_node_id = NodeID::FromRandom();
+  // The first time receiver the message
+  auto inner_msg = MakeInnerMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  ASSERT_TRUE(node_status->ConsumeInnerSyncMessage(
+      std::make_shared<InnerRaySyncMessage>(inner_msg)));
+  ASSERT_FALSE(node_status->ConsumeInnerSyncMessage(
+      std::make_shared<InnerRaySyncMessage>(inner_msg)));
+
+  inner_msg.set_version(1);
+  ASSERT_TRUE(node_status->ConsumeInnerSyncMessage(
+      std::make_shared<InnerRaySyncMessage>(inner_msg)));
+  ASSERT_FALSE(node_status->ConsumeInnerSyncMessage(
+      std::make_shared<InnerRaySyncMessage>(inner_msg)));
+}
+
 struct MockReactor {
   void StartRead(RaySyncMessage *) { ++read_cnt; }
 
@@ -150,26 +188,26 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
       node_id.Binary(),
       [](std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage>) {});
   auto from_node_id = NodeID::FromRandom();
-  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
-  auto msg_ptr1 = std::make_shared<InnerRaySyncMessage>(msg);
-  msg.set_version(2);
-  auto msg_ptr2 = std::make_shared<InnerRaySyncMessage>(msg);
-  msg.set_version(3);
-  auto msg_ptr3 = std::make_shared<InnerRaySyncMessage>(msg);
+  auto inner_msg = MakeInnerMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto inner_msg_ptr1 = std::make_shared<InnerRaySyncMessage>(inner_msg);
+  inner_msg.set_version(2);
+  auto inner_msg_ptr2 = std::make_shared<InnerRaySyncMessage>(inner_msg);
+  inner_msg.set_version(3);
+  auto inner_msg_ptr3 = std::make_shared<InnerRaySyncMessage>(inner_msg);
 
   // First push will succeed and the second one will be deduplicated.
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
-  ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr1));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr1));
+  ASSERT_FALSE(sync_reactor.PushToSendingQueue(inner_msg_ptr1));
   ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
 
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr2));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr3));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
@@ -828,7 +866,7 @@ class SyncerReactorTest : public ::testing::Test {
   void SetUp() override {
     rpc_service_ = std::make_unique<MockRaySyncerService>(
         io_context_,
-        [this](auto msg) { server_received_message.set_value(msg); },
+        [this](auto inner_msg) { server_received_message.set_value(inner_msg); },
         [this](RaySyncerBidiReactor *reactor, bool restart) {
           server_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), restart));
         });
@@ -848,7 +886,7 @@ class SyncerReactorTest : public ::testing::Test {
             rpc_service_->node_id.Binary(),
             client_node_id.Binary(),
             io_context_,
-            [this](auto msg) { client_received_message.set_value(msg); },
+            [this](auto inner_msg) { client_received_message.set_value(inner_msg); },
             [this](RaySyncerBidiReactor *reactor, bool r) {
               client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
             },
