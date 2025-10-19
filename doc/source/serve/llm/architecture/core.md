@@ -340,7 +340,7 @@ class LLMServer(LLMServerProtocol):
         self.engine = self._engine_cls(self._llm_config)
         await asyncio.wait_for(
             self._start_engine(), 
-            timeout=ENGINE_START_TIMEOUT_S
+            timeout=600 
         )
     
     @classmethod
@@ -453,6 +453,13 @@ class CustomLLMServer(LLMServer):
 Implement your own ingress for custom API formats:
 
 ```python
+from typing import List
+from ray import serve
+from ray.serve import DeploymentHandle
+
+# Define your FastAPI app or Ray Serve application.
+# For example: app = Application()
+
 @serve.ingress(app)
 class CustomIngress:
     """Custom ingress with non-OpenAI API."""
@@ -461,7 +468,8 @@ class CustomIngress:
         self.handles = server_handles
     
     @app.post("/custom/endpoint")
-    async def custom_endpoint(self, request: CustomRequest):
+    async def custom_endpoint(self, request: "CustomRequest"):
+        # CustomRequest is a user-defined request model.
         # Your custom logic
         pass
 ```

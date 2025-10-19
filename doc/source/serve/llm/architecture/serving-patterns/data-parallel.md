@@ -48,6 +48,8 @@ The following are the main components of DP deployments:
 `DPServer` extends `LLMServer` with data parallel coordination. The following pseudocode shows the structure:
 
 ```python
+from ray import serve
+
 class DPServer(LLMServer):
     """LLM server with data parallel coordination."""
     
@@ -62,7 +64,8 @@ class DPServer(LLMServer):
         self.dp_size = dp_size
         
         # Get assigned rank from coordinator and pass it to engine.
-        llm_config.rank = await self.rank_assigner.assign_rank.remote()
+        replica_id = serve.get_replica_context().replica_id
+        llm_config.rank = await self.rank_assigner.assign_rank.remote(replica_id)
         
         # Call parent initialization
         await super().__init__(llm_config, **kwargs)
