@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Any, Dict, List, Union
 from abc import ABCMeta, abstractmethod
+from ray.util.annotations import DeveloperAPI
 
 
 from ray.rllib.utils.annotations import (
@@ -10,6 +11,7 @@ from ray.rllib.utils.annotations import (
 )
 
 
+@DeveloperAPI
 class StatsBase(metaclass=ABCMeta):
     """A base class for Stats.
 
