@@ -301,6 +301,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            preserve_row_count=False,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
