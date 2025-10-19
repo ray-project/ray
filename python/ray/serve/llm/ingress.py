@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress as _OpenAiIngress,
     make_fastapi_ingress,
 )

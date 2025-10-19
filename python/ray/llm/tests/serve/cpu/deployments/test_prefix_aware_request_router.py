@@ -5,10 +5,10 @@ import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter,
 )
-from ray.llm._internal.serve.request_router.prefix_aware.prefix_tree import (
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
     PrefixTreeActor,
 )
 from ray.serve._private.common import (
