@@ -193,53 +193,57 @@ def test_time_logging(root_logger):
     """Test time logging functionality."""
     # Test time logging with EMA
     with root_logger.log_time("ema_time", reduce="ema", ema_coeff=0.1):
-        time.sleep(0.1)
+        time.sleep(0.01)
     with root_logger.log_time("ema_time", reduce="ema", ema_coeff=0.1):
-        time.sleep(0.2)
-    check(root_logger.peek("ema_time"), 0.101, atol=0.05)
+        time.sleep(0.02)
+    check(root_logger.peek("ema_time"), 0.0102, atol=0.05)
 
     # Test time logging with window
     with root_logger.log_time("mean_time", reduce="mean", window=2):
-        time.sleep(0.1)
+        time.sleep(0.01)
     with root_logger.log_time("mean_time", reduce="mean", window=2):
-        time.sleep(0.2)
+        time.sleep(0.02)
 
-    check(root_logger.peek("mean_time"), 0.15, atol=0.05)
+    check(root_logger.peek("mean_time"), 0.015, atol=0.05)
 
     # Test time logging with different reduction methods
     with root_logger.log_time("sum_time", reduce="sum"):
-        time.sleep(0.1)
+        time.sleep(0.01)
     with root_logger.log_time("sum_time"):
-        time.sleep(0.1)
-    check(root_logger.peek("sum_time"), 0.2, atol=0.05)
+        time.sleep(0.01)
+    check(root_logger.peek("sum_time"), 0.02, atol=0.05)
 
     # Test time logging with lifetime sum
     with root_logger.log_time("lifetime_sum_time", reduce="lifetime_sum"):
-        time.sleep(0.1)
+        time.sleep(0.01)
     with root_logger.log_time("lifetime_sum_time", reduce="lifetime_sum"):
-        time.sleep(0.1)
-    check(root_logger.peek("lifetime_sum_time"), 0.2, atol=0.05)
+        time.sleep(0.01)
+    check(root_logger.peek("lifetime_sum_time"), 0.02, atol=0.05)
 
     # Test time logging with min
     with root_logger.log_time("min_time", reduce="min"):
-        time.sleep(0.1)
-    check(root_logger.peek("min_time"), 0.1, atol=0.05)
+        time.sleep(0.02)
+    with root_logger.log_time("min_time", reduce="min"):
+        time.sleep(0.01)
+    check(root_logger.peek("min_time"), 0.01, atol=0.05)
 
     # Test time logging with max
     with root_logger.log_time("max_time", reduce="max"):
-        time.sleep(0.1)
-    check(root_logger.peek("max_time"), 0.1, atol=0.05)
+        time.sleep(0.01)
+    with root_logger.log_time("max_time", reduce="max"):
+        time.sleep(0.02)
+    check(root_logger.peek("max_time"), 0.02, atol=0.05)
 
     # Test time logging with percentiles
     with root_logger.log_time(
         "percentiles_time", reduce="percentiles", window=2, percentiles=[0.5]
     ):
-        time.sleep(0.1)
+        time.sleep(0.01)
     with root_logger.log_time(
         "percentiles_time", reduce="percentiles", window=2, percentiles=[0.5]
     ):
-        time.sleep(0.2)
-    check(root_logger.peek("percentiles_time"), {0.5: 0.15}, atol=0.05)
+        time.sleep(0.02)
+    check(root_logger.peek("percentiles_time"), {0.5: 0.015}, atol=0.05)
 
 
 def test_state_management(root_logger):
@@ -296,7 +300,7 @@ def test_throughput_tracking(root_logger, actors):
     actors[1].log_value.remote("value", 4)
 
     metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
-    time.sleep(1)
+    time.sleep(0.1)
 
     end_time = time.perf_counter()
     throughput = 10 / (end_time - start_time)
@@ -312,7 +316,7 @@ def test_throughput_tracking(root_logger, actors):
     actors[1].log_value.remote("value", 8)
 
     metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
-    time.sleep(1)
+    time.sleep(0.1)
 
     end_time = time.perf_counter()
     throughput = 26 / (end_time - start_time)
@@ -358,7 +362,7 @@ def test_compile(root_logger):
     root_logger.log_value("simple", 1)
     root_logger.log_value("simple", 2)
 
-    time.sleep(1)
+    time.sleep(0.1)
 
     end_time = time.perf_counter()
     throughput = 3 / (end_time - start_time)
