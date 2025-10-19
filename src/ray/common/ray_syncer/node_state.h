@@ -67,7 +67,7 @@ class NodeState {
   /// \param message_type The component to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> CreateSyncMessage(MessageType message_type);
+  std::optional<InnerRaySyncMessage> CreateInnerSyncMessage(MessageType message_type);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -75,7 +75,7 @@ class NodeState {
   /// \param message The message received.
   ///
   /// \return true if the local node doesn't have message with newer version.
-  bool ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message);
+  bool ConsumeInnerSyncMessage(std::shared_ptr<const InnerRaySyncMessage> message);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<

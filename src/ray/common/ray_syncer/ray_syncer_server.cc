@@ -34,7 +34,7 @@ RayServerBidiReactor::RayServerBidiReactor(
     grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
     const std::string &local_node_id,
-    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
+    std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,

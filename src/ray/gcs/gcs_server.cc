@@ -574,8 +574,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       kGCSNodeID.Binary(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
-      },
-      RayConfig::instance().gcs_ray_syncer_batching_enabled());
+      });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
@@ -930,11 +929,7 @@ void GcsServer::TryGlobalGC() {
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     inner_msg->set_sync_message(std::move(serialized_msg));
 
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    auto batched_msg = msg->mutable_batched_messages();
-    (*batched_msg)[NodeID::FromBinary(kGCSNodeID.Binary()).Hex()] = std::move(*inner_msg);
-
-    ray_syncer_->BroadcastMessage(std::move(msg));
+    ray_syncer_->BroadcastInnerMessage(std::move(inner_msg));
     global_gc_throttler_->RunNow();
   }
 }

@@ -45,12 +45,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
-      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
+      std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)) {}
 
-  bool PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) override {
+  bool PushToSendingQueue(std::shared_ptr<const InnerRaySyncMessage> message) override {
     if (*IsDisconnected()) {
       return false;
     }
@@ -58,62 +58,21 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // Try to filter out the messages the target node already has.
     // Usually it'll be the case when the message is generated from the
     // target node or it's sent from the target node.
-
-    // Create a copy of the message for this reactor to avoid affecting other reactors
-    auto sending_message = std::make_shared<RaySyncMessage>();
-    sending_message->CopyFrom(*message);
-
-    RAY_LOG(DEBUG) << "Push merged message to sending queue to "
-                   << NodeID::FromBinary(GetRemoteNodeID()) << ", batched_messages_size="
-                   << sending_message->batched_messages_size();
-
-    // Filter out messages in-place using map structure
-    auto *mutable_batched_messages = sending_message->mutable_batched_messages();
-
-    for (auto it = mutable_batched_messages->begin();
-         it != mutable_batched_messages->end();) {
-      const auto &inner_message = it->second;
-      // No need to resend the message sent from a node back.
-      if (inner_message.node_id() == GetRemoteNodeID()) {
-        // Skip the message when it's about the node of this connection.
-        RAY_LOG(DEBUG) << "Remove inner message about self node "
-                       << NodeID::FromBinary(GetRemoteNodeID());
-        it = mutable_batched_messages->erase(it);
-        continue;
-      }
-
-      auto &node_versions = GetNodeComponentVersions(inner_message.node_id());
-      if (node_versions[inner_message.message_type()] < inner_message.version()) {
-        RAY_LOG(DEBUG) << "Queue inner message to send to "
-                       << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
-                       << NodeID::FromBinary(inner_message.node_id())
-                       << ", message_type=" << inner_message.message_type()
-                       << ", message_version=" << inner_message.version()
-                       << ", local_message_version="
-                       << node_versions[inner_message.message_type()];
-        node_versions[inner_message.message_type()] = inner_message.version();
-        ++it;
-      } else {
-        RAY_LOG(DEBUG) << "Remove outdated inner message to "
-                       << NodeID::FromBinary(GetRemoteNodeID()) << " about node "
-                       << NodeID::FromBinary(inner_message.node_id())
-                       << " because the message version " << inner_message.version()
-                       << " is older than the local version "
-                       << node_versions[inner_message.message_type()];
-        it = mutable_batched_messages->erase(it);
-      }
-    }
-
-    if (sending_message->batched_messages_size() == 0) {
-      RAY_LOG(DEBUG) << "Skip to send merged message to "
-                     << NodeID::FromBinary(GetRemoteNodeID())
-                     << " because all messages are filtered out";
+    // No need to resend the message sent from a node back.
+    if (message->node_id() == GetRemoteNodeID()) {
+      // Skip the message when it's about the node of this connection.
       return false;
     }
 
-    sending_buffer_.emplace_back(std::move(sending_message));
-    StartSend();
-    return true;
+    auto &node_versions = GetNodeComponentVersions(message->node_id());
+    if (node_versions[message->message_type()] < message->version()) {
+      node_versions[message->message_type()] = message->version();
+      sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
+          std::move(message);
+      StartSend();
+      return true;
+    }
+    return false;
   }
 
   virtual ~RaySyncerBidiReactorBase() = default;
@@ -156,6 +115,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
                        << ", local_version="
                        << node_versions[inner_message.message_type()];
         node_versions[inner_message.message_type()] = inner_message.version();
+        message_processor_(std::make_shared<InnerRaySyncMessage>(inner_message));
         ++it;
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
@@ -175,7 +135,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
              "messages are filtered out";
       return;
     }
-    message_processor_(message);
   }
 
   void SendNext() {
@@ -191,9 +150,24 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (!sending_buffer_.empty()) {
       RAY_LOG(DEBUG) << "Start sending to " << NodeID::FromBinary(GetRemoteNodeID())
                      << ", pending messages: " << sending_buffer_.size();
-      auto msg = std::move(sending_buffer_.front());
-      sending_buffer_.pop_front();
-      Send(std::move(msg), sending_buffer_.empty());
+
+      // Create a new batched message
+      auto merged_message = std::make_shared<RaySyncMessage>();
+
+      // Add all individual messages to the batch
+      for (const auto &[key, inner_message] : sending_buffer_) {
+        RAY_LOG(DEBUG) << "Adding message version: " << inner_message->version()
+                       << " from node: " << NodeID::FromBinary(inner_message->node_id())
+                       << " to batched message";
+        (*merged_message->mutable_batched_messages())
+            [NodeID::FromBinary(inner_message->node_id()).Hex()] = *inner_message;
+      }
+
+      RAY_LOG(DEBUG) << "Created batched sync message containing "
+                     << merged_message->batched_messages_size() << " messages";
+
+      sending_buffer_.clear();
+      Send(std::move(merged_message), true);
       sending_ = true;
     }
   }
@@ -286,11 +260,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   /// Handler of a message update.
-  const std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
+  const std::function<void(std::shared_ptr<const InnerRaySyncMessage>)>
+      message_processor_;
 
  private:
   /// Buffering all the updates. Sending will be done in an async way.
-  std::deque<std::shared_ptr<RaySyncMessage>> sending_buffer_;
+  absl::flat_hash_map<std::pair<std::string, MessageType>,
+                      std::shared_ptr<const InnerRaySyncMessage>>
+      sending_buffer_;
 
   /// Keep track of the versions of components in the remote node.
   /// This field will be updated when messages are received or sent.

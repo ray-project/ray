@@ -39,7 +39,8 @@ bool NodeState::SetComponent(MessageType message_type,
   return false;
 }
 
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
+std::optional<InnerRaySyncMessage> NodeState::CreateInnerSyncMessage(
+    MessageType message_type) {
   if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
@@ -50,64 +51,34 @@ std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_t
     RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
                    << ", version:" << inner_message->version()
                    << ", node:" << NodeID::FromBinary(inner_message->node_id());
-    RaySyncMessage message;
-    auto batched_message = message.mutable_batched_messages();
-    (*batched_message)[NodeID::FromBinary(inner_message->node_id()).Hex()] =
-        std::move(*inner_message);
-    return message;
-  } else {
-    return std::nullopt;
   }
+  return inner_message;
 }
 
 bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeSyncMessage(std::shared_ptr<RaySyncMessage> message) {
-  auto *mutable_batched_messages = message->mutable_batched_messages();
+bool NodeState::ConsumeInnerSyncMessage(
+    std::shared_ptr<const InnerRaySyncMessage> message) {
+  auto &current = cluster_view_[message->node_id()][message->message_type()];
 
-  int64_t consumed_messages = 0;
-  // Iterate through the map, update local state and remove stale messages in one pass
-  for (auto it = mutable_batched_messages->begin();
-       it != mutable_batched_messages->end();) {
-    const auto &inner_message = it->second;
-    auto &inner_current =
-        cluster_view_[inner_message.node_id()][inner_message.message_type()];
-
-    if (!inner_current || inner_current->version() < inner_message.version()) {
-      RAY_LOG(DEBUG) << "ConsumeInnerSyncMessage: local_version="
-                     << (inner_current ? inner_current->version() : -1)
-                     << " message_version=" << inner_message.version()
-                     << ", message_from=" << NodeID::FromBinary(inner_message.node_id())
-                     << ", message_type=" << inner_message.message_type();
-      // Update the current message to the newer one
-      inner_current = std::make_shared<const InnerRaySyncMessage>(inner_message);
-      ++consumed_messages;
-      auto receiver = receivers_[inner_message.message_type()];
-      if (receiver != nullptr) {
-        RAY_LOG(DEBUG) << "Consume message from: "
-                       << NodeID::FromBinary(inner_message.node_id());
-        receiver->ConsumeInnerSyncMessage(inner_current);
-      }
-      ++it;  // Keep this message, move to next
-    } else {
-      RAY_LOG(DEBUG) << "Skip to consume inner message from: "
-                     << NodeID::FromBinary(inner_message.node_id())
-                     << " because the inner message version " << inner_message.version()
-                     << " is older than the local version "
-                     << (inner_current ? inner_current->version() : -1);
-      // Remove stale message and move to next
-      it = mutable_batched_messages->erase(it);
-    }
-  }
-
-  if (consumed_messages == 0) {
-    RAY_LOG(DEBUG) << "Skip to consume batched message because all messages are older "
-                      "than the local version";
+  RAY_LOG(DEBUG) << "ConsumeInnerSyncMessage: local_version="
+                 << (current ? current->version() : -1)
+                 << " message_version=" << message->version()
+                 << ", message_from=" << NodeID::FromBinary(message->node_id());
+  // Check whether newer version of this message has been received.
+  if (current && current->version() >= message->version()) {
     return false;
   }
 
+  current = message;
+  auto receiver = receivers_[message->message_type()];
+  if (receiver != nullptr) {
+    RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
+        << "Consume message from node";
+    receiver->ConsumeInnerSyncMessage(message);
+  }
   return true;
 }
 

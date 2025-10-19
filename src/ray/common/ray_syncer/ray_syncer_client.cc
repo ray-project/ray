@@ -24,7 +24,7 @@ RayClientBidiReactor::RayClientBidiReactor(
     const std::string &remote_node_id,
     const std::string &local_node_id,
     instrumented_io_context &io_context,
-    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
+    std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
