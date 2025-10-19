@@ -94,7 +94,7 @@ You can generate audio transcriptions for Speech-to-Text (STT) models trained sp
 :sync: python
 
 ```{literalinclude} ../../../llm/doc_code/serve/transcription/transcription_example.py
-language: python
+:language: python
 :start-after: __transcription_example_start__
 :end-before: __transcription_example_end__
 ```
