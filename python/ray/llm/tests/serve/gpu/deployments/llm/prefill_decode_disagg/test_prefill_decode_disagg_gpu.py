@@ -3,10 +3,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     VLLMEngine,
 )
 
