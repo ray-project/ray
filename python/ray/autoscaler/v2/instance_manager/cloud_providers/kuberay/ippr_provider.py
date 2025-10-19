@@ -9,9 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import jsonschema
 
-import ray._private.utils
-from ray._common.network_utils import build_address
-from ray._raylet import GcsClient, NodeID
+from ray._raylet import GcsClient, NodeID, RayletPXIClient
 from ray.autoscaler._private.kuberay.node_provider import (
     KUBERAY_KIND_HEAD,
     KUBERAY_KIND_WORKER,
@@ -27,7 +25,7 @@ from ray.autoscaler.v2.schema import (
     IPPRSpecsSchema,
     IPPRStatus,
 )
-from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.core.generated import gcs_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -173,15 +171,16 @@ class KubeRayIPPRProvider:
             if not ippr_status.need_sync_with_raylet():
                 continue
             try:
-                raylet_addr = _get_raylet_address(
+                host_port = _get_raylet_host_port(
                     self._gcs_client, ippr_status.raylet_id
                 )
-                if not raylet_addr:
+                if not host_port:
                     raise RuntimeError(
                         f"Raylet address not found for pod {ippr_status.cloud_instance_id}"
                     )
                 _resize_raylet_resources(
-                    raylet_addr,
+                    host_port[0],
+                    host_port[1],
                     ippr_status.current_cpu,
                     ippr_status.current_memory,
                 )
@@ -246,20 +245,28 @@ class KubeRayIPPRProvider:
             ):
                 # For downsizing, update Raylet first.
                 try:
-                    raylet_addr = _get_raylet_address(
+                    host_port = _get_raylet_host_port(
                         self._gcs_client, resize.raylet_id
                     )
-                    if not raylet_addr:
+                    if not host_port:
                         raise RuntimeError(
                             f"Raylet address not found for pod {resize.cloud_instance_id}"
                         )
-                    updated = _resize_raylet_resources(
-                        raylet_addr,
+                    updated_total_resources = _resize_raylet_resources(
+                        host_port[0],
+                        host_port[1],
                         resize.desired_cpu,
                         resize.desired_memory,
                     )
-                    resize.desired_cpu = float(updated.total_resources["CPU"])
-                    resize.desired_memory = int(updated.total_resources["memory"])
+                    if (
+                        "CPU" not in updated_total_resources
+                        or "memory" not in updated_total_resources
+                    ):
+                        raise RuntimeError(
+                            f"CPU or memory not found in the response of resizing raylet resources: {updated_total_resources}"
+                        )
+                    resize.desired_cpu = float(updated_total_resources["CPU"])
+                    resize.desired_memory = int(updated_total_resources["memory"])
                 except Exception as e:
                     logger.error(
                         f"Skip failed downsizing on pod {resize.cloud_instance_id}: {e}"
@@ -373,30 +380,25 @@ async def _get_node_info(
 
 
 @lru_cache(maxsize=2**10)
-def _get_raylet_address(gcs_client: GcsClient, raylet_id: str) -> Optional[str]:
+def _get_raylet_host_port(
+    gcs_client: GcsClient, raylet_id: str
+) -> Optional[tuple[str, int]]:
     # Cache the mapping from raylet_id to address to avoid repeated GCS calls
     # during a scaling loop.
     node_info_dict = asyncio.run(_get_node_info(gcs_client, raylet_id))
     if not node_info_dict:
         return None
     _, node_info = next(iter(node_info_dict.items()))
-    raylet_addr = build_address(
-        node_info.node_manager_address, node_info.node_manager_port
-    )
-    return raylet_addr
+    return node_info.node_manager_address, node_info.node_manager_port
 
 
 def _resize_raylet_resources(
-    raylet_addr: str, cpu: float, memory: float
-) -> node_manager_pb2.ResizeLocalResourceInstancesReply:
+    host: str, port: int, cpu: float, memory: float
+) -> Dict[str, float]:
     # Update Raylet's local view so scheduling decisions are consistent with
     # the pod's resources when K8s accepts the resize.
-    channel = ray._private.utils.init_grpc_channel(raylet_addr, asynchronous=False)
-    raylet_client = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    request = node_manager_pb2.ResizeLocalResourceInstancesRequest()
-    request.resources["CPU"] = cpu
-    request.resources["memory"] = memory
-    return raylet_client.ResizeLocalResourceInstances(request)
+    raylet_client = RayletPXIClient.create(host, port)
+    return raylet_client.resize_local_resource_instances({"CPU": cpu, "memory": memory})
 
 
 def _get_ippr_status_from_pod(
