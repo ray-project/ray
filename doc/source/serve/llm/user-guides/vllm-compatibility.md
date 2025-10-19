@@ -80,6 +80,69 @@ curl -X POST http://localhost:8000/v1/embeddings \
 
 ::::
 
+
+## Transcriptions
+
+You can generate audio transcriptions for Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks.
+Models supporting this use case are listed at
+`vLLM transcription models <https://docs.vllm.ai/en/stable/models/supported_models.html#transcription>`_.
+
+
+### Deploy an transcription model
+
+::::{tab-set}
+
+:::{tab-item} Python
+:sync: python
+
+```{literalinclude} ../../llm/doc_code/serve/transcription/transcription_example.py
+language: python
+:start-after: __transcription_example_start__
+:end-before: __transcription_example_end__
+```
+:::
+
+:::{tab-item} Python Client
+:sync: client
+
+```python
+from openai import OpenAI
+
+# Initialize client
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+# Open audio file
+file = open("/path/to/audio.wav", "rb")
+
+# Make a request to the desired lora checkpoint
+response = client.audio.transcriptions.create(
+    model="whisper-large",
+    file=file,
+    temperature=0.0,
+    language="en",
+)
+
+print(response.text)
+```
+:::
+
+:::{tab-item} cURL
+:sync: curl
+
+```bash
+curl http://localhost:8000/v1/audio/transcriptions \
+    -X POST \
+    -H "Authorization: Bearer fake-key" \
+    -F "file=@/path/to/audio.wav" \
+    -F "model=whisper-large" \
+    -F "temperature=0.0" \
+    -F "language=en"
+```
+:::
+
+::::
+
+
 ## Structured output
 
 You can request structured JSON output similar to OpenAI's API using JSON mode or JSON schema validation with Pydantic models.
