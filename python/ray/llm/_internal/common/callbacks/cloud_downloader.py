@@ -1,4 +1,5 @@
 import logging
+import subprocess
 import time
 from typing import Any, List, Tuple
 
@@ -80,9 +81,18 @@ class CloudDownloader(CallbackBase):
         start_time = time.monotonic()
         for cloud_uri, local_path in paths:
             try:
-                CloudFileSystem.download_files_parallel(
-                    path=local_path, bucket_uri=cloud_uri
-                )
+                # TODO (ahao): aws s3 sync is faster than CloudFileSystem, needs investigation
+                if cloud_uri.startswith("s3://"):
+                    subprocess.run(
+                        ["aws", "s3", "sync", cloud_uri, local_path],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                else:
+                    CloudFileSystem.download_files_parallel(
+                        path=local_path, bucket_uri=cloud_uri
+                    )
             except Exception as e:
                 logger.error(
                     f"CloudDownloader: Failed to download {cloud_uri} to {local_path}: {e}"
