@@ -302,6 +302,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `DrainRaylet` request.
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -588,11 +593,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `DrainRaylet` request.
-  void HandleDrainRaylet(rpc::DrainRayletRequest request,
-                         rpc::DrainRayletReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
