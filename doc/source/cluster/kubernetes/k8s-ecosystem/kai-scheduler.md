@@ -148,42 +148,12 @@ KAI scheduler deployment comes with several predefined priority classes:
 - build (100) - use for build/interactive workloads (non-preemptible)
 - inference (125) - use for inference workloads (non-preemptible)
 
-You can submit the same workload above with a specific priority. This example modifies the above example into a build class workload:
+You can submit the same workload above with a specific priority. Modify the above example into a build class workload:
 
 ```yaml
-apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  name: raycluster-sample
   labels:
     kai.scheduler/queue: team-a    # This is the essential configuration.
     priorityClassName: build       # Here you can specify the priority class (optional)
-spec:
-  headGroupSpec:
-    template:
-      spec:
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.41.0
-          resources:
-            requests:
-              cpu: "1"
-              memory: "2Gi"
-  workerGroupSpecs:
-  - groupName: worker
-    replicas: 2
-    minReplicas: 2
-    template:
-      spec:
-        containers:
-        - name: ray-worker
-          image: rayproject/ray:2.41.0
-          resources:
-            requests:
-              cpu: "1"
-              memory: "1Gi"
-
-```
 
 See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority) for more information.
 
