@@ -326,7 +326,6 @@ Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 }
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
-  absl::MutexLock lock(&pool_mutex_);
   RAY_CHECK_OK(store_client_->Delete(object_ids));
 }
 
