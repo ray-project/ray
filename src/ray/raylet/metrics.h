@@ -136,5 +136,51 @@ inline ray::stats::Gauge GetMemoryManagerWorkerEvictionTotalGaugeMetric() {
   };
 }
 
+inline ray::stats::Sum GetNumWorkersStartedMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_started",
+      /*description=*/"The total number of worker processes the worker pool has created.",
+      /*unit=*/"processes"};
+}
+
+inline ray::stats::Sum GetNumCachedWorkersSkippedJobMismatchMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_skipped_job_mismatch",
+      /*description=*/"The total number of cached workers skipped due to job mismatch.",
+      /*unit=*/"workers"};
+}
+
+inline ray::stats::Sum GetNumCachedWorkersSkippedRuntimeEnvironmentMismatchMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_skipped_runtime_environment_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to runtime environment mismatch.",
+      /*unit=*/"workers"};
+}
+
+inline ray::stats::Sum GetNumCachedWorkersSkippedDynamicOptionsMismatchMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_skipped_dynamic_options_mismatch",
+      /*description=*/
+      "The total number of cached workers skipped due to dynamic options mismatch.",
+      /*unit=*/"workers"};
+}
+
+inline ray::stats::Sum GetNumWorkersStartedFromCacheMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_started_from_cache",
+      /*description=*/"The total number of workers started from a cached worker process.",
+      /*unit=*/"workers"};
+}
+
+inline ray::stats::Histogram GetWorkerRegisterTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"worker_register_time_ms",
+      /*description=*/"end to end latency of register a worker process.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+  };
+}
+
 }  // namespace raylet
 }  // namespace ray

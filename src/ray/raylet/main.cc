@@ -352,6 +352,18 @@ int main(int argc, char *argv[]) {
       ray::raylet::GetInternalNumSpilledTasksGaugeMetric();
   ray::stats::Gauge internal_num_infeasible_scheduling_classes_gauge =
       ray::raylet::GetInternalNumInfeasibleSchedulingClassesGaugeMetric();
+  ray::stats::Sum num_workers_started_metric = ray::raylet::GetNumWorkersStartedMetric();
+  ray::stats::Sum num_cached_workers_skipped_job_mismatch_metric =
+      ray::raylet::GetNumCachedWorkersSkippedJobMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_runtime_environment_mismatch_metric =
+      ray::raylet::GetNumCachedWorkersSkippedRuntimeEnvironmentMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_dynamic_options_mismatch_metric =
+      ray::raylet::GetNumCachedWorkersSkippedDynamicOptionsMismatchMetric();
+  ray::stats::Sum num_workers_started_from_cache_metric =
+      ray::raylet::GetNumWorkersStartedFromCacheMetric();
+  ray::stats::Histogram worker_register_time_ms_histogram =
+      ray::raylet::GetWorkerRegisterTimeMsHistogramMetric();
+
   ray::raylet::SchedulerMetrics scheduler_metrics = {
       scheduler_tasks_gauge,
       scheduler_unscheduleable_tasks_gauge,
@@ -659,6 +671,12 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
+        num_workers_started_metric,
+        num_cached_workers_skipped_job_mismatch_metric,
+        num_cached_workers_skipped_runtime_environment_mismatch_metric,
+        num_cached_workers_skipped_dynamic_options_mismatch_metric,
+        num_workers_started_from_cache_metric,
+        worker_register_time_ms_histogram,
         std::move(add_process_to_workers_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(

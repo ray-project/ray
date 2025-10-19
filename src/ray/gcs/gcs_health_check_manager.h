@@ -25,6 +25,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/util/thread_checker.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
@@ -56,6 +57,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   static std::shared_ptr<GcsHealthCheckManager> Create(
       instrumented_io_context &io_service,
       std::function<void(const NodeID &)> on_node_death_callback,
+      ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
       int64_t initial_delay_ms = RayConfig::instance().health_check_initial_delay_ms(),
       int64_t timeout_ms = RayConfig::instance().health_check_timeout_ms(),
       int64_t period_ms = RayConfig::instance().health_check_period_ms(),
@@ -89,12 +91,14 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   void MarkNodeHealthy(const NodeID &node_id);
 
  private:
-  GcsHealthCheckManager(instrumented_io_context &io_service,
-                        std::function<void(const NodeID &)> on_node_death_callback,
-                        int64_t initial_delay_ms,
-                        int64_t timeout_ms,
-                        int64_t period_ms,
-                        int64_t failure_threshold);
+  GcsHealthCheckManager(
+      instrumented_io_context &io_service,
+      std::function<void(const NodeID &)> on_node_death_callback,
+      ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram,
+      int64_t initial_delay_ms,
+      int64_t timeout_ms,
+      int64_t period_ms,
+      int64_t failure_threshold);
 
   /// Fail a node when health check failed. It'll stop the health checking and
   /// call `on_node_death_callback_`.
@@ -172,6 +176,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   const int64_t period_ms_;
   /// The number of failures before the node is considered as dead.
   const int64_t failure_threshold_;
+  ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram_;
 };
 
 }  // namespace ray::gcs

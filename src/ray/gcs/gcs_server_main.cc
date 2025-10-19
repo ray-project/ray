@@ -192,6 +192,8 @@ int main(int argc, char *argv[]) {
   auto resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
   auto scheduler_placement_time_s_histogram =
       ray::GetSchedulerPlacementTimeSHistogramMetric();
+  auto health_check_rpc_latency_ms_histogram =
+      ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
 
   // Create the metrics struct
   ray::gcs::GcsServerMetrics gcs_server_metrics{
@@ -215,6 +217,7 @@ int main(int argc, char *argv[]) {
       /*storage_operation_count_counter=*/storage_operation_count_counter,
       /*resource_usage_gauge=*/resource_usage_gauge,
       /*scheduler_placement_time_s_histogram=*/scheduler_placement_time_s_histogram,
+      /*health_check_rpc_latency_ms_histogram=*/health_check_rpc_latency_ms_histogram,
   };
 
   ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);
