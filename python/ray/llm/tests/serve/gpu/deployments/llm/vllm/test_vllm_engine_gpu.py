@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util.placement_group import PlacementGroupSchedulingStrategy, placement_group
 
