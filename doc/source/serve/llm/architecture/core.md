@@ -340,7 +340,7 @@ class LLMServer(LLMServerProtocol):
         self.engine = self._engine_cls(self._llm_config)
         await asyncio.wait_for(
             self._start_engine(), 
-            timeout=600 
+            timeout=600
         )
     
     @classmethod

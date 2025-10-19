@@ -37,7 +37,7 @@ Consider alternatives when:
 
 - **Low to medium throughput**: If you can't saturate the MoE layers, don't use DP. 
 - **Non-MLA Attention**: DP is beneficial with MLA. Without DP (using TP instead), you need to replicate the KV cache, which isn't beneficial because you want to maximize batch size. As long as the KV cache can be sharded, using TP might be sufficient. 
-- **Non-MoE Models**: The main reason for using DP at the cost of this complexity is to lift the effective batch size during decoding for saturating the experts. 
+- **Non-MoE models**: The main reason for using DP at the cost of this complexity is to lift the effective batch size during decoding for saturating the experts. 
 
 ## Components
 
@@ -145,10 +145,7 @@ The key difference from basic serving is that all the `dp_size` replicas are wor
 
 ### Scaling behavior
 
-Data parallel deployments scale in units of `dp_size`:
-
-- **Minimum replicas**: Must be a multiple of `dp_size` (fixed to `dp_size` as only static scaling is supported).
-- **Maximum replicas**: Must be a multiple of `dp_size` (fixed to `dp_size` as only static scaling is supported).
+Data parallel deployments require a fixed number of replicas equal to `dp_size`, as autoscaling isn't supported for this pattern. You must set `num_replicas` to `dp_size`, or if using `autoscaling_config`, both `min_replicas` and `max_replicas` must equal `dp_size`.
 
 
 ## Design considerations

@@ -28,7 +28,7 @@ Prefill and decode have different computational patterns:
 
 | Phase | Characteristics | Resource Needs |
 |-------|----------------|----------------|
-| Prefill | Processes entire prompt at once | High compute, lower memory |
+| Prefill | Processes the entire prompt at once | High compute, lower memory |
 | | Parallel token processing | Benefits from high FLOPS |
 | | Short duration per request | Can use fewer replicas when decode-limited |
 | Decode | Generates one token at a time | Lower compute, high memory |
@@ -136,7 +136,7 @@ decode_config = LLMConfig(
 
 ### Request flow
 
-```{figure} ../../images/pd_flow.png
+```{figure} ../../images/pd.png
 ---
 width: 700px
 name: pd-flow

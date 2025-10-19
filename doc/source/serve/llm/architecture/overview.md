@@ -108,7 +108,7 @@ Illustration of `LLMServer` managing vLLM engine instance.
 `OpenAiIngress` provides an OpenAI-compatible FastAPI ingress that routes traffic to the appropriate model. It handles:
 
 - **Standard endpoint definitions**: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, etc.
-- **Request routing logic**: The execution of custom routers logic (for example, prefix-aware or session-aware routing).
+- **Request routing logic**: The execution of custom router logic (for example, prefix-aware or session-aware routing).
 - **Model multiplexing**: LoRA adapter management and routing.
 
 The following example shows a complete deployment with `OpenAiIngress`:
