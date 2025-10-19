@@ -75,6 +75,9 @@ class ItemSeriesStats(StatsBase):
         else:
             self.items = self.items
 
+        if compile:
+            return items
+
         return_stats = self.similar_to(self)
         return_stats.items = items
         return return_stats

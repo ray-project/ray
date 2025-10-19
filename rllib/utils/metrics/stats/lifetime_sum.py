@@ -158,7 +158,7 @@ class LifetimeSumStats(StatsBase):
         assert (
             self._is_root_stats
         ), "LifetimeSumStats should only be merged at root level"
-        self.push(sum([stat._item for stat in incoming_stats]))
+        self.push(sum([stat._lifetime_sum for stat in incoming_stats]))
 
     def __repr__(self) -> str:
         return f"LifetimeSumStats({self.peek()}; track_throughputs={self.track_throughputs})"

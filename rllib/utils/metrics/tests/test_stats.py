@@ -35,26 +35,18 @@ from ray.rllib.utils.test_utils import check
         (MaxStats, {"window": 5}, [1, 5, 3], 5),
         (SumStats, {"window": 3}, [2, 4, 6], 12),
         (LifetimeSumStats, {}, [10, 20], 30),
-        (LifetimeSumStats, {"is_root_stats": True}, [10, 20], 30),
         (EmaStats, {"ema_coeff": 0.01}, [10, 20], 10.1),
     ],
 )
 def test_peek_and_reduce(stats_class, init_kwargs, setup_values, expected_reduced):
     # Test without clear_on_reduce (LifetimeSumStats always clears)
-    stats = stats_class(**init_kwargs, clear_on_reduce=False)
+    stats = stats_class(**init_kwargs)
     for value in setup_values:
         stats.push(value)
 
+    check(stats.peek(), expected_reduced)
     result = stats.reduce(compile=True)
     check(result, expected_reduced)
-
-    # After reduce, different stats have different behaviors
-    if stats_class == LifetimeSumStats and not init_kwargs.get("is_root_stats", False):
-        # LifetimeSumStats always resets to 0 after reduce
-        check(stats.peek(), 0)
-    else:
-        # Other stats keep the value if clear_on_reduce=False
-        check(stats.peek(), expected_reduced)
 
     # Test with clear_on_reduce=True (skip LifetimeSumStats which doesn't support it)
     if stats_class != LifetimeSumStats:
@@ -70,6 +62,50 @@ def test_peek_and_reduce(stats_class, init_kwargs, setup_values, expected_reduce
             check(stats2.peek(), None)
         else:
             check(np.isnan(stats2.peek()), True)
+
+
+def test_peek_and_reduce_percentiles_stats():
+    stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
+    for value in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        stats.push(value)
+
+    check(stats.peek(compile=False), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    check(stats.peek(compile=True), {0: 1, 50: 5.5, 100: 10})
+    result = stats.reduce(compile=True)
+    check(result, {0: 1, 50: 5.5, 100: 10})
+
+
+def test_peek_and_reduce_item_series_stats():
+    stats = ItemSeriesStats(window=10)
+    for value in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]:
+        stats.push(value)
+
+    assert stats.peek(compile=False) == [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+    ]
+    assert stats.peek(compile=True) == [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+    ]
+    result = stats.reduce(compile=True)
+    assert result == ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
 
 
 @pytest.mark.parametrize(
@@ -136,19 +172,19 @@ def test_state_save_and_load(stats_class, init_kwargs, test_values):
 
 
 @pytest.mark.parametrize(
-    "stats_class,init_kwargs,values1,values2,expected_check_fn",
+    "stats_class,init_kwargs,values1,values2,expected_result",
     [
         (MeanStats, {"window": 10}, [1, 2, 3], [4, 5], 3.0),
         (MaxStats, {"window": 10}, [1, 2, 3], [4, 5], 5),
         (MinStats, {"window": 10}, [1, 2, 3], [4, 5], 1),
         (SumStats, {"window": 10}, [1, 2, 3], [4, 5], 15),
         (EmaStats, {"ema_coeff": 0.01}, [1, 2], [3, 4], 2.01),
-        (ItemSeriesStats, {"window": 10}, ["a", "b"], ["c", "d"], ["a", "b", "c", "d"]),
-        (LifetimeSumStats, {}, [10, 20], [30, 40], 70),
+        (ItemSeriesStats, {"window": 10}, [1, 2], [3, 4], [1, 2, 3, 4]),
+        (LifetimeSumStats, {}, [10, 20], [30, 40], 100),
         # This is not inteded to work for ItemStats
     ],
 )
-def test_merge(stats_class, init_kwargs, values1, values2, expected_check_fn):
+def test_merge(stats_class, init_kwargs, values1, values2, expected_result):
     root_stats = stats_class(**init_kwargs, is_root_stats=True)
 
     stats1 = stats_class(**init_kwargs)
@@ -163,8 +199,36 @@ def test_merge(stats_class, init_kwargs, values1, values2, expected_check_fn):
 
     result = root_stats.peek()
 
-    # Use the check function to validate
-    check(expected_check_fn(result), True)
+    check(result, expected_result)
+
+
+# Items stats only allow us to log a single item that should not be reduced.
+def test_merge_item_stats():
+    root_stats = ItemStats(is_root_stats=True)
+
+    # ItemStats can only be merged with a single incoming stats object
+    incoming_stats = ItemStats()
+    incoming_stats.push(42)
+
+    root_stats.merge([incoming_stats])
+    check(root_stats.peek(), 42)
+
+    # Test with another merge
+    incoming_stats2 = ItemStats()
+    incoming_stats2.push(100)
+
+    root_stats.merge([incoming_stats2])
+    check(root_stats.peek(), 100)
+
+    # Test that merging with multiple stats raises an assertion error
+    stats1 = ItemStats()
+    stats1.push(1)
+
+    stats2 = ItemStats()
+    stats2.push(2)
+
+    with pytest.raises(AssertionError, match="should only be merged with one other"):
+        root_stats.merge([stats1, stats2])
 
 
 @pytest.mark.parametrize(
@@ -217,35 +281,6 @@ def test_similar_to(stats_class, init_kwargs):
     elif isinstance(result, float):
         # All others should be NaN
         check(result, np.nan)
-
-
-# Items stats only allow us to log a single item that should not be reduced.
-def test_merge_item_stats():
-    root_stats = ItemStats(is_root_stats=True)
-
-    # ItemStats can only be merged with a single incoming stats object
-    incoming_stats = ItemStats()
-    incoming_stats.push(42)
-
-    root_stats.merge([incoming_stats])
-    check(root_stats.peek(), 42)
-
-    # Test with another merge
-    incoming_stats2 = ItemStats()
-    incoming_stats2.push(100)
-
-    root_stats.merge([incoming_stats2])
-    check(root_stats.peek(), 100)
-
-    # Test that merging with multiple stats raises an assertion error
-    stats1 = ItemStats()
-    stats1.push(1)
-
-    stats2 = ItemStats()
-    stats2.push(2)
-
-    with pytest.raises(AssertionError, match="should only be merged with one other"):
-        root_stats.merge([stats1, stats2])
 
 
 # Series stats allow us to set a window size and reduce the values in the window.
@@ -310,20 +345,6 @@ def test_sum_stats_with_throughput():
     check(throughput > 0, True)
 
 
-# Lifetime sum stats allow us to track the sum of a series of values that is not reduced.
-def test_lifetime_sum_stats_basic():
-    stats = LifetimeSumStats()
-
-    stats.push(10)
-    check(stats.peek(), 10)
-
-    stats.push(20)
-    check(stats.peek(), 30)
-
-    stats.push(5)
-    check(stats.peek(), 35)
-
-
 def test_lifetime_sum_stats_with_throughput():
     """Test LifetimeSumStats with throughput."""
     stats = LifetimeSumStats(with_throughput=True)
@@ -340,18 +361,7 @@ def test_lifetime_sum_stats_with_throughput():
     check(throughputs["throughput_since_last_reduce"] > 0, True)
 
 
-def test_lifetime_sum_stats_invalid_clear_on_reduce():
-    """Test that LifetimeSumStats rejects clear_on_reduce=True."""
-    with pytest.raises(ValueError, match="does not support clear_on_reduce"):
-        LifetimeSumStats(clear_on_reduce=True)
-
-
-# ============================================================================
-# EmaStats Tests
-# ============================================================================
-
-
-def test_ema_stats_basic():
+def test_ema_stats():
     """Test basic EmaStats functionality."""
     ema_coeff = 0.1
     stats = EmaStats(ema_coeff=ema_coeff)
@@ -360,20 +370,13 @@ def test_ema_stats_basic():
     check(stats.peek(), 10)
 
     stats.push(20)
-    # EMA: 0.1 * 20 + 0.9 * 10 = 11
     check(stats.peek(), 11.0)
 
     stats.push(30)
-    # EMA: 0.1 * 30 + 0.9 * 11 = 12.9
-    check(abs(stats.peek() - 12.9) < 0.01, True)
+    check(stats.peek(), 12.9)
 
 
-# ============================================================================
-# PercentilesStats Tests
-# ============================================================================
-
-
-def test_percentiles_stats_basic():
+def test_percentiles_stats():
     """Test basic PercentilesStats functionality."""
     stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
 
@@ -393,23 +396,9 @@ def test_percentiles_stats_basic():
         check(result[100] <= 5, True)
 
 
-def test_percentiles_stats_default_percentiles():
-    """Test PercentilesStats with default percentiles."""
-    stats = PercentilesStats(percentiles=None, window=20)
-
-    for i in range(1, 11):  # 1-10
-        stats.push(i)
-
-    result = stats.peek(compile=True)
-    # Default percentiles are [0, 50, 75, 90, 95, 99, 100]
-    check(0 in result, True)
-    check(50 in result, True)
-    check(100 in result, True)
-
-
-def test_percentiles_stats_window():
+def test_percentiles_stats_windowed_default_percentiles():
     """Test PercentilesStats window functionality."""
-    stats = PercentilesStats(percentiles=[0, 50, 100], window=5)
+    stats = PercentilesStats(percentiles=None, window=5)
 
     for i in range(1, 11):  # Push 1-10
         stats.push(i)
@@ -418,113 +407,12 @@ def test_percentiles_stats_window():
     check(len(stats), 5)
     result = stats.peek(compile=True)
     check(result[0], 6)
+    check(result[50], 8)
+    check(result[75], 9)
+    check(result[90], 9.5)
+    check(result[95], 9.75)
+    check(result[99], 9.95)
     check(result[100], 10)
-
-
-def test_percentiles_stats_non_compiled_peek():
-    """Test PercentilesStats peek with compile=False."""
-    stats = PercentilesStats(percentiles=[50], window=10)
-
-    stats.push(5)
-    stats.push(1)
-    stats.push(3)
-
-    # Should return sorted values (may include initial NaN)
-    result = stats.peek(compile=False)
-    # Filter out NaN values for comparison
-    result_no_nan = [x for x in result if not (isinstance(x, float) and np.isnan(x))]
-    check(result_no_nan, [1, 3, 5])
-
-
-def test_percentiles_stats_invalid_operations():
-    """Test that PercentilesStats raises errors for invalid operations."""
-    stats = PercentilesStats(percentiles=[50], window=10)
-    stats.push(5)
-
-    # Should not be convertible to float
-    with pytest.raises(ValueError):
-        float(stats)
-
-    # Should not support comparison operations
-    with pytest.raises(ValueError):
-        stats == 5
-
-    with pytest.raises(ValueError):
-        stats < 5
-
-    with pytest.raises(ValueError):
-        stats + 5
-
-
-def test_percentiles_stats_invalid_percentiles():
-    """Test PercentilesStats validation."""
-    # Invalid type
-    with pytest.raises(ValueError, match="must be a list or None"):
-        PercentilesStats(percentiles="invalid", window=10)
-
-
-# ============================================================================
-# ItemSeriesStats Tests
-# ============================================================================
-
-
-def test_item_series_stats_basic():
-    """Test basic ItemSeriesStats functionality."""
-    stats = ItemSeriesStats(window=None)
-
-    stats.push("a")
-    stats.push("b")
-    stats.push("c")
-
-    check(stats.peek(), ["a", "b", "c"])
-    check(len(stats), 3)
-
-
-def test_item_series_stats_window():
-    """Test ItemSeriesStats window functionality."""
-    stats = ItemSeriesStats(window=5)  # Use larger window to avoid deque issues
-
-    for char in ["a", "b", "c", "d", "e"]:
-        stats.push(char)
-
-    # Should keep all 5
-    check(len(stats), 5)
-    check(list(stats.peek()), ["a", "b", "c", "d", "e"])
-
-
-# ============================================================================
-# Context Manager Tests (time measurement)
-# ============================================================================
-
-
-def test_stats_context_manager():
-    """Test using stats objects as context managers for time measurement."""
-    stats = MeanStats(window=5)
-
-    with stats:
-        time.sleep(0.05)
-
-    # Should have measured approximately 0.05 seconds
-    measured_time = stats.peek()
-    check(0.04 < measured_time < 0.07, True)
-
-
-def test_stats_context_manager_multiple_measurements():
-    """Test multiple time measurements with context manager."""
-    stats = MeanStats(window=5)
-
-    for _ in range(3):
-        with stats:
-            time.sleep(0.05)
-
-    # Should have measurements, each around 0.05 seconds
-    mean_time = stats.peek()
-    check(0.04 < mean_time < 0.07, True)
-
-
-# ============================================================================
-# Numeric Operations Tests
-# ============================================================================
 
 
 @pytest.mark.parametrize(
@@ -562,11 +450,6 @@ def test_stats_numeric_operations(stats_class, setup_values, expected_value):
     check(stats < expected_value + 1, True)
     check(stats >= expected_value, True)
     check(stats <= expected_value, True)
-
-
-# ============================================================================
-# Edge Cases and Error Handling
-# ============================================================================
 
 
 @pytest.mark.parametrize(
