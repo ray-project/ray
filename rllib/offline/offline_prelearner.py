@@ -410,6 +410,17 @@ class OfflinePreLearner:
                             batch[schema[Columns.NEXT_OBS]][i], observation_space
                         )
                     )
+                extra_model_outputs = {
+                    k: [unpack_if_needed(v[i]) if k in input_compress_columns else v[i]]
+                    for k, v in batch.items()
+                    if (
+                        k not in schema
+                        and k not in schema.values()
+                        and k not in ["dones", "agent_index", "type"]
+                    )
+                }
+                if "weights_seq_no" not in extra_model_outputs:
+                    extra_model_outputs["weights_seq_no"] = [0]
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
                     id_=str(batch[schema[Columns.EPS_ID]][i])
@@ -454,19 +465,7 @@ class OfflinePreLearner:
                     # if needed.
                     # TODO (simon): Check, if we need here also reconversion from
                     # JSONable in case of composite spaces.
-                    extra_model_outputs={
-                        k: [
-                            unpack_if_needed(v[i])
-                            if k in input_compress_columns
-                            else v[i]
-                        ]
-                        for k, v in batch.items()
-                        if (
-                            k not in schema
-                            and k not in schema.values()
-                            and k not in ["dones", "agent_index", "type"]
-                        )
-                    },
+                    extra_model_outputs=extra_model_outputs,
                     len_lookback_buffer=0,
                 )
 
