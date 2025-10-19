@@ -658,7 +658,7 @@ def test_path_partition_parser_hive(fs, base_dir):
 
     # encodes "/" to "%2F"
     partitioned_path = posixpath.join(
-        base_dir, f"foo=3/bar={urllib.parse.quote('partition/value', safe=" ")}/"
+        base_dir, f"foo=3/bar={urllib.parse.quote('partition/value', safe=' ')}/"
     )
     # decodes value back to "/"
     assert partition_parser(partitioned_path) == {"foo": "3", "bar": "partition/value"}
