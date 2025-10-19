@@ -53,6 +53,9 @@ class LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
+  /// Similar to `CancelLeases`. The only difference is that this method does not send
+  /// RequestWorkerLease replies for those cancelled leases.
+  /// \return A list of cancelled leases.
   virtual std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) = 0;
 

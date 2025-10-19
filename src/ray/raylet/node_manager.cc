@@ -2083,8 +2083,11 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     reply->set_is_accepted(true);
   }
 
-  if (reply->is_accepted()) {
-    // Fail fast on the leases in the local lease maanger
+  const bool is_drain_accepted = reply->is_accepted();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  if (is_drain_accepted) {
+    // Fail fast on the leases in the local lease manager
     // and add them back to the cluster lease manager so a new node
     // can be selected by the scheduler.
     auto cancelled_works = local_lease_manager_.CancelLeasesWithoutReply(
@@ -2097,8 +2100,6 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                                    work->send_reply_callback_);
     }
   }
-
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
