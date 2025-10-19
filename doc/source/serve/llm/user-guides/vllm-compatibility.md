@@ -95,7 +95,7 @@ Models supporting this use case are listed at
 :::{tab-item} Python
 :sync: python
 
-```{literalinclude} ../../llm/doc_code/serve/transcription/transcription_example.py
+```{literalinclude} ../../../llm/doc_code/serve/transcription/transcription_example.py
 language: python
 :start-after: __transcription_example_start__
 :end-before: __transcription_example_end__
