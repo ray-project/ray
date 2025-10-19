@@ -1,22 +1,22 @@
 from typing import TYPE_CHECKING, Optional, Type
 
 from ray._common.deprecation import Deprecated
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
-
-# For backward compatibility
-from ray.llm._internal.serve.deployments.llm.llm_server import (
-    LLMServer as _LLMServer,
-)
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -161,7 +161,7 @@ def build_llm_deployment(
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+    from ray.llm._internal.serve.core.server.builder import (
         build_llm_deployment,
     )
 
@@ -272,7 +272,7 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    from ray.llm._internal.serve.core.ingress.builder import (
         build_openai_app,
     )
 
@@ -362,7 +362,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
         build_pd_openai_app,
     )
 
