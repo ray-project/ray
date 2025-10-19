@@ -46,15 +46,13 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             # Make sure we don't return any tensors here.
             "values": self.values,
             "window": self._window,
-            "clear_on_reduce": self._clear_on_reduce,
         }
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
-        self.values = state["values"]
+        self._set_values(state["values"])
         self._window = state["window"]
-        self._clear_on_reduce = state["clear_on_reduce"]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @staticmethod
@@ -64,13 +62,11 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             return {
                 **super_args,
                 "window": state["window"],
-                "clear_on_reduce": state["clear_on_reduce"],
             }
         elif stats_object is not None:
             return {
                 **super_args,
                 "window": stats_object._window,
-                "clear_on_reduce": stats_object._clear_on_reduce,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")

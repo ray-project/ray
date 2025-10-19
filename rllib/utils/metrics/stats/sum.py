@@ -79,13 +79,13 @@ class SumStats(SeriesStats):
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
         state = super().get_state()
-        state["series_at_last_reduce"] = self._series_at_last_reduce
+        state["values_at_last_reduce"] = self._values_at_last_reduce
         state["track_throughput"] = self.track_throughput
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
-        self._series_at_last_reduce = state["series_at_last_reduce"]
+        self._values_at_last_reduce = state["values_at_last_reduce"]
         self.track_throughput = state["track_throughput"]
 
     def __repr__(self) -> str:

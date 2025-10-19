@@ -49,6 +49,19 @@ class PercentilesStats(StatsBase):
 
         self._percentiles = percentiles
 
+    def get_state(self) -> Dict[str, Any]:
+        state = super().get_state()
+        state["values"] = self.values
+        state["window"] = self._window
+        state["percentiles"] = self._percentiles
+        return state
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        super().set_state(state)
+        self._set_values(state["values"])
+        self._window = state["window"]
+        self._percentiles = state["percentiles"]
+
     def _set_values(self, new_values):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.

@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union, Type
 import tree  # pip install dm_tree
 import time
+import numpy as np
 
 from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
@@ -17,7 +18,6 @@ from ray.rllib.utils.metrics.stats import (
     ItemStats,
     ItemSeriesStats,
 )
-from ray.rllib.utils.metrics.legacy_stats import Stats
 from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
@@ -40,6 +40,80 @@ DEFAULT_STATS_CLS_LOOKUP = {
     "item": ItemStats,
     "item_series": ItemSeriesStats,
 }
+
+
+# Note(Artur): Delete this in a couple of Ray releases.
+def stats_from_legacy_state(
+    state: Dict[str, Any], is_root_stats: bool = False
+) -> StatsBase:
+    """Creates a Stats object from a legacy state."""
+    cls_identifier = state["reduce"]
+    if state["clear_on_reduce"] is False:
+        if cls_identifier == "sum":
+            # lifetime sum
+            _cls = DEFAULT_STATS_CLS_LOOKUP["lifetime_sum"]
+
+            if is_root_stats:
+                # With the new stats, only the root logger tracks values for lifetime sum.
+                new_state = {
+                    "_is_root_stats": True,
+                    "lifetime_sum": np.nansum(state["values"]),
+                }
+            else:
+                new_state = {
+                    "_is_root_stats": False,
+                    "lifetime_sum": 0.0,
+                }
+            new_state["stats_cls_identifier"] = "lifetime_sum"
+            new_state["_clear_on_reduce"] = False
+
+            # old lifetime sum checkpoints always track a througput
+            if state.get("throughput_stats") is not None:
+                new_state["track_throughputs"] = True
+            else:
+                new_state["track_throughputs"] = False
+
+            stats = LifetimeSumStats.from_state(state=new_state)
+            return stats
+        else:
+            deprecation_warning(
+                "Legacy Stats class tracking throughput detected. This is not supported anymore.",
+                error=False,
+            )
+
+    new_state = {
+        "_is_root_stats": is_root_stats,
+        "_clear_on_reduce": state["clear_on_reduce"],
+        "stats_cls_identifier": cls_identifier,
+    }
+    if cls_identifier == "mean":
+        if state["ema_coeff"] is not None:
+            cls_identifier = "ema"
+            new_state["ema_coeff"] = state["ema_coeff"]
+            new_state["value"] = np.nanmean(state["values"])
+            new_state["stats_cls_identifier"] = "ema"
+        else:
+            cls_identifier = "mean"
+            new_state["values"] = state["values"]
+            new_state["window"] = state["window"]
+    elif cls_identifier in ["min", "max", "sum"]:
+        new_state["values"] = state["values"]
+        new_state["window"] = state["window"]
+    elif cls_identifier is None and state.get("percentiles", False) is not False:
+        # This is a percentiles stats (reduce=None with percentiles specified)
+        cls_identifier = "percentiles"
+        new_state["values"] = state["values"]
+        new_state["window"] = state["window"]
+        new_state["percentiles"] = state["percentiles"]
+        new_state["stats_cls_identifier"] = "percentiles"
+    elif cls_identifier == "percentiles":
+        new_state["values"] = state["values"]
+        new_state["window"] = state["window"]
+        new_state["percentiles"] = state["percentiles"]
+
+    _cls = DEFAULT_STATS_CLS_LOOKUP[cls_identifier]
+    stats = _cls.from_state(state=new_state)
+    return stats
 
 
 @PublicAPI(stability="alpha")
@@ -588,7 +662,9 @@ class MetricsLogger:
                 else:
                     # We want to preserve compatibility with old checkpoints
                     # as much as possible.
-                    stats = Stats.from_state(state=stats_state)
+                    stats = stats_from_legacy_state(
+                        state=stats_state, is_root_stats=self._is_root_logger
+                    )
 
                 self._set_key(flat_key.split("--"), stats)
 
