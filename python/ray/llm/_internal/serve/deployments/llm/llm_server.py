@@ -175,6 +175,11 @@ class LLMServer(LLMServerProtocol):
             raise ValueError(
                 f"data_parallel_backend must be set to 'ray' when data_parallel_size > 1, but got: {dp_backend}"
             )
+        
+        # Set data_parallel_size_local to 0 since Serve replica runs on head node
+        # and all DP workers should be on worker nodes with GPUs
+        if "data_parallel_size_local" not in llm_config.engine_kwargs:
+            llm_config.update_engine_kwargs(data_parallel_size_local=0)
 
     def _init_shared(
         self,
@@ -517,27 +522,28 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
             )
 
-        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
-        # more generic place.
-        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-            engine_config.placement_bundles, replica_actor_resources
-        )
-
-        # Override placement strategy for DP deployments
-        placement_strategy = engine_config.placement_strategy
-        if dp_size > 1 and placement_strategy != "STRICT_PACK":
-            logger.warning(
-                f"DP deployment with placement_strategy={placement_strategy} "
-                "isn't supported. Using STRICT_PACK instead."
+        # For DP deployments, don't create placement groups in Serve
+        # vLLM's Ray backend will create them internally (one PG per DP rank)
+        if dp_size > 1:
+            # Don't set placement_group_bundles or placement_group_strategy
+            # vLLM will handle placement groups for DP workers
+            logger.info(
+                "DP deployment: vLLM Ray backend will manage placement groups "
+                f"for {dp_size} DP workers"
             )
-            placement_strategy = "STRICT_PACK"
+        else:
+            # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+            # more generic place.
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                engine_config.placement_bundles, replica_actor_resources
+            )
 
-        deployment_options.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": placement_strategy,
-            }
-        )
+            deployment_options.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env

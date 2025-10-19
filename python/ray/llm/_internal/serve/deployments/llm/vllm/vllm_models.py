@@ -224,11 +224,9 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def num_devices(self) -> int:
-        return (
-            self.tensor_parallel_degree
-            * self.pipeline_parallel_degree
-            * self.data_parallel_degree
-        )
+        # Don't include data_parallel_size in num_devices for placement bundles
+        # When using Ray DP backend, vLLM creates separate placement groups per DP rank
+        return self.tensor_parallel_degree * self.pipeline_parallel_degree
 
     @property
     def placement_strategy(self) -> str:
@@ -293,13 +291,24 @@ class VLLMEngineConfig(BaseModelExtended):
             GPUType.NVIDIA_A100_80G.value,
         )
 
-    def get_or_create_pg(self) -> PlacementGroup:
+    def get_or_create_pg(self) -> Optional[PlacementGroup]:
         """Gets or a creates a placement group.
 
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
         """
+        dp_size = self.engine_kwargs.get("data_parallel_size", 1)
         dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
+        
+        # For Ray DP backend, don't create placement groups here
+        # vLLM's CoreEngineActorManager will create them (one per DP rank)
+        if dp_size > 1 and self.engine_kwargs.get("data_parallel_backend") == "ray":
+            logger.info(
+                "Skipping placement group creation for Ray DP backend "
+                f"(data_parallel_size={dp_size}). vLLM will create them."
+            )
+            return None
+        
         pg = get_current_placement_group()
         if pg:
             logger.debug(

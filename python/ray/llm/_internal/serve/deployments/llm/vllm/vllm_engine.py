@@ -9,6 +9,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
+from ray import serve
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import (
