@@ -80,9 +80,12 @@ class Operator:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
 
-            # NOTE: Only newly created ops need to have output deps
-            #       wired in
-            target._wire_output_deps(new_ops)
+            # Remove old references from input operators' output dependencies
+            for input_op in self.input_dependencies:
+                if self in input_op._output_dependencies:
+                    input_op._output_dependencies.remove(self)
+
+            target._wire_output_deps(transformed_input_ops)
             target._input_dependencies = transformed_input_ops
         else:
             target = self
