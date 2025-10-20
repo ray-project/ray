@@ -560,7 +560,7 @@ class MetricsLogger:
 
             if own_stats is None:
                 # This should happen the first time we reduce this stat to the root logger
-                own_stats = incoming_stats[0].similar_to(incoming_stats[0])
+                own_stats = incoming_stats[0].clone(incoming_stats[0])
                 own_stats._is_root_stats = True
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(

@@ -22,7 +22,7 @@ from ray.rllib.utils.test_utils import check
 # 3. reduce the stats
 # 4. test the state save/load functionality
 # 5. test the merge functionality
-# 6. test the similar_to functionality
+# 6. test the clone functionality
 
 # The lower end of the file contains tests for the edge cases and special behaviors of each stats type.
 
@@ -232,13 +232,13 @@ def test_merge_item_stats():
         (ItemSeriesStats, {"window": 5}),
     ],
 )
-def test_similar_to(stats_class, init_kwargs):
+def test_clone(stats_class, init_kwargs):
     # LifetimeSumStats doesn't support clear_on_reduce=True
     original = stats_class(**init_kwargs)
     original.push(123)
 
     # Create similar stats
-    similar = stats_class.similar_to(original)
+    similar = stats_class.clone(original)
     check(similar._clear_on_reduce, original._clear_on_reduce)
 
     # Check class-specific attributes
@@ -500,7 +500,7 @@ def test_stats_reduce_at_root(stats_class, result_value):
 
     check(list(reduced_stats.values), list(stats_values_before_reduce))
 
-    root_stats = stats.similar_to(stats)
+    root_stats = stats.clone(stats)
     root_stats._is_root_stats = True
 
     root_stats.merge([reduced_stats])

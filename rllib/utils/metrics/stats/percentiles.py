@@ -177,7 +177,7 @@ class PercentilesStats(StatsBase):
                 raise ValueError(
                     "Can not compile at leaf level if reduce_at_root is True"
                 )
-            return_stats = self.similar_to(self)
+            return_stats = self.clone(self)
             return_stats.values = values
             return return_stats
 
@@ -189,7 +189,7 @@ class PercentilesStats(StatsBase):
         if compile:
             return compute_percentiles(values, self._percentiles)
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats.values = values
         return return_stats
 

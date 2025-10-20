@@ -42,7 +42,7 @@ class ItemStats(StatsBase):
         if compile:
             return item
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats._item = item
         return return_stats
 

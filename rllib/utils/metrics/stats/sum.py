@@ -60,7 +60,7 @@ class SumStats(SeriesStats):
                 raise ValueError(
                     "Can not compile at leaf level if reduce_at_root is True"
                 )
-            return_stats = self.similar_to(self)
+            return_stats = self.clone(self)
             return_stats.values = self.values
             return return_stats
 
@@ -69,7 +69,7 @@ class SumStats(SeriesStats):
         if compile:
             return self._last_reduce_value
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats.values = [self._last_reduce_value]
         return return_stats
 

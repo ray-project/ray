@@ -149,7 +149,7 @@ class LifetimeSumStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats._lifetime_sum = value
         return return_stats
 

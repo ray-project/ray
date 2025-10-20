@@ -136,7 +136,7 @@ class StatsBase(metaclass=ABCMeta):
         return stats
 
     @classmethod
-    def similar_to(
+    def clone(
         cls,
         other: "StatsBase",
     ) -> "StatsBase":

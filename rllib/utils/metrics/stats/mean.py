@@ -29,7 +29,7 @@ class MeanStats(SeriesStats):
                 raise ValueError(
                     "Can not compile at leaf level if reduce_at_root is True"
                 )
-            return_stats = self.similar_to(self)
+            return_stats = self.clone(self)
             return_stats.values = self.values
             return return_stats
 
@@ -42,7 +42,7 @@ class MeanStats(SeriesStats):
         if compile:
             return reduced_values[0]
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats.values = reduced_values
         return return_stats
 

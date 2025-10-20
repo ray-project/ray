@@ -83,7 +83,7 @@ class EmaStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats._value = value
         return return_stats
 

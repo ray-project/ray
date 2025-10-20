@@ -314,7 +314,7 @@ def test_state_serialization():
     check(len(loaded_stats), len(stats))
 
 
-def test_similar_to():
+def test_clone():
     """Test creating similar Stats objects."""
     original = Stats(
         init_values=None,
@@ -331,13 +331,13 @@ def test_similar_to():
     original.reduce()
 
     # Similar stats without initial values
-    similar = Stats.similar_to(original)
+    similar = Stats.clone(original)
     check(similar._reduce_method, original._reduce_method)
     check(similar._window, original._window)
     check(len(similar), 0)  # Should start empty
 
     # Similar stats with initial values
-    similar_with_value = Stats.similar_to(original, init_values=[3, 4])
+    similar_with_value = Stats.clone(original, init_values=[3, 4])
     check(len(similar_with_value), 2)
     check(similar_with_value.peek(), 7)
 

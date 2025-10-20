@@ -77,7 +77,7 @@ class ItemSeriesStats(StatsBase):
         if compile:
             return items
 
-        return_stats = self.similar_to(self)
+        return_stats = self.clone(self)
         return_stats._set_items(items)
         return return_stats
 
