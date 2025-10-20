@@ -34,8 +34,13 @@ RayEventRecorder::RayEventRecorder(
       buffer_(max_buffer_size),
       dropped_events_counter_(dropped_events_counter) {}
 
-void RayEventRecorder::StartExportingEvents() {
+void RayEventRecorder::StartExportingEvents(const Status &aggregator_agent_status) {
   absl::MutexLock lock(&mutex_);
+  if (!aggregator_agent_status.ok()) {
+    RAY_LOG(ERROR) << "Failed to establish connection to the event aggregator agent. "
+                   << "Error: " << aggregator_agent_status.ToString();
+    return;
+  }
   RAY_CHECK(!exporting_started_)
       << "RayEventRecorder::StartExportingEvents() should be called only once.";
   exporting_started_ = true;
@@ -43,6 +48,8 @@ void RayEventRecorder::StartExportingEvents() {
       [this]() { ExportEvents(); },
       RayConfig::instance().ray_events_report_interval_ms(),
       "RayEventRecorder.ExportEvents");
+  RAY_LOG(INFO) << "Successfully established connection to the event aggregator agent. "
+                   "Events will start being exported.";
 }
 
 void RayEventRecorder::ExportEvents() {
