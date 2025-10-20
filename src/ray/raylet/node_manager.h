@@ -74,8 +74,6 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
-  /// The port that the object manager will use.
-  int object_manager_port;
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
@@ -166,9 +164,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
       std::atomic_bool &shutting_down,
-      std::string socket_name);
+      boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor,
+      local_stream_socket &socket);
 
-  void Start(const rpc::GcsNodeInfo &self_node_info);
+  void Start(rpc::GcsNodeInfo &&self_node_info);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -903,14 +902,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   std::atomic_bool &shutting_down_;
 
-  /// The name of the socket this raylet listens on.
-  std::string socket_name_;
-
   /// An acceptor for new clients.
-  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
+  boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor_;
 
   /// The socket to listen on for new clients.
-  local_stream_socket socket_;
+  local_stream_socket &socket_;
 };
 
 }  // namespace ray::raylet

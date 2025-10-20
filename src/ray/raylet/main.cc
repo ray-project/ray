@@ -502,7 +502,6 @@ int main(int argc, char *argv[]) {
                    << node_manager_config.resource_config.DebugString();
     node_manager_config.node_manager_address = node_ip_address;
     node_manager_config.node_manager_port = node_manager_port;
-    node_manager_config.object_manager_port = object_manager_port;
     node_manager_config.num_workers_soft_limit =
         RayConfig::instance().num_workers_soft_limit();
     node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
@@ -912,6 +911,11 @@ int main(int argc, char *argv[]) {
     };
 
     plasma_client = std::make_shared<plasma::PlasmaClient>();
+    auto acceptor = boost::asio::basic_socket_acceptor<ray::local_stream_protocol>(
+        main_service, ray::ParseUrlEndpoint(raylet_socket_name));
+    auto socket =
+        boost::asio::basic_stream_socket<ray::local_stream_protocol>(main_service);
+    ray::SetCloseOnExec(acceptor);
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -940,7 +944,8 @@ int main(int argc, char *argv[]) {
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
         shutting_down,
-        raylet_socket_name);
+        acceptor,
+        socket);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -999,7 +1004,7 @@ int main(int argc, char *argv[]) {
     auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
 
-    node_manager->Start(self_node_info);
+    node_manager->Start(std::move(self_node_info));
   });
 
   auto signal_handler = [&node_manager, shutdown_raylet_gracefully](
