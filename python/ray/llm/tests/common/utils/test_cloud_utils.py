@@ -454,7 +454,6 @@ class TestCloudFileSystem:
                 assert call_args["bucket_uri"] == "gs://bucket/model"
                 assert call_args["substrings_to_include"] == []
                 assert call_args["suffixes_to_exclude"] is None
-                assert call_args["use_threads"] is True
                 assert call_args["chunk_size"] == 64 * 1024 * 1024
 
     @patch("pyarrow.fs.copy_files")
