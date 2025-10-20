@@ -386,6 +386,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         # Overridden by `autoscaling_config`
         "upscale_delay_s": 1.0,
         # Untouched defaults
+        "metrics_interval_s": 10.0,
         "look_back_period_s": 1.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,

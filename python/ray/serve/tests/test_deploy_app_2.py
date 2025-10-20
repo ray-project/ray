@@ -638,7 +638,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "target_ongoing_requests": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
-        # Overrided by `autoscaling_config`
+        # Overridden by `autoscaling_config`
         "look_back_period_s": 2.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
