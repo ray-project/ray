@@ -478,8 +478,7 @@ void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo local_node_info,
   *request.mutable_node_info() = std::move(local_node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
       std::move(request),
-      [node_id, local_node_info, callback](const Status &status,
-                                           rpc::RegisterNodeReply &&) {
+      [node_id, callback](const Status &status, rpc::RegisterNodeReply &&) {
         if (callback) {
           callback(status);
         }
