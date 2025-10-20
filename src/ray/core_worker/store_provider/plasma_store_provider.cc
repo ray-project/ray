@@ -268,8 +268,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // then the reason needs to be documented.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects;
-         i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
       batch_ids.push_back(id_vector[i]);
     }
 
