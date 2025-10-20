@@ -479,29 +479,6 @@ class LLMServer(LLMServerProtocol):
         engine_config = llm_config.get_engine_config()
         deployment_options = copy.deepcopy(llm_config.deployment_config)
 
-        # Handle data parallel configuration
-        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-        if not (isinstance(dp_size, int) and dp_size > 0):
-            raise ValueError(
-                f"Invalid data_parallel_size: {dp_size}, expecting positive integer."
-            )
-
-        if dp_size > 1:
-            if "autoscaling_config" in deployment_options:
-                raise ValueError(
-                    "autoscaling_config isn't supported when data_parallel_size > 1."
-                )
-
-            # Each Serve replica is one independent DP group with dp_size workers
-            # num_replicas controls how many independent DP groups to create
-            num_replicas = deployment_options.get("num_replicas", 1)
-
-            logger.info(
-                f"DP deployment: {num_replicas} Serve replica(s), "
-                f"each with data_parallel_size={dp_size} "
-                f"(vLLM will spawn {dp_size} workers per replica)"
-            )
-
         # Handle the ray_actor_options that could be passed in to
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
@@ -524,7 +501,8 @@ class LLMServer(LLMServerProtocol):
 
         # For DP deployments, don't create placement groups in Serve
         # vLLM's Ray backend will create them internally (one PG per DP rank)
-        if dp_size > 1:
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size")
+        if dp_size is not None and dp_size > 1:
             # Don't set placement_group_bundles or placement_group_strategy
             # vLLM will handle placement groups for DP workers
             logger.info(

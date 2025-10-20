@@ -52,8 +52,6 @@ def build_dp_deployment(
             "data_parallel_size should be greater than 1 for DP deployment."
         )
 
-    # Each Serve replica is self-contained - no coordination needed
-    # LLMServer handles all DP logic automatically when data_parallel_size > 1
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
