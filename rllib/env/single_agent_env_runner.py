@@ -807,19 +807,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
             num_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
             num_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_EPISODES,
             num_episodes_completed,
             reduce="sum",
-            clear_on_reduce=True,
         )
         # Lifetime stats.
         self.metrics.log_value(

@@ -3444,7 +3444,6 @@ class Algorithm(Checkpointable, Trainable):
                         NUM_TRAINING_STEP_CALLS_PER_ITERATION,
                         1,
                         reduce="sum",
-                        clear_on_reduce=True,
                     )
 
         if self.config.num_aggregator_actors_per_learner:

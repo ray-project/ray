@@ -1089,7 +1089,6 @@ class Learner(Checkpointable):
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
                 iteration + 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
@@ -1640,7 +1639,6 @@ class Learner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
@@ -1653,7 +1651,6 @@ class Learner(Checkpointable):
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
                 with_throughput=True,
             )
             self.metrics.log_value(
@@ -1667,7 +1664,6 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
             batch.env_steps(),
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),

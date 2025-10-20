@@ -226,7 +226,6 @@ class EnvRenderCallback(RLlibCallback):
                 # make sure the list of videos in our MetricsLogger does not grow
                 # infinitely and gets cleared after each `reduce()` operation, meaning
                 # every time, the EnvRunner is asked to send its logged metrics.
-                clear_on_reduce=True,
             )
             self.best_episode_and_return = (None, float("-inf"))
         # Worst video.
@@ -236,7 +235,6 @@ class EnvRenderCallback(RLlibCallback):
                 self.worst_episode_and_return[0],
                 # Same logging options as above.
                 reduce="item_series",
-                clear_on_reduce=True,
             )
             self.worst_episode_and_return = (None, float("inf"))
 

@@ -366,7 +366,6 @@ class DifferentiableLearner(Checkpointable):
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
                 iteration + 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
@@ -738,7 +737,6 @@ class DifferentiableLearner(Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_TRAINED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
@@ -750,7 +748,6 @@ class DifferentiableLearner(Checkpointable):
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
@@ -762,7 +759,6 @@ class DifferentiableLearner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
             batch.env_steps(),
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),

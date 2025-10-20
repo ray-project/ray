@@ -977,7 +977,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 (NUM_AGENT_STEPS_SAMPLED, str(aid)),
                 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED_LIFETIME, str(aid)),
@@ -988,7 +987,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 (NUM_MODULE_STEPS_SAMPLED, episode.module_for(aid)),
                 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_SAMPLED_LIFETIME, episode.module_for(aid)),

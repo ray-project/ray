@@ -146,7 +146,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED),
             iteration + 1,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
@@ -333,7 +332,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 key=(mid, NUM_MODULE_STEPS_SAMPLED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
@@ -345,7 +343,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED),
                 value=module_batch_size,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
@@ -357,7 +354,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
             batch.env_steps(),
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),

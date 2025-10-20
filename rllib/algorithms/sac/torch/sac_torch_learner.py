@@ -229,7 +229,6 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
             reduce="item_series",
-            clear_on_reduce=True,
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).
@@ -362,7 +361,6 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
             reduce="item_series",
-            clear_on_reduce=True,
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).

@@ -248,7 +248,6 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             window=100,
             # Some percentiles to compute
             percentiles=[75, 95, 99],
-            clear_on_reduce=True,
         )
 
         # Log the average dist travelled per episode (window=200).
