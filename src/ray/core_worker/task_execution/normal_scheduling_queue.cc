@@ -66,7 +66,7 @@ void NormalSchedulingQueue::Add(
 // return false.
 bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (const auto &[priority, task_queue] : pending_normal_tasks_) {
+  for (auto &[priority, task_queue] : pending_normal_tasks_) {
     for (auto task_iter = task_queue.begin(); task_iter != task_queue.end();) {
       if (task_iter->TaskID() == task_id) {
         task_iter->Cancel(Status::OK());
