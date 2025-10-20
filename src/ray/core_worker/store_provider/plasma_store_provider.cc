@@ -255,25 +255,31 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
-  // 1. Make the request to pull all objects into local plasma if not local already.
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  std::vector<rpc::Address> owner_addresses =
-      reference_counter_.GetOwnerAddresses(id_vector);
-  StatusOr<ipc::ScopedResponse> status_or_cleanup =
-      raylet_ipc_client_->AsyncGetObjects(id_vector, owner_addresses);
-  RAY_RETURN_NOT_OK(status_or_cleanup.status());
+  std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
 
-  int64_t total_size = static_cast<int64_t>(object_ids.size());
   bool got_exception = false;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+
   std::vector<ObjectID> batch_ids;
 
-  // 2. Try to Get all objects that are already local from the plasma store.
-  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
+  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
+  // then I need to document why.
+  for (int64_t start = 0; start < object_ids.size(); start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < object_ids.size(); i++) {
       batch_ids.push_back(id_vector[i]);
     }
+
+    // 1. Make the request to pull all objects into local plasma if not local already.
+    std::vector<rpc::Address> owner_addresses =
+        reference_counter_.GetOwnerAddresses(batch_ids);
+    StatusOr<ipc::ScopedResponse> status_or_cleanup =
+        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses);
+    RAY_RETURN_NOT_OK(status_or_cleanup.status());
+    get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
+
+    // 2. Try to Get all objects that are already local from the plasma store.
     RAY_RETURN_NOT_OK(
         GetObjectsFromPlasmaStore(remaining,
                                   batch_ids,

@@ -1590,8 +1590,8 @@ void NodeManager::ProcessWaitRequestMessage(
       object_ids,
       message->timeout(),
       message->num_required_objects(),
-      [this, client, all_objects_local](const std::vector<ObjectID> &ready,
-                                        const std::vector<ObjectID> &remaining) {
+      [this, client](const std::vector<ObjectID> &ready,
+                     const std::vector<ObjectID> &remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1602,12 +1602,10 @@ void NodeManager::ProcessWaitRequestMessage(
             client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
                                  fbb.GetSize(),
                                  fbb.GetBufferPointer());
-        if (status.ok()) {
-          if (!all_objects_local) {
-            // Why do we need to cancel the GetRequest?
-            // CancelGetRequest(client, get_request_id);
-          }
-        } else {
+
+        // TODO(57923): May need to call lease_dependency_manager_.CancelWaitRequest
+        // when ray.wait is made thread-safe.
+        if (!status.ok()) {
           // We failed to write to the client, so disconnect the client.
           std::ostringstream stream;
           stream << "Failed to write WaitReply to the client. Status " << status;
@@ -2277,11 +2275,8 @@ void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
 
 void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data) {
-  if (message_data == nullptr) {
-    return;
-  }
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  // need to extract the payload
+
   auto message = flatbuffers::GetRoot<protocol::CancelGetRequest>(message_data);
 
   if (!worker) {
