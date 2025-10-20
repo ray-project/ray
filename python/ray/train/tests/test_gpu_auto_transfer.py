@@ -28,7 +28,7 @@ def test_auto_transfer_data_from_host_to_device(
             func(device)
             end.record()
             torch.cuda.synchronize()
-        runtime.append(start.elapsed_time(end))
+            runtime.append(start.elapsed_time(end))
         return np.mean(runtime)
 
     small_dataloader = [
@@ -49,7 +49,9 @@ def test_auto_transfer_data_from_host_to_device(
     with_auto_transfer = compute_average_runtime(host_to_device_auto_pipeline)
 
     if device_choice == "cuda" and auto_transfer:
-        assert compute_average_runtime(host_to_device) >= with_auto_transfer
+        # check if auto transfer is faster than manual transfer
+        without_auto_transfer = compute_average_runtime(host_to_device)
+        assert with_auto_transfer <= without_auto_transfer
 
 
 if __name__ == "__main__":

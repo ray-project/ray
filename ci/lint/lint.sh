@@ -38,6 +38,7 @@ pre_commit() {
     cpplint
     buildifier
     buildifier-lint
+    eslint
   )
 
   for HOOK in "${HOOKS[@]}"; do
@@ -69,9 +70,10 @@ banned_words() {
   ./ci/lint/check-banned-words.sh
 }
 
+# Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
-  pip install -c python/requirements_compiled.txt docutils
-  cd python && python setup.py check --restructuredtext --strict --metadata
+  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
+  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
 }
 
 dashboard_format() {
