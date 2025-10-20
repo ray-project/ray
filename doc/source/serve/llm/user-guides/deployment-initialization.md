@@ -3,7 +3,7 @@
 
 The initialization phase of a serve.llm deployment involves many steps, including preparation of model weights, engine (vLLM) initialization, and Ray serve replica autoscaling overheads. A detailed breakdown of the steps involved in using serve.llm with vLLM is provided below.
 
-### Startup Breakdown
+## Startup Breakdown
 - **Node Acquiring**: If a GPU node isn't available, a new instance must be provisioned. 
 - **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (such as vLLM), preparing model and engine configurations, etc.
 - **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
