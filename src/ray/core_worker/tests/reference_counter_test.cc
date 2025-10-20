@@ -2988,6 +2988,69 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_FALSE(rc->HasReference(object_id_2));
 }
 
+TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  // Test 1: Objects in pending creation state
+  ObjectID pending_id1 = ObjectID::FromRandom();
+  ObjectID pending_id2 = ObjectID::FromRandom();
+
+  rc->AddOwnedObject(pending_id1, {}, addr, "", 100, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(pending_id2, {}, addr, "", 200, false, /*add_local_ref=*/true);
+
+  // Both should be in pending_creation state initially
+  ASSERT_EQ(rc->OwnedObjectsPendingCreation(), 2);
+  ASSERT_EQ(rc->OwnedObjectsInMemory(), 0);
+  ASSERT_EQ(rc->OwnedObjectsInPlasma(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSpilled(), 0);
+
+  // Test 2: Transition from pending to in_memory (no pinned_at_node_id, not spilled)
+  rc->UpdateObjectPendingCreation(pending_id1, false);
+  ASSERT_EQ(rc->OwnedObjectsPendingCreation(), 1);
+  ASSERT_EQ(rc->OwnedObjectsInMemory(), 1);
+  ASSERT_EQ(rc->OwnedObjectsSizeInMemory(), 100);
+
+  // Test 3: Transition from pending to in_plasma (has pinned_at_node_id, not spilled)
+  NodeID node1 = NodeID::FromRandom();
+  rc->UpdateObjectPendingCreation(pending_id2, false);
+  rc->UpdateObjectPinnedAtRaylet(pending_id2, node1);
+  ASSERT_EQ(rc->OwnedObjectsPendingCreation(), 0);
+  ASSERT_EQ(rc->OwnedObjectsInMemory(), 1);
+  ASSERT_EQ(rc->OwnedObjectsInPlasma(), 1);
+  ASSERT_EQ(rc->OwnedObjectsSizeInPlasma(), 200);
+
+  // Test 4: Object spilling
+  rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
+  ASSERT_EQ(rc->OwnedObjectsInPlasma(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSpilled(), 1);
+  ASSERT_EQ(rc->OwnedObjectsSizeSpilled(), 200);
+  ASSERT_EQ(rc->OwnedObjectsSizeInPlasma(), 0);
+
+  // Test 5: Update object size
+  rc->UpdateObjectSize(pending_id1, 150);
+  ASSERT_EQ(rc->OwnedObjectsSizeInMemory(), 150);
+
+  // Test 6: Delete objects
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(pending_id1, &deleted);
+  ASSERT_EQ(rc->OwnedObjectsInMemory(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSizeInMemory(), 0);
+
+  rc->RemoveLocalReference(pending_id2, &deleted);
+  ASSERT_EQ(rc->OwnedObjectsSpilled(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSizeSpilled(), 0);
+
+  // All counters should be zero now
+  ASSERT_EQ(rc->OwnedObjectsPendingCreation(), 0);
+  ASSERT_EQ(rc->OwnedObjectsInMemory(), 0);
+  ASSERT_EQ(rc->OwnedObjectsInPlasma(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSpilled(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSizeInMemory(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSizeInPlasma(), 0);
+  ASSERT_EQ(rc->OwnedObjectsSizeSpilled(), 0);
+}
+
 }  // namespace core
 }  // namespace ray
 

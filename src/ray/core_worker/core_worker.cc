@@ -356,8 +356,6 @@ CoreWorker::CoreWorker(
       num_executed_tasks_(0),
       num_get_pin_args_in_flight_(0),
       num_failed_get_pin_args_(0),
-      num_spilled_objects_(0),
-      spilled_objects_total_size_(0),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
@@ -834,15 +832,7 @@ void CoreWorker::RecordMetrics() {
   task_counter_.RecordMetrics();
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
-
-  // Record object store usage of spilled vs. restored (not spilled) objects
-  ray::stats::STATS_owned_objects.Record(num_spilled_objects_, "Spilled");
-  ray::stats::STATS_owned_objects.Record(
-      reference_counter_->NumObjectsOwnedByUs() - num_spilled_objects_, "Restored");
-  ray::stats::STATS_owned_objects_size.Record(spilled_objects_total_size_, "Spilled");
-  ray::stats::STATS_owned_objects_size.Record(
-      reference_counter_->TotalOwnedObjectsSize() - spilled_objects_total_size_,
-      "Restored");
+  reference_counter_->RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -4174,17 +4164,6 @@ void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
   if (options_.spill_objects != nullptr) {
     auto object_refs = VectorFromProtobuf<rpc::ObjectReference>(
         std::move(*request.mutable_object_refs_to_spill()));
-
-    // Track spilled object counts and sizes for metric emission
-    for (const auto &object_ref : object_refs) {
-      const auto object_id = ObjectID::FromBinary(object_ref.object_id());
-      auto object = memory_store_->GetIfExists(object_id);
-      if (object != nullptr) {
-        ++num_spilled_objects_;
-        spilled_objects_total_size_ += object->GetSize();
-      }
-    }
-
     std::vector<std::string> object_urls = options_.spill_objects(object_refs);
     for (size_t i = 0; i < object_urls.size(); i++) {
       reply->add_spilled_objects_url(std::move(object_urls[i]));
@@ -4217,11 +4196,6 @@ void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest r
     auto total =
         options_.restore_spilled_objects(object_refs_to_restore, spilled_objects_url);
     reply->set_bytes_restored_total(total);
-
-    // Update counters for metric emission
-    num_spilled_objects_ -= object_refs_to_restore.size();
-    spilled_objects_total_size_ -= total;
-
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

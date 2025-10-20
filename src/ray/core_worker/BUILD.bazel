@@ -219,6 +219,7 @@ ray_cc_library(
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:utils",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@com_google_absl//absl/base:core_headers",

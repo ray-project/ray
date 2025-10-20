@@ -52,8 +52,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        is_node_dead_(std::move(is_node_dead)),
-        total_owned_objects_size_(0) {}
+        is_node_dead_(std::move(is_node_dead)) {}
 
   ~ReferenceCounter() override = default;
 
@@ -167,7 +166,21 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  int64_t TotalOwnedObjectsSize() const override;
+  size_t OwnedObjectsPendingCreation() const override;
+
+  size_t OwnedObjectsInMemory() const override;
+
+  size_t OwnedObjectsSpilled() const override;
+
+  size_t OwnedObjectsInPlasma() const override;
+
+  int64_t OwnedObjectsSizeInMemory() const override;
+
+  int64_t OwnedObjectsSizeSpilled() const override;
+
+  int64_t OwnedObjectsSizeInPlasma() const override;
+
+  void RecordMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -532,10 +545,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Unsets the raylet address
   /// that the object was pinned at or spilled at, if the address was set.
-  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// This should be called whenever the object is out of scope or manually freed.
-  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -685,6 +700,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                            bool pending_creation)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Update the owned object counters when a reference state changes.
+  /// \param object_id The object ID of the reference.
+  /// \param ref The reference whose state is changing.
+  /// \param decrement If true, decrement the counters for the current state.
+  /// If false, increment the counters for the current state.
+  void UpdateOwnedObjectCounters(const ObjectID &object_id,
+                                 const Reference &ref,
+                                 bool decrement) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
@@ -778,8 +802,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  /// Keep track of total size of objects owned by this worker.
-  std::atomic<int64_t> total_owned_objects_size_;
+  /// Track counts of owned objects by state.
+  /// These are atomic to allow lock-free reads via public getters.
+  std::atomic<size_t> owned_objects_pending_creation_{0};
+  std::atomic<size_t> owned_objects_in_memory_{0};
+  std::atomic<size_t> owned_objects_spilled_{0};
+  std::atomic<size_t> owned_objects_in_plasma_{0};
+
+  /// Track sizes of owned objects by state.
+  /// These are atomic to allow lock-free reads via public getters.
+  std::atomic<int64_t> owned_objects_size_in_memory_{0};
+  std::atomic<int64_t> owned_objects_size_spilled_{0};
+  std::atomic<int64_t> owned_objects_size_in_plasma_{0};
 };
 
 }  // namespace core

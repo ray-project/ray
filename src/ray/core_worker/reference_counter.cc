@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
@@ -61,6 +63,43 @@ void ReferenceCounter::ShutdownIfNeeded() {
     RAY_LOG(WARNING)
         << "All object references have gone out of scope, shutting down worker.";
     shutdown_hook_();
+  }
+}
+
+void ReferenceCounter::UpdateOwnedObjectCounters(const ObjectID &object_id,
+                                                 const Reference &ref,
+                                                 bool decrement) {
+  // Only track objects owned by us, not actors (actors are tracked separately)
+  if (!ref.owned_by_us_ || ObjectID::IsActorID(object_id)) {
+    return;
+  }
+
+  int delta = decrement ? -1 : 1;
+  int64_t size_delta = decrement ? -ref.object_size_ : ref.object_size_;
+
+  // Determine the state of the object and update the appropriate counter
+  if (ref.pending_creation_) {
+    owned_objects_pending_creation_.fetch_add(delta);
+  } else if (!ref.pinned_at_node_id_.has_value() && !ref.spilled) {
+    // If an object is not pinned at some id and isn't spilled, then we know it's in local
+    // memory (inlined)
+    owned_objects_in_memory_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_in_memory_.fetch_add(size_delta);
+    }
+  } else if (ref.spilled && ref.pinned_at_node_id_.has_value()) {
+    // if an object is spilled and at some node id then we know it's spilled somewhere
+    owned_objects_spilled_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_spilled_.fetch_add(size_delta);
+    }
+  } else if (!ref.spilled && ref.pinned_at_node_id_.has_value()) {
+    // owned_objects_in_plasma if (owned_by_us_ && !pending_creation_ && !spilled &&
+    // pinned_at_node_id_)
+    owned_objects_in_plasma_.fetch_add(delta);
+    if (ref.object_size_ > 0) {
+      owned_objects_size_in_plasma_.fetch_add(size_delta);
+    }
   }
 }
 
@@ -329,9 +368,6 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     num_actors_owned_by_us_++;
   } else {
     num_objects_owned_by_us_++;
-    if (object_size > 0) {
-      total_owned_objects_size_ += object_size;
-    }
   }
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
@@ -366,6 +402,10 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+
+  // Update the owned object counters for the new reference
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
+
   PRINT_REF_COUNT(it);
   return true;
 }
@@ -374,15 +414,11 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
-    // Update total owned objects size if this is an object we own
-    if (it->second.owned_by_us_ && !ObjectID::IsActorID(object_id)) {
-      int64_t old_size = it->second.object_size_;
-      int64_t delta = object_size - (old_size > 0 ? old_size : 0);
-      if (delta != 0) {
-        total_owned_objects_size_ += delta;
-      }
-    }
+    // Decrement counter with old size
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
     it->second.object_size_ = object_size;
+    // Increment counter with new size
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
     PushToLocationSubscribers(it);
   }
 }
@@ -780,9 +816,8 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_actors_owned_by_us_--;
     } else {
       num_objects_owned_by_us_--;
-      if (it->second.object_size_ > 0) {
-        total_owned_objects_size_ -= it->second.object_size_;
-      }
+      // Decrement owned object counters for the reference being erased
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     }
   }
   for (const auto &callback : it->second.object_ref_deleted_callbacks) {
@@ -821,12 +856,18 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
+  // Decrement counter for old state
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
+
   it->second.pinned_at_node_id_.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
     it->second.spilled_url = "";
     it->second.spilled_node_id = NodeID::Nil();
   }
+
+  // Increment counter for new state
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
 }
 
 bool ReferenceCounter::AddObjectRefDeletedCallback(
@@ -905,7 +946,11 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     RAY_CHECK(it->second.owned_by_us_);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       if (!is_node_dead_(node_id)) {
+        // Decrement counter for old state
+        UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
         it->second.pinned_at_node_id_ = node_id;
+        // Increment counter for new state
+        UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
       } else {
         UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
@@ -951,8 +996,44 @@ size_t ReferenceCounter::NumActorsOwnedByUs() const {
   return num_actors_owned_by_us_;
 }
 
-int64_t ReferenceCounter::TotalOwnedObjectsSize() const {
-  return total_owned_objects_size_.load();
+size_t ReferenceCounter::OwnedObjectsPendingCreation() const {
+  return owned_objects_pending_creation_.load();
+}
+
+size_t ReferenceCounter::OwnedObjectsInMemory() const {
+  return owned_objects_in_memory_.load();
+}
+
+size_t ReferenceCounter::OwnedObjectsSpilled() const {
+  return owned_objects_spilled_.load();
+}
+
+size_t ReferenceCounter::OwnedObjectsInPlasma() const {
+  return owned_objects_in_plasma_.load();
+}
+
+int64_t ReferenceCounter::OwnedObjectsSizeInMemory() const {
+  return owned_objects_size_in_memory_.load();
+}
+
+int64_t ReferenceCounter::OwnedObjectsSizeSpilled() const {
+  return owned_objects_size_spilled_.load();
+}
+
+int64_t ReferenceCounter::OwnedObjectsSizeInPlasma() const {
+  return owned_objects_size_in_plasma_.load();
+}
+
+void ReferenceCounter::RecordMetrics() {
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsSpilled(), "Spilled");
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsInMemory(), "InMemory");
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsInPlasma(), "InPlasma");
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsPendingCreation(),
+                                         "PendingCreation");
+
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeInMemory(), "InMemory");
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeSpilled(), "Spilled");
+  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeInPlasma(), "InPlasma");
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
@@ -1434,7 +1515,9 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   bool push = false;
   if (it != object_id_refs_.end()) {
     push = (it->second.pending_creation_ != pending_creation);
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
     it->second.pending_creation_ = pending_creation;
+    UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
   }
   if (push) {
     PushToLocationSubscribers(it);
@@ -1471,6 +1554,9 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     return false;
   }
 
+  // Decrement counter for old state
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
+
   it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
@@ -1489,6 +1575,10 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     UnsetObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
+
+  // Increment counter for new state
+  UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
+
   return true;
 }
 

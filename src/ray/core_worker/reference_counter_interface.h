@@ -330,9 +330,29 @@ class ReferenceCounterInterface {
   /// Returns the total number of actors owned by this worker.
   virtual size_t NumActorsOwnedByUs() const = 0;
 
-  /// Returns the total size of objects owned by this worker. This calulcation maybe best
-  /// effort
-  virtual int64_t TotalOwnedObjectsSize() const = 0;
+  /// Returns the number of owned objects in pending creation state.
+  virtual size_t OwnedObjectsPendingCreation() const = 0;
+
+  /// Returns the number of owned objects in memory (not in plasma, not spilled).
+  virtual size_t OwnedObjectsInMemory() const = 0;
+
+  /// Returns the number of owned objects that are spilled.
+  virtual size_t OwnedObjectsSpilled() const = 0;
+
+  /// Returns the number of owned objects in plasma.
+  virtual size_t OwnedObjectsInPlasma() const = 0;
+
+  /// Returns the total size of owned objects in memory (not in plasma, not spilled).
+  virtual int64_t OwnedObjectsSizeInMemory() const = 0;
+
+  /// Returns the total size of owned objects that are spilled.
+  virtual int64_t OwnedObjectsSizeSpilled() const = 0;
+
+  /// Returns the total size of owned objects in plasma.
+  virtual int64_t OwnedObjectsSizeInPlasma() const = 0;
+
+  /// Reports observability metrics to underlying monitoring system
+  virtual void RecordMetrics() = 0;
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   virtual std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const = 0;
