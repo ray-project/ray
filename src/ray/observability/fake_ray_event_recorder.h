@@ -24,7 +24,7 @@ namespace observability {
 
 class FakeRayEventRecorder : public RayEventRecorderInterface {
  public:
-  void StartExportingEvents(const Status &aggregator_agent_status) override {}
+  void StartExportingEvents() override {}
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override {
     absl::MutexLock lock(&mutex_);
     buffer_.insert(buffer_.end(),
