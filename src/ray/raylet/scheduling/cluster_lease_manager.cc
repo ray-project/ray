@@ -60,20 +60,11 @@ void ClusterLeaseManager::QueueAndScheduleLease(
                                                std::move(send_reply_callback));
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  auto infeasible_tasks_iter = infeasible_tasks_.find(scheduling_class);
-  int32_t priority = work->GetPriority();
-  if (infeasible_tasks_iter != infeasible_tasks_.end()) {
-    infeasible_tasks_iter->second[priority].push_back(std::move(work));
-  } else {
-    tasks_to_schedule_[scheduling_class][priority].push_back(std::move(work));
-=======
   auto infeasible_leases_iter = infeasible_leases_.find(scheduling_class);
   if (infeasible_leases_iter != infeasible_leases_.end()) {
     infeasible_leases_iter->second.emplace_back(std::move(work));
   } else {
     leases_to_schedule_[scheduling_class].emplace_back(std::move(work));
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
   }
   ScheduleAndGrantLeases();
 }
@@ -96,13 +87,8 @@ bool ClusterLeaseManager::CancelLeases(
     const std::string &scheduling_failure_message) {
   bool leases_cancelled = false;
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  ray::erase_if<SchedulingClass, int32_t, std::shared_ptr<internal::Work>>(
-      tasks_to_schedule_, [&](const std::shared_ptr<internal::Work> &work) {
-=======
   ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
       leases_to_schedule_, [&](const std::shared_ptr<internal::Work> &work) {
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
         if (predicate(work)) {
           RAY_LOG(DEBUG) << "Canceling lease "
                          << work->lease_.GetLeaseSpecification().LeaseId()
@@ -115,13 +101,8 @@ bool ClusterLeaseManager::CancelLeases(
         }
       });
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  ray::erase_if<SchedulingClass, int32_t, std::shared_ptr<internal::Work>>(
-      infeasible_tasks_, [&](const std::shared_ptr<internal::Work> &work) {
-=======
   ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
       infeasible_leases_, [&](const std::shared_ptr<internal::Work> &work) {
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
         if (predicate(work)) {
           RAY_LOG(DEBUG) << "Canceling lease "
                          << work->lease_.GetLeaseSpecification().LeaseId()
@@ -214,79 +195,6 @@ bool ClusterLeaseManager::CancelAllLeasesOwnedBy(
 
 void ClusterLeaseManager::ScheduleAndGrantLeases() {
   // Always try to schedule infeasible tasks in case they are now feasible.
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  TryScheduleInfeasibleTask();
-
-  // TODO(dayshah): Consider changing data structure so we don't need to do this.
-  absl::flat_hash_set<int32_t> priorities;
-  for (const auto &[_, priority_map] : tasks_to_schedule_) {
-    for (const auto &[priority, _] : priority_map) {
-      priorities.insert(priority);
-    }
-  }
-
-  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
-  for (const auto &priority : priorities) {
-    for (auto shapes_it = tasks_to_schedule_.begin();
-         shapes_it != tasks_to_schedule_.end();) {
-      auto &priority_map = shapes_it->second;
-      auto work_queue_iter = priority_map.find(priority);
-      if (work_queue_iter == priority_map.end()) {
-        shapes_it++;
-        continue;
-      }
-      auto &work_queue = work_queue_iter->second;
-
-      bool is_infeasible = false;
-      for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-        // Check every task in task_to_schedule queue to see
-        // whether it can be scheduled. This avoids head-of-line
-        // blocking where a task which cannot be scheduled because
-        // there are not enough available resources blocks other
-        // tasks from being scheduled.
-        const std::shared_ptr<internal::Work> &work = *work_it;
-        RayTask task = work->task;
-        RAY_LOG(DEBUG) << "Scheduling pending task "
-                       << task.GetTaskSpecification().TaskId();
-        auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
-            task.GetTaskSpecification(),
-            /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
-                                                              : task.GetPreferredNodeID(),
-            /*exclude_local_node*/ false,
-            /*requires_object_store_memory*/ false,
-            &is_infeasible);
-
-        // There is no node that has available resources to run the request.
-        // Move on to the next shape.
-        if (scheduling_node_id.IsNil()) {
-          RAY_LOG(DEBUG) << "No node found to schedule a task "
-                         << task.GetTaskSpecification().TaskId() << " is infeasible?"
-                         << is_infeasible;
-
-          if (task.GetTaskSpecification().IsNodeAffinitySchedulingStrategy() &&
-              !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
-            // This can only happen if the target node doesn't exist or is infeasible.
-            // The task will never be schedulable in either case so we should fail it.
-            if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
-              ReplyCancelled(
-                  *work,
-                  rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-                  "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
-                  "any more or is infeasible, and soft=False was specified.");
-              // We don't want to trigger the normal infeasible task logic (i.e. waiting),
-              // but rather we want to fail the task immediately.
-              work_it = work_queue.erase(work_it);
-            } else {
-              // If scheduling is done by gcs, we can not `ReplyCancelled` now because it
-              // would synchronously call `ClusterTaskManager::CancelTask`, where
-              // `task_to_schedule_`'s iterator will be invalidated. So record this work
-              // and it will be handled below (out of the loop).
-              works_to_cancel.push_back(*work_it);
-              work_it++;
-            }
-            is_infeasible = false;
-            continue;
-=======
   TryScheduleInfeasibleLease();
   std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
   for (auto shapes_it = leases_to_schedule_.begin();
@@ -341,37 +249,14 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
             // and it will be handled below (out of the loop).
             works_to_cancel.push_back(*work_it);
             work_it++;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
           }
-
-          break;
+          is_infeasible = false;
+          continue;
         }
 
-        NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
-        ScheduleOnNode(node_id, work);
-        work_it = work_queue.erase(work_it);
-      }
-      if (work_queue.empty()) {
-        priority_map.erase(work_queue_iter);
+        break;
       }
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-      if (is_infeasible) {
-        RAY_CHECK(!priority_map.empty());
-        // Only announce the first item as infeasible.
-        const auto &work = *priority_map.begin()->second.begin();
-        const RayTask &task = work->task;
-        if (announce_infeasible_task_) {
-          announce_infeasible_task_(task);
-        }
-        infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
-        tasks_to_schedule_.erase(shapes_it++);
-      } else if (priority_map.empty()) {
-        tasks_to_schedule_.erase(shapes_it++);
-      } else {
-        shapes_it++;
-      }
-=======
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_it = work_queue.erase(work_it);
@@ -393,7 +278,6 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
       leases_to_schedule_.erase(shapes_it++);
     } else {
       shapes_it++;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
     }
   }
 
@@ -411,34 +295,20 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
   local_lease_manager_.ScheduleAndGrantLeases();
 }
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-void ClusterTaskManager::TryScheduleInfeasibleTask() {
-  for (auto shapes_it = infeasible_tasks_.begin();
-       shapes_it != infeasible_tasks_.end();) {
-    auto &work_queue = shapes_it->second.begin()->second;
-=======
 void ClusterLeaseManager::TryScheduleInfeasibleLease() {
   for (auto shapes_it = infeasible_leases_.begin();
        shapes_it != infeasible_leases_.end();) {
     auto &work_queue = shapes_it->second;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
     RAY_CHECK(!work_queue.empty())
         << "Empty work queue shouldn't have been added as a infeasible shape.";
     // We only need to check the first item because every task has the same shape.
     // If the first entry is infeasible, that means everything else is the same.
     const auto work = work_queue[0];
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-    RayTask task = work->task;
-    RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
-                   << task.GetTaskSpecification().TaskId();
-    bool is_infeasible = false;
-=======
     RayLease lease = work->lease_;
     RAY_LOG(DEBUG)
         << "Check if the infeasible lease is schedulable in any node. lease_id:"
         << lease.GetLeaseSpecification().LeaseId();
     bool is_infeasible;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
     cluster_resource_scheduler_.GetBestSchedulableNode(
         lease.GetLeaseSpecification(),
         /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
@@ -454,20 +324,11 @@ void ClusterLeaseManager::TryScheduleInfeasibleLease() {
                      << lease.GetLeaseSpecification().LeaseId();
       shapes_it++;
     } else {
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-      RAY_LOG(DEBUG) << "Infeasible task of task id "
-                     << task.GetTaskSpecification().TaskId()
-                     << " is now feasible. Move the entry back to tasks_to_schedule_";
-      // Move all tasks of the same shape to tasks_to_schedule_.
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
-      infeasible_tasks_.erase(shapes_it++);
-=======
       RAY_LOG(DEBUG) << "Infeasible lease of lease id "
                      << lease.GetLeaseSpecification().LeaseId()
                      << " is now feasible. Move the entry back to leases_to_schedule_";
       leases_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_leases_.erase(shapes_it++);
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
     }
   }
 }
@@ -507,48 +368,29 @@ const RayLease *ClusterLeaseManager::AnyPendingLeasesForResourceAcquisition(
   // We are guaranteed that these leases are blocked waiting for resources after a
   // call to ScheduleAndGrantLeases(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  for (const auto &[_, priority_map] : tasks_to_schedule_) {
-    for (const auto &[_, work_queue] : priority_map) {
-      for (const auto &work : work_queue) {
-        const auto &task = work->task;
-=======
   for (const auto &shapes_it : leases_to_schedule_) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const auto &work = *work_it;
       const auto &lease = work_it->lease_;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
 
-        // If the work is not in the waiting state, it will be scheduled soon or won't be
-        // scheduled. Consider as non-pending.
-        if (work->GetState() != internal::WorkStatus::WAITING) {
-          continue;
-        }
+      // If the work is not in the waiting state, it will be scheduled soon or won't be
+      // scheduled. Consider as non-pending.
+      if (work.GetState() != internal::WorkStatus::WAITING) {
+        continue;
+      }
 
-        // If the work is not waiting for acquiring resources, we don't consider it as
-        // there's resource deadlock.
-        if (work->GetUnscheduledCause() !=
-                internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
-            work->GetUnscheduledCause() !=
-                internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
-            work->GetUnscheduledCause() !=
-                internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
-          continue;
-        }
+      // If the work is not waiting for acquiring resources, we don't consider it as
+      // there's resource deadlock.
+      if (work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
+          work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
+          work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+        continue;
+      }
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-        if (task.GetTaskSpecification().IsActorCreationTask()) {
-          *num_pending_actor_creation += 1;
-        } else {
-          *num_pending_tasks += 1;
-        }
-
-        if (!*any_pending) {
-          *exemplar = task;
-          *any_pending = true;
-        }
-=======
       if (lease.GetLeaseSpecification().IsActorCreationTask()) {
         *num_pending_actor_creation += 1;
       } else {
@@ -557,7 +399,6 @@ const RayLease *ClusterLeaseManager::AnyPendingLeasesForResourceAcquisition(
 
       if (exemplar == nullptr) {
         exemplar = &lease;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
       }
     }
   }
@@ -623,30 +464,16 @@ ClusterResourceScheduler &ClusterLeaseManager::GetClusterResourceScheduler() con
 
 size_t ClusterLeaseManager::GetInfeasibleQueueSize() const {
   size_t count = 0;
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  for (const auto &[_, map_task_queues] : infeasible_tasks_) {
-    for (const auto &[_, task_queue] : map_task_queues) {
-      count += task_queue.size();
-    }
-=======
   for (const auto &cls_entry : infeasible_leases_) {
     count += cls_entry.second.size();
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
   }
   return count;
 }
 
 size_t ClusterLeaseManager::GetPendingQueueSize() const {
   size_t count = 0;
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.cc
-  for (const auto &[_, map_task_queues] : tasks_to_schedule_) {
-    for (const auto &[_, task_queue] : map_task_queues) {
-      count += task_queue.size();
-    }
-=======
   for (const auto &cls_entry : leases_to_schedule_) {
     count += cls_entry.second.size();
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.cc
   }
   return count;
 }

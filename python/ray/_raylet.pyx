@@ -3953,7 +3953,7 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val
+                        c_tensor_transport_val,
                         0), # priority
                     max_retries,
                     retry_exceptions,

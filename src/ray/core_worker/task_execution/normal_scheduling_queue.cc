@@ -109,7 +109,9 @@ void NormalSchedulingQueue::CancelAllPending(const Status &status) {
   absl::MutexLock lock(&mu_);
   while (!pending_normal_tasks_.empty()) {
     auto it = pending_normal_tasks_.begin();
-    it->Cancel(status);
+    for (auto &task : it->second) {
+      task.Cancel(status);
+    }
     pending_normal_tasks_.erase(it);
   }
 }

@@ -199,28 +199,15 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
 
   LocalLeaseManagerInterface &local_lease_manager_;
 
-<<<<<<< HEAD:src/ray/raylet/scheduling/cluster_task_manager.h
-  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
-  /// Scheduling class
-  /// -> ordered maps of [priority -> queues of lease requests waiting for resources]
-  /// Tasks move from scheduled -> dispatch | waiting.
-  internal::WorkQueueMap tasks_to_schedule_;
-
-  /// Scheduling class
-  /// -> [maps of priority -> queues of lease requests that are infeasible]
-  /// Tasks go between scheduling <-> infeasible.
-  internal::WorkQueueMap infeasible_tasks_;
-=======
   /// Queue of lease requests that are waiting for resources to become available.
   /// Leases move from scheduled -> dispatch | waiting.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work> > >
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       leases_to_schedule_;
 
   /// Queue of lease requests that are infeasible.
   /// Leases go between scheduling <-> infeasible.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work> > >
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_leases_;
->>>>>>> master:src/ray/raylet/scheduling/cluster_lease_manager.h
 
   const SchedulerResourceReporter scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;

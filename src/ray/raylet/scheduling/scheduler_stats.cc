@@ -30,14 +30,11 @@ SchedulerStats::SchedulerStats(const ClusterLeaseManager &cluster_lease_manager,
       local_lease_manager_(local_lease_manager) {}
 
 void SchedulerStats::ComputeStats() {
-  auto accumulator = [](size_t state, const auto &pair) {
-    const auto &[scheduling_class, priority_map] = pair;
-    size_t count = 0;
-    for (const auto &[_, queue] : priority_map) {
-      count += queue.size();
-    }
-    return state + count;
-  };
+  auto accumulator =
+      [](size_t state,
+         const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
+        return state + pair.second.size();
+      };
   size_t num_waiting_for_resource = 0;
   size_t num_waiting_for_plasma_memory = 0;
   size_t num_waiting_for_remote_node_resources = 0;
@@ -91,7 +88,7 @@ void SchedulerStats::ComputeStats() {
         num_worker_not_started_by_registration_timeout += 1;
       }
     }
-    return state + total_count;
+    return state + pair.second.size();
   };
   size_t num_leases_to_schedule =
       std::accumulate(cluster_lease_manager_.leases_to_schedule_.begin(),
@@ -102,7 +99,7 @@ void SchedulerStats::ComputeStats() {
       std::accumulate(local_lease_manager_.GetLeasesToGrant().begin(),
                       local_lease_manager_.GetLeasesToGrant().end(),
                       static_cast<size_t>(0),
-                      per_work_map_accumulator);
+                      per_work_accumulator);
 
   /// Update the internal states.
   num_waiting_for_resource_ = num_waiting_for_resource;

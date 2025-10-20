@@ -98,7 +98,7 @@ class Work {
   }
 
   int32_t GetPriority() const {
-    return task.GetTaskSpecification().GetMessage().priority();
+    return lease_.GetLeaseSpecification().GetMessage().priority();
   }
 
  private:
