@@ -41,7 +41,8 @@ def test_multithreaded_ray_get(ray_start_cluster):
         def do_small_gets(self):
             while not self._stop_small_gets.is_set():
                 ray.get(self._local_small_ref)
-                time.sleep(0.1)
+                time.sleep(0.01)
+                self._small_gets_started.set()
 
         def do_large_get(self, refs_to_get):
             remote_large_ref = refs_to_get[0]
