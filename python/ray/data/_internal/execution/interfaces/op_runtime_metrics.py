@@ -526,7 +526,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         Args:
             skip_internal_metrics: Whether to skip internal metrics.
-            reset_histogram_metrics: Whether to reset the histogram metrics after exporting.
 
         Returns:
             A dict representation of the metrics.
