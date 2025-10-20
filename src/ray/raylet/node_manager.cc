@@ -2400,10 +2400,9 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
     // If this was a non-actor lease, cancel any ray.wait calls that were
     // made during the lease execution.
     lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
+    // Notify the lease dependency manager that this lease has returned.
+    lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
   }
-
-  // Notify the lease dependency manager that this lease has returned.
-  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (!lease_spec.IsActorCreationTask()) {
     worker->GrantLeaseId(LeaseID::Nil());
