@@ -1025,6 +1025,8 @@ int64_t ReferenceCounter::OwnedObjectsSizeInPlasma() const {
 }
 
 void ReferenceCounter::RecordMetrics() {
+  // N.B. Metric reporting can interleave with counter updates, and may have an innacurate
+  // accounting at certain critical sections of counter updates.
   ray::stats::STATS_owned_objects.Record(OwnedObjectsSpilled(), "Spilled");
   ray::stats::STATS_owned_objects.Record(OwnedObjectsInMemory(), "InMemory");
   ray::stats::STATS_owned_objects.Record(OwnedObjectsInPlasma(), "InPlasma");
