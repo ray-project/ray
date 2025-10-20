@@ -718,6 +718,7 @@ class DifferentiableLearner(Checkpointable):
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
+        # Loop through all modules.
         for mid, module_batch in batch.policy_batches.items():
             # Log weights seq no for this batch.
             self.metrics.log_value(

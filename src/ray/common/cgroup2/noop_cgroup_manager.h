@@ -31,7 +31,7 @@ class NoopCgroupManager : public CgroupManagerInterface {
   NoopCgroupManager &operator=(NoopCgroupManager &&) { return *this; }
   ~NoopCgroupManager() = default;
 
-  Status AddProcessToApplicationCgroup(const std::string &pid) override {
+  Status AddProcessToWorkersCgroup(const std::string &pid) override {
     return Status::OK();
   }
 

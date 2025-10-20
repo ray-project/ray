@@ -34,6 +34,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/worker.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
