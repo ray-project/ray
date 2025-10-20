@@ -581,7 +581,6 @@ class CloudFileSystem:
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
                 suffixes_to_exclude=safetensors_to_exclude,
-                use_threads=True,
                 chunk_size=64 * 1024 * 1024,  # 64MB chunks for large model files
             )
 
