@@ -1318,10 +1318,10 @@ bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
   return manager.bundle_spec_map_.contains(bundle_id);
 }
 
-class ReleaseUnusedBundlesIdempotencyTest : public NodeManagerTest,
-                                            public ::testing::WithParamInterface<bool> {};
+class ReleaseUnusedBundlesRetriesTest : public NodeManagerTest,
+                                        public ::testing::WithParamInterface<bool> {};
 
-TEST_P(ReleaseUnusedBundlesIdempotencyTest, TestHandleReleaseUnusedBundlesIdempotency) {
+TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
   // bundle_in_use: determines whether we mark a bundle as in use and it is released by
   // the placement group resource manager.
   // bundle_in_use == true: a bundle is marked as in use in the placement group resource
@@ -1402,8 +1402,8 @@ TEST_P(ReleaseUnusedBundlesIdempotencyTest, TestHandleReleaseUnusedBundlesIdempo
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesIdempotencyVariations,
-                         ReleaseUnusedBundlesIdempotencyTest,
+INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
+                         ReleaseUnusedBundlesRetriesTest,
                          ::testing::Bool());
 
 }  // namespace ray::raylet

@@ -52,23 +52,26 @@ def test_request_worker_lease_idempotent(
 # propagated to all the raylets. Since this is inherently racy, we block CancelResourceReserve RPCs
 # from ever succeeding to make this test deterministic.
 @pytest.fixture
-def inject_rpc_failures(monkeypatch):
+def inject_rpc_failures(monkeypatch, request):
+    deterministic_failure = request.param
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.ReleaseUnusedBundles=1:100:0"
+        "NodeManagerService.grpc_client.ReleaseUnusedBundles=1:"
+        + ("100:0" if deterministic_failure == "request" else "0:100")
         + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
     )
 
 
+@pytest.mark.parametrize("inject_rpc_failures", ["request", "response"], indirect=True)
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
     [{"num_cpus": 1}],
     indirect=True,
 )
 def test_release_unused_bundles_idempotent(
-    inject_rpc_failures, ray_start_cluster_head_with_external_redis
+    inject_rpc_failures,
+    ray_start_cluster_head_with_external_redis,
 ):
-    # NOTE: Not testing response failure because the leaked bundle is cleaned up anyway
     cluster = ray_start_cluster_head_with_external_redis
 
     @ray.remote(num_cpus=1)
