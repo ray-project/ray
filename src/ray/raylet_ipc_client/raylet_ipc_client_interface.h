@@ -49,21 +49,27 @@ class ScopedResponse {
   ScopedResponse(ScopedResponse &&other) : cleanup_(std::move(other.cleanup_)) {
     other.cleanup_ = nullptr;
   }
-  ScopedResponse &operator=(ScopedResponse &&other) {
-    cleanup_ = std::move(other.cleanup_);
-    other.cleanup_ = nullptr;
-    return *this;
-  }
 
-  ~ScopedResponse() {
+  ScopedResponse &operator=(ScopedResponse &&other) {
+    if (this == &other) {
+      HandleCleanup();
+      this->cleanup_ = other.cleanup_;
+      other.cleanup_ = nullptr;
+    }
+    return *this;
+  };
+
+  ~ScopedResponse() { HandleCleanup(); }
+
+ private:
+  CleanupHandler cleanup_;
+
+  void HandleCleanup() {
     if (cleanup_ != nullptr) {
       Status s = cleanup_();
       RAY_CHECK(s.ok()) << s.ToString();
     }
   }
-
- private:
-  CleanupHandler cleanup_;
 };
 
 /// Interface for interacting with the local Raylet over a socket.
