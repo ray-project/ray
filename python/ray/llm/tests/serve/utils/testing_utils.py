@@ -7,7 +7,7 @@ import json
 import re
 from typing import List, Optional, Union
 
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionResponse,
     EmbeddingResponse,

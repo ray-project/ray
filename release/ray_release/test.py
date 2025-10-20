@@ -607,6 +607,8 @@ class Test(dict):
         """
         if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
+        if self.is_azure():
+            return get_global_config()["byod_azure_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
             return byod_ecr
