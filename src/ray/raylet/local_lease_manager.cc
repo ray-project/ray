@@ -131,7 +131,7 @@ void LocalLeaseManager::ScheduleAndGrantLeases() {
 void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
   absl::flat_hash_set<int32_t> priorities;
   for (const auto &[_, priority_map] : leases_to_grant_) {
-    for (const auto &[priority, _] : priority_map) {
+    for (const auto &[priority, __] : priority_map) {
       priorities.insert(priority);
     }
   }
@@ -961,7 +961,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
   // call to ScheduleAndGrantLeases(). They may be waiting for workers as well, but
   // this should be a transient condition only.
   for (const auto &[_, priority_map] : leases_to_grant_) {
-    for (const auto &[_, work_queue] : priority_map) {
+    for (const auto &[__, work_queue] : priority_map) {
       for (const auto &work_it : work_queue) {
         const auto &work = *work_it;
         const auto &lease = work_it->lease_;

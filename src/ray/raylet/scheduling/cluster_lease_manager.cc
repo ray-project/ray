@@ -200,7 +200,7 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
 
   absl::flat_hash_set<int32_t> priorities;
   for (const auto &[_, priority_map] : leases_to_schedule_) {
-    for (const auto &[priority, _] : priority_map) {
+    for (const auto &[priority, __] : priority_map) {
       priorities.insert(priority);
     }
   }
@@ -487,7 +487,7 @@ ClusterResourceScheduler &ClusterLeaseManager::GetClusterResourceScheduler() con
 size_t ClusterLeaseManager::GetInfeasibleQueueSize() const {
   size_t count = 0;
   for (const auto &[_, priority_map] : infeasible_leases_) {
-    for (const auto &[_, work_queue] : priority_map) {
+    for (const auto &[__, work_queue] : priority_map) {
       count += work_queue.size();
     }
   }
@@ -497,7 +497,7 @@ size_t ClusterLeaseManager::GetInfeasibleQueueSize() const {
 size_t ClusterLeaseManager::GetPendingQueueSize() const {
   size_t count = 0;
   for (const auto &[_, priority_map] : leases_to_schedule_) {
-    for (const auto &[_, work_queue] : priority_map) {
+    for (const auto &[__, work_queue] : priority_map) {
       count += work_queue.size();
     }
   }

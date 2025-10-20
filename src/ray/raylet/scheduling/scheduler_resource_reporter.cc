@@ -179,13 +179,13 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
   for (const auto &[scheduling_class, priority_map] : infeasible_leases_) {
     auto &[infeasible_count, _] = pending_count_by_shape[scheduling_class];
-    for (const auto &[_, queue] : priority_map) {
+    for (const auto &[__, queue] : priority_map) {
       infeasible_count += queue.size();
     }
   }
   for (const auto &[scheduling_class, priority_map] : leases_to_schedule_) {
     auto &[_, schedule_count] = pending_count_by_shape[scheduling_class];
-    for (const auto &[_, queue] : priority_map) {
+    for (const auto &[__, queue] : priority_map) {
       schedule_count += queue.size();
     }
   }
