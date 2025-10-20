@@ -9,50 +9,52 @@ import pytest
 import ray
 
 
-@pytest.fixture(autouse=True)
-def cap_object_transfer_throughput():
+def test_multithreaded_ray_get(ray_start_cluster):
     # This will make the object transfer slower and allow the test to
     # interleave Get requests.
-    # TODO(57923): Make this not autouse when a second test is added to this file.
-    os.environ["RAY_object_manager_max_bytes_in_flight"] = str(1024**2)
+    slow_object_transfer_system_config = {
+        {"object_manager_max_bytes_in_flight": str(1024**2)}
+    }
 
-
-def test_multithreaded_ray_get(ray_start_cluster):
     # This test tries to get a large object from the head node to the worker node
     # while making many concurrent ray.get requests for a local object in plasma.
     # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
-    ray_cluster.add_node()
+    ray_cluster.add_node(_system_config=slow_object_transfer_system_config)
     ray.init(address=ray_cluster.address)
-    ray_cluster.add_node(resources={"worker": 1})
+    ray_cluster.add_node(resources={"worker": 1}, _system_config=slow_object_transfer_system_config)
 
-    @ray.remote(resources={"worker": 1})
+    @ray.remote(resources={"worker": 1}, max_concurrency=2)
     class Actor:
-        def ready(self):
-            return
-
-        def run(self, refs_to_get):
-            remote_large_ref = refs_to_get[0]
+        def __init__(self):
             # ray.put will ensure that the object is in plasma
             # even if it's small.
-            local_small_ref = ray.put("1")
+            self._local_small_ref = ray.put("1")
+            self._small_gets_started = threading.Event()
 
-            def get_small_ref_forever():
-                while True:
-                    ray.get(local_small_ref)
-                    time.sleep(0.1)
+        def small_gets_started(self):
+            self._small_gets_started.wait()
 
-            background_thread = threading.Thread(
-                target=get_small_ref_forever, daemon=True
-            )
-            background_thread.start()
+        def do_small_gets(self):
+            while True:
+                ray.get(self._local_small_ref)
+                time.sleep(0.1)
+
+        def do_large_get(self, refs_to_get):
+            remote_large_ref = refs_to_get[0]
             ray.get(remote_large_ref)
 
-    large_ref = ray.put(np.ones(1024**3, dtype=np.int8))
     actor = Actor.remote()
-    ray.get(actor.ready.remote())
 
-    ray.get(actor.run.remote([large_ref]))
+    # Start a task on one thread that will repeatedly call `ray.get` on small
+    # plasma objects.
+    actor.do_small_gets.remote()
+    ray.get(actor.small_gets_started.remote())
+
+    # Start a second task on another thread that will call `ray.get` on a large object.
+    # The transfer will be slow due to the system config set above.
+    large_ref = ray.put(np.ones(1024**3, dtype=np.int8))
+    ray.get(actor.do_large_get.remote([large_ref]))
 
 
 if __name__ == "__main__":
