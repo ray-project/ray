@@ -19,8 +19,8 @@ from prometheus_client.core import REGISTRY
 
 import ray._private.prometheus_exporter as prometheus_exporter
 from ray._common.prometheus_utils import (
+    fetch_from_prom_exporter,
     fetch_prometheus_metrics,
-    fetch_raw_prometheus,
 )
 from ray._common.test_utils import wait_for_condition
 from ray._private.metrics_agent import (
@@ -495,7 +495,7 @@ def test_metrics_agent_export_format_correct(get_agent):
     # `prometheus_client.parser` is more lenient than the actual
     # specification and ignores the multiple HELP / TYPE comments.
     metrics_page = "localhost:{}".format(agent_port)
-    _, response = list(fetch_raw_prometheus([metrics_page]))[0]
+    _, response = list(fetch_from_prom_exporter([metrics_page]))[0]
     assert response.count("# HELP test_test desc") == 1
     assert response.count("# TYPE test_test gauge") == 1
     assert response.count("# HELP test_test2 desc") == 1

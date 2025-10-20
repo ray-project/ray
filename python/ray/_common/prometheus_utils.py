@@ -8,9 +8,10 @@ Ray Serve components.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import aiohttp
+import requests
 
 try:
     from prometheus_client.core import Metric
@@ -45,18 +46,55 @@ class PrometheusTimeseries:
         self.metric_samples.clear()
 
 
-def fetch_raw_prometheus(prom_addresses: List[str]) -> Iterator[Tuple[str, str]]:
-    """Fetch raw prometheus metrics text from multiple addresses.
+def prom_serve(
+    host: str,
+    query: str,
+    *,
+    port: int = 9090,
+    time: Union[str, int, float] = None,
+    timeout: float = None,
+) -> Dict[str, Any]:
+    """Query Prometheus server using PromQL query expression.
 
     Args:
-        prom_addresses: List of addresses to fetch metrics from.
+        host: Hostname or IP address of the Prometheus server.
+        query: PromQL query expression.
+        port: Port number of the Prometheus server. Defaults to 9090.
+        time: RFC3339 or Unix timestamp to use for the query. If None, current time is used.
+        timeout: Query timeout in seconds. If None, uses Prometheus server default.
+
+    Returns:
+        Dict[str, Any]: Response data from Prometheus query API containing metrics.
+
+    Raises:
+        requests.exceptions.RequestException: If query fails or server is unreachable.
+    """
+    # Build query params
+    params = {"query": query}
+    if time is not None:
+        params["time"] = time
+    if timeout is not None:
+        params["timeout"] = str(timeout)
+
+    response = requests.get(
+        f"http://{host}:{port}/api/v1/query",
+        params=params,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_from_prom_exporter(prom_addresses: List[str]) -> Iterator[Tuple[str, str]]:
+    """Fetch raw prometheus metrics text from multiple exporter addresses.
+
+    Args:
+        prom_addresses: List of addresses (host:port) of Prometheus exporters to fetch
+            the `/metrics` exposition text from.
 
     Yields:
         Tuple[str, str]: Iterator of (address, metrics_text) for each successful fetch.
     """
-    # Local import so minimal dependency tests can run without requests
-    import requests
-
     for address in prom_addresses:
         try:
             response = requests.get(f"http://{address}/metrics")
@@ -82,7 +120,7 @@ def fetch_prometheus(prom_addresses: List[str]) -> Tuple[str, str, str]:
         if address not in components_dict:
             components_dict[address] = set()
 
-    for address, response in fetch_raw_prometheus(prom_addresses):
+    for address, response in fetch_from_prom_exporter(prom_addresses):
         for metric in text_string_to_metric_families(response):
             for sample in metric.samples:
                 metric_descriptors[sample.name] = metric

@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import time
 from typing import Dict, List
@@ -8,6 +9,19 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.replica import ReplicaMetricsManager
+
+
+class MockReplicaId:
+    def __init__(self, unique_id):
+        self.unique_id = unique_id
+
+
+class MockAutoscalingConfig:
+    def __init__(self, prometheus_metrics):
+        self.prometheus_metrics = prometheus_metrics
+        self.metrics_interval_s = 0.1
+        self.look_back_period_s = 0.1
 
 
 def get_autoscaling_metrics_from_controller(
@@ -167,6 +181,38 @@ class TestPrometheusCustomMetrics:
         )
 
         print("All prometheus custom metrics tests passed!")
+
+    # Dependency injection test for promQL filtering logic
+    @pytest.mark.unit
+    def test_promql_filtering_with_mock_prom_serve():
+        # Mock prom_serve to simulate Prometheus server response
+        def mock_prom_serve(host, query, **kwargs):
+            # Simulate filtering by replica label in PromQL
+            if (
+                "ray_serve_deployment_processing_latency_ms_bucket" in query
+                and 'replica="replica-123"' in query
+            ):
+                return {"data": {"result": [{"value": [1234567890, 42]}]}}
+            return {"data": {"result": []}}
+
+        # Create a metrics manager with the mock prom_serve injected
+        metrics_manager = ReplicaMetricsManager(
+            replica_id=MockReplicaId("replica-123"),
+            event_loop=asyncio.get_event_loop(),
+            autoscaling_config=MockAutoscalingConfig(
+                ["ray_serve_deployment_processing_latency_ms_bucket"]
+            ),
+            ingress=True,
+            prom_query_func=mock_prom_serve,
+        )
+
+        # Run the promQL filtering logic
+        result = asyncio.get_event_loop().run_until_complete(
+            metrics_manager._fetch_prometheus_metrics(
+                ["ray_serve_deployment_processing_latency_ms_bucket"]
+            )
+        )
+        assert result["ray_serve_deployment_processing_latency_ms_bucket"] == 42
 
 
 if __name__ == "__main__":

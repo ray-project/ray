@@ -5,6 +5,7 @@ import pickle
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -1179,6 +1180,16 @@ class ServeController:
         """Gets the controller's scale direction (for testing purposes)."""
 
         return self._target_capacity_direction
+
+    def _set_prometheus_query_func_for_testing(self, prom_query_func: Callable):
+        """Testing hook to inject a mock Prometheus handler implementation.
+
+        Args:
+            prom_query_func: Callable to use for Prometheus queries (e.g., mock_prom_serve).
+        """
+        # Propagate to all relevant autoscaling/replica managers
+        self.deployment_state_manager.set_prometheus_query_func(prom_query_func)
+        self.autoscaling_state_manager.set_prometheus_query_func(prom_query_func)
 
 
 def calculate_target_capacity_direction(

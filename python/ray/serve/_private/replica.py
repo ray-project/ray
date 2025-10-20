@@ -36,10 +36,7 @@ import ray
 from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
 from ray._common.prometheus_utils import (
-    extract_metric_values,
-    fetch_prometheus_metrics_async,
-    filter_samples_by_label,
-    parse_prometheus_metrics_text,
+    prom_serve,
 )
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
@@ -172,6 +169,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        prometheus_handler: Callable[..., Any] = prom_serve,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -252,6 +250,7 @@ class ReplicaMetricsManager:
 
         self._prometheus_metrics_enabled = False
         self._prometheus_queries: Optional[List[str]] = None
+        self._prometheus_handler = prometheus_handler
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -439,7 +438,7 @@ class ReplicaMetricsManager:
         self, prometheus_metrics: List[str]
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch metrics from the prometheus exporter endpoint, given a list of str metric_names
+        Fetch metrics from Prometheus server using PromQL queries.
         """
         logger.debug(
             f"Fetching prometheus metrics {prometheus_metrics}",
@@ -448,29 +447,24 @@ class ReplicaMetricsManager:
 
         try:
             prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
-            logger.debug(f"Fetching metrics from prometheus exporter at {prom_addr}")
+            metrics_result = {}
 
-            metrics_text = await fetch_prometheus_metrics_async(
-                prom_addr, timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
-            )
-
-            if metrics_text is None:
-                return None
-
-            metric_samples_by_name = parse_prometheus_metrics_text(metrics_text)
-            if not metric_samples_by_name:
-                return None
-
-            def filter_by_replica_id(samples):
-                return filter_samples_by_label(
-                    samples, "replica", self._replica_id.unique_id
+            for metric in prometheus_metrics:
+                # Add label selector for this replica
+                query = f'{metric}{{replica="{self._replica_id.unique_id}"}}'
+                response = prom_serve(
+                    prom_addr,
+                    query,
+                    timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
                 )
 
-            metrics_result = extract_metric_values(
-                metric_samples_by_name, prometheus_metrics, filter_by_replica_id
-            )
+                # Extract metric values from response data
+                result = response.get("data", {}).get("result", [])
+                if result:
+                    # Get first matching metric value
+                    metrics_result[metric] = result[0].get("value", [None, 0])[1]
 
-            return metrics_result
+            return metrics_result if metrics_result else None
 
         except Exception as e:
             logger.error(f"Error fetching prometheus metrics: {e}")
