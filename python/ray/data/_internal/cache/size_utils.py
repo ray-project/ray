@@ -48,10 +48,13 @@ def get_object_size(obj: Any) -> int:
     Examples:
         >>> get_object_size(100)  # int
         28
-        >>> get_object_size(["id", "value"])  # small list
-        ~1000
-        >>> get_object_size(ray.put(large_df))  # ObjectRef
-        64  # Just the pointer, not the DataFrame!
+        >>> size = get_object_size(["id", "value"])  # small list
+        >>> size > 0  # Returns actual size in bytes
+        True
+        >>> import ray
+        >>> size = get_object_size(ray.put([1, 2, 3]))  # ObjectRef
+        >>> size == 64  # Just the pointer, not the data!
+        True
 
     Note:
         This is an approximation. For complex objects, it may underestimate

@@ -337,17 +337,12 @@ class DatasetCache:
                     self._ray_cache[cache_key] = object_ref
 
                 # Clean up old ObjectRefs OUTSIDE the lock to avoid blocking
-                for old_ref in refs_to_delete:
-                    try:
-                        # Ray internal API for explicit ObjectRef cleanup
-                        # See: https://github.com/ray-project/ray/blob/master/python/ray/_private/worker.py
-                        if ray.is_initialized():
-                            ray._private.worker.global_worker.core_worker.delete_objects(
-                                [old_ref]
-                            )
-                    except (AttributeError, RuntimeError):
-                        # Ray cleanup failed, ignore (ObjectRef will be garbage collected)
-                        pass
+                # Note: We don't need to manually delete ObjectRefs. Ray's garbage
+                # collector will automatically clean them up when they're no longer
+                # referenced. Manual deletion using private APIs is fragile and
+                # unnecessary.
+                # See: https://docs.ray.io/en/latest/ray-core/objects.html#object-lifetime
+                del refs_to_delete
             except Exception:
                 # Ray not available or ray.put() failed, skip caching
                 pass
@@ -411,19 +406,12 @@ class DatasetCache:
             self._ray_cache.clear()
 
         # Clean up Ray ObjectRefs OUTSIDE the lock to avoid blocking
-        for object_ref in ray_refs:
-            try:
-                import ray
-
-                # Ray internal API for explicit ObjectRef cleanup
-                # See: https://github.com/ray-project/ray/blob/master/python/ray/_private/worker.py
-                if ray.is_initialized():
-                    ray._private.worker.global_worker.core_worker.delete_objects(
-                        [object_ref]
-                    )
-            except (ImportError, AttributeError, RuntimeError):
-                # Ray cleanup failed, ignore (ObjectRefs will be garbage collected)
-                pass
+        # Note: We don't need to manually delete ObjectRefs. Ray's garbage
+        # collector will automatically clean them up when they're no longer
+        # referenced. Manual deletion using private APIs is fragile and
+        # unnecessary.
+        # See: https://docs.ray.io/en/latest/ray-core/objects.html#object-lifetime
+        del ray_refs
 
     # =========================================================================
     # STATS: Get cache statistics

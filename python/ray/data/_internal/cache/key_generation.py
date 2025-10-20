@@ -80,6 +80,7 @@ def make_cache_key(logical_plan: LogicalPlan, operation_name: str, **params) -> 
 
     Examples:
         >>> # Same logical plan always produces same key
+        >>> import ray
         >>> ds1 = ray.data.range(100)
         >>> ds2 = ray.data.range(100)
         >>> key1 = make_cache_key(ds1._logical_plan, "count")
@@ -92,8 +93,8 @@ def make_cache_key(logical_plan: LogicalPlan, operation_name: str, **params) -> 
         >>> assert key_count != key_schema
 
         >>> # Parameters are included in key
-        >>> key_sum_price = make_cache_key(ds._logical_plan, "sum", on="price")
-        >>> key_sum_quantity = make_cache_key(ds._logical_plan, "sum", on="quantity")
+        >>> key_sum_price = make_cache_key(ds1._logical_plan, "sum", on="price")
+        >>> key_sum_quantity = make_cache_key(ds1._logical_plan, "sum", on="quantity")
         >>> assert key_sum_price != key_sum_quantity
 
     Note:

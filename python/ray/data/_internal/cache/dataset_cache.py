@@ -268,6 +268,7 @@ def clear_dataset_cache() -> None:
     - You're debugging cache behavior
 
     Example:
+        >>> import ray
         >>> import ray.data as rd
         >>> ds = ray.data.range(100)
         >>> ds.count()  # Caches result
@@ -294,6 +295,7 @@ def get_cache_stats() -> Dict[str, Any]:
         Dictionary with cache statistics
 
     Example:
+        >>> import ray
         >>> import ray.data as rd
         >>> ds = ray.data.range(100)
         >>> ds.count()
@@ -327,6 +329,7 @@ def disable_dataset_caching():
         Context manager that disables caching within its scope
 
     Example:
+        >>> import ray
         >>> import ray.data as rd
         >>> ds = ray.data.range(100)
         >>> ds.count()  # Cached
