@@ -375,8 +375,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
+  void RegisterSelf(rpc::GcsNodeInfo local_node_info) {
+    gcs_client_->Nodes().RegisterSelf(std::move(local_node_info), nullptr);
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
