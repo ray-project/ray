@@ -28,10 +28,12 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.torch import TorchConfig
+from ray.train.v2.jax.config import JaxConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_actors
@@ -629,6 +631,21 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
             assert worker_result == placement_group.id
         else:
             assert worker_result != placement_group.id
+
+
+@pytest.mark.parametrize("timeout_s", [5, 0])
+def test_jax_distributed_shutdown_timeout(ray_start_2_cpus, monkeypatch, timeout_s):
+    """Test that JAX distributed shutdown respects the timeout env var."""
+    monkeypatch.setenv(JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S, str(timeout_s))
+    jax_config = JaxConfig(use_tpu=True)
+    e = BackendExecutor(jax_config, num_workers=2)
+    e.start()
+
+    _start_training(e, lambda: 1)
+    assert e.finish_training() == [1, 1]
+
+    # Verify that we do not raise an exception even if we time out
+    e._backend.on_shutdown(e.worker_group, e._backend_config)
 
 
 if __name__ == "__main__":
