@@ -4227,7 +4227,7 @@ def read_unity_catalog(
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    REST API (`Unity Catalog credential vending for external system access`, `Databricks Docs <https://docs.databricks.com/aws/en/external-access/credential-vending>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
@@ -4238,7 +4238,7 @@ def read_unity_catalog(
     .. warning::
 
         The Databricks Unity Catalog credential vending feature is currently in Public Preview and there are important requirements and limitations.
-        You must read these docs carefully and ensure your workspace and principal are properly configured.
+        You must read these `docs <https://docs.databricks.com/aws/en/external-access/credential-vending#limitations>`_ carefully and ensure your workspace and principal are properly configured.
 
     Features:
         - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
