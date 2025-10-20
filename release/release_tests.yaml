@@ -4418,7 +4418,7 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
-      python_depset: python/deplocks/examples/e2e_rag_py311_cu128.lock
+      python_depset: deplocks/e2e_rag_py311_cu128.lock
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

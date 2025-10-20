@@ -12,7 +12,7 @@ depsets:
       - compiled_ray_llm_depset_py311_${CUDA_CODE}
     requirements:
       - doc/source/ray-overview/examples/e2e-rag/requirements.in
-    output: python/deplocks/examples/e2e_rag_py311_${CUDA_CODE}.lock
+    output: release/ray_release/byod/deplocks/e2e_rag_py311_${CUDA_CODE}.lock
     append_flags:
       - --python-version=3.11
       - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
