@@ -36,7 +36,7 @@ Data parallel attention serving works best when:
 Consider alternatives when:
 
 - **Low to medium throughput**: If you can't saturate the MoE layers, don't use DP. 
-- **Non-MLA Attention with sufficient TP**: DP is most beneficial with MLA (Multi-head Latent Attention), where KV cache can't be sharded along the head dimension. For models with GQA (Grouped Query Attention), you can use TP to shard the KV cache up to the degree where `TP_size <= num_kv_heads`. Beyond that point, TP requires KV cache replication, which wastes memory—DP becomes a better choice to avoid duplication. For example, for Qwen-235b, using `DP=2, TP=4, EP=8` makes more sense than `DP=8, EP=8` because you can still shard the KV cache with TP=4 before needing to replicate it. Ultimately these configurations should be benchmarked against each other for the target workload and traffic to find the optimal one.
+- **Non-MLA Attention with sufficient TP**: DP is most beneficial with MLA (Multi-head Latent Attention), where KV cache can't be sharded along the head dimension. For models with GQA (Grouped Query Attention), you can use TP to shard the KV cache up to the degree where `TP_size <= num_kv_heads`. Beyond that point, TP requires KV cache replication, which wastes memory—DP becomes a better choice to avoid duplication. For example, for Qwen-235b, using `DP=2, TP=4, EP=8` makes more sense than `DP=8, EP=8` because you can still shard the KV cache with TP=4 before needing to replicate it. Benchmark these configurations with your workload to determine the optimal setup.
 - **Non-MoE models**: The main reason for using DP at the cost of this complexity is to lift the effective batch size during decoding for saturating the experts. 
 
 ## Components
