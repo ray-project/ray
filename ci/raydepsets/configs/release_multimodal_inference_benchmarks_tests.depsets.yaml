@@ -22,5 +22,3 @@ depsets:
     build_arg_sets:
       - py39
       - py310
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
