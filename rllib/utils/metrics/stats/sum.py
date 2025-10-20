@@ -45,11 +45,25 @@ class SumStats(SeriesStats):
         assert (
             self.track_throughput
         ), "Throughput tracking is not enabled on this Stats object"
+        if not self._is_root_stats and self._reduce_at_root:
+            raise ValueError(
+                "Can not peek throughput at leaf level if reduce_at_root is True"
+            )
+
         return (self.peek(compile=True) - self._last_reduce_value) / (
             time.perf_counter() - self._last_throughput_measure_time
         )
 
     def reduce(self, compile: bool = True) -> Union[Any, "SumStats"]:
+        if self._reduce_at_root and not self._is_root_stats:
+            if compile:
+                raise ValueError(
+                    "Can not compile at leaf level if reduce_at_root is True"
+                )
+            return_stats = self.similar_to(self)
+            return_stats.values = self.values
+            return return_stats
+
         self._last_reduce_value = super().reduce(compile=True)
 
         if compile:

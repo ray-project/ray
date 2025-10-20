@@ -29,7 +29,8 @@ class ItemSeriesStats(StatsBase):
     def _set_items(self, new_items):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
-        if self._window:
+        if self._window and not self._is_root_stats:
+            # Window always counts at leafs only
             self.items = deque(new_items, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
@@ -72,14 +73,12 @@ class ItemSeriesStats(StatsBase):
         items = self.items
         if self._clear_on_reduce:
             self._set_items([])
-        else:
-            self.items = self.items
 
         if compile:
             return items
 
         return_stats = self.similar_to(self)
-        return_stats.items = items
+        return_stats._set_items(items)
         return return_stats
 
     def __len__(self) -> int:
@@ -115,6 +114,22 @@ class ItemSeriesStats(StatsBase):
         all_items = [s.items for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
         self._set_items(all_items)
+
+    @staticmethod
+    def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
+        """Returns the initialization arguments for this Stats object."""
+        super_args = super()._get_init_args(stats_object=stats_object, state=state)
+        if state is not None:
+            return {
+                **super_args,
+                "window": state["window"],
+            }
+        elif stats_object is not None:
+            return {
+                **super_args,
+                "window": stats_object._window,
+            }
+        return super_args
 
     def __repr__(self) -> str:
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"

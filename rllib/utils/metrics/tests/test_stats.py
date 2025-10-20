@@ -497,6 +497,40 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
         check(result, expected_result)
 
 
+@pytest.mark.parametrize(
+    "stats_class, result_value",
+    [(MeanStats, 2), (SumStats, 6), (MinStats, 1), (MaxStats, 3)],
+)
+def test_stats_reduce_at_root(stats_class, result_value):
+    """Test reducing stats at root level."""
+    stats = stats_class(window=5, reduce_at_root=True, is_root_stats=False)
+
+    stats.push(1)
+    stats.push(2)
+    stats.push(3)
+
+    with pytest.raises(ValueError, match="Can not compile"):
+        stats.reduce(compile=True)
+
+    stats_values_before_reduce = stats.values.copy()
+
+    reduced_stats = stats.reduce(compile=False)
+
+    check(list(reduced_stats.values), list(stats_values_before_reduce))
+
+    root_stats = stats.similar_to(stats)
+    root_stats._is_root_stats = True
+
+    root_stats.merge([reduced_stats])
+
+    check(list(root_stats.values), list(stats_values_before_reduce))
+    reduced_root_stats = root_stats.reduce(compile=False)
+
+    check(len(reduced_root_stats), 1)
+
+    check(reduced_root_stats, result_value)
+
+
 if __name__ == "__main__":
     import sys
 

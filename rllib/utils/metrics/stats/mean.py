@@ -24,6 +24,15 @@ class MeanStats(SeriesStats):
         return reduced_values[0] if compile else reduced_values
 
     def reduce(self, compile: bool = True) -> Union[Any, "MeanStats"]:
+        if self._reduce_at_root and not self._is_root_stats:
+            if compile:
+                raise ValueError(
+                    "Can not compile at leaf level if reduce_at_root is True"
+                )
+            return_stats = self.similar_to(self)
+            return_stats.values = self.values
+            return return_stats
+
         reduced_values = self.window_reduce()
         if self._clear_on_reduce:
             self._set_values([])

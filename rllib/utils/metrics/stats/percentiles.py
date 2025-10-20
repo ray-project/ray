@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Union, Optional
 
 from collections import deque
-import numpy as np
 from itertools import chain
 
 from ray.util.annotations import DeveloperAPI
@@ -37,7 +36,8 @@ class PercentilesStats(StatsBase):
         super().__init__(*args, **kwargs)
 
         self._window = window
-        self._set_values([np.nan])
+        self.values: Union[List[Any], deque[Any]] = []
+        self._set_values([])
 
         if percentiles is None:
             # We compute a bunch of default percentiles because computing one is just as expensive as computing all of them.
@@ -65,7 +65,8 @@ class PercentilesStats(StatsBase):
     def _set_values(self, new_values):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
-        if self._window:
+        if self._window and not self._is_root_stats:
+            # Window always counts at leafs only
             self.values = deque(new_values, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
@@ -168,8 +169,18 @@ class PercentilesStats(StatsBase):
         values = list(self.values)
         values.sort()
 
+        if self._reduce_at_root and not self._is_root_stats:
+            # We sort values at leafs in any case to avoid sorting at root level.
+            if compile:
+                raise ValueError(
+                    "Can not compile at leaf level if reduce_at_root is True"
+                )
+            return_stats = self.similar_to(self)
+            return_stats.values = values
+            return return_stats
+
         if self._clear_on_reduce:
-            self._set_values([np.nan])
+            self._set_values([])
         else:
             self._set_values(values)
 
@@ -186,6 +197,7 @@ class PercentilesStats(StatsBase):
             f"clear_on_reduce={self._clear_on_reduce})"
         )
 
+    @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
         super_args = super()._get_init_args(stats_object=stats_object, state=state)
@@ -193,11 +205,13 @@ class PercentilesStats(StatsBase):
             return {
                 **super_args,
                 "percentiles": state["percentiles"],
+                "window": state["window"],
             }
         elif stats_object is not None:
             return {
                 **super_args,
                 "percentiles": stats_object._percentiles,
+                "window": stats_object._window,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
@@ -225,7 +239,6 @@ def compute_percentiles(sorted_list, percentiles):
 
     for p in percentiles:
         index = (p / 100) * (n - 1)
-
         if index.is_integer():
             results[p] = sorted_list[int(index)]
         else:

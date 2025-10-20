@@ -25,13 +25,13 @@ def actors() -> List:
     @ray.remote
     class Actor:
         def __init__(self):
-            self.metrics = MetricsLogger()
+            self.metrics = MetricsLogger(root=False)
 
         def log_value(self, name, value, **kwargs):
             self.metrics.log_value(name, value, **kwargs)
 
         def get_metrics(self):
-            return self.metrics.reduce()
+            return self.metrics.reduce(compile=False)
 
     return [Actor.remote() for _ in range(2)]
 
@@ -596,6 +596,43 @@ def test_legacy_stats_conversion():
     assert "mean_metric" in results
     assert "nested" in results
     assert "loss" in results["nested"]
+
+
+def test_reduce_at_root(root_logger, actors):
+    """Test reducing stats at root level."""
+
+    def _log_values(key, reduce, window=5):
+        actors[0].log_value.remote(key, 1, reduce=reduce, window=5, reduce_at_root=True)
+        actors[0].log_value.remote(key, 2)
+        actors[0].log_value.remote(key, 3)
+
+        actors[1].log_value.remote(key, 4, reduce=reduce, window=5, reduce_at_root=True)
+        actors[1].log_value.remote(key, 5)
+        actors[1].log_value.remote(key, 6)
+
+    _log_values("value", "sum")
+    _log_values("value2", "mean")
+    _log_values("value3", "min")
+    _log_values("value4", "max")
+    _log_values("value5", "mean", window=None)
+
+    metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
+    root_logger.aggregate(metrics)
+
+    # We start with np.nan as an implementation detail to always have a (nan) value to report.
+    check(root_logger.stats["value"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
+    check(root_logger.stats["value2"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
+    check(root_logger.stats["value3"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
+    check(root_logger.stats["value4"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
+    check(root_logger.stats["value5"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
+
+    results = root_logger.reduce()
+
+    check(results["value"], 21)
+    check(results["value2"], 3.5)
+    check(results["value3"], 1)
+    check(results["value4"], 6)
+    check(results["value5"], 3.5)
 
 
 if __name__ == "__main__":

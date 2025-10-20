@@ -73,6 +73,14 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
     def reduce(self, compile: bool = True) -> Union[Any, "SeriesStats"]:
         """Reduces the internal values list according to the constructor settings."""
+        if self._reduce_at_root and not self._is_root_stats:
+            if compile:
+                raise ValueError(
+                    "Can not compile at leaf level if reduce_at_root is True"
+                )
+            return_stats = self.similar_to(self)
+            return_stats.values = self.values
+            return return_stats
 
         if self._window is None:
             reduced_values = self.values
@@ -98,7 +106,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     def _set_values(self, new_values):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
-        if self._window:
+        if self._window and not self._is_root_stats:
+            # Window always counts at leafs only
             self.values = deque(new_values, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
@@ -139,14 +148,9 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             # If none of the stats have values, return.
             return
 
-        try:
-            all_items = [s.values for s in incoming_stats]
-        except Exception:
-            breakpoint()
+        all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
-        reduced_values = self.window_reduce(all_items)
-
-        self._set_values(reduced_values)
+        self._set_values(all_items)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.

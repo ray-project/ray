@@ -273,6 +273,7 @@ class MetricsLogger:
         with_throughput: Optional[bool] = None,
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
+        reduce_at_root: bool = False,
         **kwargs: Dict[str, Any],
     ) -> None:
         """Prepare the kwargs and create the stats object if it doesn't exist."""
@@ -341,7 +342,7 @@ class MetricsLogger:
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
-                stats_object = stats_cls(**kwargs)
+                stats_object = stats_cls(reduce_at_root=reduce_at_root, **kwargs)
                 if self._is_root_logger:
                     stats_object._is_root_stats = True
 
@@ -358,6 +359,7 @@ class MetricsLogger:
         percentiles: Optional[Union[List[int], bool]] = None,
         clear_on_reduce: Optional[bool] = None,
         with_throughput: Optional[bool] = None,
+        reduce_at_root: bool = False,
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
@@ -395,6 +397,9 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            reduce_at_root: If True, the value will be reduced at the root logger.
+                This is useful for cases where we don't want to spend CPU time in parallel components.
+                For example, we don't want to spend CPU time in Learner Actors.
             with_throughput: Whether to track a throughput estimate together with this
                 metric. This is supported by default only for `reduce=sum` and `reduce=lifetime_sum`.
             throughput_ema_coeff: Deprecated argument. Throughput is not smoothed with ema anymore
@@ -413,6 +418,7 @@ class MetricsLogger:
             with_throughput=with_throughput,
             throughput_ema_coeff=throughput_ema_coeff,
             reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
+            reduce_at_root=reduce_at_root,
         )
         value = single_value_to_cpu(value)
         stats = self._get_key(key)
