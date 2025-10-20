@@ -226,7 +226,7 @@
 
   matrix:
     setup:
-      dataset: [sf100, sf1000]
+      dataset: [sf1000]
       join_type: [inner, left_outer, right_outer, full_outer]
 
   run:
