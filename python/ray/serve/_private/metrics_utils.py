@@ -19,11 +19,12 @@ from typing import (
     Union,
 )
 
-from ray.serve._private.common import TimeStampedValue
+from ray.serve._private.common import TimeSeries, TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import AggregationFunction
 
 QUEUED_REQUESTS_KEY = "queued"
 
@@ -142,7 +143,7 @@ class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
-        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+        self.data: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
 
     def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
@@ -175,7 +176,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[TimeStampedValue]:
+    ) -> TimeSeries:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -257,44 +258,11 @@ class InMemoryMetricsStore:
             return None
         return self.data[key][-1].value
 
-    def aggregate_min(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Find the min value across all timeseries values at the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the min across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the min.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, min)
-
-    def aggregate_max(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Find the max value across all timeseries values at the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the max across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the max.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, max)
-
     def aggregate_sum(
         self,
         keys: Iterable[Hashable],
     ) -> Tuple[Optional[float], int]:
         """Sum the entire set of timeseries values across the specified keys.
-
         Args:
             keys: Iterable of keys to aggregate across.
         Returns:
@@ -333,7 +301,7 @@ class InMemoryMetricsStore:
 
 
 def time_weighted_average(
-    step_series: List[TimeStampedValue],
+    step_series: TimeSeries,
     window_start: Optional[float] = None,
     window_end: Optional[float] = None,
     last_window_s: float = 1.0,
@@ -396,9 +364,25 @@ def time_weighted_average(
     return total_weighted_value / total_duration if total_duration > 0 else None
 
 
+def aggregate_timeseries(
+    timeseries: TimeSeries,
+    aggregation_function: AggregationFunction,
+    last_window_s: float = 1.0,
+) -> Optional[float]:
+    """Aggregate the values in a timeseries using a specified function."""
+    if aggregation_function == AggregationFunction.MEAN:
+        return time_weighted_average(timeseries, last_window_s=last_window_s)
+    elif aggregation_function == AggregationFunction.MAX:
+        return max(ts.value for ts in timeseries) if timeseries else None
+    elif aggregation_function == AggregationFunction.MIN:
+        return min(ts.value for ts in timeseries) if timeseries else None
+    else:
+        raise ValueError(f"Invalid aggregation function: {aggregation_function}")
+
+
 def merge_instantaneous_total(
-    replicas_timeseries: List[List[TimeStampedValue]],
-) -> List[TimeStampedValue]:
+    replicas_timeseries: List[TimeSeries],
+) -> TimeSeries:
     """
     Merge multiple gauge time series (right-continuous, LOCF) into an
     instantaneous total time series as a step function.
@@ -445,7 +429,7 @@ def merge_instantaneous_total(
             except StopIteration:
                 pass
 
-    merged: List[TimeStampedValue] = []
+    merged: TimeSeries = []
     running_total = 0.0
 
     while merge_heap:
@@ -484,12 +468,12 @@ def merge_instantaneous_total(
 
 
 def merge_timeseries_dicts(
-    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
-) -> DefaultDict[Hashable, List[TimeStampedValue]]:
+    *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
+) -> DefaultDict[Hashable, TimeSeries]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
     """
-    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+    merged: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:
         for key, ts in ts_dict.items():
