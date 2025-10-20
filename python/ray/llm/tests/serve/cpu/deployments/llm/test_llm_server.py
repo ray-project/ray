@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -377,7 +377,7 @@ class TestLLMServer:
     async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
-            "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
+            "ray.llm._internal.serve.core.server.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
             server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
             await server.start()
