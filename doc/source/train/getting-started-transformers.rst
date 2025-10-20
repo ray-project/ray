@@ -327,8 +327,9 @@ training code.
             path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
             fs = HfFileSystem()
             # List the parquet files for each split
-            train_files = [f for f in fs.ls(path) if "train" in f and f.endswith(".parquet")]
-            validation_files = [f for f in fs.ls(path) if "validation" in f and f.endswith(".parquet")]
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
             ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
             ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
@@ -388,8 +389,9 @@ training code.
             path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
             fs = HfFileSystem()
             # List the parquet files for each split
-            train_files = [f for f in fs.ls(path) if "train" in f and f.endswith(".parquet")]
-            validation_files = [f for f in fs.ls(path) if "validation" in f and f.endswith(".parquet")]
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
             ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
             ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
