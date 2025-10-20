@@ -3475,6 +3475,7 @@
   working_dir: ../python/ray/autoscaler/
   frequency: nightly
   team: clusters
+  env: azure
   cluster:
     byod: {}
     cluster_compute: azure/tests/azure_compute.yaml
