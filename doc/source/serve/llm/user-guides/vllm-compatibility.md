@@ -86,7 +86,7 @@ curl -X POST http://localhost:8000/v1/embeddings \
 You can generate audio transcriptions for Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#transcription).
 
 
-### Deploy an transcription model
+### Deploy a transcription model
 
 ::::{tab-set}
 
@@ -110,17 +110,16 @@ from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
 # Open audio file
-file = open("/path/to/audio.wav", "rb")
+with open("/path/to/audio.wav", "rb") as f:
+    # Make a request to the transcription model
+    response = client.audio.transcriptions.create(
+        model="whisper-large",
+        file=f,
+        temperature=0.0,
+        language="en",
+    )
 
-# Make a request to the desired lora checkpoint
-response = client.audio.transcriptions.create(
-    model="whisper-large",
-    file=file,
-    temperature=0.0,
-    language="en",
-)
-
-print(response.text)
+    print(response.text)
 ```
 :::
 

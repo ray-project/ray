@@ -397,7 +397,7 @@ class VLLMEngine(LLMEngine):
             async for response in chat_response:
                 if not isinstance(response, str):
                     raise ValueError(
-                        f"Expected create_chat_completion to return a stream of strings, got and item with type {type(response)}"
+                        f"Expected create_chat_completion to return a stream of strings, got an item with type {type(response)}"
                     )
                 yield response
         else:
@@ -426,7 +426,7 @@ class VLLMEngine(LLMEngine):
             async for response in completion_response:
                 if not isinstance(response, str):
                     raise ValueError(
-                        f"Expected create_completion to return a stream of strings, got and item with type {type(response)}"
+                        f"Expected create_completion to return a stream of strings, got an item with type {type(response)}"
                     )
                 yield response
         else:
@@ -482,7 +482,7 @@ class VLLMEngine(LLMEngine):
             async for response in transcription_response:
                 if not isinstance(response, str):
                     raise ValueError(
-                        f"Expected create_transcription to return a stream of strings, got and item with type {type(response)}"
+                        f"Expected create_transcription to return a stream of strings, got an item with type {type(response)}"
                     )
                 yield response
         else:

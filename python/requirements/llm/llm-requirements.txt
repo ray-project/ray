@@ -14,6 +14,3 @@ typer
 meson
 pybind11
 hf_transfer
-# Audio processing dependencies for transcription support
-librosa
-soundfile
