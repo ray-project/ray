@@ -12,7 +12,7 @@ def test_multithreaded_ray_get(ray_start_cluster):
     # This will make the object transfer slower and allow the test to
     # interleave Get requests.
     slow_object_transfer_system_config = {
-        {"object_manager_max_bytes_in_flight": str(1024**2)}
+        "object_manager_max_bytes_in_flight": str(1024**2)
     }
 
     # This test tries to get a large object from the head node to the worker node
