@@ -468,18 +468,17 @@ bool ActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
-void NodeInfoAccessor::RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id)
       << "Registering node info, address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_info.state() == rpc::GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(local_node_info);
+  *request.mutable_node_info() = std::move(local_node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
       std::move(request),
-      [node_id, local_node_info, callback](const Status &status,
-                                           rpc::RegisterNodeReply &&) {
+      [node_id, callback](const Status &status, rpc::RegisterNodeReply &&) {
         if (callback) {
           callback(status);
         }

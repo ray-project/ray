@@ -422,7 +422,9 @@ class NodeManagerTest : public ::testing::Test {
         [](const auto &) {},
         [](const std::string &) {},
         nullptr,
-        shutting_down_);
+        shutting_down_,
+        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
+        boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
 
   instrumented_io_context io_service_;
