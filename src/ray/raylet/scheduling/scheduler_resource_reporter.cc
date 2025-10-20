@@ -28,12 +28,8 @@ namespace ray {
 namespace raylet {
 
 SchedulerResourceReporter::SchedulerResourceReporter(
-    const absl::flat_hash_map<SchedulingClass,
-                              std::deque<std::shared_ptr<internal::Work>>>
-        &leases_to_schedule,
-    const absl::flat_hash_map<SchedulingClass,
-                              std::deque<std::shared_ptr<internal::Work>>>
-        &infeasible_leases,
+    const internal::WorkQueueMap &leases_to_schedule,
+    const internal::WorkQueueMap &infeasible_leases,
     const LocalLeaseManagerInterface &local_lease_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -131,22 +127,31 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   };
 
   auto transform_func = [](const auto &pair) {
-    return std::make_pair(pair.first, pair.second.size());
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t num_tasks_queued = 0;
+    for (const auto &[_, queue] : priority_map) {
+      num_tasks_queued += queue.size();
+    }
+    return std::make_pair(scheduling_class, num_tasks_queued);
   };
 
   fill_resource_usage_helper(
       leases_to_schedule_ | boost::adaptors::transformed(transform_func), false);
   auto leases_to_grant_range =
       leases_to_grant_ | boost::adaptors::transformed([](const auto &pair) {
-        auto cnt = pair.second.size();
-        // We should only report leases to be granted that do not have resources
-        // allocated.
-        for (const auto &lease : pair.second) {
-          if (lease->allocated_instances_) {
-            cnt--;
+        const auto &[scheduling_class, priority_map] = pair;
+        size_t count = 0;
+        for (const auto &[_, queue] : priority_map) {
+          count += queue.size();
+          for (const auto &task : queue) {
+            // We should only report dispatching tasks that do not have resources
+            // allocated.
+            if (task->allocated_instances_) {
+              --count;
+            }
           }
         }
-        return std::make_pair(pair.first, cnt);
+        return std::make_pair(pair.first, count);
       });
   fill_resource_usage_helper(leases_to_grant_range, false);
 
@@ -172,11 +177,17 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
 void SchedulerResourceReporter::FillPendingActorCountByShape(
     rpc::ResourcesData &data) const {
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
-  for (const auto &[scheduling_class, queue] : infeasible_leases_) {
-    pending_count_by_shape[scheduling_class].first = queue.size();
+  for (const auto &[scheduling_class, priority_map] : infeasible_leases_) {
+    auto &[infeasible_count, _] = pending_count_by_shape[scheduling_class];
+    for (const auto &[_, queue] : priority_map) {
+      infeasible_count += queue.size();
+    }
   }
-  for (const auto &[scheduling_class, queue] : leases_to_schedule_) {
-    pending_count_by_shape[scheduling_class].second = queue.size();
+  for (const auto &[scheduling_class, priority_map] : leases_to_schedule_) {
+    auto &[_, schedule_count] = pending_count_by_shape[scheduling_class];
+    for (const auto &[_, queue] : priority_map) {
+      schedule_count += queue.size();
+    }
   }
 
   if (!pending_count_by_shape.empty()) {

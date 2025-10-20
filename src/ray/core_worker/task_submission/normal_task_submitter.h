@@ -310,8 +310,6 @@ class NormalTaskSubmitter {
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
-    // TODO(dayshah): Consider a map wrapper that keeps track of this and handles erasing
-    // when queue is empty.
     // Keep track of the number of tasks that are queued for execution.
     size_t num_tasks_queued = 0;
 

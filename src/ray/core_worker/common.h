@@ -74,7 +74,7 @@ struct TaskOptions {
       std::unordered_map<std::string, std::string> labels_p = {},
       std::unordered_map<std::string, std::string> label_selector_p = {},
       rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
-      int priority = 0)
+      int priority_p = 0)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -85,7 +85,7 @@ struct TaskOptions {
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
         tensor_transport(tensor_transport_p),
-        priority(priority) {}
+        priority(priority_p) {}
 
   /// The name of this task.
   std::string name;
@@ -102,7 +102,7 @@ struct TaskOptions {
   /// Only applicable when streaming generator is used.
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
-  int64_t generator_backpressure_num_objects = -1;
+  int64_t generator_backpressure_num_objects;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;

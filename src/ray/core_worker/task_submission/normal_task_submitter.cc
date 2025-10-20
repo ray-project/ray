@@ -323,9 +323,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
-  RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
+  RAY_LOG(ERROR) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for "
-                 << function_or_actor_name;
+                 << function_or_actor_name << " with priority "
+                 << lease_spec.GetMessage().priority();
 
   raylet_client->RequestWorkerLease(
       lease_spec.GetMessage(),

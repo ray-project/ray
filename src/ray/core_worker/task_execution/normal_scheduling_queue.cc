@@ -66,15 +66,13 @@ void NormalSchedulingQueue::Add(
 // return false.
 bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (auto priority_iter = pending_normal_tasks_.begin();
-       priority_iter != pending_normal_tasks_.end();) {
-    auto &task_queue = priority_iter->second;
+  for (const auto &[priority, task_queue] : pending_normal_tasks_) {
     for (auto task_iter = task_queue.begin(); task_iter != task_queue.end();) {
       if (task_iter->TaskID() == task_id) {
         task_iter->Cancel(Status::OK());
         task_queue.erase(task_iter);
         if (task_queue.empty()) {
-          pending_normal_tasks_.erase(priority_iter);
+          pending_normal_tasks_.erase(priority);
         }
         return true;
       }
