@@ -1184,7 +1184,10 @@ Status NodeManager::RegisterForNewDriver(
   worker->SetProcess(Process::FromPid(pid));
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
-
+  Status s = cgroup_manager_->AddProcessToWorkersCgroup(std::to_string(pid));
+  RAY_CHECK(s.ok()) << absl::StrFormat(
+      "Failed to move the driver process into the workers cgroup with error %s",
+      s.ToString());
   return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
 }
 
@@ -2086,7 +2089,23 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     reply->set_is_accepted(true);
   }
 
+  const bool is_drain_accepted = reply->is_accepted();
   send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  if (is_drain_accepted) {
+    // Fail fast on the leases in the local lease manager
+    // and add them back to the cluster lease manager so a new node
+    // can be selected by the scheduler.
+    auto cancelled_works = local_lease_manager_.CancelLeasesWithoutReply(
+        [&](const std::shared_ptr<internal::Work> &work) { return true; });
+    for (const auto &work : cancelled_works) {
+      cluster_lease_manager_.QueueAndScheduleLease(work->lease_,
+                                                   work->grant_or_reject_,
+                                                   work->is_selected_based_on_locality_,
+                                                   work->reply_,
+                                                   work->send_reply_callback_);
+    }
+  }
 }
 
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
