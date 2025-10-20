@@ -9,21 +9,19 @@ import ray
 
 
 def test_multithreaded_ray_get(ray_start_cluster):
-    # This will make the object transfer slower and allow the test to
-    # interleave Get requests.
-    slow_object_transfer_system_config = {
-        "object_manager_max_bytes_in_flight": 1024**2,
-    }
-
     # This test tries to get a large object from the head node to the worker node
     # while making many concurrent ray.get requests for a local object in plasma.
     # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
-    ray_cluster.add_node(_system_config=slow_object_transfer_system_config)
-    ray.init(address=ray_cluster.address)
     ray_cluster.add_node(
-        resources={"worker": 1}, _system_config=slow_object_transfer_system_config
+        # This will make the object transfer slower and allow the test to
+        # interleave Get requests.
+        _system_config={
+            "object_manager_max_bytes_in_flight": 1024**2,
+        }
     )
+    ray.init(address=ray_cluster.address)
+    ray_cluster.add_node(resources={"worker": 1})
 
     @ray.remote(resources={"worker": 1}, max_concurrency=2)
     class Actor:
