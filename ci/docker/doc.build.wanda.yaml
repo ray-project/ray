@@ -5,10 +5,9 @@ froms:
   - cr.ray.io/rayproject/ray-dashboard
 dockerfile: ci/docker/doc.build.Dockerfile
 srcs:
-  - python/deplocks/docs/$REQUIREMENTS_FILE
+  - "$REQUIREMENTS_FILE"
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
-  - PIP_REQUIREMENTS=python/deplocks/docs/$REQUIREMENTS_FILE
   - DOCKER_IMAGE_RAY_CORE=cr.ray.io/rayproject/ray-core-py$PYTHON
   - DOCKER_IMAGE_RAY_DASHBOARD=cr.ray.io/rayproject/ray-dashboard
 tags:
