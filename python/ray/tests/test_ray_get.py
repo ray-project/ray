@@ -1,4 +1,3 @@
-import os
 import sys
 import threading
 import time
@@ -22,7 +21,9 @@ def test_multithreaded_ray_get(ray_start_cluster):
     ray_cluster = ray_start_cluster
     ray_cluster.add_node(_system_config=slow_object_transfer_system_config)
     ray.init(address=ray_cluster.address)
-    ray_cluster.add_node(resources={"worker": 1}, _system_config=slow_object_transfer_system_config)
+    ray_cluster.add_node(
+        resources={"worker": 1}, _system_config=slow_object_transfer_system_config
+    )
 
     @ray.remote(resources={"worker": 1}, max_concurrency=2)
     class Actor:
