@@ -436,38 +436,29 @@ def test_edge_cases(root_logger):
     check(root_logger.peek("clear_test"), np.nan)  # Should be cleared
 
 
-def test_lifetime_stats():
-    """Test lifetime stats behavior with clear_on_reduce=False."""
-    # Create a root logger
-    root_logger = MetricsLogger(root=True)
-
-    # Create non-root loggers
+def test_lifetime_stats(root_logger):
+    """Test lifetime stats behavior."""
     child1 = MetricsLogger()
     child2 = MetricsLogger()
 
-    # Log lifetime stats to both children
-    child1.log_value("lifetime_metric", 10, reduce="sum", clear_on_reduce=False)
-    child2.log_value("lifetime_metric", 20, reduce="sum", clear_on_reduce=False)
+    child1.log_value("lifetime_metric", 10, reduce="lifetime_sum")
+    child2.log_value("lifetime_metric", 20, reduce="lifetime_sum")
 
-    # Reduce both children and merge into root
     results1 = child1.reduce()
     results2 = child2.reduce()
     root_logger.aggregate([results1, results2])
     check(root_logger.peek("lifetime_metric"), 30)
 
-    # Log more values to child loggers
-    child1.log_value("lifetime_metric", 5, reduce="sum", clear_on_reduce=False)
-    child2.log_value("lifetime_metric", 15, reduce="sum", clear_on_reduce=False)
+    child1.log_value("lifetime_metric", 5, reduce="lifetime_sum")
+    child2.log_value("lifetime_metric", 15, reduce="lifetime_sum")
 
-    # Reduce children again - non-root loggers should not retain previous values and return lists to merge downstream
     results1 = child1.reduce()
     results2 = child2.reduce()
-    check(results1["lifetime_metric"], [15])  # 15 (10+5)
-    check(results2["lifetime_metric"], [35])  # 35 (20+15)
+    check(results1["lifetime_metric"], [5])
+    check(results2["lifetime_metric"], [15])
 
-    # Merge new results into root - root should accumulate
     root_logger.aggregate([results1, results2])
-    check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
+    check(root_logger.peek("lifetime_metric"), 50)
 
 
 def test_legacy_stats_conversion():
@@ -828,6 +819,28 @@ def test_log_value_with_non_mergeable_stats_objects(root_logger):
 
     with pytest.raises(ValueError, match="Can only replace"):
         root_logger.log_value("item_metric", value=external_item_stats)
+
+
+def test_compatibility_logic(root_logger):
+    """Test compatibility logic that supersedes the 'legacy usage of MetricsLogger' comment."""
+    # Test behavior 1: No reduce method + window -> should use mean reduction
+    root_logger.log_value("metric_with_window", 1, window=2)
+    root_logger.log_value("metric_with_window", 2)
+    root_logger.log_value("metric_with_window", 3)
+    check(root_logger.peek("metric_with_window"), 2.5)
+    assert isinstance(root_logger.stats["metric_with_window"], MeanStats)
+
+    # Test behavior 2: No reduce method (and no window) -> should default to "ema"
+    root_logger.log_value("metric_no_reduce", 1.0)
+    root_logger.log_value("metric_no_reduce", 2.0)
+    check(root_logger.peek("metric_no_reduce"), 1.01)
+    assert isinstance(root_logger.stats["metric_no_reduce"], EmaStats)
+
+    # Test behavior 3: reduce=sum + clear_on_reduce=False -> should use lifetime_sum
+    root_logger.log_value("metric_lifetime", 10, reduce="sum", clear_on_reduce=False)
+    root_logger.log_value("metric_lifetime", 20)
+    check(root_logger.peek("metric_lifetime"), 30)
+    assert isinstance(root_logger.stats["metric_lifetime"], LifetimeSumStats)
 
 
 if __name__ == "__main__":

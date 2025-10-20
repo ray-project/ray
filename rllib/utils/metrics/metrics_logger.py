@@ -399,12 +399,16 @@ class MetricsLogger:
             reduce_per_index_on_aggregate: Deprecated argument. Aggregation now happens over all values
                 of incoming stats objects once per MetricsLogger.reduce() call, treating each incoming value with equal weight.
         """
-        # Some compatibility logic to support the current usage of MetricsLogger:
+        # Some compatibility logic to support the legacy usage of MetricsLogger:
         # 1. If no reduce method is provided and a window is provided, use mean reduction.
         if reduce is None and window is not None:
             reduce = "mean"
         if reduce is None:
             reduce = "ema"
+        # 2. If reduce is sum and clear_on_reduce is False, use lifetime_sum instead
+        if reduce == "sum" and clear_on_reduce is False:
+            reduce = "lifetime_sum"
+            clear_on_reduce = None
 
         # Prepare the kwargs for the stats object and create it if it doesn't exist
         self._maybe_create_stats_object(
