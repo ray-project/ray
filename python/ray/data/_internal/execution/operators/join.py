@@ -22,7 +22,10 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
     StatefulShuffleAggregation,
 )
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators.join_operator import (
+    JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP,
+    JoinType,
+)
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -41,18 +44,6 @@ class _DatasetPreprocessingResult:
 
     supported_projection: "pa.Table"
     unsupported_projection: "pa.Table"
-
-
-_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
-    JoinType.INNER: "inner",
-    JoinType.LEFT_OUTER: "left outer",
-    JoinType.RIGHT_OUTER: "right outer",
-    JoinType.FULL_OUTER: "full outer",
-    JoinType.LEFT_SEMI: "left semi",
-    JoinType.RIGHT_SEMI: "right semi",
-    JoinType.LEFT_ANTI: "left anti",
-    JoinType.RIGHT_ANTI: "right anti",
-}
 
 
 logger = logging.getLogger(__name__)
@@ -134,7 +125,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             left_key_col_names
         ), "Number of columns for both left and right join operands has to match"
 
-        assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
+        assert join_type in JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
@@ -198,7 +189,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
 
         # Perform the join on supported columns
-        arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
+        arrow_join_type = JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
         supported = preprocess_result_l.supported_projection.join(
             preprocess_result_r.supported_projection,
@@ -496,36 +487,12 @@ class JoinOperator(HashShufflingOperatorBase):
     hash-based shuffling and aggregation to perform distributed joins between datasets.
     It supports various join types including inner, outer, semi, and anti joins.
 
-    Examples:
-        .. testcode::
+    Note:
+        JoinOperator is an internal physical operator used by the Ray Data execution
+        engine. Users should use the Dataset.join() method instead of creating
+        JoinOperator instances directly.
 
-            # Create sample datasets for demonstration
-            import ray
-            from ray.data import from_items
-            from ray.data._internal.logical.operators.join_operator import JoinType
-
-            # Create left dataset
-            left_data = [{"id": i, "value": f"left_{i}"} for i in range(5)]
-            left_ds = from_items(left_data)
-
-            # Create right dataset
-            right_data = [{"id": i, "value": f"right_{i}"} for i in range(3, 8)]
-            right_ds = from_items(right_data)
-
-            # Get physical operators from the datasets
-            left_physical_op = left_ds._physical_plan.dag
-            right_physical_op = right_ds._physical_plan.dag
-
-            # Create a join operator
-            join_op = JoinOperator(
-                data_context=DataContext.get_current(),
-                left_input_op=left_physical_op,
-                right_input_op=right_physical_op,
-                left_key_columns=("id",),
-                right_key_columns=("id",),
-                join_type=JoinType.INNER,
-                num_partitions=4
-            )
+        See Dataset.join() documentation for usage examples.
     """
 
     def __init__(

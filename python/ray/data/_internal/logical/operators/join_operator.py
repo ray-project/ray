@@ -32,6 +32,22 @@ class JoinType(Enum):
     RIGHT_ANTI = "right_anti"
 
 
+# Mapping from Ray Data join types to PyArrow join type strings.
+# This mapping is used by both hash shuffle joins and broadcast joins
+# to convert Ray's JoinType enum to PyArrow's expected join type strings.
+# https://arrow.apache.org/docs/python/generated/pyarrow.Table.html#pyarrow.Table.join
+JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
+    JoinType.INNER: "inner",
+    JoinType.LEFT_OUTER: "left outer",
+    JoinType.RIGHT_OUTER: "right outer",
+    JoinType.FULL_OUTER: "full outer",
+    JoinType.LEFT_SEMI: "left semi",
+    JoinType.RIGHT_SEMI: "right semi",
+    JoinType.LEFT_ANTI: "left anti",
+    JoinType.RIGHT_ANTI: "right anti",
+}
+
+
 class Join(NAry):
     """Logical operator for join operations between datasets.
 
@@ -40,30 +56,12 @@ class Join(NAry):
     validates schemas and ensures that join key columns are compatible between
     the left and right datasets.
 
-    Examples:
-        .. testcode::
+    Note:
+        Join is an internal logical operator used by the Ray Data planner.
+        Users should use the Dataset.join() method instead of creating Join
+        operator instances directly.
 
-            # Create sample datasets for demonstration
-            import ray
-            from ray.data import from_items
-
-            # Create left dataset
-            left_data = [{"id": i, "value": f"left_{i}"} for i in range(5)]
-            left_dataset = from_items(left_data)
-
-            # Create right dataset
-            right_data = [{"id": i, "value": f"right_{i}"} for i in range(3, 8)]
-            right_dataset = from_items(right_data)
-
-            # Create a join operator for inner join
-            join_op = Join(
-                left_input_op=left_dataset._logical_plan.dag,
-                right_input_op=right_dataset._logical_plan.dag,
-                join_type="inner",
-                left_key_columns=("id",),
-                right_key_columns=("id",),
-                num_partitions=4
-            )
+        See Dataset.join() documentation for usage examples.
     """
 
     def __init__(

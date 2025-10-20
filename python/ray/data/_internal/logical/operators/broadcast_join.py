@@ -39,19 +39,15 @@ processes, not on the driver. ObjectRefs are stored and materialized lazily.
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators.join_operator import (
+    JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP,
+    JoinType,
+)
 from ray.data.block import DataBatch
 from ray.data.dataset import Dataset
 
 if TYPE_CHECKING:
     import pyarrow as pa
-
-_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
-    JoinType.INNER: "inner",
-    JoinType.LEFT_OUTER: "left outer",
-    JoinType.RIGHT_OUTER: "right outer",
-    JoinType.FULL_OUTER: "full outer",
-}
 
 
 def _validate_join_keys(
@@ -190,9 +186,9 @@ class BroadcastJoinFunction:
         _validate_join_keys(large_table_key_columns, small_table_key_columns)
 
         # Validate that the join type is supported
-        if join_type not in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP:
+        if join_type not in JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP:
             supported_types = ", ".join(
-                [str(jt.value) for jt in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys()]
+                [str(jt.value) for jt in JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys()]
             )
             raise ValueError(
                 f"Join type '{join_type}' is not supported in broadcast joins. "
@@ -340,7 +336,7 @@ class BroadcastJoinFunction:
             ) from e
 
         # Get the appropriate PyArrow join type
-        arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
+        arrow_join_type = JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
 
         # Determine whether to coalesce keys based on whether key column names are the same
         coalesce_keys = list(self.large_table_key_columns) == list(
