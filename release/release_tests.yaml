@@ -3477,9 +3477,9 @@
   team: clusters
   env: azure
   cluster:
-    byod: {}
+    byod:
+      post_build_script: byod_azure_cluster_launcher.sh
     ray_version: 2.50.0
-    post_build_script: byod_azure_cluster_launcher.sh
     cluster_compute: azure/tests/azure_compute.yaml
   run:
     timeout: 2400
