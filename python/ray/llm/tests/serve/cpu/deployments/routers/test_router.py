@@ -6,15 +6,15 @@ import openai
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
 
