@@ -397,9 +397,6 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
-    auto acceptor =
-        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_);
-    auto socket = boost::asio::basic_stream_socket<local_stream_protocol>(io_service_);
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
         raylet_node_id_,
@@ -426,8 +423,8 @@ class NodeManagerTest : public ::testing::Test {
         [](const std::string &) {},
         nullptr,
         shutting_down_,
-        acceptor,
-        socket);
+        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
+        boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
 
   instrumented_io_context io_service_;

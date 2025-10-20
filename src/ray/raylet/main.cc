@@ -43,6 +43,7 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
@@ -911,10 +912,9 @@ int main(int argc, char *argv[]) {
     };
 
     plasma_client = std::make_shared<plasma::PlasmaClient>();
-    auto acceptor = boost::asio::basic_socket_acceptor<ray::local_stream_protocol>(
+    boost::asio::basic_socket_acceptor<ray::local_stream_protocol> acceptor(
         main_service, ray::ParseUrlEndpoint(raylet_socket_name));
-    auto socket =
-        boost::asio::basic_stream_socket<ray::local_stream_protocol>(main_service);
+    ray::local_stream_socket socket(main_service);
     ray::SetCloseOnExec(acceptor);
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
@@ -944,8 +944,8 @@ int main(int argc, char *argv[]) {
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
         shutting_down,
-        acceptor,
-        socket);
+        std::move(acceptor),
+        std::move(socket));
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -983,8 +983,8 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_name(node_name);
     self_node_info.set_raylet_socket_name(raylet_socket_name);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
-    self_node_info.set_object_manager_port(object_manager_port);
-    self_node_info.set_node_manager_port(node_manager_port);
+    self_node_info.set_object_manager_port(object_manager->GetServerPort());
+    self_node_info.set_node_manager_port(node_manager->GetServerPort());
     self_node_info.set_node_manager_hostname(boost::asio::ip::host_name());
     self_node_info.set_metrics_export_port(metrics_export_port);
     self_node_info.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);

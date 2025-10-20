@@ -177,8 +177,8 @@ NodeManager::NodeManager(
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
     std::unique_ptr<CgroupManagerInterface> cgroup_manager,
     std::atomic_bool &shutting_down,
-    boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor,
-    local_stream_socket &socket)
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
+    local_stream_socket socket)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -233,8 +233,8 @@ NodeManager::NodeManager(
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
-      acceptor_(acceptor),
-      socket_(socket) {
+      acceptor_(std::move(acceptor)),
+      socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -301,9 +301,9 @@ void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
       };
   gcs_client_.Nodes().RegisterSelf(std::move(self_node_info), register_callback);
 
-  // acceptor_.async_accept(
-  //     socket_,
-  //     boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void NodeManager::RegisterGcs() {
@@ -499,9 +499,9 @@ void NodeManager::HandleAccept(const boost::system::error_code &error) {
   };
 
   // We're ready to accept another client.
-  // acceptor_.async_accept(
-  //     socket_,
-  //     boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,

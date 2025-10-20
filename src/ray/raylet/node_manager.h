@@ -164,8 +164,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
       std::atomic_bool &shutting_down,
-      boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor,
-      local_stream_socket &socket);
+      boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
+      local_stream_socket socket);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -204,10 +204,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
-
-  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
-
-  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -903,10 +899,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::atomic_bool &shutting_down_;
 
   /// An acceptor for new clients.
-  boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor_;
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
 
   /// The socket to listen on for new clients.
-  local_stream_socket &socket_;
+  local_stream_socket socket_;
 };
 
 }  // namespace ray::raylet
