@@ -355,12 +355,13 @@ void RayletClient::ShutdownRaylet(
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
   rpc::ShutdownRayletRequest request;
   request.set_graceful(graceful);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  ShutdownRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ShutdownRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::DrainRaylet(
@@ -372,12 +373,13 @@ void RayletClient::DrainRaylet(
   request.set_reason(reason);
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  DrainRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            DrainRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::IsLocalWorkerDead(
