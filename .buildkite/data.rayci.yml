@@ -291,7 +291,6 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - pip install -U boto3==1.28.70 awscli==1.29.70
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name datalbuild
