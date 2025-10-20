@@ -270,7 +270,8 @@ class Learner(Checkpointable):
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
         self.metrics: MetricsLogger = MetricsLogger(
-            stats_cls_lookup=config.stats_cls_lookup
+            stats_cls_lookup=config.stats_cls_lookup,
+            reduce_at_root=True,
         )
 
         # In case of offline learning and multiple learners, each learner receives a
