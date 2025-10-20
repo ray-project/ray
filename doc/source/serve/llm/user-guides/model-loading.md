@@ -356,29 +356,29 @@ llm_config = LLMConfig(
 
 | LLama 8B (TP=1) | Model Load Time | Torch.compile Time | TTFT |
 | :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 19.313 | 26.13 | 104.228 |
-| S3/RunAI Streamer | 4.073 | 26.27 | 86.426 |
+| Baseline (no optimizations) | 19.31 | 26.13 | 104.22 |
+| S3/RunAI Streamer | 4.07 | 26.27 | 86.42 |
 | Model Sharding | N/A | N/A | N/A |
-| Torch.compile Cache | 19.011 | 6.42 \+ (1.187 download) | 89.603 |
-| All Optimizations | 4.130 | 6.63 \+ (1.187 download) | 71.218 |
+| Torch.compile Cache | 19.01 | 6.42 \+ (1.19 download) | 89.60 |
+| All Optimizations | 4.13 | 6.63 \+ (1.19 download) | 71.21 |
 
 
 | LLama 70B (TP=4) | Model Load Time | Torch.compile Time | TTFT |
 | :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 213.541 | 60.79 | 359.550 |
-| S3/RunAI Streamer | 91.883 | 61.94 | 240.835 |
-| Model Sharding | 24.98 | 60.59 | 181.385 |
-| Torch.compile Cache | 233.078 | 15.49 \+ (4.580 download) | 338.385 |
-| All Optimizations | 27.513 | 15.65 \+ (4.580 download) | 125.978 |
+| Baseline (no optimizations) | 213.54 | 60.79 | 359.55 |
+| S3/RunAI Streamer | 91.88 | 61.94 | 240.83 |
+| Model Sharding | 24.98 | 60.59 | 181.38 |
+| Torch.compile Cache | 233.08 | 15.49 \+ (4.58 download) | 338.39 |
+| All Optimizations | 27.51 | 15.65 \+ (4.58 download) | 125.98 |
 
 
 | Qwen 235B (TP=8) | Model Load Time | Torch.compile Time | TTFT |
 | :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 756.955959 | 111.09 | 994.706 |
-| S3/RunAI Streamer | 573.412470 | 112.47 | 820.720 |
-| Model Sharding | 75.391083 | 113.22 | 322.597 |
-| Torch.compile Cache | 715.113196 | 22.71 \+ (15 download) | 892.17 |
-| All Optimizations | 75.844352 | 22.65 \+ (15 download) | 256.546 |
+| Baseline (no optimizations) | 756.96 | 111.09 | 994.71 |
+| S3/RunAI Streamer | 573.41 | 112.47 | 820.72 |
+| Model Sharding | 75.39 | 113.22 | 322.60 |
+| Torch.compile Cache | 715.11 | 22.71 \+ (14.79 download) | 892.17 |
+| All Optimizations | 75.84 | 22.65 \+ (14.79 download) | 256.54 |
 
 
 ![Benchmark Results Visualization](../images/all_models_startup.png)
