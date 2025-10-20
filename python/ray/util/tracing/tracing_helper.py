@@ -79,7 +79,7 @@ class _OpenTelemetryProxy:
             if _is_tracing_enabled():
                 raise ImportError(
                     "Install OpenTelemetry with "
-                    "'pip install opentelemetry-api==1.34.1 opentelemetry-sdk==1.34.1' "
+                    "'pip install opentelemetry-api==1.34.1 opentelemetry-sdk==1.34.1 opentelemetry-exporter-otlp==1.34.1' "
                     "to enable tracing. See the Ray documentation for details: "
                     "https://docs.ray.io/en/latest/ray-observability/user-guides/ray-tracing.html#installation"
                 )
