@@ -87,7 +87,7 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
   if (!cpu_weight_constraint_.IsValid(system_reserved_cpu_weight)) {
     return Status::InvalidArgument(
-        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+        absl::StrFormat(" Invalid constraint %s=%d. %s must be in the range [%d, %d].",
                         cpu_weight_constraint_.name_,
                         system_reserved_cpu_weight,
                         cpu_weight_constraint_.name_,
