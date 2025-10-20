@@ -53,7 +53,7 @@ steps:
     key: lint-medium
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.9
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
@@ -65,7 +65,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.9
     tags:
       - oss
       - skip-on-premerge
