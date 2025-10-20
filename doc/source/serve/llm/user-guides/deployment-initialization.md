@@ -1,17 +1,20 @@
-(model-loading-guide)=
-# Model loading
+(deployment-initialization-guide)=
+# Deployment Initialization
 
-Configure model loading from Hugging Face, remote storage, or gated repositories.
+The initialization phase of a serve.llm deployment involves many steps, including preparation of model weights, engine (vLLM) initialization, and Ray serve replica autoscaling overheads. A detailed breakdown of the steps involved in using serve.llm with vLLM is provided below.
 
-Ray Serve LLM supports loading models from multiple sources:
+### Startup Breakdown
+- **Node Acquiring**: If a GPU node isn't available, a new instance must be provisioned. 
+- **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (such as vLLM), preparing model and engine configurations, etc.
+- **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
+- **Warmup**: vLLM runs additional inference to warm up the KV cache.
+- **CUDA Graph Capture**: vLLM handles Cuda Graph capture independently of Torch Compile. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
+- **Model Loading**: Retrieve model from source to GPU memory, either from Hugging Face or cloud storage. 
+- **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
 
-- **Hugging Face Hub**: Load models directly from Hugging Face (default)
-- **Remote storage**: Load from S3 or GCS buckets
-- **Gated models**: Access private or gated Hugging Face models with authentication
+This document will provide an overview of the numerous ways to customize your deployment initialization.
 
-You configure model loading through the `model_loading_config` parameter in `LLMConfig`.
-
-## Load from Hugging Face Hub
+## Model Loading from Hugging Face
 
 By default, Ray Serve LLM loads models from Hugging Face Hub. Specify the model source with `model_source`:
 
@@ -31,42 +34,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 ```
 
-### Fast download from Hugging Face
-
-Enable fast downloads with Hugging Face's `hf_transfer` library:
-
-1. Install the library:
-
-```bash
-pip install hf_transfer
-```
-
-2. Set the `HF_HUB_ENABLE_HF_TRANSFER` environment variable:
-
-```python
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-
-llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="llama-3-8b",
-        model_source="meta-llama/Meta-Llama-3-8B-Instruct",
-    ),
-    accelerator_type="A10G",
-    runtime_env=dict(
-        env_vars={
-            "HF_HUB_ENABLE_HF_TRANSFER": "1"
-        }
-    ),
-)
-
-app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app, blocking=True)
-```
-
-You can also use third-party integrations for streaming models directly to GPU, such as Run:ai Model Streamer.
-
-## Load gated models
+### Load gated models
 
 Gated Hugging Face models require authentication. Pass your Hugging Face token through the `runtime_env`:
 
@@ -113,7 +81,42 @@ ray.init(
 ```
 
 
-## Load from remote storage
+
+### Fast download from Hugging Face
+
+Enable fast downloads with Hugging Face's `hf_transfer` library:
+
+1. Install the library:
+
+```bash
+pip install hf_transfer
+```
+
+2. Set the `HF_HUB_ENABLE_HF_TRANSFER` environment variable:
+
+```python
+from ray import serve
+from ray.serve.llm import LLMConfig, build_openai_app
+
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="llama-3-8b",
+        model_source="meta-llama/Meta-Llama-3-8B-Instruct",
+    ),
+    accelerator_type="A10G",
+    runtime_env=dict(
+        env_vars={
+            "HF_HUB_ENABLE_HF_TRANSFER": "1"
+        }
+    ),
+)
+
+app = build_openai_app({"llm_configs": [llm_config]})
+serve.run(app, blocking=True)
+```
+
+
+## Model Loading from remote storage
 
 Load models from S3 or GCS buckets instead of Hugging Face. This is useful for:
 
@@ -229,71 +232,9 @@ llm_config = LLMConfig(
 
 Use EC2 instance profiles or EKS service accounts with appropriate S3 read permissions.
 
-## Best practices
-
-### Model source selection
-
-- **Use Hugging Face** for publicly available models and quick prototyping
-- **Use remote storage** for private models, custom fine-tunes, or when co-located with compute
-- **Enable fast downloads** when downloading large models from Hugging Face
-
-### Security
-
-- **Never commit tokens** to version control. Use environment variables or secrets management.
-- **Use IAM roles** instead of access keys for production deployments on AWS.
-- **Scope permissions** to read-only access for model loading.
-
-### Performance
-
-- **Co-locate storage and compute** in the same cloud region to reduce latency and egress costs.
-- **Use fast download** (`HF_HUB_ENABLE_HF_TRANSFER`) for models larger than 10GB.
-- **Cache models** locally if you're repeatedly deploying the same model.
-
-## (Advanced) Fast Model Loading with vLLM
-Engine startup times involving large models can be slow, leading to slow autoscaling and poor response to changing workloads. This section outlines strategies and techniques to significantly improve the speed of model loading in large-scale inference workflows. All examples are run on EC2 with 8xH100. 
-
-### Startup Breakdown
-- **Node Acquiring**: In the case that a GPU node is not available a new instance must be provisioned. 
-- **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (like vLLM), preparing model and engine configurations, etc.
-- **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
-- **Warmup**: vLLM runs additional inference to warm up the KV cache
-- **CUDA Graph Capture**: vLLM handles Cuda Graph capture independently of Torch Compile. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
-- **Model Loading**: Retrieve model from source to GPU memory
-- **Torch Compile**: Torch compile is integral to vLLM's design and it enabled by default
-
-### Baseline Setup
-
-We evaluate on `meta-llama/Meta-Llama-3-8B`, `meta-llama/Meta-Llama-3-70B`, and `Qwen/Qwen3-235B-A22B`. Our baseline setup involves spawning a Ray Serve LLM service with 0 initial replicas to measure replica autoscaling time.
-```python
-import os
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-
-llm_config = LLMConfig(
-    model_loading_config={
-        "model_id": "llama",
-        "model_source": "meta-llama/Meta-Llama-3-8B-Instruct",
-    },
-    deployment_config={
-        "autoscaling_config": {
-            "target_ongoing_requests": 1,
-            "min_replicas": 0,
-            "initial_replicas": 0,
-            "max_replicas": 8,
-        }
-    },
-    accelerator_type="H100",
-    engine_kwargs={
-        "tensor_parallel_size": 1,
-    },
-)
-
-app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app, blocking=True)
-```
 
 ### S3 and RunAI Streamer
-When located in the same region, accessing models from Amazon S3 to EC2 can be faster than downloading them directly from Hugging Face, making it a preferred storage option for large-scale deployments. This can be combined with RunAI Streamer, an extension in vLLM that enables streaming the model weights directly from remote cloud storage into GPU memory.
+S3 can be combined with RunAI Streamer, an extension in vLLM that enables streaming the model weights directly from remote cloud storage into GPU memory, improving model load latency. More details can be found [here](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html).
 
 ```python
 llm_config = LLMConfig(
@@ -326,8 +267,10 @@ llm_config = LLMConfig(
 )
 ```
 
+## Additional Optimizations
+
 ### Torch Compile Cache
-Torch.compile is a critical stage during setting up a model for inference, and it incurs some latency during initialization. This can be mitigated by keeping a torch compile cache, which is automatically generated by vLLM. To retrieve the torch compile cache, run vLLM and look for a log like below:
+Torch.compile incurs some latency during initialization. This can be mitigated by keeping a torch compile cache, which is automatically generated by vLLM. To retrieve the torch compile cache, run vLLM and look for a log like below:
 ```
 (RayWorkerWrapper pid=126782) INFO 10-15 11:57:04 [backends.py:608] Using cache directory: /home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9/rank_1_0/backbone for vLLM's torch.compile
 ```
@@ -351,47 +294,82 @@ llm_config = LLMConfig(
     ...
 )
 ```
+NOTE: `CloudDownloader` is a callback that isn't public yet. We plan to make it public after stabilizing the API and incorporating user feedback. In the meantime, the compile cache can be retrieved using any preferred method, as long as the path to the cache is set in `compilation_config`. 
+
+
+## Performance Analysis
+
+Replica startup times involving large models can be slow, leading to slow autoscaling and poor response to changing workloads. This section illustrates the effects of the above mentioned techniques on startup latency. All examples are run on EC2 with 8xH100. 
+
+### Baseline Setup
+
+We evaluate on `meta-llama/Meta-Llama-3-8B`, `meta-llama/Meta-Llama-3-70B`, and `Qwen/Qwen3-235B-A22B`. Our baseline setup involves spawning a Ray Serve LLM service with 0 initial replicas to measure replica autoscaling time.
+```python
+import os
+from ray import serve
+from ray.serve.llm import LLMConfig, build_openai_app
+
+llm_config = LLMConfig(
+    model_loading_config={
+        "model_id": "llama",
+        "model_source": "unsloth/llama-3-8b-Instruct",
+    },
+    deployment_config={
+        "autoscaling_config": {
+            #start deployment with no replicas so we can trigger autoscaling when sending a request
+            "min_replicas": 0,
+            "initial_replicas": 0,
+            "max_replicas": 1,
+        }
+    },
+    accelerator_type="H100",
+    engine_kwargs={
+        "tensor_parallel_size": 1,
+    },
+)
+
+app = build_openai_app({"llm_configs": [llm_config]})
+serve.run(app, blocking=True)
+```
 
 ### Benchmarked Results
 
-| LLama 8B (TP=1) | Model Load Time | Torch.compile Time | TTFT |
-| :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 19.31 | 26.13 | 104.22 |
-| S3/RunAI Streamer | 4.07 | 26.27 | 86.42 |
-| Model Sharding | N/A | N/A | N/A |
-| Torch.compile Cache | 19.01 | 6.42 \+ (1.19 download) | 89.60 |
-| All Optimizations | 4.13 | 6.63 \+ (1.19 download) | 71.21 |
-
-
-| LLama 70B (TP=4) | Model Load Time | Torch.compile Time | TTFT |
-| :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 213.54 | 60.79 | 359.55 |
-| S3/RunAI Streamer | 91.88 | 61.94 | 240.83 |
-| Model Sharding | 24.98 | 60.59 | 181.38 |
-| Torch.compile Cache | 233.08 | 15.49 \+ (4.58 download) | 338.39 |
-| All Optimizations | 27.51 | 15.65 \+ (4.58 download) | 125.98 |
-
-
-| Qwen 235B (TP=8) | Model Load Time | Torch.compile Time | TTFT |
-| :---- | :---- | :---- | :---- |
-| Baseline (no optimizations) | 756.96 | 111.09 | 994.71 |
-| S3/RunAI Streamer | 573.41 | 112.47 | 820.72 |
-| Model Sharding | 75.39 | 113.22 | 322.60 |
-| Torch.compile Cache | 715.11 | 22.71 \+ (14.79 download) | 892.17 |
-| All Optimizations | 75.84 | 22.65 \+ (14.79 download) | 256.54 |
-
+Our improvements primarily address model loading and Torch Compile, and each subsequent optimization reduces the overall startup latency. As models grow larger, the effects of these optimizations become increasingly pronounced. As illustrated, we get nearly 3.88x reduction in latency on `Qwen/Qwen3-235B-A22B`. Of the remaining contributors to startup latency, CUDA graph capture and fixed initialization time are signficant areas for future optimization. vLLM startup latency is an ongoing [issue](https://github.com/vllm-project/vllm/issues/19824) that is being worked on by the community.
 
 ![Benchmark Results Visualization](../images/all_models_startup.png)
-![Benchmark Results Visualization](../images/llama8b_startup.png)
-![Benchmark Results Visualization](../images/llama70b_startup.png)
-![Benchmark Results Visualization](../images/qwen235b_startup.png)
 
+
+
+
+
+
+## Best practices
+
+### Model source selection
+
+- **Use Hugging Face** for publicly available models and quick prototyping
+- **Use remote storage** for private models, custom fine-tunes, or when co-located with compute
+- **Enable fast downloads** when downloading large models from Hugging Face
+
+### Security
+
+- **Never commit tokens** to version control. Use environment variables or secrets management.
+- **Use IAM roles** instead of access keys for production deployments on AWS.
+- **Scope permissions** to read-only access for model loading.
+
+### Performance
+
+- **Co-locate storage and compute** in the same cloud region to reduce latency and egress costs.
+- **Use fast download** (`HF_HUB_ENABLE_HF_TRANSFER`) for models larger than 10GB.
+- **Cache models** locally if you're repeatedly deploying the same model.
+
+## Troubleshooting
 
 ### Slow downloads from Hugging Face
 
 - Install `hf_transfer`: `pip install hf_transfer`
 - Set `HF_HUB_ENABLE_HF_TRANSFER=1` in `runtime_env`
-- Consider moving the model to S3/GCS in your cloud region
+- Consider moving the model to S3/GCS in your cloud region and using RunAI streamer, and use sharding for large models
 
 ### S3/GCS access errors
 
