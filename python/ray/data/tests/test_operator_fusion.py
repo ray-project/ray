@@ -434,7 +434,6 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     assert "ReadRange" in stats
     assert "RandomizeBlockOrder" in stats
     assert "MapBatches(fn)" in stats
-    
     # Regression tests ensuring RandomizeBlockOrder is never bypassed in the future
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
     assert "ReadRange->MapBatches(fn)" not in stats
