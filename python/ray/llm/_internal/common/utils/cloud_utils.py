@@ -367,39 +367,21 @@ class CloudFileSystem:
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
 
-            # List all files in the bucket
-            file_selector = pa_fs.FileSelector(source_path, recursive=True)
-            file_infos = fs.get_file_info(file_selector)
+            # Get filtered files to download
+            files_to_download = CloudFileSystem._filter_files_for_download(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
 
             # Download each file
-            for file_info in file_infos:
-                if file_info.type != pa_fs.FileType.File:
-                    continue
-
-                # Get relative path from source prefix
-                rel_path = file_info.path[len(source_path) :].lstrip("/")
-
-                # Check if file matches substring filters
-                if substrings_to_include:
-                    if not any(
-                        substring in rel_path for substring in substrings_to_include
-                    ):
-                        continue
-
-                # Check if file matches suffixes to exclude filter
-                if suffixes_to_exclude:
-                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
-                        continue
-
+            for source_file_path, dest_file_path in files_to_download:
                 # Create destination directory if needed
-                if "/" in rel_path:
-                    dest_dir = os.path.join(path, os.path.dirname(rel_path))
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
                     os.makedirs(dest_dir, exist_ok=True)
 
                 # Download the file
-                dest_path = os.path.join(path, rel_path)
-                with fs.open_input_file(file_info.path) as source_file:
-                    with open(dest_path, "wb") as dest_file:
+                with fs.open_input_file(source_file_path) as source_file:
+                    with open(dest_file_path, "wb") as dest_file:
                         dest_file.write(source_file.read())
 
         except Exception as e:
@@ -407,13 +389,60 @@ class CloudFileSystem:
             raise
 
     @staticmethod
+    def _filter_files_for_download(
+        fs: pa_fs.FileSystem,
+        source_path: str,
+        destination_path: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+    ) -> List[Tuple[str, str]]:
+        """Filter files from cloud storage based on inclusion and exclusion criteria.
+
+        Args:
+            fs: PyArrow filesystem instance
+            source_path: Source path in cloud storage
+            destination_path: Local destination path
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude files ending with these suffixes
+
+        Returns:
+            List of tuples containing (source_file_path, destination_file_path)
+        """
+        file_selector = pa_fs.FileSelector(source_path, recursive=True)
+        file_infos = fs.get_file_info(file_selector)
+
+        files_to_copy = []
+        for file_info in file_infos:
+            if file_info.type != pa_fs.FileType.File:
+                continue
+
+            rel_path = file_info.path[len(source_path) :].lstrip("/")
+
+            # Apply filters
+            if substrings_to_include:
+                if not any(
+                    substring in rel_path for substring in substrings_to_include
+                ):
+                    continue
+
+            if suffixes_to_exclude:
+                if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
+                    continue
+
+            files_to_copy.append(
+                (file_info.path, os.path.join(destination_path, rel_path))
+            )
+
+        return files_to_copy
+
+    @staticmethod
     def download_files_parallel(
         path: str,
         bucket_uri: str,
         substrings_to_include: Optional[List[str]] = None,
         suffixes_to_exclude: Optional[List[str]] = None,
-        use_threads: bool = True,
-        chunk_size: int = 64 * 1024 * 1024,  # 64MB chunks like Ray uses
+        max_concurrency: int = 10,
+        chunk_size: int = 64 * 1024 * 1024,
     ) -> None:
         """Optimized download using PyArrow's built-in copy_files function.
 
@@ -422,7 +451,7 @@ class CloudFileSystem:
             bucket_uri: URI of cloud directory
             substrings_to_include: Only include files containing these substrings
             suffixes_to_exclude: Exclude certain files from download
-            use_threads: Use PyArrow's built-in threading (default: True)
+            max_concurrency: Maximum number of concurrent files to download (default: 10)
             chunk_size: Size of transfer chunks (default: 64MB)
         """
         try:
@@ -438,40 +467,19 @@ class CloudFileSystem:
                     destination=path,
                     source_filesystem=fs,
                     destination_filesystem=pa_fs.LocalFileSystem(),
-                    use_threads=use_threads,
+                    use_threads=True,
                     chunk_size=chunk_size,
                 )
                 return
 
             # List and filter files
-            file_selector = pa_fs.FileSelector(source_path, recursive=True)
-            file_infos = fs.get_file_info(file_selector)
-
-            files_to_copy = []
-            for file_info in file_infos:
-                if file_info.type != pa_fs.FileType.File:
-                    continue
-
-                rel_path = file_info.path[len(source_path) :].lstrip("/")
-
-                # Apply filters
-                if substrings_to_include:
-                    if not any(
-                        substring in rel_path for substring in substrings_to_include
-                    ):
-                        continue
-
-                if suffixes_to_exclude:
-                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
-                        continue
-
-                files_to_copy.append((file_info.path, os.path.join(path, rel_path)))
+            files_to_copy = CloudFileSystem._filter_files_for_download(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
 
             if not files_to_copy:
-                logger.info("No files match the filters")
+                logger.info("Filters do not match any of the files, skipping download")
                 return
-
-            # Copy files in parallel using ThreadPoolExecutor
 
             def copy_single_file(file_paths):
                 source_file_path, dest_file_path = file_paths
@@ -480,7 +488,7 @@ class CloudFileSystem:
                 if dest_dir:
                     os.makedirs(dest_dir, exist_ok=True)
 
-                # Use PyArrow's copy_files for individual files
+                # Use PyArrow's copy_files for individual files,
                 pa_fs.copy_files(
                     source=source_file_path,
                     destination=dest_file_path,
@@ -491,17 +499,13 @@ class CloudFileSystem:
                 )
                 return dest_file_path
 
-            # Parallel execution
-            max_workers = min(
-                10, len(files_to_copy)
-            )  # Limit concurrent file operations
+            max_workers = min(max_concurrency, len(files_to_copy))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(copy_single_file, file_paths)
                     for file_paths in files_to_copy
                 ]
 
-                # Wait for all futures to complete
                 for future in futures:
                     try:
                         future.result()

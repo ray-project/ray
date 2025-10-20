@@ -209,11 +209,22 @@ class TestModelConfig:
                 engine_kwargs={"disable_log_stats": True},
             )
 
-    def test_runai_streamer_load_format_callback_context(self):
-        """Test that load_format='runai_streamer' sets worker_node_download_model to NONE in callback context."""
+    @pytest.mark.parametrize(
+        "load_format,expected_download_model",
+        [
+            ("runai_streamer", NodeModelDownloadable.NONE),
+            ("runai_streamer_sharded", NodeModelDownloadable.NONE),
+            ("tensorizer", NodeModelDownloadable.NONE),
+            (None, NodeModelDownloadable.MODEL_AND_TOKENIZER),
+        ],
+    )
+    def test_load_format_callback_context(self, load_format, expected_download_model):
+        """Test that different load_format values set correct worker_node_download_model in callback context."""
+        engine_kwargs = {"load_format": load_format} if load_format is not None else {}
+
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            engine_kwargs={"load_format": "runai_streamer"},
+            engine_kwargs=engine_kwargs,
         )
 
         # Get the callback instance which should trigger the context setup
@@ -221,23 +232,7 @@ class TestModelConfig:
 
         # Check that the callback context has the correct worker_node_download_model value
         assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
-        assert callback.ctx.worker_node_download_model == NodeModelDownloadable.NONE
-
-    def test_non_streaming_load_format_callback_context(self):
-        """Test that non-streaming load_format sets worker_node_download_model to MODEL_AND_TOKENIZER in callback context."""
-        llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-        )
-
-        # Get the callback instance which should trigger the context setup
-        callback = llm_config.get_or_create_callback()
-
-        # Check that the callback context has the correct worker_node_download_model value
-        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
-        assert (
-            callback.ctx.worker_node_download_model
-            == NodeModelDownloadable.MODEL_AND_TOKENIZER
-        )
+        assert callback.ctx.worker_node_download_model == expected_download_model
 
 
 class TestFieldValidators:

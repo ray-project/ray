@@ -19,7 +19,7 @@ torch = try_import("torch")
 
 logger = get_logger(__name__)
 
-STREAMING_LOAD_FORMATS = ["runai_streamer", "tensorizer"]
+STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
 
 
 class NodeModelDownloadable(enum.Enum):
