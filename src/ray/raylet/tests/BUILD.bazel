@@ -164,7 +164,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet:fake_worker",
         "//src/ray/raylet:local_object_manager_interface",
-        "//src/ray/raylet:node_manager",
+        "//src/ray/raylet:raylet_lib",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/rpc:utils",
