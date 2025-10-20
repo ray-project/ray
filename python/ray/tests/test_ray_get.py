@@ -32,12 +32,16 @@ def test_multithreaded_ray_get(ray_start_cluster):
             # even if it's small.
             self._local_small_ref = ray.put("1")
             self._small_gets_started = threading.Event()
+            self._stop_small_gets = threading.Event()
 
         def small_gets_started(self):
             self._small_gets_started.wait()
 
+        def stop_small_gets(self):
+            self._stop_small_gets.set()
+
         def do_small_gets(self):
-            while True:
+            while not self._stop_small_gets.is_set():
                 ray.get(self._local_small_ref)
                 time.sleep(0.1)
 
@@ -49,13 +53,17 @@ def test_multithreaded_ray_get(ray_start_cluster):
 
     # Start a task on one thread that will repeatedly call `ray.get` on small
     # plasma objects.
-    actor.do_small_gets.remote()
+    small_gets_ref = actor.do_small_gets.remote()
     ray.get(actor.small_gets_started.remote())
 
     # Start a second task on another thread that will call `ray.get` on a large object.
     # The transfer will be slow due to the system config set above.
     large_ref = ray.put(np.ones(1024**3, dtype=np.int8))
     ray.get(actor.do_large_get.remote([large_ref]))
+
+    # Check that all `ray.get` calls succeeded.
+    ray.get(actor.stop_small_gets.remote())
+    ray.get(small_gets_ref)
 
 
 if __name__ == "__main__":
