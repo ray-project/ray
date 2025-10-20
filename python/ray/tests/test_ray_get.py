@@ -23,7 +23,9 @@ def test_multithreaded_ray_get(ray_start_cluster):
     ray.init(address=ray_cluster.address)
     ray_cluster.add_node(resources={"worker": 1})
 
-    @ray.remote(resources={"worker": 1}, max_concurrency=2)
+    # max_concurrency >= 3 is required: one thread for small gets, one for large gets,
+    # one for setting the threading.Events.
+    @ray.remote(resources={"worker": 1}, max_concurrency=3)
     class Actor:
         def __init__(self):
             # ray.put will ensure that the object is in plasma
