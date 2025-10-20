@@ -200,9 +200,9 @@ message TaskStateUpdate {
   // Worker that runs the task.
   optional bytes worker_id = 8;
   // Task faulure info.
-  optional RayErrorInfo error_info = 9;
+  RayErrorInfo error_info = 9;
   // Task logs info.
-  optional TaskLogInfo task_log_info = 10;
+  TaskLogInfo task_log_info = 10;
   // Actor task repr name.
   optional string actor_repr_name = 11;
   // Worker Pid.
@@ -221,11 +221,11 @@ message TaskEvents {
   // The current retry attempt number for the task.
   int32 attempt_number = 2;
   // Task Info.
-  optional TaskInfoEntry task_info = 3;
+  TaskInfoEntry task_info = 3;
   // Task state updates.
-  optional TaskStateUpdate state_updates = 4;
+  TaskStateUpdate state_updates = 4;
   // Task profiling events.
-  optional ProfileEvents profile_events = 5;
+  ProfileEvents profile_events = 5;
   // Job id of the task
   bytes job_id = 6;
 }

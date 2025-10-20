@@ -253,6 +253,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     }
 
     void UpdateJobSummaryOnJobDone(const JobID &job_id) {
+      absl::MutexLock lock(&mutex_);
       auto it = job_task_summary_.find(job_id);
       if (it == job_task_summary_.end()) {
         return;
@@ -474,6 +475,8 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
 
     /// Task events lists.
     std::vector<std::list<rpc::TaskEvents>> task_events_list_;
+
+    absl::Mutex mutex_;
 
     friend class GcsTaskManager;
     FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);

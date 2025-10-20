@@ -76,12 +76,14 @@ namespace {
 /// \param event The TaskDefinitionEvent to convert.
 /// \return The output TaskEvents to populate.
 // void ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-//                          rpc::TaskEvents &task_event) {
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.task_attempt());
-//   task_event.set_job_id(event.job_id());
+//                          rpc::AddTaskEventDataRequest &request) {
+//   auto *data = request.mutable_data();
+//   auto *task_event = data->add_events_by_task();
+//   task_event->set_task_id(event.task_id());
+//   task_event->set_attempt_number(event.task_attempt());
+//   task_event->set_job_id(event.job_id());
 
-//   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+//   rpc::TaskInfoEntry *task_info = task_event->mutable_task_info();
 //   task_info->set_type(event.task_type());
 //   task_info->set_name(event.task_name());
 //   task_info->set_task_id(event.task_id());
@@ -111,16 +113,16 @@ void ConvertToTaskEvents(const rpc::events::TaskExecutionEvent &event,
   task_event->set_job_id(event.job_id());
   data->set_job_id(event.job_id());
 
-  // rpc::TaskStateUpdate *task_state_update = task_event->mutable_state_updates();
-  // task_state_update->set_node_id(event.node_id());
-  // task_state_update->set_worker_id(event.worker_id());
-  // task_state_update->set_worker_pid(event.worker_pid());
-  // task_state_update->mutable_error_info()->CopyFrom(event.ray_error_info());
-
-  // for (const auto &[state, timestamp] : event.task_state()) {
-  //   int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
-  //   task_state_update->mutable_state_ts_ns()->insert({state, ns});
-  // }
+  rpc::TaskStateUpdate task_state_update;
+  task_state_update.set_node_id(event.node_id());
+  task_state_update.set_worker_id(event.worker_id());
+  task_state_update.set_worker_pid(event.worker_pid());
+  task_state_update.mutable_error_info()->CopyFrom(event.ray_error_info());
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
+    task_state_update.mutable_state_ts_ns()->insert({state, ns});
+  }
+  task_event->mutable_state_updates()->CopyFrom(task_state_update);
 }
 
 /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
@@ -128,12 +130,14 @@ void ConvertToTaskEvents(const rpc::events::TaskExecutionEvent &event,
 /// \param event The ActorTaskDefinitionEvent to convert.
 /// \return The output TaskEvents to populate.
 // void ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event,
-//                          rpc::TaskEvents &task_event) {
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.task_attempt());
-//   task_event.set_job_id(event.job_id());
+//                          rpc::AddTaskEventDataRequest &request) {
+//   auto *data = request.mutable_data();
+//   auto *task_event = data->add_events_by_task();
+//   task_event->set_task_id(event.task_id());
+//   task_event->set_attempt_number(event.task_attempt());
+//   task_event->set_job_id(event.job_id());
 
-//   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+//   rpc::TaskInfoEntry *task_info = task_event->mutable_task_info();
 //   task_info->set_type(rpc::TaskType::ACTOR_TASK);
 //   task_info->set_name(event.actor_task_name());
 //   task_info->set_task_id(event.task_id());
@@ -157,11 +161,13 @@ void ConvertToTaskEvents(const rpc::events::TaskExecutionEvent &event,
 /// \param event TaskProfileEvents object to convert.
 /// \return The output TaskEvents to populate.
 // void ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event,
-//                          rpc::TaskEvents &task_event) {
-//   task_event.set_task_id(event.task_id());
-//   task_event.set_attempt_number(event.attempt_number());
-//   task_event.set_job_id(event.job_id());
-//   task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
+//                          rpc::AddTaskEventDataRequest &request) {
+//   auto *data = request.mutable_data();
+//   auto *task_event = data->add_events_by_task();
+//   task_event->set_task_id(event.task_id());
+//   task_event->set_attempt_number(event.attempt_number());
+//   task_event->set_job_id(event.job_id());
+//   task_event->mutable_profile_events()->Swap(event.mutable_profile_events());
 // }
 
 }  // namespace
@@ -172,20 +178,20 @@ void ConvertToTaskEventDataRequests(rpc::events::AddEventsRequest &events_reques
   for (auto &event : *events_request.mutable_events_data()->mutable_events()) {
     switch (event.event_type()) {
     // case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-    //   ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()),
-    //   task_event); break;
+    //   ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()), request);
+    //   break;
     // }
     case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
       ConvertToTaskEvents(*event.mutable_task_execution_event(), request);
       break;
     }
     // case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
-    //   ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()), task_event);
+    //   ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()), request);
     //   break;
     // }
     // case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
     //   ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()),
-    //                       task_event);
+    //                       request);
     //   break;
     // }
     default:
@@ -195,16 +201,15 @@ void ConvertToTaskEventDataRequests(rpc::events::AddEventsRequest &events_reques
   }
 
   // Handle task event metadata
-  // auto *metadata =
-  // events_request.mutable_events_data()->mutable_task_events_metadata(); if
-  // (metadata->dropped_task_attempts_size() > 0) {
-  //   auto *data = request.mutable_data();
-  //   for (const auto &dropped_attempt : metadata->dropped_task_attempts()) {
-  //     auto *dropped_attempt_proto = data->add_dropped_task_attempts();
-  //     dropped_attempt_proto->set_task_id(dropped_attempt.task_id());
-  //     dropped_attempt_proto->set_attempt_number(dropped_attempt.attempt_number());
-  //   }
-  // }
+  auto *metadata = events_request.mutable_events_data()->mutable_task_events_metadata();
+  if (metadata->dropped_task_attempts_size() > 0) {
+    auto *data = request.mutable_data();
+    for (const auto &dropped_attempt : metadata->dropped_task_attempts()) {
+      auto *dropped_attempt_proto = data->add_dropped_task_attempts();
+      dropped_attempt_proto->set_task_id(dropped_attempt.task_id());
+      dropped_attempt_proto->set_attempt_number(dropped_attempt.attempt_number());
+    }
+  }
 }
 
 }  // namespace gcs

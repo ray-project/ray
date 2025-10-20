@@ -109,6 +109,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
+  absl::MutexLock lock(&mutex_);
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
     // No tasks by the worker.
@@ -148,6 +149,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
     const JobID &job_id, int64_t job_finish_time_ns) {
+  absl::MutexLock lock(&mutex_);
   auto task_attempts_itr = job_index_.find(job_id);
   if (task_attempts_itr == job_index_.end()) {
     // No tasks in the job.
@@ -177,12 +179,37 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   }
 
   // Update the task event.
-  existing_task.MergeFrom(task_events);
+  if (task_events.has_task_info()) {
+    existing_task.mutable_task_info()->CopyFrom(task_events.task_info());
+  }
+  if (task_events.has_profile_events()) {
+    existing_task.mutable_profile_events()->CopyFrom(task_events.profile_events());
+  }
+  if (task_events.has_state_updates()) {
+    auto state_updates = existing_task.mutable_state_updates();
+    for (const auto &[state, timestamp] : task_events.state_updates().state_ts_ns()) {
+      (*state_updates->mutable_state_ts_ns())[state] = timestamp;
+    }
+    if (task_events.state_updates().has_error_info()) {
+      state_updates->mutable_error_info()->CopyFrom(
+          task_events.state_updates().error_info());
+    }
+    if (task_events.state_updates().has_worker_id()) {
+      state_updates->set_worker_id(task_events.state_updates().worker_id());
+    }
+    if (task_events.state_updates().has_node_id()) {
+      state_updates->set_node_id(task_events.state_updates().node_id());
+    }
+    if (task_events.state_updates().has_worker_pid()) {
+      state_updates->set_worker_pid(task_events.state_updates().worker_pid());
+    }
+  }
 
   // Truncate the profile events if needed.
   auto max_num_profile_events_per_task =
       RayConfig::instance().task_events_max_num_profile_events_per_task();
-  if (existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
+  if (existing_task.has_profile_events() &&
+      existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
     auto to_drop =
         existing_task.profile_events().events_size() - max_num_profile_events_per_task;
     existing_task.mutable_profile_events()->mutable_events()->DeleteSubrange(0, to_drop);
@@ -301,7 +328,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
     // Merge with an existing entry.
-    UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
+    // UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
     return loc_itr->second;
   }
 
@@ -353,6 +380,7 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
 
 void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents &&events_by_task) {
+  absl::MutexLock lock(&mutex_);
   auto job_id = JobID::FromBinary(events_by_task.job_id());
   auto task_id = TaskID::FromBinary(events_by_task.task_id());
 
@@ -625,6 +653,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     const rpc::TaskEventData &data) {
+  absl::MutexLock lock(&mutex_);
   for (const auto &dropped_attempt : data.dropped_task_attempts()) {
     const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
     auto attempt_number = dropped_attempt.attempt_number();

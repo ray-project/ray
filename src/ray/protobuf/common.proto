@@ -624,18 +624,18 @@ message TaskInfoEntry {
   RuntimeEnvInfo runtime_env_info = 23;
   // The node if of the task. If the task is retried, it could
   // contain the node id of the previous executed task.
-  optional bytes node_id = 24;
+  bytes node_id = 24;
   // The actor id for this task.
   // If the task type is Actor creation task or Actor task
   // this is set. Otherwise, it is empty.
-  optional bytes actor_id = 25;
+  bytes actor_id = 25;
   // The placement group id of this task.
   // If the task/actor is created within a placement group,
   // this value is configured.
-  optional bytes placement_group_id = 26;
+  bytes placement_group_id = 26;
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if the flag is enabled.
-  optional string call_site = 27;
+  string call_site = 27;
   // The key-value label constraints of the node to schedule this task or actor on.
   map<string, string> label_selector = 28;
 }
