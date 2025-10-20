@@ -98,10 +98,10 @@ use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_valu
 
 By default, :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` reduces values through averaging them (``reduce="mean"``).
 
-Other available reduction methods can be found in :py:data:`~ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP`.
+Other available reduction methods can be found in ``ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP``.
 
 .. note::
-    You can also provide your own reduction methods by extending :py:data:`~ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP` and passing it to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm.logging`.
+    You can also provide your own reduction methods by extending ``ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP`` and passing it to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm.logging`.
     These new reduction methods will then be available by their key when logging values during runtime.
 
 Specifying a ``window`` causes the reduction to take place over the last ``window`` logged values.
