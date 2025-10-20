@@ -98,7 +98,7 @@ class ItemSeriesStats(StatsBase):
         """
         return self.items
 
-    def merge(self, incoming_stats: List["ItemSeriesStats"]) -> None:
+    def merge(self, incoming_stats: List["ItemSeriesStats"], replace=True):
         """Merges ItemSeriesStats objects.
 
         Args:
@@ -113,6 +113,8 @@ class ItemSeriesStats(StatsBase):
 
         all_items = [s.items for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
+        if not replace:
+            all_items = list(self.items) + all_items
         self._set_items(all_items)
 
     @staticmethod

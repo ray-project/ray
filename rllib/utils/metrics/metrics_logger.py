@@ -142,6 +142,7 @@ class MetricsLogger:
         stats_cls_lookup: Optional[
             Dict[str, Type[StatsBase]]
         ] = DEFAULT_STATS_CLS_LOOKUP,
+        reduce_at_root: bool = False,
     ):
         """Initializes a MetricsLogger instance.
 
@@ -150,9 +151,12 @@ class MetricsLogger:
             stats_cls_lookup: A dictionary mapping reduction method names to Stats classes.
                 If not provided, the default lookup (ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP) will be used.
                 You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
+            reduce_at_root: Whether to reduce the stats at the root logger.
+                This is useful for cases where we don't want to spend CPU time in parallel components.
+                For example, we don't want to spend CPU time in Learner Actors.
         """
         self.stats = {}
-        self._tensor_mode = False
+        self.reduce_at_root = reduce_at_root
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -273,7 +277,6 @@ class MetricsLogger:
         with_throughput: Optional[bool] = None,
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
-        reduce_at_root: bool = False,
         **kwargs: Dict[str, Any],
     ) -> None:
         """Prepare the kwargs and create the stats object if it doesn't exist."""
@@ -342,7 +345,7 @@ class MetricsLogger:
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
-                stats_object = stats_cls(reduce_at_root=reduce_at_root, **kwargs)
+                stats_object = stats_cls(reduce_at_root=self.reduce_at_root, **kwargs)
                 if self._is_root_logger:
                     stats_object._is_root_stats = True
 
@@ -359,7 +362,6 @@ class MetricsLogger:
         percentiles: Optional[Union[List[int], bool]] = None,
         clear_on_reduce: Optional[bool] = None,
         with_throughput: Optional[bool] = None,
-        reduce_at_root: bool = False,
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
@@ -368,7 +370,7 @@ class MetricsLogger:
 
         Args:
             key: The key (or nested key-tuple) to log the `value` under.
-            value: A numeric value or an item to log.
+            value: A numeric value, an item to log or a StatsObject containing multiple values to log.
             reduce: The reduction method to apply when compiling metrics at the root logger.
                 By default, the reduction methods to choose from here are the keys
                 of rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP.
@@ -397,9 +399,6 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
-            reduce_at_root: If True, the value will be reduced at the root logger.
-                This is useful for cases where we don't want to spend CPU time in parallel components.
-                For example, we don't want to spend CPU time in Learner Actors.
             with_throughput: Whether to track a throughput estimate together with this
                 metric. This is supported by default only for `reduce=sum` and `reduce=lifetime_sum`.
             throughput_ema_coeff: Deprecated argument. Throughput is not smoothed with ema anymore
@@ -418,17 +417,14 @@ class MetricsLogger:
             with_throughput=with_throughput,
             throughput_ema_coeff=throughput_ema_coeff,
             reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
-            reduce_at_root=reduce_at_root,
         )
-        value = single_value_to_cpu(value)
         stats = self._get_key(key)
-        stats.push(value)
+        if isinstance(value, StatsBase):
+            stats.merge([value], replace=False)
+        else:
+            value = single_value_to_cpu(value)
+            stats.push(value)
 
-    @Deprecated(
-        new="log_value",
-        help="Use MetricsLogger.log_value multiple times instead.",
-        error=False,
-    )
     def log_dict(
         self,
         value_dict,
@@ -437,11 +433,11 @@ class MetricsLogger:
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
-        percentiles: Union[List[int], bool] = False,
-        clear_on_reduce: bool = False,
-        with_throughput: bool = False,
+        percentiles: Optional[Union[List[int], bool]] = None,
+        clear_on_reduce: Optional[bool] = None,
+        with_throughput: Optional[bool] = None,
         throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_aggregate: bool = False,
+        reduce_per_index_on_aggregate: Optional[bool] = None,
     ) -> None:
         """Logs all leafs of a possibly nested dict of values to this logger.
 
@@ -452,7 +448,7 @@ class MetricsLogger:
         the same structure as what has already been logged to `self`, but can be used to
         log values under new keys or nested key paths.
 
-        See MetricsLogger.log for more details on the arguments.
+        See MetricsLogger.log_value for more details on the arguments.
         """
         assert isinstance(
             value_dict, dict
@@ -493,6 +489,8 @@ class MetricsLogger:
 
         The n stats_dicts should be generated by n parallel components such that merging their
         respective stats in parallel is meaningful. Stats should only be aggregated at the root logger.
+        This will replace most internal values with the result of the merge.
+        For exceptions, see the documentation of the individual stats classes `merge` methods.
 
         Args:
             stats_dicts: List of n stats dicts to be merged and then logged.
@@ -902,6 +900,22 @@ class MetricsLogger:
                 return d
 
         return traverse_dict(values)
+
+    @Deprecated(
+        new="",
+        help="Tensor mode is not required anymore since metrics are always reduced on CPU.",
+        error=False,
+    )
+    def activate_tensor_mode(self):
+        pass
+
+    @Deprecated(
+        new="",
+        help="Tensor mode is not required anymore since metrics are always reduced on CPU.",
+        error=False,
+    )
+    def deactivate_tensor_mode(self):
+        pass
 
 
 class _DummyRLock:

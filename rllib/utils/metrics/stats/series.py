@@ -135,11 +135,12 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             if self._window is not None and len(self.values) > self._window:
                 self.values.popleft()
 
-    def merge(self, incoming_stats: List["SeriesStats"]) -> None:
+    def merge(self, incoming_stats: List["SeriesStats"], replace=True) -> None:
         """Merges SeriesStats objects.
 
         Args:
             incoming_stats: The list of SeriesStats objects to merge.
+            replace: If True, replace internal items with the result of the merge.
 
         Returns:
             The merged SeriesStats object.
@@ -153,6 +154,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
+        if not replace:
+            all_items = list(self.values) + all_items
         all_items = self.window_reduce(all_items)
         self._set_values(all_items)
 

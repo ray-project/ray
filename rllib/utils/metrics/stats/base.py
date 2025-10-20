@@ -190,8 +190,16 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def merge(self, incoming_stats: List["StatsBase"]):
-        """Merges stats objects."""
+    def merge(self, incoming_stats: List["StatsBase"], replace=True):
+        """Merges StatsBase objects.
+
+        Args:
+            incoming_stats: The list of StatsBase objects to merge.
+            replace: If True, replace internal items with the result of the merge.
+
+        Returns:
+            The merged StatsBase object.
+        """
         ...
 
     @abstractmethod

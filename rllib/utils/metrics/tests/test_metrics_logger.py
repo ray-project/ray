@@ -7,6 +7,17 @@ import numpy as np
 import ray
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.metrics.stats import (
+    MeanStats,
+    EmaStats,
+    MinStats,
+    MaxStats,
+    SumStats,
+    LifetimeSumStats,
+    PercentilesStats,
+    ItemStats,
+    ItemSeriesStats,
+)
 
 
 @pytest.fixture
@@ -26,6 +37,11 @@ def actors() -> List:
     class Actor:
         def __init__(self):
             self.metrics = MetricsLogger(root=False)
+
+        def _set_reduce_at_root(self, reduce_at_root: bool):
+            # Hack to test reduce_at_root functionality.
+            # Normally, we would set this in the MetricsLogger constructor.
+            self.metrics.reduce_at_root = reduce_at_root
 
         def log_value(self, name, value, **kwargs):
             self.metrics.log_value(name, value, **kwargs)
@@ -601,12 +617,15 @@ def test_legacy_stats_conversion():
 def test_reduce_at_root(root_logger, actors):
     """Test reducing stats at root level."""
 
+    for actor in actors:
+        actor._set_reduce_at_root.remote(True)
+
     def _log_values(key, reduce, window=5):
-        actors[0].log_value.remote(key, 1, reduce=reduce, window=5, reduce_at_root=True)
+        actors[0].log_value.remote(key, 1, reduce=reduce, window=5)
         actors[0].log_value.remote(key, 2)
         actors[0].log_value.remote(key, 3)
 
-        actors[1].log_value.remote(key, 4, reduce=reduce, window=5, reduce_at_root=True)
+        actors[1].log_value.remote(key, 4, reduce=reduce, window=5)
         actors[1].log_value.remote(key, 5)
         actors[1].log_value.remote(key, 6)
 
@@ -637,6 +656,178 @@ def test_reduce_at_root(root_logger, actors):
     check(results["value3"], 1)
     check(results["value4"], 6)
     check(results["value5"], 3.5)
+
+
+def test_log_dict(root_logger):
+    """Test logging dictionaries of values.
+
+    MetricsLogger.log_dict is a thin wrapper around MetricsLogger.log_value.
+    We therefore don't test extensively here.
+    """
+    # Test simple flat dictionary
+    flat_dict = {
+        "metric1": 1.0,
+        "metric2": 2.0,
+    }
+    root_logger.log_dict(flat_dict, reduce="mean")
+
+    check(root_logger.peek("metric1"), 1.0)
+    check(root_logger.peek("metric2"), 2.0)
+
+    # Test logging more values to the same keys
+    flat_dict2 = {
+        "metric1": 2.0,
+        "metric2": 3.0,
+    }
+    root_logger.log_dict(flat_dict2, reduce="mean")
+
+    check(root_logger.peek("metric1"), 1.5)
+    check(root_logger.peek("metric2"), 2.5)
+
+
+@pytest.mark.parametrize(
+    "stats_cls,reduce_method,log_kwargs,initial_values,external_values,expected_after_merge",
+    [
+        # MeanStats with window
+        (
+            MeanStats,
+            "mean",
+            {"window": 5},
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0],
+            3.0,  # mean of [1, 2, 3, 4, 5]
+        ),
+        # MinStats with window
+        (
+            MinStats,
+            "min",
+            {"window": 5},
+            [10.0, 5.0, 8.0],
+            [3.0, 7.0],
+            3.0,  # min of [10, 5, 8, 3, 7]
+        ),
+        # MaxStats with window
+        (
+            MaxStats,
+            "max",
+            {"window": 5},
+            [10.0, 5.0, 8.0],
+            [15.0, 7.0],
+            15.0,  # max of [10, 5, 8, 15, 7]
+        ),
+        # SumStats with window
+        (
+            SumStats,
+            "sum",
+            {"window": 5},
+            [10.0, 20.0, 30.0],
+            [40.0, 50.0],
+            150.0,  # sum of [10, 20, 30, 40, 50]
+        ),
+        # LifetimeSumStats
+        (
+            LifetimeSumStats,
+            "lifetime_sum",
+            {},
+            [100.0, 200.0],
+            [150.0, 250.0],
+            700.0,  # 300 + 400
+        ),
+        # PercentilesStats with window
+        (
+            PercentilesStats,
+            "percentiles",
+            {"window": 10, "percentiles": [50]},
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0],
+            {50: 3.0},  # median of [1, 2, 3, 4, 5]
+        ),
+        # ItemSeriesStats with window
+        (
+            ItemSeriesStats,
+            "item_series",
+            {"window": 5},
+            ["a", "b", "c", "d"],
+            ["e", "f"],
+            [
+                "a",
+                "b",
+                "c",
+                "d",
+                "e",
+                "f",
+            ],  # incoming first, then existing, values should not (yet) be reduced
+        ),
+    ],
+)
+def test_log_value_with_stats_objects(
+    root_logger,
+    stats_cls,
+    reduce_method,
+    log_kwargs,
+    initial_values,
+    external_values,
+    expected_after_merge,
+):
+    """Test logging Stats objects directly with MetricsLogger.log_value().
+
+    This test verifies that when Stats objects are logged via log_value(value=<stats_object>),
+    the internal stats objects are correctly extended/merged with the logged stats values.
+
+    Note: Not all Stats types support merging with replace=False (which is what log_value uses).
+    EmaStats and ItemStats require replace=True during merge, so they are not included in this
+    parameterized test. SeriesStats-based classes (MeanStats, MinStats, MaxStats, SumStats) and
+    PercentilesStats, ItemSeriesStats, and LifetimeSumStats support replace=False merging.
+    """
+    metric_name = f"{reduce_method}_metric"
+
+    # Log initial values to the logger
+    for i, value in enumerate(initial_values):
+        if i == 0:
+            root_logger.log_value(
+                metric_name, value, reduce=reduce_method, **log_kwargs
+            )
+        else:
+            root_logger.log_value(metric_name, value)
+
+    # Create an external Stats object and push values
+    external_stats = stats_cls(is_root_stats=True, **log_kwargs)
+    for value in external_values:
+        external_stats.push(value)
+
+    # Log the external stats object - should merge the values
+    root_logger.log_value(metric_name, value=external_stats)
+
+    # Check that the merge worked correctly
+    check(root_logger.peek(metric_name), expected_after_merge)
+
+
+def test_log_value_with_non_mergeable_stats_objects(root_logger):
+    # Test EmaStats - should work for logging regular values
+    root_logger.log_value("ema_metric", 1.0, reduce="ema", ema_coeff=0.1)
+    root_logger.log_value("ema_metric", 2.0)
+    check(root_logger.peek("ema_metric"), 1.1)  # (1-0.1)*1 + 0.1*2 = 1.1
+
+    # But logging an EmaStats object should fail
+    external_ema_stats = EmaStats(ema_coeff=0.1, is_root_stats=True)
+    external_ema_stats.push(3.0)
+    external_ema_stats.push(4.0)
+    check(external_ema_stats.peek(), 3.1)
+
+    with pytest.raises(ValueError, match="EMA of EMAs"):
+        root_logger.log_value("ema_metric", value=external_ema_stats)
+
+    # Test ItemStats - should work for logging regular values
+    root_logger.log_value("item_metric", "first_item", reduce="item")
+    check(root_logger.peek("item_metric"), "first_item")
+
+    # But logging an ItemStats object should fail
+    external_item_stats = ItemStats(is_root_stats=True)
+    external_item_stats.push("second_item")
+    check(external_item_stats.peek(), "second_item")
+
+    with pytest.raises(ValueError, match="Can only replace"):
+        root_logger.log_value("item_metric", value=external_item_stats)
 
 
 if __name__ == "__main__":

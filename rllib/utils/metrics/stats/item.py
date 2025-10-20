@@ -50,7 +50,7 @@ class ItemStats(StatsBase):
         # Put directly onto CPU memory. peek(), reduce() and merge() don't handle GPU tensors.
         self._item = single_value_to_cpu(item)
 
-    def merge(self, incoming_stats: List["ItemStats"]) -> None:
+    def merge(self, incoming_stats: List["ItemStats"], replace=True):
         """Merges ItemStats objects.
 
         Args:
@@ -62,6 +62,11 @@ class ItemStats(StatsBase):
         assert (
             len(incoming_stats) == 1
         ), "ItemStats should only be merged with one other ItemStats object"
+        if not replace:
+            raise ValueError(
+                "Can only replace ItemStats with clear_on_reduce=True when merging. This is because there can only be a single item tracked."
+            )
+
         self._item = incoming_stats[0]._item
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:

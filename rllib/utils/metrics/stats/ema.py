@@ -42,9 +42,26 @@ class EmaStats(StatsBase):
         """Returns the length of the internal values list."""
         return 1
 
-    def merge(self, incoming_stats: List["EmaStats"]):
+    def merge(self, incoming_stats: List["EmaStats"], replace=True):
+        """Merges StatsBase objects.
+
+        Args:
+            incoming_stats: The list of StatsBase objects to merge.
+            replace: If True, replace internal items with the result of the merge.
+
+        Returns:
+            The merged StatsBase object.
+        """
         # Take the average of the incoming means
-        self._value = np.nanmean([stat._value for stat in incoming_stats])
+        all_values = [stat._value for stat in incoming_stats]
+        # Ignore replace argument because replace=False would lead to EMA of EMAs
+        # EMAs respect past values anyway
+        if not replace and self._clear_on_reduce:
+            raise ValueError(
+                "Can only replace EmaStats with clear_on_reduce=True when merging. Otherwise we would introduce an 'EMA of EMAs'."
+            )
+
+        self._value = np.nanmean(all_values)
 
     def push(self, value: Any) -> None:
         value = single_value_to_cpu(value)

@@ -119,7 +119,7 @@ class PercentilesStats(StatsBase):
         value = single_value_to_cpu(value)
         self.values.append(value)
 
-    def merge(self, incoming_stats: List["PercentilesStats"]) -> None:
+    def merge(self, incoming_stats: List["PercentilesStats"], replace=True):
         """Merges PercentilesStats objects.
 
         This method assumes that the incoming stats have the same percentiles and window size.
@@ -133,6 +133,8 @@ class PercentilesStats(StatsBase):
         ), "PercentilesStats should only be merged at root level"
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
+        if not replace:
+            all_items = list(self.values) + all_items
         self._set_values(all_items)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
