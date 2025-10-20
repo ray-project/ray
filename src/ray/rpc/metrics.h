@@ -19,7 +19,7 @@
 namespace ray {
 namespace rpc {
 
-inline ray::stats::Histogram GetGrpcServerReqProcessTimeMsMetric() {
+inline ray::stats::Histogram GetGrpcServerReqProcessTimeMsHistogramMetric() {
   return ray::stats::Histogram(
       /*name=*/"grpc_server_req_process_time_ms",
       /*description=*/"Request latency in grpc server",
@@ -28,7 +28,7 @@ inline ray::stats::Histogram GetGrpcServerReqProcessTimeMsMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcServerReqNewMetric() {
+inline ray::stats::Count GetGrpcServerReqNewCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_server_req_new",
       /*description=*/"New request number in grpc server",
@@ -36,7 +36,7 @@ inline ray::stats::Count GetGrpcServerReqNewMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcServerReqHandlingMetric() {
+inline ray::stats::Count GetGrpcServerReqHandlingCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_server_req_handling",
       /*description=*/"Request number are handling in grpc server",
@@ -44,7 +44,7 @@ inline ray::stats::Count GetGrpcServerReqHandlingMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcServerReqFinishedMetric() {
+inline ray::stats::Count GetGrpcServerReqFinishedCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_server_req_finished",
       /*description=*/"Finished request number in grpc server",
@@ -52,7 +52,7 @@ inline ray::stats::Count GetGrpcServerReqFinishedMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcServerReqSucceededMetric() {
+inline ray::stats::Count GetGrpcServerReqSucceededCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_server_req_succeeded",
       /*description=*/"Succeeded request count in grpc server",
@@ -60,7 +60,7 @@ inline ray::stats::Count GetGrpcServerReqSucceededMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcServerReqFailedMetric() {
+inline ray::stats::Count GetGrpcServerReqFailedCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_server_req_failed",
       /*description=*/"Failed request count in grpc server",
@@ -68,7 +68,7 @@ inline ray::stats::Count GetGrpcServerReqFailedMetric() {
       /*tag_keys=*/{"Method"});
 }
 
-inline ray::stats::Count GetGrpcClientReqFailedMetric() {
+inline ray::stats::Count GetGrpcClientReqFailedCounterMetric() {
   return ray::stats::Count(
       /*name=*/"grpc_client_req_failed",
       /*description=*/"Number of gRPC client failures (non-OK response statuses).",

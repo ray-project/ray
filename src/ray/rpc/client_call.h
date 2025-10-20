@@ -104,7 +104,8 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (record_stats_ && !status.ok()) {
-      grpc_client_req_failed_metric_.Record(1.0, {{"Method", stats_handle_->event_name}});
+      grpc_client_req_failed_counter_.Record(1.0,
+                                             {{"Method", stats_handle_->event_name}});
     }
     if (callback_ != nullptr) {
       // This should be only called once.
@@ -146,7 +147,8 @@ class ClientCallImpl : public ClientCall {
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
 
-  ray::stats::Count grpc_client_req_failed_metric_{GetGrpcClientReqFailedMetric()};
+  ray::stats::Count grpc_client_req_failed_counter_{
+      GetGrpcClientReqFailedCounterMetric()};
 
   friend class ClientCallManager;
 };
