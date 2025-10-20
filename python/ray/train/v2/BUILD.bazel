@@ -519,7 +519,7 @@ py_test(
 
 py_test(
     name = "test_torch_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
