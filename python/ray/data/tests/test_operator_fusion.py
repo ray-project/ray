@@ -429,14 +429,16 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     stats = ds.stats()
+    # Ensure RandomizeBlockOrder and MapBatches are not fused.
     assert "RandomizeBlockOrder->MapBatches(fn)" not in stats
     assert "ReadRange" in stats
     assert "RandomizeBlockOrder" in stats
     assert "MapBatches(fn)" in stats
-
-    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    # ReadRange cannot fuse with MapBatches due to RandomizeBlockOrder in between
-    assert "ReadRange->MapBatches(fn)" not in ds.stats()
+    
+    # Regression tests ensuring RandomizeBlockOrder is never bypassed in the future
+    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
+    assert "ReadRange->MapBatches(fn)" not in stats
+    # Ensure all three operators are also present in usage record
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
