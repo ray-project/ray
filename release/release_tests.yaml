@@ -110,7 +110,7 @@
 
 - name: hello_world_custom_byod
   team: reef
-  group: hello_world_custom_byod
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
@@ -136,7 +136,7 @@
 
 - name: hello_world_custom_byod_depset_only
   team: reef
-  group: hello_world_custom_byod_depset
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
