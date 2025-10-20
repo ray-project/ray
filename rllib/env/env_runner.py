@@ -58,6 +58,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         self.config: AlgorithmConfig = config.copy(copy_frozen=False)
 
+        self.num_env_steps_sampled_lifetime = 0
+
         # Get the worker index on which this instance is running.
 
         # TODO (sven): We should make these c'tor named args.

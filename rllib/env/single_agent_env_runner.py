@@ -304,8 +304,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # Global env steps sampled are (roughly) this EnvRunner's lifetime
                     # count times the number of env runners in the algo.
                     global_env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                        + ts
+                        self.num_env_steps_sampled_lifetime
+                        // (self.config.num_env_runners or 1)
                     ) * (self.config.num_env_runners or 1)
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
                         to_env = self.module.forward_exploration(
@@ -570,6 +570,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
+
+        # Update lifetime counters.
+        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
+            self.num_env_steps_sampled_lifetime = state[NUM_ENV_STEPS_SAMPLED_LIFETIME]
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
