@@ -305,7 +305,8 @@ void RayletClient::ReleaseUnusedBundles(
   for (auto &bundle : bundles_in_use) {
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
-  INVOKE_RPC_CALL(
+  INVOKE_RETRYABLE_RPC_CALL(
+      retryable_grpc_client_,
       NodeManagerService,
       ReleaseUnusedBundles,
       request,
