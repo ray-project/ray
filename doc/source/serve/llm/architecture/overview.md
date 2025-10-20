@@ -8,14 +8,14 @@ Ray Serve LLM is a framework that specializes Ray Serve primitives for distribut
 Ray Serve LLM takes the performance of a single inference engine (such as vLLM) and extends it to support:
 
 - **Horizontal scaling**: Replicate inference across multiple GPUs on the same node or across nodes.
-- **Advanced distributed strategies**: Coordinate multiple engine instances for prefill-decode disaggregation, data parallelism, and expert parallelism.
+- **Advanced distributed strategies**: Coordinate multiple engine instances for prefill-decode disaggregation, data parallel attention, and expert parallelism.
 - **Modular deployment**: Separate infrastructure logic from application logic for clean, maintainable deployments.
 
 Ray Serve LLM excels at highly distributed multi-node inference workloads where the unit of scale spans multiple nodes:
 
 - **Pipeline parallelism across nodes**: Serve large models that don't fit on a single node.
 - **Disaggregated prefill and decode**: Scale prefill and decode phases independently for better resource utilization.
-- **Cluster-wide parallelism**: Combine data parallelism with expert parallelism for serving large-scale sparse MoE architectures such as Deepseek-v3, GPT OSS, etc.
+- **Cluster-wide parallelism**: Combine data parallel attention with expert parallelism for serving large-scale sparse MoE architectures such as Deepseek-v3, GPT OSS, etc.
 
 
 ## Ray Serve primitives
@@ -37,7 +37,7 @@ Ray Serve LLM provides two primary components that work together to serve LLM wo
 `LLMServer` is a Ray Serve _deployment_ that manages a single inference engine instance. _Replicas_ of this _deployment_ can operate in three modes:
 
 - **Isolated**: Each _replica_ handles requests independently (horizontal scaling).
-- **Coordinated within deployment**: Multiple _replicas_ work together (data parallelism).
+- **Coordinated within deployment**: Multiple _replicas_ work together (data parallel attention).
 - **Coordinated across deployments**: Replicas coordinate with different deployments (prefill-decode disaggregation).
 
 
@@ -175,9 +175,9 @@ Request routing from ingress to LLMServer replicas. Solid lines represent prefer
 
 Ray Serve LLM supports several deployment patterns for different scaling scenarios:
 
-### Data parallel pattern
+### Data parallel attention pattern
 
-Create multiple inference engine instances that process requests in parallel while coordinating across expert layers. Useful for serving sparse MoE models for high-throughput workloads.
+Create multiple inference engine instances that process requests in parallel while coordinating across expert layers and sharding requests across attention layers. Useful for serving sparse MoE models for high-throughput workloads.
 
 **When to use**: High request volume, kv-cache limited, need to maximize throughput.
 
@@ -204,7 +204,7 @@ See: {doc}`routing-policies`
 Ray Serve LLM follows these key design principles:
 
 1. **Engine-agnostic**: Support multiple inference engines (vLLM, SGLang, etc.) through the `LLMEngine` protocol.
-2. **Composable patterns**: Combine serving patterns (data parallel, prefill-decode, custom routing) for complex deployments.
+2. **Composable patterns**: Combine serving patterns (data parallel attention, prefill-decode, custom routing) for complex deployments.
 3. **Builder pattern**: Use builders to construct complex deployment graphs declaratively.
 4. **Separation of concerns**: Keep infrastructure logic (placement, scaling) separate from application logic (routing, processing).
 5. **Protocol-based extensibility**: Define clear protocols for engines, servers, and ingress to enable custom implementations.

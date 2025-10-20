@@ -203,6 +203,6 @@ Monitor both phases and adjust replica counts and autoscaling policies according
 
 - {doc}`../overview` - High-level architecture overview
 - {doc}`../core` - Core components and protocols
-- {doc}`data-parallel` - Data parallelism architecture
+- {doc}`data-parallel` - Data parallel attention architecture
 - {doc}`../../user-guides/prefill-decode` - Practical deployment guide
 

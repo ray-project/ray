@@ -1,7 +1,7 @@
 (serve-llm-architecture-data-parallel)=
-# Data parallelism
+# Data parallel attention
 
-Data parallelism (DP) is a serving pattern that creates multiple inference engine instances to process requests in parallel. This pattern is most useful when you combine it with expert parallelism for sparse MoE models. In this case, the experts are parallelized across multiple machines and attention (QKV) layers are replicated across GPUs, providing an opportunity to shard across requests. 
+Data parallel attention (DP) is a serving pattern that creates multiple inference engine instances to process requests in parallel. This pattern is most useful when you combine it with expert parallelism for sparse MoE models. In this case, the experts are parallelized across multiple machines and attention (QKV) layers are replicated across GPUs, providing an opportunity to shard across requests. 
 
 In this serving pattern, engine replicas aren't isolated. In fact, they need to run in sync with each other to serve a large number of requests concurrently. 
 
@@ -12,10 +12,10 @@ In this serving pattern, engine replicas aren't isolated. In fact, they need to 
 width: 700px
 name: dp-architecture
 ---
-Data parallel architecture showing DPRankAssigner coordinating multiple LLMServer replicas.
+Data parallel attention architecture showing DPRankAssigner coordinating multiple LLMServer replicas.
 ```
 
-In data parallel serving:
+In data parallel attention serving:
 
 - The system creates `dp_size` replicas of the LLM server.
 - Each replica runs an independent inference engine with the same model.
@@ -25,7 +25,7 @@ In data parallel serving:
 
 ### When to use DP
 
-Data parallel serving works best when:
+Data parallel attention serving works best when:
 
 - **Large sparse MoE with MLA**: Allows reaching larger batch sizes by utilizing the sparsity of the experts more efficiently. MLA (Multi-head Latent Attention) reduces KV cache memory requirements. 
 - **High throughput required**: You need to serve many concurrent requests.
@@ -36,7 +36,7 @@ Data parallel serving works best when:
 Consider alternatives when:
 
 - **Low to medium throughput**: If you can't saturate the MoE layers, don't use DP. 
-- **Non-MLA Attention**: DP is beneficial with MLA. Without DP (using TP instead), you need to replicate the KV cache, which isn't beneficial because you want to maximize batch size. As long as the KV cache can be sharded, using TP might be sufficient. 
+- **Non-MLA Attention with sufficient TP**: DP is most beneficial with MLA (Multi-head Latent Attention), where KV cache can't be sharded along the head dimension. For models with GQA (Grouped Query Attention), you can use TP to shard the KV cache up to the degree where `TP_size <= num_kv_heads`. Beyond that point, TP requires KV cache replication, which wastes memory—DP becomes a better choice to avoid duplication. For example, for Qwen-235b, using `DP=2, TP=4, EP=8` makes more sense than `DP=8, EP=8` because you can still shard the KV cache with TP=4 before needing to replicate it. Ultimately these configurations should be benchmarked against each other for the target workload and traffic to find the optimal one.
 - **Non-MoE models**: The main reason for using DP at the cost of this complexity is to lift the effective batch size during decoding for saturating the experts. 
 
 ## Components
@@ -45,13 +45,13 @@ The following are the main components of DP deployments:
 
 ### DPServer
 
-`DPServer` extends `LLMServer` with data parallel coordination. The following pseudocode shows the structure:
+`DPServer` extends `LLMServer` with data parallel attention coordination. The following pseudocode shows the structure:
 
 ```python
 from ray import serve
 
 class DPServer(LLMServer):
-    """LLM server with data parallel coordination."""
+    """LLM server with data parallel attention coordination."""
     
     async def __init__(
         self,
@@ -80,11 +80,11 @@ Key responsibilities:
 
 ### DPRankAssigner
 
-`DPRankAssigner` is a singleton coordinator that manages rank assignment. The following pseudocode shows the structure:
+`DPRankAssigner` is a singleton coordinator that manages rank assignment for data parallel attention replicas. The following pseudocode shows the structure:
 
 ```python
 class DPRankAssigner:
-    """Coordinator for data parallel rank assignment."""
+    """Coordinator for data parallel attention rank assignment."""
     
     def __init__(self, dp_size: int):
         self.dp_size = dp_size
@@ -125,10 +125,10 @@ Key responsibilities:
 width: 700px
 name: dp-flow
 ---
-Data parallel request flow from client to distributed replicas.
+Data parallel attention request flow from client to distributed replicas.
 ```
 
-The following is the request flow through a data parallel deployment:
+The following is the request flow through a data parallel attention deployment:
 
 1. **Client request**: HTTP request arrives at ingress.
 2. **Ingress routing**: Ingress uses deployment handle to call DPServer.
@@ -145,7 +145,7 @@ The key difference from basic serving is that all the `dp_size` replicas are wor
 
 ### Scaling behavior
 
-Data parallel deployments require a fixed number of replicas equal to `dp_size`, as autoscaling isn't supported for this pattern. You must set `num_replicas` to `dp_size`, or if using `autoscaling_config`, both `min_replicas` and `max_replicas` must equal `dp_size`.
+Data parallel attention deployments require a fixed number of replicas equal to `dp_size`, as autoscaling isn't supported for this pattern. You must set `num_replicas` to `dp_size`, or if using `autoscaling_config`, both `min_replicas` and `max_replicas` must equal `dp_size`.
 
 
 ## Design considerations
@@ -171,7 +171,7 @@ The PACK strategy places each replica's resources together:
 
 ### DP + Prefill-decode disaggregation
 
-You can run data parallelism on both prefill and decode phases:
+You can run data parallel attention on both prefill and decode phases:
 
 ```
 ┌─────────────────────────────────────────────┐
