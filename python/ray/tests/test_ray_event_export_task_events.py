@@ -73,7 +73,7 @@ def check_task_event_base_fields(event: json):
     assert event["sessionName"] is not None
 
 
-def check_task_execution_event_states_and_error_info(
+def check_task_lifecycle_event_states_and_error_info(
     events: json,
     expected_task_id_states_dict: dict,
     expected_task_id_error_info_dict: dict,
@@ -82,17 +82,17 @@ def check_task_execution_event_states_and_error_info(
     task_id_states_dict = {}
     task_id_error_info_dict = {}
     for event in events:
-        if event["eventType"] == "TASK_EXECUTION_EVENT":
-            task_id = event["taskExecutionEvent"]["taskId"]
-            task_attempt = event["taskExecutionEvent"]["taskAttempt"]
+        if event["eventType"] == "TASK_LIFECYCLE_EVENT":
+            task_id = event["taskLifecycleEvent"]["taskId"]
+            task_attempt = event["taskLifecycleEvent"]["taskAttempt"]
             if (task_id, task_attempt) not in task_id_states_dict:
                 task_id_states_dict[(task_id, task_attempt)] = set()
 
-            for state in event["taskExecutionEvent"]["taskState"]:
-                task_id_states_dict[(task_id, task_attempt)].add(state)
-                if "rayErrorInfo" in event["taskExecutionEvent"]:
+            for state in event["taskLifecycleEvent"]["stateTransitions"]:
+                task_id_states_dict[(task_id, task_attempt)].add(state["state"])
+                if "rayErrorInfo" in event["taskLifecycleEvent"]:
                     task_id_error_info_dict[(task_id, task_attempt)] = event[
-                        "taskExecutionEvent"
+                        "taskLifecycleEvent"
                     ]["rayErrorInfo"]
 
     for (
@@ -161,8 +161,14 @@ ray.get(normal_task.remote())
                 driver_task_id,
             ) = get_job_ids_and_driver_script_task_ids_from_events(events)
 
-            expected_driver_task_states = {"8", "11"}
-            expected_normal_task_states = {"1", "2", "5", "8", "11"}
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_normal_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "SUBMITTED_TO_WORKER",
+                "RUNNING",
+                "FINISHED",
+            }
 
             # Check definition events
             driver_task_definition_received = False
@@ -220,18 +226,18 @@ ray.get(normal_task.remote())
                         assert event["taskDefinitionEvent"]["taskAttempt"] == 0
                         assert event["taskDefinitionEvent"]["language"] == "PYTHON"
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
 
             assert driver_task_definition_received
             assert normal_task_definition_received
 
-            # Check execution events
+            # Check lifecycle events
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (normal_task_id, 0): expected_normal_task_states,
             }
             expected_task_id_error_info_dict = {}
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
@@ -324,14 +330,20 @@ except Exception as e:
                             normal_task_definition_retry_received = True
                         assert event["taskDefinitionEvent"]["language"] == "PYTHON"
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
             assert driver_task_definition_received
             assert normal_task_definition_received
             assert normal_task_definition_retry_received
 
             # Check execution events
-            expected_driver_task_states = {"8", "11"}
-            expected_normal_task_states = {"1", "2", "5", "8", "12"}
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_normal_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "SUBMITTED_TO_WORKER",
+                "RUNNING",
+                "FAILED",
+            }
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (normal_task_id, 0): expected_normal_task_states,
@@ -347,7 +359,7 @@ except Exception as e:
                     "errorMessage": "test error",
                 },
             }
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
@@ -390,14 +402,16 @@ except Exception as e:
                     break
             assert normal_task_id is not None
 
-            # Check whether the task execution eventhas running state
+            # Check whether the task lifecycle event has running state
             for event in events:
                 if (
-                    event["eventType"] == "TASK_EXECUTION_EVENT"
-                    and event["taskExecutionEvent"]["taskId"] == normal_task_id
+                    event["eventType"] == "TASK_LIFECYCLE_EVENT"
+                    and event["taskLifecycleEvent"]["taskId"] == normal_task_id
                 ):
-                    for state in event["taskExecutionEvent"]["taskState"]:
-                        if state == "8":
+                    for state_transition in event["taskLifecycleEvent"][
+                        "stateTransitions"
+                    ]:
+                        if state_transition["state"] == "RUNNING":
                             return
             assert False
 
@@ -474,13 +488,19 @@ except Exception as e:
                         assert event["taskDefinitionEvent"]["taskAttempt"] == 0
                         assert event["taskDefinitionEvent"]["language"] == "PYTHON"
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
             assert driver_task_definition_received
             assert normal_task_definition_received
 
-            # Check the task execution events
-            expected_driver_task_states = {"8", "11"}
-            expected_normal_task_states = {"1", "2", "5", "8", "12"}
+            # Check the task lifecycle events
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_normal_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "SUBMITTED_TO_WORKER",
+                "RUNNING",
+                "FAILED",
+            }
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (normal_task_id, 0): expected_normal_task_states,
@@ -491,7 +511,7 @@ except Exception as e:
                     "errorMessage": "Task failed due to the node (where this task was running)  was dead or unavailable",
                 }
             }
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
@@ -632,22 +652,35 @@ ray.get(actor.task.remote(obj))
                     assert event["actorTaskDefinitionEvent"]["language"] == "PYTHON"
 
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
 
             assert driver_task_definition_received
             assert actor_creation_task_definition_received
             assert actor_task_definition_received
 
-            expected_driver_task_states = {"8", "11"}
-            expected_actor_creation_task_states = {"1", "2", "8", "11"}
-            expected_actor_task_states = {"1", "2", "5", "6", "7", "8", "11"}
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_actor_creation_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "RUNNING",
+                "FINISHED",
+            }
+            expected_actor_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "SUBMITTED_TO_WORKER",
+                "PENDING_ACTOR_TASK_ARGS_FETCH",
+                "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
+                "RUNNING",
+                "FINISHED",
+            }
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (actor_creation_task_id, 0): expected_actor_creation_task_states,
                 (actor_task_id, 0): expected_actor_task_states,
             }
             expected_task_id_error_info_dict = {}
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
@@ -791,16 +824,26 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                         actor_task_definition_retry_received = True
                     assert event["actorTaskDefinitionEvent"]["language"] == "PYTHON"
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
             assert driver_task_definition_received
             assert actor_creation_task_definition_received
             assert actor_task_definition_received
             assert actor_task_definition_retry_received
 
-            expected_driver_task_states = {"8", "11"}
-            expected_actor_creation_task_states = {"1", "2", "8", "12"}
-            expected_actor_task_states = {"1", "2", "5", "12"}
-            expected_actor_task_states_retry = {"1", "12"}
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_actor_creation_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "RUNNING",
+                "FAILED",
+            }
+            expected_actor_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "SUBMITTED_TO_WORKER",
+                "FAILED",
+            }
+            expected_actor_task_states_retry = {"PENDING_ARGS_AVAIL", "FAILED"}
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (actor_creation_task_id, 0): expected_actor_creation_task_states,
@@ -821,7 +864,7 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                     "errorMessage": "ray.exceptions.ActorDiedError: The actor died because of an error raised in its creation task",
                 },
             }
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
@@ -915,13 +958,17 @@ ray.kill(actor)
                         assert event["taskDefinitionEvent"]["taskAttempt"] == 0
                         assert event["taskDefinitionEvent"]["language"] == "PYTHON"
                 else:
-                    assert event["eventType"] == "TASK_EXECUTION_EVENT"
+                    assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
 
             assert driver_task_definition_received
             assert actor_creation_task_definition_received
 
-            expected_driver_task_states = {"8", "11"}
-            expected_actor_creation_task_states = {"1", "2", "12"}
+            expected_driver_task_states = {"RUNNING", "FINISHED"}
+            expected_actor_creation_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "FAILED",
+            }
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (actor_creation_task_id, 0): expected_actor_creation_task_states,
@@ -932,7 +979,7 @@ ray.kill(actor)
                     "errorMessage": "",
                 }
             }
-            check_task_execution_event_states_and_error_info(
+            check_task_lifecycle_event_states_and_error_info(
                 events, expected_task_id_states_dict, expected_task_id_error_info_dict
             )
 
