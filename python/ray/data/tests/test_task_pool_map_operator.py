@@ -16,7 +16,6 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
-        target_max_block_size=None,
         ray_remote_args={"num_cpus": 1},
     )
     op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)

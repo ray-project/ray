@@ -6,7 +6,10 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
+from ray.dashboard.modules.metrics.dashboards.common import (
+    DashboardConfig,
+    Panel,
+)
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
@@ -66,7 +69,10 @@ def _read_configs_for_dashboard(
         )
         or ""
     )
-    global_filters = global_filters_str.split(",")
+    if global_filters_str == "":
+        global_filters = []
+    else:
+        global_filters = global_filters_str.split(",")
 
     return uid, global_filters
 
@@ -218,7 +224,6 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
-    # Configure panel visualization settings
     template["yaxes"][0]["format"] = panel.unit
     template["fill"] = panel.fill
     template["stack"] = panel.stack

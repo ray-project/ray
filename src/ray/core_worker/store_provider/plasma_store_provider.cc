@@ -23,7 +23,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -64,20 +64,17 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-    ReferenceCounter &reference_counter,
+    ReferenceCounterInterface &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+    int64_t fetch_batch_size,
     std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
-      // We can turn on exit_on_connection_failure on for the core worker plasma
-      // client to early exit core worker after the raylet's death because on the
-      // raylet side, we never proactively close the plasma store connection even
-      // during shutdown. So any error from the raylet side should be a sign of raylet
-      // death.
-      store_client_(
-          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
+      store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
-      check_signals_(std::move(check_signals)) {
+      check_signals_(std::move(check_signals)),
+      fetch_batch_size_(fetch_batch_size) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -85,14 +82,17 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_->Connect(store_socket));
+  if (!store_socket.empty()) {
+    RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
+    RAY_CHECK_OK(store_client_->Connect(store_socket));
+  }
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_->Disconnect());
+  store_client_->Disconnect();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -224,9 +224,7 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
-                                       /*timeout_ms=*/0,
-                                       &plasma_results));
+  RAY_RETURN_NOT_OK(store_client_->Get(object_ids, /*timeout_ms=*/0, &plasma_results));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
@@ -243,9 +241,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object = std::make_shared<RayObject>(
+      auto result_object = std::make_shared<RayObject>(
           data, metadata, std::vector<rpc::ObjectReference>());
-      (*results)[object_id] = result_object;
+      (*results)[object_id] = std::move(result_object);
     }
   }
   return Status::OK();
@@ -256,39 +254,21 @@ Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
   return store_client_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
-Status UnblockIfNeeded(
-    const std::shared_ptr<ipc::RayletIpcClientInterface> &raylet_client,
-    const WorkerContext &ctx) {
-  if (ctx.CurrentTaskIsDirectCall()) {
-    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
-    // get subscriptions, even if the worker isn't blocked.
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return raylet_client->NotifyDirectCallTaskUnblocked();
-    } else {
-      return Status::OK();  // We don't need to release resources.
-    }
-  } else {
-    return raylet_client->CancelGetRequest();
-  }
-}
-
 Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
     int64_t timeout_ms,
-    const WorkerContext &ctx,
-    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception) {
-  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // Send initial requests to pull all objects in parallel.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
-  for (int64_t start = 0; start < total_size; start += batch_size) {
+  bool got_exception = false;
+  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < batch_size && i < total_size; i++) {
-      batch_ids.push_back(id_vector[start + i]);
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
+      batch_ids.push_back(id_vector[i]);
     }
     RAY_RETURN_NOT_OK(
         PullObjectsAndGetFromPlasmaStore(remaining,
@@ -296,13 +276,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                          /*timeout_ms=*/0,
                                          // Mutable objects must be local before ray.get.
                                          results,
-                                         got_exception));
+                                         &got_exception));
   }
 
-  // If all objects were fetched already, return. Note that we always need to
-  // call UnblockIfNeeded() to cancel the get request.
-  if (remaining.empty() || *got_exception) {
-    return UnblockIfNeeded(raylet_ipc_client_, ctx);
+  // If all objects were fetched successfully or if any of the returned
+  // objects contain an exception, clean up the Get request in the raylet
+  // and early exit.
+  if (remaining.empty() || got_exception) {
+    return raylet_ipc_client_->CancelGetRequest();
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
@@ -315,7 +296,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == fetch_batch_size_) {
         break;
       }
       batch_ids.push_back(id);
@@ -332,8 +313,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     size_t previous_size = remaining.size();
     RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(
-        remaining, batch_ids, batch_timeout, results, got_exception));
-    should_break = timed_out || *got_exception;
+        remaining, batch_ids, batch_timeout, results, &got_exception));
+    should_break = timed_out || got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
       WarnIfFetchHanging(fetch_start_time_ms, remaining);
@@ -341,8 +322,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     if (check_signals_) {
       Status status = check_signals_();
       if (!status.ok()) {
-        // TODO(edoakes): in this case which status should we return?
-        RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
+        RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
         return status;
       }
     }
@@ -357,13 +337,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   if (!remaining.empty() && timed_out) {
-    RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_ipc_client_, ctx));
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
-  // Notify unblocked because we blocked when calling FetchOrReconstruct with
-  // fetch_only=false.
-  return UnblockIfNeeded(raylet_ipc_client_, ctx);
+  return raylet_ipc_client_->CancelGetRequest();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
@@ -406,7 +384,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
 }

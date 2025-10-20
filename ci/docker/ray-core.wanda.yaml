@@ -1,0 +1,27 @@
+name: "ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"
+froms: ["cr.ray.io/rayproject/manylinux$ARCH_SUFFIX"]
+dockerfile: ci/docker/ray-core.Dockerfile
+srcs:
+  - .bazelversion
+  - .bazelrc
+  - WORKSPACE
+  - BUILD.bazel
+  - bazel/
+  - thirdparty/
+  - src/
+  - gen_ray_pkg.py
+  - python/ray/__init__.py
+  - python/ray/_raylet.pxd
+  - python/ray/_raylet.pyi
+  - python/ray/_raylet.pyx
+  - python/ray/includes/
+  - java/BUILD.bazel
+  - java/dependencies.bzl
+  - release/BUILD.bazel
+  - release/requirements_buildkite.txt
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BUILDKITE_BAZEL_CACHE_URL
+build_hint_args:
+  - BUILDKITE_CACHE_READONLY

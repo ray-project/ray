@@ -48,7 +48,6 @@ def test_caller_death(monkeypatch, shutdown_only):
     This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
     be retried indefinitely.
     """
-    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
     ray.init()
 
     @ray.remote

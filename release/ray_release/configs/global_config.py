@@ -1,8 +1,7 @@
 import os
+from typing import List, TypedDict
 
 import yaml
-from typing import List
-from typing_extensions import TypedDict
 
 
 class GlobalConfig(TypedDict):
@@ -14,6 +13,7 @@ class GlobalConfig(TypedDict):
     byod_ecr_region: str
     byod_aws_cr: str
     byod_gcp_cr: str
+    byod_azure_cr: str
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
     state_machine_disabled: bool
@@ -21,6 +21,9 @@ class GlobalConfig(TypedDict):
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
     ci_pipeline_buildkite_secret: str
+    release_image_step_ray: str
+    release_image_step_ray_ml: str
+    release_image_step_ray_llm: str
 
 
 config = None
@@ -80,6 +83,10 @@ def _init_global_config(config_file: str):
             config_content.get("byod", {}).get("gcp_cr")
             or config_content.get("release_byod", {}).get("gcp_cr")
         ),
+        byod_azure_cr=(
+            config_content.get("byod", {}).get("azure_cr")
+            or config_content.get("release_byod", {}).get("azure_cr")
+        ),
         aws2gce_credentials=(
             config_content.get("credentials", {}).get("aws2gce")
             or config_content.get("release_byod", {}).get("aws2gce_credentials")
@@ -106,6 +113,13 @@ def _init_global_config(config_file: str):
             "buildkite_secret"
         ),
         kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
+        release_image_step_ray=config_content.get("release_image_step", {}).get("ray"),
+        release_image_step_ray_ml=config_content.get("release_image_step", {}).get(
+            "ray_ml"
+        ),
+        release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
+            "ray_llm"
+        ),
     )
     # setup GCP workload identity federation
     os.environ[

@@ -1,6 +1,6 @@
 #service.yaml
 name: deploy-deepseek-r1
-image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
   # Change default disk size to 1000GB
@@ -25,5 +25,5 @@ compute_config:
 working_dir: .
 cloud:
 applications:
-# Point to your app in your Python module
-- import_path: serve_deepseek_r1:app
+  # Point to your app in your Python module
+  - import_path: serve_deepseek_r1:app

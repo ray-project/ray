@@ -4,14 +4,11 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
-    BlocksToBatchesMapTransformFn,
-    BuildOutputBlocksMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
@@ -28,6 +25,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -56,10 +54,6 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     input = physical_op.input_dependencies[0]
     assert isinstance(input, InputDataBuffer)
     assert physical_op in input.output_dependencies, input.output_dependencies
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._logical_operators == [read_op, op]
 
 
@@ -72,7 +66,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map1 = MapRows(read_op, lambda x: x)
     map2 = MapBatches(map1, lambda x: x)
     map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, lambda x: x)
+    map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -86,10 +80,6 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
 
 
@@ -289,11 +279,6 @@ def test_read_with_map_batches_fused_successfully(
     # # Target min-rows requirement is not set
     assert physical_op._block_ref_bundler._min_rows_per_bundle is None
 
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-
 
 @pytest.mark.parametrize(
     "input_op,fused",
@@ -306,13 +291,12 @@ def test_read_with_map_batches_fused_successfully(
                     get_read_tasks=lambda _: [MagicMock()]
                 ),
                 parallelism=1,
-                mem_size=1,
             ),
             False,
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), lambda x: False),
+            Filter(InputData([]), fn=lambda x: False),
             False,
         ),
         (
@@ -380,8 +364,6 @@ def test_map_batches_batch_size_fusion(
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
-    assert physical_op.actual_target_max_block_size == context.target_max_block_size
-
 
 @pytest.mark.parametrize("upstream_batch_size", [None, 1, 2])
 @pytest.mark.parametrize("downstream_batch_size", [None, 1, 2])
@@ -447,7 +429,8 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    assert "ReadRange->MapBatches(fn)" in ds.stats()
+    # ReadRange cannot fuse with MapBatches due to RandomizeBlockOrder in between
+    assert "ReadRange->MapBatches(fn)" not in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
@@ -593,7 +576,7 @@ def test_read_map_chain_operator_fusion_e2e(
     ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map_batches(
         lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
@@ -724,9 +707,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     check_transform_fns(
         map_op,
         [
-            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )
     read_op = map_op.input_dependencies[0]
@@ -734,7 +715,6 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         read_op,
         [
             BlockMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )
 
@@ -747,8 +727,6 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         fused_op,
         [
             BlockMapTransformFn,
-            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )

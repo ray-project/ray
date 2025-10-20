@@ -35,7 +35,10 @@ def check_refcounts_empty():
 @pytest.fixture(scope="module")
 def one_cpu_100MiB_shared():
     # It has lots of tests that don't require object spilling.
-    config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
+    config = {
+        "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False,
+    }
     yield ray.init(
         num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
     )
@@ -307,7 +310,13 @@ def test_recursive_serialized_reference(one_cpu_100MiB_shared, use_ray_put, fail
     ray.get(signal.send.remote())
 
     # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    def check_is_evicted():
+        object_ref = ray.ObjectRef(array_oid_bytes)
+        return not ray._private.worker.global_worker.core_worker.object_exists(
+            object_ref
+        )
+
+    wait_for_condition(check_is_evicted, timeout=30)
 
 
 # Test that a passed reference held by an actor after the method finishes
