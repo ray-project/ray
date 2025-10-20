@@ -19,6 +19,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -1057,7 +1058,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     HandleNotifyWorkerUnblocked(registered_worker);
   } break;
   case protocol::MessageType::CancelGetRequest: {
-    CancelGetRequest(client);
+    CancelGetRequest(client, message_data);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1520,13 +1521,23 @@ void NodeManager::ProcessDisconnectClientMessage(
 void NodeManager::HandleAsyncGetObjectsRequest(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto request = flatbuffers::GetRoot<protocol::AsyncGetObjectsRequest>(message_data);
-  const auto refs =
+  std::vector<rpc::ObjectReference> refs =
       FlatbufferToObjectReferences(*request->object_ids(), *request->owner_addresses());
-
-  // Asynchronously pull all requested objects to the local node.
-  AsyncGetOrWait(client,
-                 refs,
-                 /*is_get_request=*/true);
+  int64_t request_id = AsyncGet(client, refs);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto get_reply = protocol::CreateAsyncGetObjectsReply(fbb, request_id);
+  fbb.Finish(get_reply);
+  Status status = client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
+  if (!status.ok()) {
+    DisconnectClient(client,
+                     /*graceful=*/false,
+                     rpc::WorkerExitType::SYSTEM_ERROR,
+                     absl::StrFormat("Could not send AsyncGetObjectsReply because of %s",
+                                     status.ToString()));
+  }
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -1549,12 +1560,12 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncGetOrWait(client, refs, /*is_get_request=*/false);
+    AsyncWait(client, refs);
   }
 
   if (message->num_required_objects() == 0) {
     // If we don't need to wait for any, return immediately after making the pull
-    // requests through AsyncGetOrWait above.
+    // requests through AsyncWait above.
     flatbuffers::FlatBufferBuilder fbb;
     auto wait_reply =
         protocol::CreateWaitReply(fbb,
@@ -1593,7 +1604,8 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetBufferPointer());
         if (status.ok()) {
           if (!all_objects_local) {
-            CancelGetRequest(client);
+            // Why do we need to cancel the GetRequest?
+            // CancelGetRequest(client, get_request_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1616,7 +1628,7 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
-  AsyncGetOrWait(client, refs, /*is_get_request=*/false);
+  AsyncWait(client, refs);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -2231,19 +2243,25 @@ void NodeManager::HandleNotifyWorkerUnblocked(
     return;  // The worker may have died or is no longer processing the task.
   }
 
-  // First, always release task dependencies. This ensures we don't leak resources even
-  // if we don't need to unblock the worker below.
-  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
-
   if (worker->IsBlocked()) {
     local_lease_manager_.ReturnCpuResourcesToUnblockedWorker(worker);
     cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 
-void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
-                                 const std::vector<rpc::ObjectReference> &object_refs,
-                                 bool is_get_request) {
+int64_t NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                              std::vector<rpc::ObjectReference> &object_refs) {
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(worker);
+  return lease_dependency_manager_.StartGetRequest(worker->WorkerId(),
+                                                   std::move(object_refs));
+}
+
+void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
+                            const std::vector<rpc::ObjectReference> &object_refs) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -2254,21 +2272,24 @@ void NodeManager::AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client
 
   // Start an async request to get or wait for the objects.
   // The objects will be fetched locally unless the get or wait request is canceled.
-  if (is_get_request) {
-    lease_dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), object_refs);
-  } else {
-    lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
-  }
+  lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
 }
 
-void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client) {
+void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
+                                   const uint8_t *message_data) {
+  if (message_data == nullptr) {
+    return;
+  }
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  // need to extract the payload
+  auto message = flatbuffers::GetRoot<protocol::CancelGetRequest>(message_data);
+
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
   }
   RAY_CHECK(worker);
 
-  lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
+  lease_dependency_manager_.CancelGetRequest(worker->WorkerId(), message->request_id());
 }
 
 bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {

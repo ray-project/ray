@@ -14,7 +14,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -29,6 +31,9 @@
 namespace ray {
 
 namespace raylet {
+
+using GetRequestId = int64_t;
+using PullRequestId = int64_t;
 
 /// Used for unit-testing the ClusterLeaseManager, which requests dependencies
 /// for queued leases.
@@ -128,18 +133,18 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// cancel.
   void CancelWaitRequest(const WorkerID &worker_id);
 
-  /// Start or update a worker's `ray.get` request. This will attempt to make
-  /// any remote objects local, including previously requested objects. The
-  /// `ray.get` request will stay active until the request for this worker is
-  /// canceled.
-  ///
-  /// This method may be called multiple times per worker on the same objects.
-  ///
-  /// \param worker_id The ID of the worker that called `ray.wait`.
+  /// TODO(irabbani): documentation
+  /// \param[out] worker_id The ID of the worker that called `ray.get`.
+  /// threads in the same worker.
   /// \param required_objects The objects required by the worker.
-  void StartOrUpdateGetRequest(const WorkerID &worker_id,
-                               const std::vector<rpc::ObjectReference> &required_objects);
+  /// \return the request id which will be used for cleanup.
+  GetRequestId StartGetRequest(const WorkerID &worker_id,
+                               std::vector<rpc::ObjectReference> &&required_objects);
 
+  /// TODO(irabbani): documentation
+  void CancelGetRequest(const WorkerID &worker_id, const GetRequestId &request_id);
+
+  /// TODO(irabbani): documentation
   /// Cancel a worker's `ray.get` request. We will no longer attempt to fetch
   /// any objects that this worker requested previously, if no other lease or
   /// worker requires them.
@@ -294,12 +299,13 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// dependencies are all local or not.
   absl::flat_hash_map<LeaseID, std::unique_ptr<LeaseDependencies>> queued_lease_requests_;
 
-  /// A map from worker ID to the set of objects that the worker called
-  /// `ray.get` on and a pull request ID for these objects. The pull request ID
-  /// should be used to cancel the pull request in the object manager once the
-  /// worker cancels the `ray.get` request.
-  absl::flat_hash_map<WorkerID, std::pair<absl::flat_hash_set<ObjectID>, uint64_t>>
+  // TODO(irabbani): documentation
+  GetRequestId get_request_counter_;
+  absl::flat_hash_map<std::pair<WorkerID, GetRequestId>,
+                      std::pair<std::vector<ObjectID>, PullRequestId>,
+                      absl::Hash<std::pair<WorkerID, GetRequestId>>>
       get_requests_;
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<GetRequestId>> worker_to_requests_;
 
   /// A map from worker ID to the set of objects that the worker called
   /// `ray.wait` on. Objects are removed from the set once they are made local,
