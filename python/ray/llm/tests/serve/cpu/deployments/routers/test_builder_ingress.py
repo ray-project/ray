@@ -10,16 +10,16 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
 )
-from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
+from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve.config import AutoscalingConfig
 
 
@@ -142,7 +142,7 @@ class TestLLMServingArgs:
         args_str = LLMServingArgs(
             llm_configs=[llm_config],
             ingress_cls_config={
-                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+                "ingress_cls": "ray.llm._internal.serve.core.ingress.ingress:OpenAiIngress"
             },
         )
         assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress

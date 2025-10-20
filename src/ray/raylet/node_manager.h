@@ -302,7 +302,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `KillLocalActor` request.
+  /// Handle a `DrainRaylet` request.
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleKillLocalActor(rpc::KillLocalActorRequest request,
                             rpc::KillLocalActorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
@@ -593,11 +597,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `DrainRaylet` request.
-  void HandleDrainRaylet(rpc::DrainRayletRequest request,
-                         rpc::DrainRayletReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
