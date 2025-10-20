@@ -154,7 +154,7 @@ You can submit the same workload above with a specific priority. Modify the abov
   labels:
     kai.scheduler/queue: team-a    # This is the essential configuration.
     priorityClassName: build       # Here you can specify the priority class (optional)
-
+```
 See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority) for more information.
 
 ## Step 5: Submitting Ray workers with GPU sharing 
