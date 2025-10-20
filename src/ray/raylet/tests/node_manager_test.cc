@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -422,7 +423,9 @@ class NodeManagerTest : public ::testing::Test {
         [](const auto &) {},
         [](const std::string &) {},
         nullptr,
-        shutting_down_);
+        shutting_down_,
+        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
+        boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
 
   instrumented_io_context io_service_;
@@ -1202,6 +1205,71 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
                          testing::Bool());
+
+class DrainRayletIdempotencyTest
+    : public NodeManagerTest,
+      public ::testing::WithParamInterface<
+          std::tuple<rpc::autoscaler::DrainNodeReason, bool>> {};
+
+TEST_P(DrainRayletIdempotencyTest, TestHandleDrainRayletIdempotency) {
+  // drain_reason: the reason for the drain request (PREEMPTION or IDLE_TERMINATION).
+  // is_node_idle: determines whether the node is idle.
+  // is_node_idle == true: the node is idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to accept the request.
+  // is_node_idle == false: the node is not idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to reject the request.
+
+  auto [drain_reason, is_node_idle] = GetParam();
+  if (!is_node_idle) {
+    cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
+        WorkFootprint::NODE_WORKERS);
+  }
+
+  // Whether the drain request is expected to be accepted. Note that for preemption we
+  // must always accept the request regardless of the node's idle state.
+  bool drain_request_accepted = false;
+  if (drain_reason == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+    drain_request_accepted = true;
+  } else {
+    drain_request_accepted = is_node_idle;
+  }
+
+  rpc::DrainRayletRequest request;
+  request.set_reason(drain_reason);
+  request.set_reason_message("Test drain");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+
+  rpc::DrainRayletReply reply1;
+  node_manager_->HandleDrainRaylet(
+      request, &reply1, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply1.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+
+  rpc::DrainRayletReply reply2;
+  node_manager_->HandleDrainRaylet(
+      request, &reply2, [&](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply2.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DrainRayletIdempotencyVariations,
+    DrainRayletIdempotencyTest,
+    ::testing::Combine(
+        ::testing::Values(
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION,
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION),
+        ::testing::Bool()));
 
 }  // namespace ray::raylet
 
