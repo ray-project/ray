@@ -120,12 +120,10 @@ GetRequestId LeaseDependencyManager::StartGetRequest(
   std::vector<ObjectID> object_ids;
   object_ids.reserve(required_objects.size());
 
-  // Add to the required_objects_ or modify.
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
     object_ids.emplace_back(obj_id);
     auto it = GetOrInsertRequiredObject(obj_id, ref);
-    // mark that a get request is using it.
     it->second.dependent_get_requests.insert(worker_id);
   }
 

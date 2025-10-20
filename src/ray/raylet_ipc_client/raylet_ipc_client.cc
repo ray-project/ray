@@ -202,9 +202,9 @@ StatusOr<ScopedResponse> RayletIpcClient::AsyncGetObjects(
   auto message = protocol::CreateAsyncGetObjectsRequest(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
-  // return WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
   std::vector<uint8_t> reply;
-  // This is kinda sketchy still.
+  // TODO(57923): This should be FATAL. Local sockets are reliable. If a worker is unable
+  // to communicate with the raylet, there's no way to recover.
   RAY_RETURN_NOT_OK(AtomicRequestReply(MessageType::AsyncGetObjectsRequest,
                                        MessageType::AsyncGetObjectsReply,
                                        &reply,

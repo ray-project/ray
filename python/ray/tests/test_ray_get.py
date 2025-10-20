@@ -18,6 +18,9 @@ def cap_object_transfer_throughput():
 
 
 def test_multithreaded_ray_get(ray_start_cluster):
+    # This test tries to get a large object from the head node to the worker node
+    # while making many concurrent ray.get requests for a local object in plasma.
+    # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
     ray_cluster.add_node()
     ray.init()
@@ -30,6 +33,8 @@ def test_multithreaded_ray_get(ray_start_cluster):
 
         def run(self, refs_to_get):
             remote_large_ref = refs_to_get[0]
+            # ray.put will ensure that the object is in plasma
+            # even if it's small.
             local_small_ref = ray.put("1")
 
             def get_small_ref_forever():

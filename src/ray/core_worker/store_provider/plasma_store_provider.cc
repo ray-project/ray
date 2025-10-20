@@ -378,10 +378,6 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
-    // Why doesn't this use the same logic as Get?
-    //  1. This is a blocking call with objects that is supposed to return
-    //    as soon as num_object objects have been pulled.
-    //  2. The PullManager bundling is completely different from this.
     RAY_ASSIGN_OR_RETURN(
         ready_in_plasma,
         raylet_ipc_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout));
