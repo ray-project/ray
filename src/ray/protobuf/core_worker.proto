@@ -74,6 +74,8 @@ message ActorHandle {
   map<string, string> labels = 15;
 
   bool enable_tensor_transport = 16;
+
+  bool is_detached = 17;
 }
 
 message PushTaskRequest {

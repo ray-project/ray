@@ -51,7 +51,8 @@ class ActorHandle {
               bool allow_out_of_order_execution = false,
               bool enable_tensor_transport = false,
               std::optional<bool> enable_task_events = absl::nullopt,
-              const std::unordered_map<std::string, std::string> &labels = {});
+              const std::unordered_map<std::string, std::string> &labels = {},
+              bool is_detached = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -65,8 +66,6 @@ class ActorHandle {
   TaskID GetOwnerId() const { return TaskID::FromBinary(inner_.owner_id()); }
 
   rpc::Address GetOwnerAddress() const { return inner_.owner_address(); }
-
-  bool IsDetached() const { return inner_.has_owner_address(); }
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
@@ -114,6 +113,8 @@ class ActorHandle {
   bool AllowOutOfOrderExecution() const { return inner_.allow_out_of_order_execution(); }
 
   bool EnableTensorTransport() const { return inner_.enable_tensor_transport(); }
+
+  bool IsDetached() const { return inner_.is_detached(); }
 
   const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
     return inner_.labels();
