@@ -25,6 +25,7 @@ def test_apply_transform_dag_consistency():
     assert c_transformed.input_dependencies[0].output_dependencies[0].name == "C"
     assert c_transformed is c_transformed.input_dependencies[0].output_dependencies[0]
 
+
 if __name__ == "__main__":
     import sys
 
