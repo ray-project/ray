@@ -65,6 +65,12 @@ class StatsBase(metaclass=ABCMeta):
             raise ValueError(f"Value {value} is a list, tuple, or deque, not a scalar")
         return float(value)
 
+    def __int__(self):
+        value = self.peek(compile=True)
+        if isinstance(value, (list, tuple, deque)):
+            raise ValueError(f"Value {value} is a list, tuple, or deque, not a scalar")
+        return int(value)
+
     def __eq__(self, other):
         return float(self) == float(other)
 

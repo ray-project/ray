@@ -703,6 +703,7 @@ class IMPALA(Algorithm):
             self.metrics.log_value(
                 key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
                 value=len(data_packages_for_learner_group),
+                reduce="mean",
             )
             rl_module_state = None
             num_learner_group_results_received = 0
@@ -777,8 +778,10 @@ class IMPALA(Algorithm):
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
         if rl_module_state is not None:
-            self.metrics.set_value(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
+            self.metrics.log_value(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                0,
+                reduce="item",
             )
             self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):

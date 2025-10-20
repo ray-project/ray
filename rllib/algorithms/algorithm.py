@@ -484,7 +484,7 @@ class Algorithm(Checkpointable, Trainable):
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics: MetricsLogger = MetricsLogger(
-            root=True, stats_cls_lookup=config.custom_stats_cls_lookup
+            root=True, stats_cls_lookup=config.stats_cls_lookup
         )
 
         # Create a default logger creator if no logger_creator is specified
@@ -3480,7 +3480,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.offline_eval_runner_group
                 )
                 if restored:
-                    # Fire the callback for re-created workers.
+
                     make_callback(
                         "on_offline_eval_runners_recreated",
                         callbacks_objects=self.callbacks,

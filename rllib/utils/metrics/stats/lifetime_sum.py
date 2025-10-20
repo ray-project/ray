@@ -140,10 +140,11 @@ class LifetimeSumStats(StatsBase):
     def reduce(self, compile: bool = True) -> Union[Any, "LifetimeSumStats"]:
         value = self._lifetime_sum
 
-        self._value_at_last_reduce = value
-
-        self._lifetime_sum = 0.0
-        value = single_value_to_cpu(value)
+        if not self._is_root_stats:
+            self._lifetime_sum = 0.0
+            self._value_at_last_reduce = 0.0
+        else:
+            self._value_at_last_reduce = value
 
         if compile:
             return value

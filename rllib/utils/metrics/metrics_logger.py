@@ -5,7 +5,6 @@ import time
 import numpy as np
 
 from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 from ray.rllib.utils.metrics.stats import (
     StatsBase,
     SumStats,
@@ -220,13 +219,7 @@ class MetricsLogger:
         def _nested_peek(stats):
             return tree.map_structure(
                 # If the Stats object has a reduce method, we need to convert the list to a single value
-                lambda s: (
-                    s.peek(compile=compile)
-                    if s._reduce_method is not None
-                    else s.peek(compile=compile)[0]
-                )
-                if isinstance(s, StatsBase)
-                else s,
+                lambda s: s.peek(compile=compile),
                 stats.copy(),
             )
 
@@ -356,7 +349,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
-        reduce: str = "ema",
+        reduce: Optional[str] = None,
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         percentiles: Optional[Union[List[int], bool]] = None,
@@ -406,6 +399,13 @@ class MetricsLogger:
             reduce_per_index_on_aggregate: Deprecated argument. Aggregation now happens over all values
                 of incoming stats objects once per MetricsLogger.reduce() call, treating each incoming value with equal weight.
         """
+        # Some compatibility logic to support the current usage of MetricsLogger:
+        # 1. If no reduce method is provided and a window is provided, use mean reduction.
+        if reduce is None and window is not None:
+            reduce = "mean"
+        if reduce is None:
+            reduce = "ema"
+
         # Prepare the kwargs for the stats object and create it if it doesn't exist
         self._maybe_create_stats_object(
             key,
@@ -422,7 +422,6 @@ class MetricsLogger:
         if isinstance(value, StatsBase):
             stats.merge([value], replace=False)
         else:
-            value = single_value_to_cpu(value)
             stats.push(value)
 
     def log_dict(

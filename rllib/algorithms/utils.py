@@ -50,7 +50,7 @@ class AggregatorActor(FaultAwareApply):
         self._node = platform.node()
         self._device = torch.device("cpu")
         self.metrics: MetricsLogger = MetricsLogger(
-            stats_cls_lookup=config.custom_stats_cls_lookup
+            stats_cls_lookup=config.stats_cls_lookup
         )
 
         # Create the RLModule.

@@ -227,7 +227,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         metrics_logger.log_value(
             "pacman_heatmap",
             heatmap_rgb,
-            reduce=None,
+            reduce="item_series",
             window=10,  # Log 10 images at most per EnvRunner/training iteration.
         )
 
@@ -240,7 +240,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             dist_travelled,
             # For future reductions (e.g. over n different episodes and all the
             # data coming from other env runners), reduce by max.
-            reduce=None,
+            reduce="item_series",
             # Always keep the last 100 values and max over this window.
             # Note that this means that over time, if the values drop to lower
             # numbers again, the reported `pacman_max_dist_travelled` might also

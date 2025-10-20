@@ -274,8 +274,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         train: bool,
     ) -> None:
 
-        self.metrics.activate_tensor_mode()
-
         num_env_steps = 0
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
             for episode in tensor_minibatch:
@@ -332,8 +330,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             iteration + 1,
             reduce="lifetime_sum",
         )
-
-        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 

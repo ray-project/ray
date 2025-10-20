@@ -222,13 +222,13 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         if config.twin_q:
             total_loss += critic_twin_loss
 
-        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Log the TD-error with reduce="item_series", such that - in case we have n parallel
         # Learners - we will re-concatenate the produced TD-error tensors to yield
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
-            reduce=None,
+            reduce="item_series",
             clear_on_reduce=True,
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
@@ -355,13 +355,13 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
             # TODO (simon): Check, if we need to multiply the critic_loss then with 0.5.
             total_loss += critic_twin_loss
 
-        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Log the TD-error with reduce="item_series", such that - in case we have n parallel
         # Learners - we will re-concatenate the produced TD-error tensors to yield
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
-            reduce=None,
+            reduce="item_series",
             clear_on_reduce=True,
         )
         # Log other important loss stats (reduce=mean (default), but with window=1

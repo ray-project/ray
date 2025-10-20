@@ -113,8 +113,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         train: bool,
     ) -> None:
 
-        self.metrics.activate_tensor_mode()
-
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
@@ -164,8 +162,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 value=loss,
                 window=1,
             )
-
-        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 

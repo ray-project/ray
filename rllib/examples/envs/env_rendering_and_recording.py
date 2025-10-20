@@ -221,7 +221,7 @@ class EnvRenderCallback(RLlibCallback):
                 # Do not reduce the videos (across the various parallel EnvRunners).
                 # This would not make sense (mean over the pixels?). Instead, we want to
                 # log all best videos of all EnvRunners per iteration.
-                reduce=None,
+                reduce="item_series",
                 # B/c we do NOT reduce over the video data (mean/min/max), we need to
                 # make sure the list of videos in our MetricsLogger does not grow
                 # infinitely and gets cleared after each `reduce()` operation, meaning
@@ -235,7 +235,7 @@ class EnvRenderCallback(RLlibCallback):
                 "episode_videos_worst",
                 self.worst_episode_and_return[0],
                 # Same logging options as above.
-                reduce=None,
+                reduce="item_series",
                 clear_on_reduce=True,
             )
             self.worst_episode_and_return = (None, float("inf"))

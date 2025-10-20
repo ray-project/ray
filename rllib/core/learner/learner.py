@@ -270,7 +270,7 @@ class Learner(Checkpointable):
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
         self.metrics: MetricsLogger = MetricsLogger(
-            stats_cls_lookup=config.custom_stats_cls_lookup
+            stats_cls_lookup=config.stats_cls_lookup
         )
 
         # In case of offline learning and multiple learners, each learner receives a
@@ -1058,8 +1058,6 @@ class Learner(Checkpointable):
             **kwargs,
         )
 
-        self.metrics.activate_tensor_mode()
-
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1114,8 +1112,6 @@ class Learner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
-
-        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:

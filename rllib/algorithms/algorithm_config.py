@@ -57,6 +57,7 @@ from ray._common.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -569,6 +570,7 @@ class AlgorithmConfig(_Config):
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
         self.log_gradients = False
+        self.stats_cls_lookup = DEFAULT_STATS_CLS_LOOKUP
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -3684,7 +3686,7 @@ class AlgorithmConfig(_Config):
         if log_gradients is not NotProvided:
             self.log_gradients = log_gradients
         if custom_stats_cls_lookup is not NotProvided:
-            self.custom_stats_cls_lookup = custom_stats_cls_lookup
+            self.stats_cls_lookup = custom_stats_cls_lookup
 
         return self
 
