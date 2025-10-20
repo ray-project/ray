@@ -296,7 +296,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
     stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
-    ray_event_recorder_->StartExportingEvents();
+    ray_event_recorder_->StartExportingEvents(server_status);
   });
 
   // Start RPC server when all tables have finished loading initial

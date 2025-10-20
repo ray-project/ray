@@ -50,7 +50,8 @@ void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
                 }
               });
   if (retry_count >= max_retry) {
-    init_exporter_fn(Status::RpcError("The metrics agent server is not ready.", 14));
+    init_exporter_fn(
+        Status::RpcError("Running out of retries to initialize the metrics agent.", 14));
     return;
   }
   retry_count++;
