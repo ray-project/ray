@@ -150,8 +150,10 @@ void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id,
     return;
   }
 
-  std::vector<ObjectID> &object_ids = get_requests_[worker_and_req_id].first;
-  PullRequestId pull_request_id = get_requests_[worker_and_req_id].second;
+  std::pair<std::vector<ObjectID>, PullRequestId> &get_request =
+      get_requests_[worker_and_req_id];
+  std::vector<ObjectID> &object_ids = get_request.first;
+  PullRequestId pull_request_id = get_request.second;
 
   object_manager_.CancelPull(pull_request_id);
 
@@ -180,11 +182,13 @@ void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
         std::make_pair(worker_id, request_id);
 
     if (get_requests_.find(worker_and_req_id) == get_requests_.end()) {
-      return;
+      continue;
     }
 
-    std::vector<ObjectID> &object_ids = get_requests_[worker_and_req_id].first;
-    PullRequestId pull_request_id = get_requests_[worker_and_req_id].second;
+    std::pair<std::vector<ObjectID>, PullRequestId> &get_request =
+        get_requests_[worker_and_req_id];
+    std::vector<ObjectID> &object_ids = get_request.first;
+    PullRequestId pull_request_id = get_request.second;
 
     object_manager_.CancelPull(pull_request_id);
 
@@ -196,10 +200,6 @@ void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
     }
 
     get_requests_.erase(worker_and_req_id);
-
-    if (worker_to_requests_[worker_id].empty()) {
-      worker_to_requests_.erase(worker_id);
-    }
   }
 
   worker_to_requests_.erase(worker_id);

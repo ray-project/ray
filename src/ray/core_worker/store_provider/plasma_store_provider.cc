@@ -260,14 +260,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   bool got_exception = false;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-
   std::vector<ObjectID> batch_ids;
 
+  int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
+
   // TODO(57923): Need to understand if batching is necessary. If it's necessary,
-  // then I need to document why.
-  for (int64_t start = 0; start < object_ids.size(); start += fetch_batch_size_) {
+  // then the reason needs to be documented.
+  for (int64_t start = 0; start < num_total_objects.size(); start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < object_ids.size(); i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects.size();
+         i++) {
       batch_ids.push_back(id_vector[i]);
     }
 

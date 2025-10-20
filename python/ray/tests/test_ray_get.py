@@ -23,7 +23,7 @@ def test_multithreaded_ray_get(ray_start_cluster):
     # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
     ray_cluster.add_node()
-    ray.init()
+    ray.init(address=ray_cluster.address)
     ray_cluster.add_node(resources={"worker": 1})
 
     @ray.remote(resources={"worker": 1})
