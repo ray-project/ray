@@ -18,13 +18,11 @@ export const useJobList = () => {
     key: "job_id" | "submission_id" | "status",
     val: string,
   ) => {
-    const f = filter.find((e) => e.key === key);
-    if (f) {
-      f.val = val;
-    } else {
-      filter.push({ key, val });
+    const newFilter = filter.filter((e) => e.key !== key);
+    if (val.trim() !== "") {
+      newFilter.push({ key, val });
     }
-    setFilter([...filter]);
+    setFilter(newFilter);
   };
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);

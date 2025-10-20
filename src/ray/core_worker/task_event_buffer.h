@@ -44,15 +44,15 @@ namespace worker {
 using TaskAttempt = std::pair<TaskID, int32_t>;
 
 /// A struct containing a tuple of rpc::events::RayEvent.
-/// When converting the TaskStatusEvent, task_definition_event and task_execution_event
+/// When converting the TaskStatusEvent, task_definition_event and task_lifecycle_event
 /// will be populated with rpc::events::TaskDefinitionEvent and
-/// rpc::events::TaskExecutionEvent respectively. When converting the TaskProfileEvent,
+/// rpc::events::TaskLifecycleEvent respectively. When converting the TaskProfileEvent,
 /// task_profile_event will be populated with rpc::events::TaskProfileEvent. A struct is
-/// needed because the TaskProfileEvent, TaskDefinitionEvent and TaskExecutionEvent all
+/// needed because the TaskProfileEvent, TaskDefinitionEvent and TaskLifecycleEvent all
 /// can share the same task_id and attempt_number.
 struct RayEventsTuple {
   std::optional<rpc::events::RayEvent> task_definition_event;
-  std::optional<rpc::events::RayEvent> task_execution_event;
+  std::optional<rpc::events::RayEvent> task_lifecycle_event;
   std::optional<rpc::events::RayEvent> task_profile_event;
 };
 
@@ -171,7 +171,7 @@ class TaskStatusEvent : public TaskEvent {
 
   /// The function to convert the TaskStatusEvent class to a pair of
   /// rpc::events::RayEvent with rpc::events::TaskDefinitionEvent and
-  /// rpc::events::TaskExecutionEvent respectively. The TaskExecutionEvent will always
+  /// rpc::events::TaskLifecycleEvent respectively. The TaskLifecycleEvent will always
   /// be populated. The TaskDefinitionEvent will be populated only when the task_spec_
   /// is not null.
   /// NOTE: this method will modify internal states by moving fields of task_spec_ to
@@ -189,9 +189,9 @@ class TaskStatusEvent : public TaskEvent {
   template <typename T>
   void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
 
-  // Helper functions to populate the task execution event of rpc::events::RayEvent
-  void PopulateRpcRayTaskExecutionEvent(
-      rpc::events::TaskExecutionEvent &execution_event_data,
+  // Helper functions to populate the task lifecycle event of rpc::events::RayEvent
+  void PopulateRpcRayTaskLifecycleEvent(
+      rpc::events::TaskLifecycleEvent &lifecycle_event_data,
       google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
