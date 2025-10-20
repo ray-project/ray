@@ -2156,6 +2156,12 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                 << rpc::autoscaler::DrainNodeReason_Name(request.reason())
                 << ". Drain reason message: " << request.reason_message();
 
+  if (cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining()) {
+    reply->set_is_accepted(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
