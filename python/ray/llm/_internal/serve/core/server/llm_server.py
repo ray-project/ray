@@ -175,11 +175,6 @@ class LLMServer(LLMServerProtocol):
             raise ValueError(
                 f"data_parallel_backend must be set to 'ray' when data_parallel_size > 1, but got: {dp_backend}"
             )
-        
-        # Set data_parallel_size_local to dp_size
-        # vLLM will create all DP placement groups and we're running from head node
-        if "data_parallel_size_local" not in llm_config.engine_kwargs:
-            llm_config.update_engine_kwargs(data_parallel_size_local=dp_size)
 
     def _init_shared(
         self,

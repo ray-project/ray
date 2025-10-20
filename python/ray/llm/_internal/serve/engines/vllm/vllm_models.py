@@ -224,8 +224,6 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def num_devices(self) -> int:
-        # Don't include data_parallel_size in num_devices for placement bundles
-        # When using Ray DP backend, vLLM creates separate placement groups per DP rank
         return self.tensor_parallel_degree * self.pipeline_parallel_degree
 
     @property
