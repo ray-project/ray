@@ -78,7 +78,7 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
                 return not node["Alive"]
         return True
 
-    wait_for_condition(node_is_dead, timeout=30)
+    wait_for_condition(node_is_dead, timeout=1)
 
 
 if __name__ == "__main__":
