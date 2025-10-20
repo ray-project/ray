@@ -291,23 +291,33 @@ class VLLMEngineConfig(BaseModelExtended):
             GPUType.NVIDIA_A100_80G.value,
         )
 
-    def get_or_create_pg(self) -> Optional[PlacementGroup]:
-        """Gets or a creates a placement group.
+    def get_or_create_pg(self, temporary_for_init: bool = False) -> Optional[PlacementGroup]:
+        """Gets or creates a placement group.
 
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
+        
+        Args:
+            temporary_for_init: If True and using Ray DP backend, create a temporary PG
+                for node initialization that will be freed before vLLM starts.
         """
         dp_size = self.engine_kwargs.get("data_parallel_size", 1)
         dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         
-        # For Ray DP backend, don't create placement groups here
-        # vLLM's CoreEngineActorManager will create them (one per DP rank)
+        # For Ray DP backend with temporary flag, create minimal PG for init
         if dp_size > 1 and self.engine_kwargs.get("data_parallel_backend") == "ray":
+            if not temporary_for_init:
+                logger.info(
+                    "Skipping placement group creation for Ray DP backend "
+                    f"(data_parallel_size={dp_size}). vLLM will create them."
+                )
+                return None
+            # Create temporary PG for node initialization
+            # Use TP×PP bundles (not DP) since this is just for downloads
             logger.info(
-                "Skipping placement group creation for Ray DP backend "
-                f"(data_parallel_size={dp_size}). vLLM will create them."
+                f"Creating temporary placement group for node initialization "
+                f"(will be freed before vLLM starts)"
             )
-            return None
         
         pg = get_current_placement_group()
         if pg:
