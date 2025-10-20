@@ -1,6 +1,5 @@
 #!/bin/bash
-# This script is used to build an extra layer on top of the base llm image
-# to run the llm sglang release tests
+# This script is used to build an extra layer to run release tests on Azure.
 
 set -exo pipefail
 
