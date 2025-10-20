@@ -66,6 +66,8 @@ class ActorHandle {
 
   rpc::Address GetOwnerAddress() const { return inner_.owner_address(); }
 
+  bool IsDetached() const { return inner_.has_owner_address(); }
+
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
   JobID CreationJobID() const { return JobID::FromBinary(inner_.creation_job_id()); };

@@ -2165,7 +2165,24 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   if (task_spec.MaxActorRestarts() != 0) {
     bool actor_restart_warning = false;
     for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-      if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
+      if (!task_spec.ArgInlinedRefs(i).empty()) {
+        actor_restart_warning = true;
+        break;
+      }
+      if (task_spec.ArgByRef(i)) {
+        auto ref_object_id = ObjectID::FromBinary(task_spec.ArgRef(i).object_id());
+        if (ObjectID::IsActorID(ref_object_id)) {
+          auto ref_actor_id = ObjectID::ToActorID(ref_object_id);
+          if (auto ref_actor_handle =
+                  actor_manager_->GetActorHandleIfExists(ref_actor_id)) {
+            if (ref_actor_handle->IsDetached()) {
+              // Don't show the warning if the actor is detached since it'll never go out
+              // of scope
+              RAY_LOG(ERROR) << "Actor is detached";
+              continue;
+            }
+          }
+        }
         actor_restart_warning = true;
         break;
       }
