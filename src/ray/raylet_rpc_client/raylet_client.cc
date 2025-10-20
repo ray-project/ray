@@ -41,8 +41,10 @@ RayletClient::RayletClient(const rpc::Address &address,
           /*check_channel_status_interval_milliseconds=*/
           ::RayConfig::instance()
               .grpc_client_check_connection_status_interval_milliseconds(),
-          /*server_unavailable_timeout_seconds=*/
-          ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_s(),
+          /*server_reconnect_timeout_base_seconds=*/
+          ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_base_s(),
+          /*server_reconnect_timeout_max_seconds=*/
+          ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_max_s(),
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
           /*server_name=*/std::string("Raylet ") + address.ip_address())) {}
@@ -303,7 +305,8 @@ void RayletClient::ReleaseUnusedBundles(
   for (auto &bundle : bundles_in_use) {
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
-  INVOKE_RPC_CALL(
+  INVOKE_RETRYABLE_RPC_CALL(
+      retryable_grpc_client_,
       NodeManagerService,
       ReleaseUnusedBundles,
       request,
@@ -353,12 +356,13 @@ void RayletClient::ShutdownRaylet(
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
   rpc::ShutdownRayletRequest request;
   request.set_graceful(graceful);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  ShutdownRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ShutdownRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::DrainRaylet(
@@ -370,12 +374,13 @@ void RayletClient::DrainRaylet(
   request.set_reason(reason);
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  DrainRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            DrainRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::IsLocalWorkerDead(

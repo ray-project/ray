@@ -95,16 +95,27 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
+    - __suffix__: azure
+      env: azure
+      frequency: manual
+      cluster:
+        cluster_compute: hello_world_compute_config_azure.yaml
+    - __suffix__: released
+      cluster:
+        ray_version: 2.50.0
 
 - name: hello_world_custom_byod
   team: reef
-  group: hello_world_custom_byod
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
   cluster:
     byod:
-      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
@@ -115,10 +126,17 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
+    - __suffix__: released
+      cluster:
+        ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
   team: reef
-  group: hello_world_custom_byod_depset
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
@@ -272,7 +290,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -1800,6 +1818,23 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
+- name: training_ingest_benchmark-soak_test
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
+
+  run:
+    timeout: 43200
+    long_running: true
+    script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --num_epochs=50
+
 - name: train_multinode_persistence
   python: "3.10"
   group: Train tests
@@ -1840,6 +1875,22 @@
 
   alert: default
 
+- name: train_async_checkpointing_validation_benchmark
+  group: Train tests
+  working_dir: train_tests/async_checkpointing_validation_benchmark
+  frequency: nightly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+  run:
+    timeout: 10800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_async_checkpointing_validation_benchmark.py
+    wait_for_nodes:
+      num_nodes: 2
+  alert: default
+
 - name: train_colocate_trainer
   python: "3.10"
   group: Train tests
@@ -1877,6 +1928,55 @@
   run:
     timeout: 1800
     script: python torch_local_mode_launcher.py
+
+- name: torch_lightning
+  group: Train tests
+  working_dir: train_tests/pytorch_lightning
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_pytorch_lightning_test.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
+
+- name: huggingface_transformers
+  group: Train tests
+  working_dir: train_tests/huggingface_transformers
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
+
+- name: huggingface_accelerate
+  group: Train tests
+  working_dir: train_tests/huggingface_accelerate
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
   python: "3.10"
@@ -4187,6 +4287,29 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
+- name: pytorch_profiling  # do not use dashes (regex sensitive)
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/pytorch-profiling
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: e2e_audio
   frequency: weekly
   python: "3.11"
@@ -4295,6 +4418,31 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/ray-overview/examples/llamafactory-llm-fine-tune  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
