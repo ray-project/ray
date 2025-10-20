@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "ray/common/memory_monitor.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {

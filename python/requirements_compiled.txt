@@ -421,6 +421,8 @@ datasets==3.6.0
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
     #   evaluate
+datasketches==5.2.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 debugpy==1.8.0
     # via ipykernel
 decorator==5.1.1
@@ -1247,6 +1249,7 @@ numpy==1.26.4
     #   cupy-cuda12x
     #   dask
     #   datasets
+    #   datasketches
     #   decord
     #   deepspeed
     #   dm-control
