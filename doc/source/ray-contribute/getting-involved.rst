@@ -260,7 +260,7 @@ An output like the following indicates failure:
    * branch                master     -> FETCH_HEAD
   python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 
-In addition, there are other formatting and semantic checkers for components like the following (not included in ``scripts/format.sh``):
+In addition, there are other formatting and semantic checkers for components like the following (not included in ``pre-commit``):
 
 * Python README format:
 

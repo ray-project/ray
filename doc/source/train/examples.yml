@@ -55,6 +55,13 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
+  - title: Profiling a Ray Train Workload with PyTorch Profiler
+    frameworks:
+      - pytorch
+    skill_level: beginner
+    use_cases:
+      - computer vision
+    link: examples/pytorch/pytorch-profiling/README
   - title: Get started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
     skill_level: intermediate 
     frameworks:
