@@ -2698,6 +2698,7 @@ void CoreWorker::RunTaskExecutionLoop() {
 }
 
 Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
+                                        const ObjectID &generator_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
@@ -2714,7 +2715,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     // keep the inner IDs in scope until the outer one is out of scope.
     if (!contained_object_ids.empty() && !options_.is_local_mode) {
       reference_counter_->AddNestedObjectIds(
-          object_id, contained_object_ids, owner_address);
+          object_id, contained_object_ids, owner_address, generator_id);
     }
 
     // Allocate a buffer for the return object.
@@ -3866,6 +3867,22 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
 
   const auto owner_address = message.reference().owner_address();
   ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
+
+  if (message.has_generator_id()) {
+    const auto generator_id = ObjectID::FromBinary(message.generator_id());
+    RAY_CHECK(!generator_id.IsNil());
+    RAY_CHECK(!contained_in_id.IsNil());
+    if (task_manager_->ObjectRefStreamExists(generator_id)) {
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(contained_in_id,
+                                                              generator_id);
+    } else {
+      // If the generator_id cannot be found, it is likely that the streaming
+      // generator has already been garbage-collected before the Subscribe
+      // message arrived. In this case, simply ignore it.
+      RAY_LOG(DEBUG) << "Can not found streaming generator: " << generator_id;
+    }
+  }
+
   // So it will call PublishRefRemovedInternal to publish a message when the requested
   // object ID's ref count goes to 0.
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
