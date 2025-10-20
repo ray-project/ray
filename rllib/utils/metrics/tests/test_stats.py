@@ -115,24 +115,10 @@ def test_peek_and_reduce_item_series_stats():
         (MeanStats, {"window": 5}, [1, 2, 3]),
         (MaxStats, {"window": 5}, [1, 5, 3]),
         (MinStats, {"window": 5}, [5, 1, 3]),
-        pytest.param(
-            SumStats,
-            {"window": 5},
-            [1, 2, 3],
-            marks=pytest.mark.skip(
-                reason="SumStats.get_state() has implementation issue"
-            ),
-        ),
+        (SumStats, {"window": 5}, [1, 2, 3]),
         (LifetimeSumStats, {}, [10, 20]),
         (EmaStats, {"ema_coeff": 0.01}, [10, 20]),
-        pytest.param(
-            PercentilesStats,
-            {"percentiles": [50], "window": 10},
-            [1, 2, 3],
-            marks=pytest.mark.skip(
-                reason="PercentilesStats.from_state() has implementation issue"
-            ),
-        ),
+        (PercentilesStats, {"percentiles": [50], "window": 10}, [1, 2, 3]),
         (ItemSeriesStats, {"window": 5}, ["a", "b", "c"]),
     ],
 )
@@ -277,7 +263,7 @@ def test_similar_to(stats_class, init_kwargs):
     elif stats_class == PercentilesStats:
         # Should have dict with percentile keys, but empty
         check(list(result.keys()), original._percentiles)
-        check(list(result.values()), [])
+        check(list(result.values()), [None])
     elif isinstance(result, float):
         # All others should be NaN
         check(result, np.nan)
@@ -285,23 +271,23 @@ def test_similar_to(stats_class, init_kwargs):
 
 # Series stats allow us to set a window size and reduce the values in the window.
 @pytest.mark.parametrize(
-    "stats_class,window,values,expected_result,expected_len",
+    "stats_class,window,values,expected_result",
     [
-        # Basic tests with window=5 (initial NaN + 3 values = 4 elements)
-        (MeanStats, 5, [1, 2, 3], 2.0, 4),
-        (MaxStats, 5, [1, 2, 3], 3, 4),
-        (MinStats, 5, [1, 2, 3], 1, 4),
-        (SumStats, 5, [1, 2, 3], 6, 4),
+        # Basic tests with window=5
+        (MeanStats, 5, [1, 2, 3], 2.0),
+        (MaxStats, 5, [1, 2, 3], 3),
+        (MinStats, 5, [1, 2, 3], 1),
+        (SumStats, 5, [1, 2, 3], 6),
         # Window tests with window=3, values exceeding window size (fills window)
-        (MeanStats, 3, [1, 2, 3, 4, 5], 4.0, 3),  # Mean of 3, 4, 5
-        (MaxStats, 3, [1, 2, 3, 4, 5], 5, 3),  # Max of 3, 4, 5
-        (MinStats, 3, [1, 2, 3, 4, 5], 3, 3),  # Min of 3, 4, 5
-        (SumStats, 3, [1, 2, 3, 4, 5], 12, 3),  # Sum of 3, 4, 5
+        (MeanStats, 3, [1, 2, 3, 4, 5], 4.0),  # Mean of 3, 4, 5
+        (MaxStats, 3, [1, 2, 3, 4, 5], 5),  # Max of 3, 4, 5
+        (MinStats, 3, [1, 2, 3, 4, 5], 3),  # Min of 3, 4, 5
+        (SumStats, 3, [1, 2, 3, 4, 5], 12),  # Sum of 3, 4, 5
     ],
 )
-def test_series_stats_windowed(
-    stats_class, window, values, expected_result, expected_len
-):
+def test_series_stats_windowed(stats_class, window, values, expected_result):
+    # All examples chosen such that we should end up with a length of three
+    expected_len = 3
     stats = stats_class(window=window)
 
     for value in values:
@@ -338,11 +324,12 @@ def test_sum_stats_with_throughput():
     stats.push(10)
     time.sleep(0.1)
     stats.push(20)
+    time.sleep(0.1)
 
-    # Throughput should be approximately (30 - 0) / time_elapsed
+    # Throughput should be approximately (30 - 0) / 0.2 = 150
     # The accurate behaviour of this is tested in the MetricsLogger tests.
     throughput = stats.throughputs
-    check(throughput > 0, True)
+    check(throughput, 150, atol=30)
 
 
 def test_lifetime_sum_stats_with_throughput():
@@ -398,21 +385,21 @@ def test_percentiles_stats():
 
 def test_percentiles_stats_windowed_default_percentiles():
     """Test PercentilesStats window functionality."""
-    stats = PercentilesStats(percentiles=None, window=5)
+    stats = PercentilesStats(percentiles=None, window=101)
 
-    for i in range(1, 11):  # Push 1-10
+    for i in range(1, 201):
         stats.push(i)
 
-    # Should only keep last 5: [6, 7, 8, 9, 10]
-    check(len(stats), 5)
+    # Should only keep last 100: [100, 101, ..., 199, 200]
+    check(len(stats), 101)
     result = stats.peek(compile=True)
-    check(result[0], 6)
-    check(result[50], 8)
-    check(result[75], 9)
-    check(result[90], 9.5)
-    check(result[95], 9.75)
-    check(result[99], 9.95)
-    check(result[100], 10)
+    check(result[0], 100)
+    check(result[50], 150)
+    check(result[75], 175)
+    check(result[90], 190)
+    check(result[95], 195)
+    check(result[99], 199)
+    check(result[100], 200)
 
 
 @pytest.mark.parametrize(
@@ -468,7 +455,7 @@ def test_stats_numeric_operations(stats_class, setup_values, expected_value):
         # ItemStats returns None when empty
         (ItemStats, {}, None),
         # PercentilesStats returns dict with NaN values when empty
-        (PercentilesStats, {"percentiles": [50], "window": 10}, {50: np.nan}),
+        (PercentilesStats, {"percentiles": [50], "window": 10}, {50: None}),
         # ItemSeriesStats returns empty list when empty
         (ItemSeriesStats, {"window": 5}, []),
     ],
@@ -484,15 +471,10 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
     if isinstance(expected_result, float) and np.isnan(expected_result):
         check(np.isnan(result), True)
     elif isinstance(expected_result, dict):
-        # Handle dict with potential NaN values
-        check(isinstance(result, dict), True)
-        for key in expected_result:
-            if isinstance(expected_result[key], float) and np.isnan(
-                expected_result[key]
-            ):
-                check(np.isnan(result[key]), True)
-            else:
-                check(result[key], expected_result[key])
+        assert isinstance(stats, PercentilesStats)
+        assert isinstance(result, dict)
+        check(list(result.keys()), list(expected_result.keys()))
+        check(list(result.values()), list(expected_result.values()))
     else:
         check(result, expected_result)
 
@@ -523,7 +505,6 @@ def test_stats_reduce_at_root(stats_class, result_value):
 
     root_stats.merge([reduced_stats])
 
-    check(list(root_stats.values), list(stats_values_before_reduce))
     reduced_root_stats = root_stats.reduce(compile=False)
 
     check(len(reduced_root_stats), 1)

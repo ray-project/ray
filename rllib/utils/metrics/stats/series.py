@@ -37,7 +37,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         self._window = window
 
         self.values: Union[List[Any], deque[Any]] = []
-        self._set_values([np.nan])
+        self._set_values([])
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -88,12 +88,15 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             reduced_values = self.window_reduce()
 
         if self._clear_on_reduce:
-            self._set_values([np.nan])
+            self._set_values([])
         else:
             self._set_values(reduced_values)
 
         if compile:
-            return reduced_values[0]
+            if len(reduced_values) == 0:
+                return np.nan
+            else:
+                return reduced_values[0]
 
         return_stats = self.similar_to(self)
         return_stats.values = reduced_values
@@ -122,10 +125,10 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         value = single_value_to_cpu(value)
 
         if self._window is None:
-            if self.values[0] is np.nan:
-                self.values = [value]
+            if not self.values:
+                self._set_values([value])
             else:
-                self.values = self.running_reduce(self.values[0], value)
+                self._set_values(self.running_reduce(self.values[0], value))
         else:
             # For windowed operations, append to values and trim if needed
             self.values.append(value)
@@ -150,6 +153,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
+        all_items = self.window_reduce(all_items)
         self._set_values(all_items)
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
@@ -169,7 +173,13 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             reduced_values = self.window_reduce()
 
-        return reduced_values[0] if compile else reduced_values
+        if compile:
+            if len(reduced_values) == 0:
+                return np.nan
+            else:
+                return reduced_values[0]
+        else:
+            return reduced_values
 
     def running_reduce(self, value_1, value_2) -> Tuple[Any, Any]:
         """Reduces two values through a native python reduce function.

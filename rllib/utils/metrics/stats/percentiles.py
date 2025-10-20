@@ -200,7 +200,7 @@ class PercentilesStats(StatsBase):
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
-        super_args = super()._get_init_args(stats_object=stats_object, state=state)
+        super_args = StatsBase._get_init_args(stats_object=stats_object, state=state)
         if state is not None:
             return {
                 **super_args,

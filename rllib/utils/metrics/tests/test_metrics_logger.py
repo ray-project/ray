@@ -617,16 +617,20 @@ def test_reduce_at_root(root_logger, actors):
     _log_values("value5", "mean", window=None)
 
     metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
+
+    check(metrics[0]["value"].values, [1, 2, 3])
+    check(metrics[1]["value"].values, [4, 5, 6])
+    check(metrics[0]["value2"].values, [1, 2, 3])
+    check(metrics[1]["value2"].values, [4, 5, 6])
+    check(metrics[0]["value3"].values, [1, 2, 3])
+    check(metrics[1]["value3"].values, [4, 5, 6])
+    check(metrics[0]["value4"].values, [1, 2, 3])
+    check(metrics[1]["value4"].values, [4, 5, 6])
+    check(metrics[0]["value5"].values, [1, 2, 3])
+    check(metrics[1]["value5"].values, [4, 5, 6])
+
     root_logger.aggregate(metrics)
-
-    # We start with np.nan as an implementation detail to always have a (nan) value to report.
-    check(root_logger.stats["value"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
-    check(root_logger.stats["value2"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
-    check(root_logger.stats["value3"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
-    check(root_logger.stats["value4"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
-    check(root_logger.stats["value5"].values, [np.nan, 1, 2, 3, np.nan, 4, 5, 6])
-
-    results = root_logger.reduce()
+    results = root_logger.compile()
 
     check(results["value"], 21)
     check(results["value2"], 3.5)

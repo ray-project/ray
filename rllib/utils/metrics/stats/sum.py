@@ -76,7 +76,7 @@ class SumStats(SeriesStats):
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
-        super_args = super()._get_init_args(stats_object=stats_object, state=state)
+        super_args = SeriesStats._get_init_args(stats_object=stats_object, state=state)
         if state is not None:
             return {
                 **super_args,
@@ -93,13 +93,13 @@ class SumStats(SeriesStats):
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
         state = super().get_state()
-        state["values_at_last_reduce"] = self._values_at_last_reduce
+        state["values_at_last_reduce"] = self._last_reduce_value
         state["track_throughput"] = self.track_throughput
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
-        self._values_at_last_reduce = state["values_at_last_reduce"]
+        self._last_reduce_value = state["values_at_last_reduce"]
         self.track_throughput = state["track_throughput"]
 
     def __repr__(self) -> str:
