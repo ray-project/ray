@@ -39,7 +39,10 @@ _FILE_FORMAT_TO_RAY_READER = {
 
 @dataclass
 class ColumnInfo:
-    """Column metadata from Unity Catalog table schema."""
+    """Column metadata from Unity Catalog table schema.
+
+    Reference: https://docs.databricks.com/api/workspace/tables/get
+    """
 
     name: str
     type_text: str
@@ -52,7 +55,34 @@ class ColumnInfo:
     # Optional fields that may not be present in all API responses
     comment: Optional[str] = None
     partition_index: Optional[int] = None
-    column_masks: Optional[List[Dict]] = None
+
+    @staticmethod
+    def from_dict(obj: Dict) -> "ColumnInfo":
+        """
+        Safely construct ColumnInfo from Unity Catalog API response.
+
+        Extracts only the fields defined in ColumnInfo, ignoring any extra
+        fields returned by the API (such as column_masks, which may be present
+        in some API responses but aren't needed for Ray Data operations).
+
+        Args:
+            obj: Dictionary from Unity Catalog tables API columns field
+
+        Returns:
+            ColumnInfo instance with extracted fields
+        """
+        return ColumnInfo(
+            name=obj["name"],
+            type_text=obj["type_text"],
+            type_name=obj["type_name"],
+            position=obj["position"],
+            type_precision=obj.get("type_precision", 0),
+            type_scale=obj.get("type_scale", 0),
+            type_json=obj.get("type_json", ""),
+            nullable=obj.get("nullable", True),
+            comment=obj.get("comment"),
+            partition_index=obj.get("partition_index"),
+        )
 
 
 @dataclass
@@ -102,25 +132,41 @@ class TableInfo:
 
     @staticmethod
     def from_dict(obj: Dict) -> "TableInfo":
+        """
+        Parse table metadata from Unity Catalog API response.
+
+        Handles optional nested structures and safely constructs ColumnInfo
+        instances from the columns field.
+
+        Args:
+            obj: Dictionary from Unity Catalog tables API response
+
+        Returns:
+            TableInfo instance with parsed metadata
+        """
+        # Parse optional nested structures
         if obj.get("effective_auto_maintenance_flag"):
             effective_auto_maintenance_flag = EffectiveFlag(
                 **obj["effective_auto_maintenance_flag"]
             )
         else:
             effective_auto_maintenance_flag = None
+
         if obj.get("effective_predictive_optimization_flag"):
             effective_predictive_optimization_flag = EffectiveFlag(
                 **obj["effective_predictive_optimization_flag"]
             )
         else:
             effective_predictive_optimization_flag = None
+
         return TableInfo(
             name=obj["name"],
             catalog_name=obj["catalog_name"],
             schema_name=obj["schema_name"],
             table_type=obj["table_type"],
             data_source_format=obj.get("data_source_format", ""),
-            columns=[ColumnInfo(**col) for col in obj.get("columns", [])],
+            # Use ColumnInfo.from_dict to safely handle API response fields
+            columns=[ColumnInfo.from_dict(col) for col in obj.get("columns", [])],
             storage_location=obj.get("storage_location", ""),
             owner=obj.get("owner", ""),
             properties=obj.get("properties", {}),
@@ -486,6 +532,60 @@ class UnityCatalogConnector:
 
         return path, ""
 
+    def _create_auth_headers(self) -> Dict[str, str]:
+        """
+        Create authorization headers for Unity Catalog API requests.
+
+        Returns:
+            Dictionary with Authorization header
+        """
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def _fetch_volume_metadata(self) -> None:
+        """
+        Fetch volume metadata from Unity Catalog volumes API.
+
+        Sets self._volume_info and self._volume_path.
+
+        Raises:
+            requests.HTTPError: If API request fails
+        """
+        volume_full_name, _ = self._parse_volume_path()
+        url = f"{self.base_url}/api/2.1/unity-catalog/volumes/{volume_full_name}"
+        headers = self._create_auth_headers()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Parse and store volume information
+        volume_info = VolumeInfo.from_dict(data)
+        self._volume_info = volume_info
+        self._volume_path = volume_info.storage_location
+
+    def _fetch_table_metadata(self) -> TableInfo:
+        """
+        Fetch table metadata from Unity Catalog tables API.
+
+        Sets self._table_info and self._table_id.
+
+        Returns:
+            TableInfo object with table metadata
+
+        Raises:
+            requests.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.path}"
+        headers = self._create_auth_headers()
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Parse table information
+        table_info = TableInfo.from_dict(data)
+        self._table_info = table_info
+        self._table_id = table_info.table_id
+        return table_info
+
     def _get_table_info(self) -> Optional[TableInfo]:
         """
         Fetch table or volume metadata from Unity Catalog API.
@@ -501,33 +601,10 @@ class UnityCatalogConnector:
             requests.HTTPError: If API request fails
         """
         if self._is_volume:
-            # For volumes, use the volumes API to get metadata
-            volume_full_name, _ = self._parse_volume_path()
-            url = f"{self.base_url}/api/2.1/unity-catalog/volumes/{volume_full_name}"
-            headers = {"Authorization": f"Bearer {self.token}"}
-            resp = requests.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-            # Parse and store volume information
-            volume_info = VolumeInfo.from_dict(data)
-            self._volume_info = volume_info
-            self._volume_path = volume_info.storage_location
-            # Volumes don't have table_id, use volume_full_name for credential requests
+            self._fetch_volume_metadata()
             return None
         else:
-            # For tables, use the tables API
-            url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.path}"
-            headers = {"Authorization": f"Bearer {self.token}"}
-            resp = requests.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-            # Parse table information
-            table_info = TableInfo.from_dict(data)
-            self._table_info = table_info
-            self._table_id = table_info.table_id
-            return table_info
+            return self._fetch_table_metadata()
 
     def _get_creds(self):
         """
@@ -680,7 +757,21 @@ class UnityCatalogConnector:
             # Re-raise for non-volume errors or unhandled status codes
             raise
 
-        # Extract storage URL from credentials response
+        # Extract and store storage URL from credentials response
+        self._extract_storage_url()
+
+    def _extract_storage_url(self) -> None:
+        """
+        Extract and set storage URL from credentials response.
+
+        For volumes, constructs full path including subdirectory.
+        For tables, uses URL directly from response.
+
+        Sets self._storage_url.
+
+        Raises:
+            ValueError: If no storage URL is returned in credentials response
+        """
         if self._is_volume:
             # For volumes, construct full path with subdirectory
             volume_full_name, sub_path = self._parse_volume_path()
