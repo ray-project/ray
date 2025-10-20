@@ -46,8 +46,8 @@ This could be an np.ndarray, jnp.ndarray, tf.Tensor, or a torch.Tensor.
 TensorStructType = Union[TensorType, dict, tuple]
 """Either a plain tensor, or a dict or tuple of tensors (or StructTensors)."""
 
-TensorShape = Union[Tuple[int], List[int]]
-"""A shape of a tensor."""
+# A shape of a tensor.
+TensorShape = Union[Tuple[int, ...], List[int]]
 
 NetworkType = Union["torch.nn.Module", "keras.Model"]
 """A neural network."""

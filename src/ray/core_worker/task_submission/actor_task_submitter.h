@@ -71,14 +71,15 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
                      const TensorTransportGetter &tensor_transport_getter,
-                     std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
+                     std::function<void(const ActorID &, const std::string &, int64_t)>
+                         on_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
         resolver_(store, task_manager, actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
-        warn_excess_queueing_(std::move(warn_excess_queueing)),
+        on_excess_queueing_(std::move(on_excess_queueing)),
         next_queueing_warn_threshold_(
             ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
@@ -256,6 +257,18 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
 
+  /// Handle a task that was cancelled before it could execute.
+  /// This method determines whether the cancellation was due to:
+  /// 1. Actor shutdown (worker exiting): If so, raise RayActorError.
+  /// 2. Explicit user cancellation: If so, raise TaskCancelledError.
+  ///
+  /// \param status The RPC status from PushTask.
+  /// \param reply The PushTaskReply message containing cancellation details.
+  /// \param task_spec The specification of the task that was cancelled.
+  void HandleTaskCancelledBeforeExecution(const Status &status,
+                                          const rpc::PushTaskReply &reply,
+                                          const TaskSpecification &task_spec);
+
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,
                 int32_t max_pending_calls,
@@ -422,7 +435,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
+  std::function<void(const ActorID &, const std::string &, uint64_t num_queued)>
+      on_excess_queueing_;
 
   /// Warn the next time the number of queued task submissions to an actor
   /// exceeds this quantity. This threshold is doubled each time it is hit.
