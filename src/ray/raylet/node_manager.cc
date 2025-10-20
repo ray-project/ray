@@ -15,6 +15,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <algorithm>
+#include <boost/bind/bind.hpp>
 #include <cctype>
 #include <cerrno>
 #include <csignal>
@@ -121,6 +122,33 @@ void CleanupProcessGroupSend(pid_t saved_pgid,
 }
 #endif
 
+std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
+                                           int start_index,
+                                           int end_index) {
+  std::vector<std::string> enum_names;
+  enum_names.reserve(start_index);
+  for (int i = 0; i < start_index; ++i) {
+    enum_names.emplace_back("EmptyMessageType");
+  }
+  size_t i = 0;
+  while (true) {
+    const char *name = enum_names_ptr[i];
+    if (name == nullptr) {
+      break;
+    }
+    enum_names.emplace_back(name);
+    i++;
+  }
+  RAY_CHECK(static_cast<size_t>(end_index) == enum_names.size() - 1)
+      << "Message Type mismatch!";
+  return enum_names;
+}
+
+const std::vector<std::string> node_manager_message_enum =
+    GenerateEnumNames(ray::protocol::EnumNamesMessageType(),
+                      static_cast<int>(ray::protocol::MessageType::MIN),
+                      static_cast<int>(ray::protocol::MessageType::MAX));
+
 }  // namespace
 
 NodeManager::NodeManager(
@@ -148,7 +176,9 @@ NodeManager::NodeManager(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     AddProcessToCgroupHook add_process_to_system_cgroup_hook,
     std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-    std::atomic_bool &shutting_down)
+    std::atomic_bool &shutting_down,
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
+    local_stream_socket socket)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -202,7 +232,9 @@ NodeManager::NodeManager(
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
-      shutting_down_(shutting_down) {
+      shutting_down_(shutting_down),
+      acceptor_(std::move(acceptor)),
+      socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
   placement_group_resource_manager_ =
@@ -249,6 +281,29 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+}
+
+void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
+  auto register_callback =
+      [this,
+       object_manager_port = self_node_info.object_manager_port()](const Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
+                      << " started. Raylet consists of node_manager and object_manager."
+                      << " node_manager address: "
+                      << BuildAddress(initial_config_.node_manager_address,
+                                      initial_config_.node_manager_port)
+                      << " object_manager address: "
+                      << BuildAddress(initial_config_.node_manager_address,
+                                      object_manager_port)
+                      << " hostname: " << boost::asio::ip::host_name();
+        this->RegisterGcs();
+      };
+  gcs_client_.Nodes().RegisterSelf(std::move(self_node_info), register_callback);
+
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void NodeManager::RegisterGcs() {
@@ -408,6 +463,45 @@ void NodeManager::RegisterGcs() {
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
       "NodeManager.GcsCheckAlive");
+}
+
+void NodeManager::HandleAccept(const boost::system::error_code &error) {
+  if (!error) {
+    ConnectionErrorHandler error_handler =
+        [this](const std::shared_ptr<ClientConnection> &client,
+               const boost::system::error_code &err) {
+          this->HandleClientConnectionError(client, err);
+        };
+
+    MessageHandler message_handler = [this](
+                                         const std::shared_ptr<ClientConnection> &client,
+                                         int64_t message_type,
+                                         const std::vector<uint8_t> &message) {
+      this->ProcessClientMessage(client, message_type, message.data());
+    };
+
+    // Accept a new local client and dispatch it to the node manager.
+    auto conn = ClientConnection::Create(message_handler,
+                                         error_handler,
+                                         std::move(socket_),
+                                         "worker",
+                                         node_manager_message_enum);
+
+    // Begin processing messages. The message handler above is expected to call this to
+    // continue processing messages.
+    conn->ProcessMessages();
+  } else {
+    RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
+    if (error == boost::asio::error::operation_aborted) {
+      // The server is being destroyed. Don't continue accepting connections.
+      return;
+    }
+  };
+
+  // We're ready to accept another client.
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&NodeManager::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
@@ -1298,7 +1392,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 }
 
 namespace {
-
 void SendDisconnectClientReply(const WorkerID &worker_id,
                                const std::shared_ptr<ClientConnection> &client) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -2821,8 +2914,8 @@ void NodeManager::Stop() {
 #if !defined(_WIN32)
   // Best-effort process-group cleanup for any remaining workers before shutdown.
   if (RayConfig::instance().process_group_cleanup_enabled()) {
-    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
-                                                        /* filter_io_workers */ false);
+    auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers=*/true,
+                                                        /* filter_io_workers=*/false);
     for (const auto &w : workers) {
       auto saved = w->GetSavedProcessGroupId();
       if (saved.has_value()) {
@@ -2840,6 +2933,7 @@ void NodeManager::Stop() {
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
+  acceptor_.close();
 }
 
 void NodeManager::RecordMetrics() {
