@@ -23,10 +23,6 @@ class LifetimeSumStats(StatsBase):
         Args:
             with_throughput: If True, track the throughput since the last restore from a checkpoint.
         """
-        # Make sure we don't accidentally set clear_on_reduce to False
-        if "clear_on_reduce" in kwargs and kwargs["clear_on_reduce"]:
-            raise ValueError("LifetimeSumStats does not support clear_on_reduce")
-
         super().__init__(*args, **kwargs)
 
         self._lifetime_sum = 0.0
@@ -56,7 +52,6 @@ class LifetimeSumStats(StatsBase):
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
         super_args = StatsBase._get_init_args(stats_object=stats_object, state=state)
-        del super_args["clear_on_reduce"]
         if state is not None:
             return {
                 **super_args,

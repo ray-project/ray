@@ -31,8 +31,6 @@ class EmaStats(StatsBase):
 
         Args:
             ema_coeff: The EMA coefficient to use. Defaults to 0.01.
-            clear_on_reduce: If True, the Stats object will reset its entire values list
-                to an empty one after `EmaStats.reduce()` is called.
         """
         super().__init__(*args, **kwargs)
         self._value = np.nan
@@ -54,13 +52,10 @@ class EmaStats(StatsBase):
         """
         # Take the average of the incoming means
         all_values = [stat._value for stat in incoming_stats]
-        # Ignore replace argument because replace=False would lead to EMA of EMAs
-        # EMAs respect past values anyway
-        if not replace and self._clear_on_reduce:
+        if not replace:
             raise ValueError(
-                "Can only replace EmaStats with clear_on_reduce=True when merging. Otherwise we would introduce an 'EMA of EMAs'."
+                "Can only replace EmaStats when merging. Otherwise we would introduce an 'EMA of EMAs'."
             )
-
         self._value = np.nanmean(all_values)
 
     def push(self, value: Any) -> None:
@@ -77,8 +72,7 @@ class EmaStats(StatsBase):
 
     def reduce(self, compile: bool = True) -> Union[Any, "EmaStats"]:
         value = self._value
-        if self._clear_on_reduce:
-            self._value = np.nan
+        self._value = np.nan
 
         if compile:
             return value

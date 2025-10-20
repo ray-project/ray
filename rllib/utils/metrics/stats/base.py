@@ -25,11 +25,9 @@ class StatsBase(metaclass=ABCMeta):
     def __init__(
         self,
         is_root_stats: bool = False,
-        clear_on_reduce: bool = True,
         reduce_at_root: bool = False,
     ):
         self._is_root_stats = is_root_stats
-        self._clear_on_reduce = clear_on_reduce
         self._reduce_at_root = reduce_at_root
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
@@ -162,7 +160,6 @@ class StatsBase(metaclass=ABCMeta):
         return {
             "stats_cls_identifier": self.stats_cls_identifier,
             "_is_root_stats": self._is_root_stats,
-            "_clear_on_reduce": self._clear_on_reduce,
         }
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -170,7 +167,6 @@ class StatsBase(metaclass=ABCMeta):
         """Sets the state of the stats object."""
 
         self._is_root_stats = state["_is_root_stats"]
-        self._clear_on_reduce = state["_clear_on_reduce"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
 
@@ -181,12 +177,10 @@ class StatsBase(metaclass=ABCMeta):
         if state is not None:
             return {
                 "is_root_stats": state["_is_root_stats"],
-                "clear_on_reduce": state["_clear_on_reduce"],
             }
         elif stats_object is not None:
             return {
                 "is_root_stats": stats_object._is_root_stats,
-                "clear_on_reduce": stats_object._clear_on_reduce,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")

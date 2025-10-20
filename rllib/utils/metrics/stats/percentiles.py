@@ -181,10 +181,7 @@ class PercentilesStats(StatsBase):
             return_stats.values = values
             return return_stats
 
-        if self._clear_on_reduce:
-            self._set_values([])
-        else:
-            self._set_values(values)
+        self._set_values([])
 
         if compile:
             return compute_percentiles(values, self._percentiles)
@@ -194,10 +191,7 @@ class PercentilesStats(StatsBase):
         return return_stats
 
     def __repr__(self) -> str:
-        return (
-            f"PercentilesStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce})"
-        )
+        return f"PercentilesStats({self.peek()}; window={self._window}; len={len(self)}"
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:

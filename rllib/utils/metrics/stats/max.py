@@ -14,7 +14,4 @@ class MaxStats(SeriesStats):
         return np.nanmax(values)
 
     def __repr__(self) -> str:
-        return (
-            f"MaxStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce})"
-        )
+        return f"MaxStats({self.peek()}; window={self._window}; len={len(self)})"

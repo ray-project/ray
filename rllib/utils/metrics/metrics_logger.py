@@ -48,7 +48,7 @@ def stats_from_legacy_state(
 ) -> StatsBase:
     """Creates a Stats object from a legacy state."""
     cls_identifier = state["reduce"]
-    if state["clear_on_reduce"] is False:
+    if state.get("clear_on_reduce", True) is False:
         if cls_identifier == "sum":
             # lifetime sum
             _cls = DEFAULT_STATS_CLS_LOOKUP["lifetime_sum"]
@@ -65,7 +65,6 @@ def stats_from_legacy_state(
                     "lifetime_sum": 0.0,
                 }
             new_state["stats_cls_identifier"] = "lifetime_sum"
-            new_state["_clear_on_reduce"] = False
 
             # old lifetime sum checkpoints always track a througput
             if state.get("throughput_stats") is not None:
@@ -83,7 +82,6 @@ def stats_from_legacy_state(
 
     new_state = {
         "_is_root_stats": is_root_stats,
-        "_clear_on_reduce": state["clear_on_reduce"],
         "stats_cls_identifier": cls_identifier,
     }
     if cls_identifier == "mean":
@@ -146,7 +144,7 @@ class MetricsLogger:
         """Initializes a MetricsLogger instance.
 
         Args:
-            root: Whether this logger is a root logger. If True, lifetime stats (clear_on_reduce=False and reduction="sum") will not be cleared on reduce().
+            root: Whether this logger is a root logger. If True, lifetime sums (reduce="lifetime_sum") will not be cleared on reduce().
             stats_cls_lookup: A dictionary mapping reduction method names to Stats classes.
                 If not provided, the default lookup (ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP) will be used.
                 You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
@@ -279,9 +277,6 @@ class MetricsLogger:
                 if reduce == "ema" and ema_coeff is None:
                     ema_coeff = 0.01
 
-                if reduce != "lifetime_sum" and clear_on_reduce is None:
-                    clear_on_reduce = True
-
                 if percentiles and not reduce == "percentiles":
                     raise ValueError(
                         "percentiles is only supported for reduce=percentiles"
@@ -333,8 +328,6 @@ class MetricsLogger:
                     kwargs["ema_coeff"] = ema_coeff
                 if percentiles is not None:
                     kwargs["percentiles"] = percentiles
-                if clear_on_reduce is not None:
-                    kwargs["clear_on_reduce"] = clear_on_reduce
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
@@ -389,7 +382,8 @@ class MetricsLogger:
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
                 and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
-            clear_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: Deprecated. Use reduce="lifetime_sum" instead.
+                If True, all values under `key` will be cleared after
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
@@ -406,7 +400,13 @@ class MetricsLogger:
             reduce = "mean"
         if reduce is None:
             reduce = "ema"
-        # 2. If reduce is sum and clear_on_reduce is False, use lifetime_sum instead
+        # 2. If clear_on_reduce is provided, warn about deprecation.
+        if clear_on_reduce is not None:
+            deprecation_warning(
+                "clear_on_reduce is deprecated. Use reduce='lifetime_sum' for sums. Provide a custom reduce method for other cases.",
+                error=False,
+            )
+        # 3. If reduce is sum and clear_on_reduce is False, use lifetime_sum instead
         if reduce == "sum" and clear_on_reduce is False:
             reduce = "lifetime_sum"
             clear_on_reduce = None
@@ -613,7 +613,8 @@ class MetricsLogger:
                 the computational complexity is O(m*n*log(n/m)) where n is the window size
                 and m is the number of parallel metrics loggers involved (for example,
                 m EnvRunners).
-            clear_on_reduce: If True, all values under `key` will be emptied after
+            clear_on_reduce: Deprecated. Use reduce="lifetime_sum" instead.
+                If True, all values under `key` will be cleared after
                 `MetricsLogger.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.

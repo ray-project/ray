@@ -64,15 +64,13 @@ class ItemSeriesStats(StatsBase):
 
         Args:
             compile: Argument is ignored for ItemSeriesStats.
-            clear_on_reduce: If True, the internal values list is set to an empty list.
 
         Returns:
             The reduced value (can be of any type, depending on the input values and
             reduction method).
         """
         items = self.items
-        if self._clear_on_reduce:
-            self._set_items([])
+        self._set_items([])
 
         if compile:
             return items

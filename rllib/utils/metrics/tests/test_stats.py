@@ -39,7 +39,6 @@ from ray.rllib.utils.test_utils import check
     ],
 )
 def test_peek_and_reduce(stats_class, init_kwargs, setup_values, expected_reduced):
-    # Test without clear_on_reduce (LifetimeSumStats always clears)
     stats = stats_class(**init_kwargs)
     for value in setup_values:
         stats.push(value)
@@ -48,9 +47,8 @@ def test_peek_and_reduce(stats_class, init_kwargs, setup_values, expected_reduce
     result = stats.reduce(compile=True)
     check(result, expected_reduced)
 
-    # Test with clear_on_reduce=True (skip LifetimeSumStats which doesn't support it)
     if stats_class != LifetimeSumStats:
-        stats2 = stats_class(**init_kwargs, clear_on_reduce=True)
+        stats2 = stats_class(**init_kwargs)
         for value in setup_values:
             stats2.push(value)
 
@@ -233,13 +231,11 @@ def test_merge_item_stats():
     ],
 )
 def test_clone(stats_class, init_kwargs):
-    # LifetimeSumStats doesn't support clear_on_reduce=True
     original = stats_class(**init_kwargs)
     original.push(123)
 
     # Create similar stats
     similar = stats_class.clone(original)
-    check(similar._clear_on_reduce, original._clear_on_reduce)
 
     # Check class-specific attributes
     # Note: PercentilesStats._get_init_args() doesn't preserve window (implementation issue)
@@ -517,9 +513,7 @@ def test_stats_reduce_at_root(stats_class, result_value):
     [
         (
             EmaStats,
-            {
-                "clear_on_reduce": False
-            },  # We have to set clear_on_reduce=False because otherwise we would introduce an 'EMA of EMAs'
+            {},
             [1, 2],
             [3, 4],  # 3.01
             [5, 6],  # 5.01
@@ -636,6 +630,9 @@ def test_stats_merge_with_replace_parameter(
             child2.push(value)
 
         # Merge with the specified replace parameter
+        if stats_class == EmaStats:
+            # Ignore replace parameter for EmaStats becasue replacing would introduce an 'EMA of EMAs'.
+            replace = True
         root_stats.merge([child1, child2], replace=replace)
 
         # Check result

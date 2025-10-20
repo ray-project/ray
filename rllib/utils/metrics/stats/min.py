@@ -17,7 +17,4 @@ class MinStats(SeriesStats):
         return np.nanmin(values)
 
     def __repr__(self) -> str:
-        return (
-            f"MinStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce})"
-        )
+        return f"MinStats({self.peek()}; window={self._window}; len={len(self)}"

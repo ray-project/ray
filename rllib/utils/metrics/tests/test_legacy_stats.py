@@ -175,7 +175,6 @@ def test_reduce_with_clear():
         reduce="sum",
         window=None,
         ema_coeff=None,
-        clear_on_reduce=True,
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
@@ -376,7 +375,6 @@ def test_reduce_history_with_clear():
         reduce="sum",
         window=None,
         ema_coeff=None,
-        clear_on_reduce=True,
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )

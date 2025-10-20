@@ -35,9 +35,7 @@ class ItemStats(StatsBase):
 
     def reduce(self, compile: bool = True) -> Union[Any, "ItemStats"]:
         item = self._item
-
-        if self._clear_on_reduce:
-            self._item = None
+        self._item = None
 
         if compile:
             return item
@@ -64,7 +62,7 @@ class ItemStats(StatsBase):
         ), "ItemStats should only be merged with one other ItemStats object"
         if not replace:
             raise ValueError(
-                "Can only replace ItemStats with clear_on_reduce=True when merging. This is because there can only be a single item tracked."
+                "Can only replace ItemStats when merging. This is because there can only be a single item tracked."
             )
 
         self._item = incoming_stats[0]._item
@@ -86,4 +84,4 @@ class ItemStats(StatsBase):
         return [self._item]
 
     def __repr__(self) -> str:
-        return f"ValueStats({self.peek()}; clear_on_reduce={self._clear_on_reduce})"
+        return f"ValueStats({self.peek()}"

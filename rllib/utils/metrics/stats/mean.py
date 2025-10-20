@@ -34,10 +34,7 @@ class MeanStats(SeriesStats):
             return return_stats
 
         reduced_values = self.window_reduce()
-        if self._clear_on_reduce:
-            self._set_values([])
-        else:
-            self.values = reduced_values
+        self._set_values([])
 
         if compile:
             return reduced_values[0]
@@ -47,7 +44,4 @@ class MeanStats(SeriesStats):
         return return_stats
 
     def __repr__(self) -> str:
-        return (
-            f"MeanStats({self.peek()}; window={self._window}; len={len(self)}; "
-            f"clear_on_reduce={self._clear_on_reduce})"
-        )
+        return f"MeanStats({self.peek()}; window={self._window}; len={len(self)}"

@@ -87,10 +87,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             reduced_values = self.window_reduce()
 
-        if self._clear_on_reduce:
-            self._set_values([])
-        else:
-            self._set_values(reduced_values)
+        self._set_values([])
 
         if compile:
             if len(reduced_values) == 0:
