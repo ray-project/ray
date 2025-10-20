@@ -36,6 +36,8 @@ from ray._private.utils import (
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
 
+import psutil
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
@@ -1438,7 +1440,20 @@ class Node:
         added to self.all_processes so it can be moved into the raylet's managed cgroup
         hierarchy.
         """
-        return ",".join(str(p[0].process.pid) for p in self.all_processes.values())
+        system_process_pids = [
+            str(p[0].process.pid) for p in self.all_processes.values()
+        ]
+
+        # If the dashboard api server was started on the head node, then include all of the api server's
+        # child processes.
+        if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
+            dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
+                0
+            ].process.pid
+            dashboard_process = psutil.Process(dashboard_pid)
+            system_process_pids += [str(p.pid) for p in dashboard_process.children()]
+
+        return ",".join(system_process_pids)
 
     def _kill_process_type(
         self,
