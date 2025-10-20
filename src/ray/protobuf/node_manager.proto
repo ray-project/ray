@@ -490,7 +490,7 @@ service NodeManagerService {
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that
   // are still needed. And Raylet will release other bundles.
-  // TODO: Need to handle network failure.
+  // Failure: Retries, it's idempotent.
   rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
