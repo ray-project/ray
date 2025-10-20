@@ -14,6 +14,7 @@ google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
 pylance==0.22
+PyPDF2
 delta-sharing
 deltalake==0.9.0
 pytest-mock
