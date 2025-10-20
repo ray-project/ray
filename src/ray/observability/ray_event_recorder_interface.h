@@ -17,7 +17,6 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/status.h"
 #include "ray/observability/ray_event_interface.h"
 
 namespace ray {
@@ -30,7 +29,7 @@ class RayEventRecorderInterface {
   // Start exporting events to the event aggregator by periodically sending events to
   // the event aggregator. This should be called only once. Subsequent calls will be
   // ignored.
-  virtual void StartExportingEvents(const Status &aggregator_agent_status) = 0;
+  virtual void StartExportingEvents() = 0;
 
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
