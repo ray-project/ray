@@ -428,3 +428,10 @@ ray_cc_library(
         "//src/ray/stats:stats_lib",
     ],
 )
+
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "python_callbacks.h",
+    ],
+)

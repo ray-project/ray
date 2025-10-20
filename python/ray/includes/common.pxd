@@ -391,7 +391,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/common/python_callbacks.h" namespace "ray":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
