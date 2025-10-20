@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -32,12 +33,15 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet/fake_worker.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
@@ -49,6 +53,8 @@ using ::testing::_;
 using ::testing::Return;
 
 namespace {
+
+constexpr double kTestTotalCpuResource = 10.0;
 
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
@@ -309,6 +315,8 @@ class NodeManagerTest : public ::testing::Test {
     NodeManagerConfig node_manager_config{};
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
+    node_manager_config.resource_config = ResourceSet(
+        absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
 
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
@@ -398,6 +406,9 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
+    placement_group_resource_manager_ =
+        std::make_unique<NewPlacementGroupResourceManager>(*cluster_resource_scheduler_);
+
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
         raylet_node_id_,
@@ -424,6 +435,7 @@ class NodeManagerTest : public ::testing::Test {
         [](const std::string &) {},
         nullptr,
         shutting_down_,
+        *placement_group_resource_manager_,
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
@@ -438,6 +450,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
@@ -677,8 +690,8 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
-  payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 10.0});
+  payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+  payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
   payload.mutable_labels()->insert({"label1", "value1"});
 
   std::string serialized;
@@ -697,8 +710,10 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
       cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(node_id.Binary()));
   EXPECT_EQ(node_resources.labels.at("label1"), "value1");
-  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
-  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
+  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
@@ -1064,7 +1079,7 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
 }
 
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
-  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  auto lease_spec = BuildLeaseSpec({{"CPU", kTestTotalCpuResource + 1}});
   lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
       ->mutable_node_affinity_scheduling_strategy()
@@ -1365,6 +1380,99 @@ INSTANTIATE_TEST_SUITE_P(
             rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION,
             rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION),
         ::testing::Bool()));
+
+bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
+                        const BundleID &bundle_id) {
+  return manager.bundle_spec_map_.contains(bundle_id);
+}
+
+class ReleaseUnusedBundlesRetriesTest : public NodeManagerTest,
+                                        public ::testing::WithParamInterface<bool> {};
+
+TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
+  // bundle_in_use: determines whether we mark a bundle as in use and it is released by
+  // the placement group resource manager.
+  // bundle_in_use == true: a bundle is marked as in use in the placement group resource
+  // manager. ReleaseUnusedBundles is expected to not release the bundle.
+  // bundle_in_use == false: a bundle is not marked as in use in the placement group
+  // resource manager. ReleaseUnusedBundles is expected to release the bundle.
+  bool bundle_in_use = GetParam();
+
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  absl::flat_hash_map<std::string, double> unit_resource = {{"CPU", 1.0}};
+
+  auto bundle_id = BundleID(group_id, 1);
+  rpc::Bundle bundle;
+  auto *bundle_id_msg = bundle.mutable_bundle_id();
+  bundle_id_msg->set_placement_group_id(group_id.Binary());
+  bundle_id_msg->set_bundle_index(1);
+  auto unit_resources = bundle.mutable_unit_resources();
+  for (const auto &[key, value] : unit_resource) {
+    unit_resources->insert({key, value});
+  }
+  auto bundle_spec = std::make_shared<BundleSpecification>(bundle);
+  ASSERT_TRUE(placement_group_resource_manager_->PrepareBundles({bundle_spec}));
+  placement_group_resource_manager_->CommitBundles({bundle_spec});
+
+  EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+
+  WorkerID worker_id = WorkerID::FromRandom();
+  LeaseID lease_id = LeaseID::FromRandom();
+  auto worker = std::make_shared<raylet::FakeWorker>(worker_id, 0, io_service_);
+  worker->SetBundleId(bundle_id);
+  worker->GrantLeaseId(lease_id);
+  leased_workers_.emplace(lease_id, worker);
+
+  rpc::ReleaseUnusedBundlesRequest request;
+  if (bundle_in_use) {
+    auto *bundle_entry = request.add_bundles_in_use();
+    bundle_entry->mutable_bundle_id()->set_placement_group_id(group_id.Binary());
+    bundle_entry->mutable_bundle_id()->set_bundle_index(1);
+  } else {
+    // When the bundle is not in use, the worker associated with that bundle is destroyed
+    // hence need to mock the GetRegisteredWorker call to return the worker.
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredWorker(testing::An<const std::shared_ptr<ClientConnection> &>()))
+        .WillOnce(Return(worker));
+  }
+
+  rpc::ReleaseUnusedBundlesReply reply1;
+  node_manager_->HandleReleaseUnusedBundles(
+      request, &reply1, [](Status s, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  if (bundle_in_use) {
+    EXPECT_TRUE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 1);
+    EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  } else {
+    EXPECT_FALSE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 0);
+    EXPECT_FALSE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  }
+
+  rpc::ReleaseUnusedBundlesReply reply2;
+  node_manager_->HandleReleaseUnusedBundles(
+      request, &reply2, [](Status s, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  if (bundle_in_use) {
+    EXPECT_TRUE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 1);
+    EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  } else {
+    EXPECT_FALSE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 0);
+    EXPECT_FALSE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
+                         ReleaseUnusedBundlesRetriesTest,
+                         ::testing::Bool());
 
 }  // namespace ray::raylet
 
