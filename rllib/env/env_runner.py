@@ -236,7 +236,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 results = self.env.step(actions)
             return results
         except Exception as e:
-            self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
+            self.metrics.log_value(
+                NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="lifetime_sum"
+            )
 
             # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:

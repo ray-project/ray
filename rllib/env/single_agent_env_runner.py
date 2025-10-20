@@ -571,15 +571,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
-        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
-
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
         return (
@@ -830,23 +821,23 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
             num_episodes_completed,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         return num_steps
 

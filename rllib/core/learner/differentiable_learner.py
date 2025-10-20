@@ -373,7 +373,7 @@ class DifferentiableLearner(Checkpointable):
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
                 iteration + 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -745,7 +745,7 @@ class DifferentiableLearner(Checkpointable):
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Log module steps (sum of all modules).
             self.metrics.log_value(
@@ -757,7 +757,7 @@ class DifferentiableLearner(Checkpointable):
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log env steps (all modules).
         self.metrics.log_value(
@@ -769,7 +769,7 @@ class DifferentiableLearner(Checkpointable):
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
 

@@ -153,7 +153,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
             iteration + 1,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log all individual RLModules' loss terms
         # Note: We do this only once for the last of the minibatch updates, b/c the
@@ -321,16 +321,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
-        # TODO (simon): Create extra metrics.
-        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
-
     def _log_steps_evaluated_metrics(self, batch: MultiAgentBatch) -> None:
         for mid, module_batch in batch.policy_batches.items():
             # Log weights seq no for this batch.
@@ -356,7 +346,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             self.metrics.log_value(
                 key=(mid, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Log module steps (sum of all modules).
             self.metrics.log_value(
@@ -368,7 +358,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             self.metrics.log_value(
                 key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
                 value=module_batch_size,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log env steps (all modules).
         self.metrics.log_value(
@@ -380,7 +370,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
             batch.env_steps(),
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
 

@@ -234,7 +234,7 @@ class TorchMetaLearner(TorchLearner):
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
                 iteration + 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
