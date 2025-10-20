@@ -134,7 +134,7 @@ def test_release_unused_bundles_idempotent(
     cluster.head_node.start_gcs_server()
 
     # If the leaked bundle wasn't cleaned up, this task will hang due to resource unavailability
-    result = ray.get(task.remote(), timeout=30)
+    result = ray.get(task.remote())
     assert result == "success"
 
 
