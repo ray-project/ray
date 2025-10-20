@@ -19,8 +19,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
-
 namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(

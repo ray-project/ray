@@ -32,6 +32,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
@@ -254,7 +255,11 @@ class MockWorkerPool : public WorkerPoolInterface {
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
+    const std::string &id,
+    double num_cpus,
+    double num_gpus,
+    gcs::GcsClient &gcs_client,
+    ray::observability::MetricInterface &resource_usage_gauge) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
@@ -264,10 +269,12 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       io_context,
       scheduling::NodeID(id),
       local_node_resources,
-      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+      /*is_node_available_fn*/
+      [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().GetNodeAddressAndLiveness(
                    NodeID::FromBinary(node_id.Binary())) != nullptr;
-      });
+      },
+      resource_usage_gauge);
 
   return scheduler;
 }
@@ -379,8 +386,11 @@ class ClusterLeaseManagerTest : public ::testing::Test {
                                    double num_gpus_at_head = 0.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(
-            id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(),
+                                             num_cpus_at_head,
+                                             num_gpus_at_head,
+                                             *gcs_client_,
+                                             fake_resource_usage_gauge_)),
         lease_dependency_manager_(missing_objects_),
         local_lease_manager_(std::make_unique<LocalLeaseManager>(
             id_,
@@ -410,6 +420,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_lease_args_bytes=*/1000,
+            /*scheduler_metrics=*/
+            ray::raylet::SchedulerMetrics{
+                fake_scheduler_tasks_gauge_,
+                fake_scheduler_unscheduleable_tasks_gauge_,
+                fake_scheduler_failed_worker_startup_total_gauge_,
+                fake_internal_num_spilled_tasks_gauge_,
+                fake_internal_num_infeasible_scheduling_classes_gauge_},
             /*get_time=*/[this]() { return current_time_ms_; })),
         lease_manager_(
             id_,
@@ -522,6 +539,14 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   MockLeaseDependencyManager lease_dependency_manager_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   ClusterLeaseManager lease_manager_;
+
+  // Fake metrics for testing
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
+  ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
+  ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
 };
 
 // Same as ClusterLeaseManagerTest, but the head node starts with 4.0 num gpus.

@@ -105,6 +105,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*resource_usage_gauge=*/resource_usage_gauge_,
+        /*scheduler_placement_time_s_histogram=*/scheduler_placement_time_s_histogram_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -192,6 +194,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*resource_usage_gauge=*/resource_usage_gauge_,
+        /*scheduler_placement_time_s_histogram=*/scheduler_placement_time_s_histogram_,
     };
 
     gcs_server_.reset(
@@ -483,6 +487,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeGauge resource_usage_gauge_;
+  observability::FakeHistogram scheduler_placement_time_s_histogram_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());

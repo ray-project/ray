@@ -273,6 +273,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:bundle_spec",
         "//src/ray/common:id",
+        "//src/ray/common:metrics",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:counter_map",
@@ -550,6 +551,7 @@ ray_cc_binary(
         ":gcs_server_lib",
         "//src/ray/common:metrics",
         "//src/ray/observability:metrics",
+        "//src/ray/raylet:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
         "//src/ray/util:raii",

@@ -20,6 +20,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -58,6 +59,7 @@ class LocalResourceManagerTest : public ::testing::Test {
 
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
   std::unique_ptr<LocalResourceManager> manager;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
 };
 
 TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
@@ -80,7 +82,8 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
       nullptr,
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   ///
   /// Test when there's no allocation.
@@ -138,6 +141,25 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
     ASSERT_TRUE(resource_usage_map.find(pg_index_0_resource) == resource_usage_map.end());
     ASSERT_TRUE(resource_usage_map.find(pg_index_1_resource) == resource_usage_map.end());
   }
+
+  manager->RecordMetrics();
+  auto tag_to_value = fake_resource_usage_gauge_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 6);
+  for (auto &[key, value] : tag_to_value) {
+    if (key.at("Name") == "CPU" && key.at("State") == "AVAILABLE") {
+      ASSERT_EQ(value, 7.0);
+    } else if (key.at("Name") == "GPU" && key.at("State") == "AVAILABLE") {
+      ASSERT_EQ(value, 1.5);
+    } else if (key.at("Name") == "CUSTOM" && key.at("State") == "AVAILABLE") {
+      ASSERT_EQ(value, 2.0);
+    } else if (key.at("Name") == "CPU" && key.at("State") == "USED") {
+      ASSERT_EQ(value, 1.0);
+    } else if (key.at("Name") == "GPU" && key.at("State") == "USED") {
+      ASSERT_EQ(value, 0.5);
+    } else if (key.at("Name") == "CUSTOM" && key.at("State") == "USED") {
+      ASSERT_EQ(value, 2.0);
+    }
+  }
 }
 
 TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
@@ -147,7 +169,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       nullptr,
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   // Make the node non-idle.
   {
@@ -180,7 +203,8 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   // Make the node non-idle.
   *used_object_store = 1;
@@ -216,7 +240,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   /// Test when the resource is all idle when initialized.
   {
@@ -362,7 +387,8 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
@@ -376,8 +402,13 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
   NodeResources resources = CreateNodeResources({{ResourceID::CPU(), 2.0}});
   resources.labels = {{"label1", "value1"}, {"label2", "value2"}};
 
-  manager = std::make_unique<LocalResourceManager>(
-      local_node_id, resources, nullptr, nullptr, nullptr, nullptr);
+  manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                   resources,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   fake_resource_usage_gauge_);
 
   // Populate the sync message and verify labels are copied over.
   syncer::ResourceViewSyncMessage msg;

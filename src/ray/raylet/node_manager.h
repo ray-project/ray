@@ -38,6 +38,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
@@ -163,7 +164,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-      std::atomic_bool &shutting_down);
+      std::atomic_bool &shutting_down,
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge);
 
   /// Handle an unexpected error that occurred on a client connection.
   /// The client will be disconnected and no more messages will be processed.
@@ -894,6 +896,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   std::atomic_bool &shutting_down_;
+  ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge_;
 };
 
 }  // namespace ray::raylet
