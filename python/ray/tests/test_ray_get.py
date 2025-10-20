@@ -29,7 +29,12 @@ def test_multithreaded_ray_get(ray_start_cluster):
             # ray.put will ensure that the object is in plasma
             # even if it's small.
             self._local_small_ref = ray.put("1")
+
+            # Used to check the thread running the small `ray.gets` has made at least
+            # one API call successfully.
             self._small_gets_started = threading.Event()
+
+            # Used to tell the thread running small `ray.gets` to exit.
             self._stop_small_gets = threading.Event()
 
         def small_gets_started(self):
