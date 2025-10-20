@@ -4094,7 +4094,7 @@
 #######################
 
 
-- name: e2e_xgboost  # do not use dashes (regex sensitive)
+- name: ctest_e2e_xgboost  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
   group: ray-examples
@@ -4294,7 +4294,7 @@
       cluster:
         cluster_compute: ci/gce.yaml  # Relative to working_dir.
 
-- name: e2e_timeseries
+- name: ctest_e2e_timeseries
   frequency: weekly
   python: "3.11"
   group: ray-examples
@@ -4316,7 +4316,7 @@
   variations:
     - __suffix__: aws
 
-- name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
+- name: ctest_e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.12"
   group: ray-examples
