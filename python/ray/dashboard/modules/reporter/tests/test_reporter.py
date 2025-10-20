@@ -312,11 +312,11 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
-@patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
-def test_report_stats(mock_raylet_client):
+def test_report_stats():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
 
@@ -388,11 +388,11 @@ def test_report_stats(mock_raylet_client):
     assert isinstance(stats_payload, str)
 
 
-@patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
-def test_report_stats_gpu(mock_raylet_client):
+def test_report_stats_gpu():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
     # GPUstats query output example.
@@ -499,11 +499,11 @@ def test_report_stats_gpu(mock_raylet_client):
     assert isinstance(stats_payload, str)
 
 
-@patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
-def test_get_tpu_usage(mock_raylet_client):
+def test_get_tpu_usage():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
 
     fake_metrics_content = """
     duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0
@@ -557,11 +557,11 @@ def test_get_tpu_usage(mock_raylet_client):
             assert tpu_utilizations == expected_utilizations
 
 
-@patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
-def test_report_stats_tpu(mock_raylet_client):
+def test_report_stats_tpu():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
 
     stats = copy.deepcopy(STATS_TEMPLATE)
 
@@ -637,11 +637,11 @@ def test_report_stats_tpu(mock_raylet_client):
     assert isinstance(stats_payload, str)
 
 
-@patch("ray.dashboard.modules.reporter.reporter_agent.RayletClient")
-def test_report_per_component_stats(mock_raylet_client):
+def test_report_per_component_stats():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
 
@@ -1225,11 +1225,11 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
 async def test_reporter_raylet_agent(ray_start_with_dashboard):
     @ray.remote
     class MyActor:
-        def ping(self):
-            return "pong"
+        def get_pid(self):
+            return os.getpid()
 
     a = MyActor.remote()
-    assert ray.get(a.ping.remote()) == "pong"
+    worker_pid = ray.get(a.get_pid.remote())
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.ip = "127.0.0.1"
@@ -1240,7 +1240,7 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2
     # check if worker is reported
-    assert "ray::MyActor" in [psutil.Process(pid).cmdline()[0] for pid in pids]
+    assert worker_pid in pids
     # check if driver is reported
     assert os.getpid() in pids
 

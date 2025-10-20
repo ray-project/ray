@@ -399,9 +399,10 @@ class ReporterAgent(
 
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config
+        raylet_client: The RayletClient object to access raylet server
     """
 
-    def __init__(self, dashboard_agent):
+    def __init__(self, dashboard_agent, raylet_client=None):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
 
@@ -490,9 +491,12 @@ class ReporterAgent(
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
-        self._raylet_client = RayletClient(
-            ip_address=self._ip, port=self._dashboard_agent.node_manager_port
-        )
+        if raylet_client:
+            self._raylet_client = raylet_client
+        else:
+            self._raylet_client = RayletClient(
+                ip_address=self._ip, port=self._dashboard_agent.node_manager_port
+            )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
