@@ -39,7 +39,7 @@ class CloudDownloader(CallbackBase):
     Example:
         ```
         from ray.llm._internal.common.callbacks.cloud_downloader import CloudDownloader
-        from ray.llm._internal.serve.configs.server_models import LLMConfig
+        from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
         config = LLMConfig(
             ...
             callback_config={
