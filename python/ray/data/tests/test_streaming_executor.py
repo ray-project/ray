@@ -1102,6 +1102,9 @@ class TestDataOpTask:
 
         cluster = ray_start_cluster_enabled
         head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
         worker_node = cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
 
