@@ -1294,7 +1294,6 @@ librosa==0.11.0 \
     --hash=sha256:f5ed951ca189b375bbe2e33b2abd7e040ceeee302b9bbaeeffdfddb8d0ace908
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   -r python/requirements/llm/llm-requirements.txt
     #   vllm
 llguidance==0.7.29 ; platform_machine == 'aarch64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:17fd439957d6ca5f459d0dec755a2d040c2dc946ed7e3c332b469ef6861292f8 \
@@ -3434,7 +3433,6 @@ soundfile==0.13.1 \
     --hash=sha256:c734564fab7c5ddf8e9be5bf70bab68042cd17e9c214c06e365e20d64f9a69d5
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   -r python/requirements/llm/llm-requirements.txt
     #   librosa
     #   mistral-common
     #   vllm

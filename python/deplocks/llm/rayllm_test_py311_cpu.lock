@@ -1837,9 +1837,7 @@ lazy-loader==0.4 \
 librosa==0.11.0 \
     --hash=sha256:0b6415c4fd68bff4c29288abe67c6d80b587e0e1e2cfb0aad23e4559504a7fa1 \
     --hash=sha256:f5ed951ca189b375bbe2e33b2abd7e040ceeee302b9bbaeeffdfddb8d0ace908
-    # via
-    #   -r python/requirements/llm/llm-requirements.txt
-    #   vllm
+    # via vllm
 llguidance==0.7.26 ; platform_machine == 'aarch64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:1895ff449c8ec0a5f1d3b142d723fc9b26a85b021b72d7f1173f8b7507f528c0 \
     --hash=sha256:5e6f6cec9c6648164062f0347262b3ec7c39f54d1be5c5347d6446bc7fdba115 \
@@ -4312,7 +4310,6 @@ soundfile==0.13.1 \
     --hash=sha256:b2c68dab1e30297317080a5b43df57e302584c49e2942defdde0acccc53f0e5b \
     --hash=sha256:c734564fab7c5ddf8e9be5bf70bab68042cd17e9c214c06e365e20d64f9a69d5
     # via
-    #   -r python/requirements/llm/llm-requirements.txt
     #   librosa
     #   mistral-common
     #   vllm
