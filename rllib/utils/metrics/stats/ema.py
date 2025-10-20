@@ -9,7 +9,7 @@ from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 @DeveloperAPI
 class EmaStats(StatsBase):
-    """A Stats object that tracks the mean of a series of values."""
+    """A Stats object that tracks the exponential average of a series of values."""
 
     stats_cls_identifier = "ema"
 
@@ -19,7 +19,7 @@ class EmaStats(StatsBase):
         *args,
         **kwargs,
     ):
-        """Initializes a MeanStats instance.
+        """Initializes a EmaStats instance.
 
         Note the follwing limitation: That, when aggregating EmaStats objects with `EmaStats.merge()`, we take the
         mean of the incoming means. The output of the aggregated stats is therefore not

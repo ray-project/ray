@@ -127,7 +127,7 @@ class MetricsLogger:
     Please take a look ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP for the available reduction methods.
     You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
 
-    Note: In our docstirngs we make heavy use of the phrae 'parallel components'.
+    Note: In our docstirngs we make heavy use of the phrase 'parallel components'.
     This pertains to the architecture of the logging system, where we have one 'root' MetricsLogger
     that is used to aggregate all metrics of n parallel ('non-root') MetricsLoggers that are used to log metrics for each parallel component.
     A parallel component is typically a single Learner worker, an EnvRunner, or a ConnectorV2 or any other component of which more than one instance is running in parallel.
@@ -560,7 +560,7 @@ class MetricsLogger:
             )
 
             if own_stats is None:
-                # This should happen the first time we reduce this stat to the root logger
+                # This should happen the first time we reduce this stat to the root logger.
                 own_stats = incoming_stats[0].clone(incoming_stats[0])
                 own_stats._is_root_stats = True
                 if own_stats.has_throughputs:

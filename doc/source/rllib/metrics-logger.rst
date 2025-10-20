@@ -12,7 +12,7 @@ to unify and make accessible the logging and processing of stats and metrics dur
 reinforcement learning (RL) experiments. RLlib's :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 class and all its sub-components each have one :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
 instance managing metrics and statistics for this component. When a subcomponent reports back to the root component, 
-it "reduces" the logged results before sending them upstream.
+it "reduces" the logged results before sending them upstream. For example, when reducing by summation, subcomponents calculate sums before sending them to the root component.
 
 The RLlib team recommends this API for all your custom code, like in
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`-based :ref:`callbacks <rllib-callback-docs>`,
@@ -47,7 +47,7 @@ The :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API offers
 
 - Log scalar values over time, such as losses, individual rewards, or episode returns.
 - Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can choose to not
-  reduce at all by using ``item`` or ``itemseries``, leaving the logged values untouched.
+  reduce at all by using ``item`` or ``item_series``, leaving the logged values untouched.
 - A `clear_on_reduce=True`` setting allows for automatically clearing all logged values on each ``reduce`` event.
 - Specify sliding windows, over which reductions take place, for example ``window=100`` to average over the
   last 100 logged values per parallel component, or specify exponential moving average (EMA) coefficients, through which the weight of older values
@@ -225,7 +225,7 @@ Or you can use the ``reduce="item"`` to log a single item per iteration.
 For example to log the total loss of a model update:
 
 .. warning::
-    Be careful with tensorlibrary data such as PyTorch or TensorFlow tensors.
+    Be careful with tensor library data such as PyTorch or TensorFlow tensors.
     These may reside on GPU memory and you'll want to move them to CPU memory before logging them.
 
 Timers
@@ -310,7 +310,7 @@ Automatic throughput measurements
 
 A metrics logged with the settings ``reduce="sum"`` or ``reduce="lifetime_sum"`` can also measure throughput.
 The throughput is calculated once per metrics reporting cycle.
-This means that that the throughput is always relative to the speed of the metrics reporting cycle.
+This means that the throughput is always relative to the speed of the metrics reduction cycle.
 
 You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method to access the throughput value by passing the ``throughput=True`` flag.
 

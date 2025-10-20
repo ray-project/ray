@@ -124,7 +124,7 @@ class StatsBase(metaclass=ABCMeta):
 
     @classmethod
     def from_state(cls, state: Dict[str, Any]) -> "StatsBase":
-        """Creates a stats object from a state dictionary
+        """Creates a stats object from a state dictionary.
 
         Any implementation of this should call this base classe's `stats_object.set_state()` to set the state of the stats object.
         """

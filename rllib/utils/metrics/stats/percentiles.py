@@ -131,11 +131,12 @@ class PercentilesStats(StatsBase):
         assert (
             self._is_root_stats
         ), "PercentilesStats should only be merged at root level"
-        all_items = [s.values for s in incoming_stats]
-        all_items = list(chain.from_iterable(all_items))
+        all_values = [s.values for s in incoming_stats]
+        all_values = list(chain.from_iterable(all_values))
         if not replace:
-            all_items = list(self.values) + all_items
-        self._set_values(all_items)
+            all_values = list(self.values) + all_values
+        # Don't respect window explicitly to respect all incoming values.
+        self.values = all_values
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.

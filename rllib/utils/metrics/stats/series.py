@@ -153,8 +153,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         all_items = list(chain.from_iterable(all_items))
         if not replace:
             all_items = list(self.values) + all_items
-        all_items = self.window_reduce(all_items)
-        self._set_values(all_items)
+        # Don't respect window explicitly to respect all incoming values.
+        self.values = all_items
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
@@ -167,8 +167,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Returns:
             The result of reducing the internal values list.
         """
-        if self._window is None:
-            # self.values should just be a list with a single python value
+        if len(self.values) == 1:
+            # Note that we can not check for window=None here because merged SeriesStats may have multiple values.
             reduced_values = self.values
         else:
             reduced_values = self.window_reduce()

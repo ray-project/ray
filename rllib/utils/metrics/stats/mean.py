@@ -1,4 +1,4 @@
-from typing import Any, List, Union
+from typing import Any, Union
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
@@ -18,10 +18,6 @@ class MeanStats(SeriesStats):
     def push(self, value: Any) -> None:
         value = single_value_to_cpu(value)
         self.values.append(value)
-
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        reduced_values = self.window_reduce()
-        return reduced_values[0] if compile else reduced_values
 
     def reduce(self, compile: bool = True) -> Union[Any, "MeanStats"]:
         if self._reduce_at_root and not self._is_root_stats:

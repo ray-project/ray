@@ -80,8 +80,7 @@ class LifetimeSumStats(StatsBase):
         return 1
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        lifetime_sum = single_value_to_cpu(self._lifetime_sum)
-        return lifetime_sum if compile else [lifetime_sum]
+        return self._lifetime_sum if compile else [self._lifetime_sum]
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()

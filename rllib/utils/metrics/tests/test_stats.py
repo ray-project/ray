@@ -583,12 +583,12 @@ def test_stats_reduce_at_root(stats_class, result_value):
         ),
         (
             PercentilesStats,
-            {"window": 10, "percentiles": [50]},
+            {"window": 3, "percentiles": [50]},
             [1, 2],
             [3, 4],
             [5, 6],
             {50: 4.5},  # replace=True: 50th percentile (median) of [3, 4, 5, 6]
-            {50: 3.5},  # replace=False: 50th percentile (median) of [3, 4, 5, 6, 1, 2]
+            {50: 3.5},  # replace=False: 50th percentile (median) of [1, 2, 3, 4, 5, 6]
         ),
     ],
 )

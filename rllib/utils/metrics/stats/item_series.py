@@ -113,7 +113,8 @@ class ItemSeriesStats(StatsBase):
         all_items = list(chain.from_iterable(all_items))
         if not replace:
             all_items = list(self.items) + all_items
-        self._set_items(all_items)
+        # Don't respect window explicitly to respect all incoming values.
+        self.items = all_items
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
