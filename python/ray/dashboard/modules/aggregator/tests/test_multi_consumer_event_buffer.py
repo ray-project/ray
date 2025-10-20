@@ -62,7 +62,7 @@ class TestMultiConsumerEventBuffer:
         events = []
         event_types = [
             RayEvent.EventType.TASK_DEFINITION_EVENT,
-            RayEvent.EventType.TASK_EXECUTION_EVENT,
+            RayEvent.EventType.TASK_LIFECYCLE_EVENT,
             RayEvent.EventType.ACTOR_TASK_DEFINITION_EVENT,
         ]
         for i in range(3):
@@ -233,6 +233,37 @@ class TestMultiConsumerEventBuffer:
 
         assert len(consumed_events) == total_events
         assert consumed_events == produced_events
+
+    @pytest.mark.asyncio
+    async def test_events_are_evicted_once_consumed_by_all_consumers(self):
+        """Test events are evicted from the buffer once they are consumed by all consumers"""
+        buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=2)
+        consumer_name_1 = "test_consumer_1"
+        consumer_name_2 = "test_consumer_2"
+        await buffer.register_consumer(consumer_name_1)
+        await buffer.register_consumer(consumer_name_2)
+
+        # Add events
+        events = []
+        for i in range(10):
+            event = _create_test_event(f"event{i}".encode())
+            events.append(event)
+            await buffer.add_event(event)
+
+        assert await buffer.size() == 10
+        # Consumer 1 reads first batch
+        batch1 = await buffer.wait_for_batch(consumer_name_1, timeout_seconds=0.1)
+        assert batch1 == events[:2]
+
+        # buffer size does not change as consumer 2 is yet to consume these events
+        assert await buffer.size() == 10
+
+        # Consumer 2 reads from beginning
+        batch2 = await buffer.wait_for_batch(consumer_name_2, timeout_seconds=0.1)
+        assert batch2 == events[:2]
+
+        # size reduces by 2 as both consumers have consumed 2 events
+        assert await buffer.size() == 8
 
 
 if __name__ == "__main__":

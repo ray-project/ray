@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
-FROM cr.ray.io/rayproject/manylinux AS builder
+ARG ARCH_SUFFIX=
+FROM cr.ray.io/rayproject/manylinux$ARCH_SUFFIX AS builder
 
 ARG PYTHON_VERSION=3.9
 ARG BUILDKITE_BAZEL_CACHE_URL
@@ -26,12 +27,13 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
 
-bazelisk build --config=ci //:ray_pkg_zip
+bazelisk build --config=ci //:ray_pkg_zip //:ray_py_proto_zip
 
 cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip
+cp bazel-bin/ray_py_proto.zip /home/forge/ray_py_proto.zip
 
 EOF
 
 FROM scratch
 
-COPY --from=builder /home/forge/ray_pkg.zip /ray_pkg.zip
+COPY --from=builder /home/forge/ray_pkg.zip /home/forge/ray_py_proto.zip /

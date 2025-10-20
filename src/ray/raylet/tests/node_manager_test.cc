@@ -14,9 +14,11 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -293,12 +295,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
 class NodeManagerTest : public ::testing::Test {
  public:
   NodeManagerTest()
-      : client_call_manager_(io_service_, /*record_stats=*/false),
+      : client_call_manager_(io_service_, /*record_stats=*/false, /*local_address=*/""),
         worker_rpc_pool_([](const auto &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         }),
         raylet_client_pool_(
-            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }) {
+            [](const auto &) { return std::make_shared<rpc::FakeRayletClient>(); }),
+        fake_task_by_state_counter_() {
     RayConfig::instance().initialize(R"({
       "raylet_liveness_self_check_interval_ms": 100
     })");
@@ -310,7 +313,6 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
-    fake_task_by_state_counter_ = ray::observability::FakeGauge();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -368,7 +370,8 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.labels);
 
     auto get_node_info_func = [&](const NodeID &node_id) {
-      return mock_gcs_client_->Nodes().Get(node_id);
+      auto ptr = mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
+      return ptr ? std::optional(*ptr) : std::nullopt;
     };
 
     auto max_task_args_memory = static_cast<int64_t>(
@@ -414,11 +417,15 @@ class NodeManagerTest : public ::testing::Test {
         *lease_dependency_manager_,
         mock_worker_pool_,
         leased_workers_,
-        *mock_store_client_,
+        mock_store_client_,
         std::move(mutable_object_provider),
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
-        [](const std::string &) {});
+        [](const std::string &) {},
+        nullptr,
+        shutting_down_,
+        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
+        boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
 
   instrumented_io_context io_service_;
@@ -430,7 +437,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManagerInterface> cluster_lease_manager_;
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
@@ -446,10 +453,13 @@ class NodeManagerTest : public ::testing::Test {
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+
+  std::atomic_bool shutting_down_ = RayletShutdownState::ALIVE;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
@@ -463,8 +473,9 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckSelfAlive(_, _))
-      .WillOnce([&promise](const auto &, const auto &) { promise.set_value(); });
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
+      .WillOnce(
+          [&promise](const auto &, const auto &, const auto &) { promise.set_value(); });
   node_manager_->RegisterGcs();
   std::thread thread{[this] {
     // Run the io_service in a separate thread to avoid blocking the main thread.
@@ -478,7 +489,8 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
 }
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
       .WillOnce(Return(Status::OK()));
@@ -577,19 +589,16 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
           });
 
   // Save the publish_node_change_callback for publishing a node failure event later.
-  std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>
+  std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
       publish_node_change_callback;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncSubscribeToNodeChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
                     const gcs::StatusCallback &done) {
         publish_node_change_callback = subscribe;
       });
-
-  // Invoke RegisterGcs and wait until publish_node_change_callback is set.
   node_manager_->RegisterGcs();
-  while (!publish_node_change_callback) {
-    io_service_.run_one();
-  }
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
   const auto owner_node_id = NodeID::FromRandom();
@@ -621,7 +630,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // After RequestWorkerLease, a leased worker is ready in the NodeManager.
   // Then use publish_node_change_callback to say owner_node_id is dead.
   // The leased worker should not be killed by this because it is a detached actor.
-  GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_state(GcsNodeInfo::DEAD);
   publish_node_change_callback(owner_node_id, std::move(node_info));
   // The worker should still be alive because it should not be killed by
@@ -1098,6 +1107,40 @@ size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) 
          local_lease_manager.leases_to_grant_.size();
 }
 
+TEST_F(NodeManagerTest, TestReschedulingLeasesDuringHandleDrainRaylet) {
+  // Test that when the node is being drained, leases inside local lease manager
+  // will be cancelled and re-added to the cluster lease manager for rescheduling.
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_FALSE(true) << "This callback should not be called.";
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 1);
+  rpc::DrainRayletRequest drain_raylet_request;
+  rpc::DrainRayletReply drain_raylet_reply;
+  drain_raylet_request.set_reason(
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  node_manager_->HandleDrainRaylet(
+      drain_raylet_request,
+      &drain_raylet_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  // The lease is infeasible now since the local node is draining.
+  ASSERT_EQ(cluster_lease_manager_->GetInfeasibleQueueSize(), 1);
+}
+
 TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request_worker_lease_request;
@@ -1218,6 +1261,110 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
+
+class NodeManagerDeathTest : public NodeManagerTest,
+                             public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
+  // When the GCS publishes the node's death,
+  // 1. The raylet should kill itself immediately if it's not shutting down.
+  // 2. The raylet should ignore the death publish if the shutdown process has already
+  //    started
+  const bool shutting_down_during_death_publish = GetParam();
+
+  gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+      publish_node_change_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
+                    const gcs::StatusCallback &done) {
+        publish_node_change_callback = subscribe;
+      });
+  node_manager_->RegisterGcs();
+
+  shutting_down_ = shutting_down_during_death_publish;
+
+  rpc::GcsNodeAddressAndLiveness dead_node_info;
+  dead_node_info.set_node_id(raylet_node_id_.Binary());
+  dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
+
+  if (shutting_down_during_death_publish) {
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+  } else {
+    ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
+                 ".*Exiting because this node manager has.*");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
+                         NodeManagerDeathTest,
+                         testing::Bool());
+
+class DrainRayletIdempotencyTest
+    : public NodeManagerTest,
+      public ::testing::WithParamInterface<
+          std::tuple<rpc::autoscaler::DrainNodeReason, bool>> {};
+
+TEST_P(DrainRayletIdempotencyTest, TestHandleDrainRayletIdempotency) {
+  // drain_reason: the reason for the drain request (PREEMPTION or IDLE_TERMINATION).
+  // is_node_idle: determines whether the node is idle.
+  // is_node_idle == true: the node is idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to accept the request.
+  // is_node_idle == false: the node is not idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to reject the request.
+
+  auto [drain_reason, is_node_idle] = GetParam();
+  if (!is_node_idle) {
+    cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
+        WorkFootprint::NODE_WORKERS);
+  }
+
+  // Whether the drain request is expected to be accepted. Note that for preemption we
+  // must always accept the request regardless of the node's idle state.
+  bool drain_request_accepted = false;
+  if (drain_reason == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+    drain_request_accepted = true;
+  } else {
+    drain_request_accepted = is_node_idle;
+  }
+
+  rpc::DrainRayletRequest request;
+  request.set_reason(drain_reason);
+  request.set_reason_message("Test drain");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+
+  rpc::DrainRayletReply reply1;
+  node_manager_->HandleDrainRaylet(
+      request, &reply1, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply1.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+
+  rpc::DrainRayletReply reply2;
+  node_manager_->HandleDrainRaylet(
+      request, &reply2, [&](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply2.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DrainRayletIdempotencyVariations,
+    DrainRayletIdempotencyTest,
+    ::testing::Combine(
+        ::testing::Values(
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION,
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION),
+        ::testing::Bool()));
 
 }  // namespace ray::raylet
 

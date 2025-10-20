@@ -174,6 +174,10 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
+std::optional<pid_t> Worker::GetSavedProcessGroupId() const { return saved_pgid_; }
+
+void Worker::SetSavedProcessGroupId(pid_t pgid) { saved_pgid_ = pgid; }
+
 void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;
   if (!lease_id.IsNil()) {

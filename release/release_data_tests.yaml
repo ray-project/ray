@@ -1,5 +1,5 @@
 - name: DEFAULTS
-  group: data-tests
+  group: data-base
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -159,7 +159,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -182,7 +182,7 @@
       # too many objects references on the head node. So, we only run it on
       # autoscaling clusters.
       scaling: [autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -267,12 +267,18 @@
 
   run:
     timeout: 300
-    script: python streaming_split_benchmark.py --num-workers 10
     wait_for_nodes:
       num_nodes: 10
 
   variations:
     - __suffix__: regular
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10
+
+    - __suffix__: regular_equal
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --equal-split
+
     - __suffix__: early_stop
       # This test case will early stop the data ingestion iteration on the GPU actors.
       # This is a common usage in PyTorch Lightning
@@ -485,7 +491,7 @@
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
-  group: batch-inference
+  group: data-batch-inference
 
   cluster:
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
@@ -505,7 +511,7 @@
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
-  group: batch-inference
+  group: data-batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -520,7 +526,7 @@
 - name: image_classification_chaos_no_scale_back
   stable: False
   working_dir: nightly_tests
-  group: batch-inference
+  group: data-batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -535,7 +541,7 @@
 
 - name: image_embedding_from_uris_{{case}}
   frequency: weekly
-  group: batch-inference
+  group: data-batch-inference
 
   matrix:
     setup:
@@ -565,27 +571,33 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
-  frequency: weekly
-  group: batch-inference
+  frequency: "{{frequency}}"
+  group: data-batch-inference
 
   matrix:
     setup:
       case: []
       cluster_type: []
       args: []
+      frequency: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
+          frequency: weekly
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
+          frequency: weekly
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 40 40 --chaos
+          # This release test is run on a 'manual' frequency because it's expected to
+          # fail.
+          frequency: manual
 
   cluster:
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
@@ -598,7 +610,7 @@
 
 - name: text_embedding_{{case}}
   frequency: weekly
-  group: batch-inference
+  group: data-batch-inference
 
   matrix:
     setup:

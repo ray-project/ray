@@ -5,9 +5,13 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig, TaskResult
+from ray.serve.schema import (
+    CeleryAdapterConfig,
+    TaskProcessorAdapter,
+    TaskProcessorConfig,
+    TaskResult,
+)
 from ray.serve.task_consumer import task_consumer, task_handler
-from ray.serve.task_processor import TaskProcessorAdapter
 
 
 class MockTaskProcessorAdapter(TaskProcessorAdapter):
@@ -21,7 +25,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self.register_task_handle_mock = MagicMock()
 
-    def initialize(self):
+    def initialize(self, consumer_concurrency: int = 3):
         pass
 
     def register_task_handle(self, func, name=None):
@@ -130,6 +134,7 @@ class TestTaskConsumerDecorator:
 
     def _verify_and_cleanup(self, instance, expected_calls=None):
         """Verify consumer and cleanup instance."""
+        instance.initialize_callable(5)
         adapter = instance._adapter
         assert adapter._start_consumer_received
 

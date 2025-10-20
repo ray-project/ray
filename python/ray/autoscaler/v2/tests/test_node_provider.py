@@ -616,6 +616,64 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
+    def test_decrease_cr_replicas_below_observed_then_scale_down(self):
+        """
+        If a user/operator decreases the CR's replicas below the observed number of
+        Pods without specifying workersToDelete, scaling down should base the
+        new desired on observed (floor), decrement by one, and add the pod to
+        workersToDelete.
+        """
+        # Prepare a RayCluster CR with replicas set to 0 for the small-group
+        # while the pod list contains multiple small-group pods.
+        raycluster_cr = get_basic_ray_cr()
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+
+        small_group = "small-group"
+        pod_names = []
+        for pod in mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+        assert len(pod_names) >= 2
+
+        # Decrease CR replicas below observed without workersToDelete.
+        assert raycluster_cr["spec"]["workerGroupSpecs"][0]["groupName"] == small_group
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
+
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            k8s_api_client=mock_client,
+        )
+
+        # Terminate a single observed pod.
+        pod_to_delete = pod_names[0]
+        provider.terminate(ids=[pod_to_delete], request_id="term-decrease")
+
+        # Expected: replicas becomes observed-1; workersToDelete contains the pod.
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": len(pod_names) - 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        pod_to_delete,
+                    ]
+                },
+            },
+        ]
+
     def test_scale_down_multiple_pods_of_node_type(self):
         """
         Test the case where multiple pods of the same node type are scaled
@@ -626,8 +684,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # here because podlist1 only contains one running worker.
         raycluster_cr = get_basic_ray_cr()
         raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
-        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
-        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
         mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
@@ -720,6 +776,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # Setup mock RayCluster CR with numOfHosts: 2 and replicas: 1,
         # resulting in 2 workers total.
         raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
         mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
