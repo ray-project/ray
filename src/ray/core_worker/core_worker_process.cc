@@ -819,7 +819,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         io_service_,
         *write_locked.Get()->client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-      stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
+      if (server_status.ok()) {
+        stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
+      } else {
+        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
+                          "Metrics will not be exported. "
+                       << "Exporter agent status: " << server_status.ToString();
+      }
     });
   }
 }

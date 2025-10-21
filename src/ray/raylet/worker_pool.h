@@ -38,7 +38,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
 
