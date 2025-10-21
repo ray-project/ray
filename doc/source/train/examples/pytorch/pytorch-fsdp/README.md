@@ -233,8 +233,8 @@ def train_func(config):
 
             # Report metrics and save checkpoint after each epoch
             avg_loss = running_loss / num_batches
-            metrics = {"loss": avg_loss, "epoch": epoch}
-            report_metrics_and_save_fsdp_checkpoint(model, optimizer, metrics)
+            metrics = {"loss": avg_loss}
+            report_metrics_and_save_fsdp_checkpoint(model, optimizer, metrics, epoch)
 
             # Log metrics from rank 0 only to avoid duplicate outputs
             if world_rank == 0:
@@ -486,7 +486,7 @@ import torch.distributed.checkpoint as dcp
 
 
 ```python
-def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint):
+def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint) -> int:
     """Load an FSDP checkpoint into the model and optimizer.
     
     This function handles distributed checkpoint loading with automatic resharding
@@ -497,6 +497,9 @@ def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ck
         model: The FSDP-wrapped model to load state into
         optimizer: The optimizer to load state into
         ckpt: Ray Train checkpoint containing the saved state
+
+    Returns:
+        int: The epoch number saved within the checkpoint.
     """
     logger.info("Loading distributed checkpoint for resuming training...")
     
@@ -526,7 +529,7 @@ The following function handles periodic checkpoint saving during training, combi
 
 ```python
 def report_metrics_and_save_fsdp_checkpoint(
-    model: FSDPModule, optimizer: torch.optim.Optimizer, metrics: dict
+    model: FSDPModule, optimizer: torch.optim.Optimizer, metrics: dict, epoch: int = 0
 ) -> None:
     """Report training metrics and save an FSDP checkpoint.
     
@@ -537,13 +540,13 @@ def report_metrics_and_save_fsdp_checkpoint(
     Args:
         model: The FSDP-wrapped model to checkpoint
         optimizer: The optimizer to checkpoint
-        metrics: Dictionary of metrics to report (e.g., loss, accuracy, epoch)
+        metrics: Dictionary of metrics to report (e.g., loss, accuracy)
+        epoch: The current epoch to be saved
     """
     logger.info("Saving checkpoint and reporting metrics...")
     
     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
         # Perform a distributed checkpoint with DCP
-        epoch = metrics.get("epoch", 0)
         state_dict = {"app": AppState(model, optimizer, epoch)}
         dcp.save(state_dict=state_dict, checkpoint_id=temp_checkpoint_dir)
 
