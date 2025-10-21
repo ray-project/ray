@@ -38,7 +38,7 @@ namespace gcs {
 // RAY_gcs_server_request_timeout_seconds
 int64_t GetGcsTimeoutMs();
 
-using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+using SubscribeOperation = std::function<void(const StatusCallback &done)>;
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class GcsClient;
@@ -170,8 +170,7 @@ class ActorInfoAccessor {
   /// \param actor_id The ID of actor to be subscribed to.
   /// \param subscribe Callback that will be called each time when the actor is updated.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribe(
+  virtual void AsyncSubscribe(
       const ActorID &actor_id,
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done);
@@ -179,8 +178,7 @@ class ActorInfoAccessor {
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id);
+  virtual void AsyncUnsubscribe(const ActorID &actor_id);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -237,8 +235,7 @@ class JobInfoAccessor {
   ///
   /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
+  virtual void AsyncSubscribeAll(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done);
 
@@ -511,13 +508,6 @@ class NodeResourceInfoAccessor {
   virtual void AsyncGetDrainingNodes(
       const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback);
 
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  virtual void AsyncResubscribe();
-
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
@@ -533,11 +523,6 @@ class NodeResourceInfoAccessor {
                                      rpc::GetAllResourceUsageReply &reply);
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_resource_operation_;
-  SubscribeOperation subscribe_batch_resource_usage_operation_;
-
   GcsClient *client_impl_;
 
   Sequencer<NodeID> sequencer_;
@@ -607,8 +592,7 @@ class WorkerInfoAccessor {
   ///
   /// \param subscribe Callback that will be called each time when a worker failed.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToWorkerFailures(
+  virtual void AsyncSubscribeToWorkerFailures(
       const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done);
 
   /// Report a worker failure to GCS asynchronously.

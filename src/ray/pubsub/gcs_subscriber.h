@@ -42,17 +42,16 @@ class GcsSubscriber {
   /// empty.
 
   /// Uses GCS pubsub when created with `subscriber`.
-  Status SubscribeActor(
+  void SubscribeActor(
       const ActorID &id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const gcs::StatusCallback &done);
-  Status UnsubscribeActor(const ActorID &id);
+  void UnsubscribeActor(const ActorID &id);
 
   bool IsActorUnsubscribed(const ActorID &id);
 
-  Status SubscribeAllJobs(
-      const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-      const gcs::StatusCallback &done);
+  void SubscribeAllJobs(const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                        const gcs::StatusCallback &done);
 
   void SubscribeAllNodeInfo(const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
                             const gcs::StatusCallback &done);
@@ -61,7 +60,7 @@ class GcsSubscriber {
       const gcs::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
       const gcs::StatusCallback &done);
 
-  Status SubscribeAllWorkerFailures(
+  void SubscribeAllWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const gcs::StatusCallback &done);
 

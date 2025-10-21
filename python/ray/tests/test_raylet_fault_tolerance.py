@@ -7,6 +7,8 @@ from ray._private.test_utils import wait_for_condition
 from ray.core.generated import autoscaler_pb2
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import psutil
+
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
 def test_request_worker_lease_idempotent(
@@ -79,6 +81,58 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
         return True
 
     wait_for_condition(node_is_dead, timeout=1)
+
+
+@pytest.fixture
+def inject_rpc_failure(monkeypatch):
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "NodeManagerService.grpc_client.NotifyGCSRestart=1:100:0",
+    )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        {
+            "_system_config": {
+                # Extending the fallback timeout to focus on death
+                # notification received from GCS_ACTOR_CHANNEL pubsub
+                "timeout_ms_task_wait_for_death_info": 10000,
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_notify_gcs_restart_idempotent(
+    inject_rpc_failure,
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+
+    @ray.remote(num_cpus=1, max_restarts=0)
+    class DummyActor:
+        def get_pid(self):
+            return psutil.Process().pid
+
+        def ping(self):
+            return "pong"
+
+    actor = DummyActor.remote()
+    ray.get(actor.ping.remote())
+    actor_pid = ray.get(actor.get_pid.remote())
+
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    p = psutil.Process(actor_pid)
+    p.kill()
+
+    # If the actor death notification is not received from the GCS pubsub, this will timeout since
+    # the fallback via wait_for_death_info_tasks in the actor task submitter will never trigger
+    # since it's set to 10 seconds.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ping.remote(), timeout=5)
 
 
 if __name__ == "__main__":
