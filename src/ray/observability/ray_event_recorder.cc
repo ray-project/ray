@@ -21,8 +21,6 @@
 namespace ray {
 namespace observability {
 
-using std::literals::operator""sv;
-
 RayEventRecorder::RayEventRecorder(
     rpc::EventAggregatorClient &event_aggregator_client,
     instrumented_io_context &io_service,
@@ -81,7 +79,7 @@ void RayEventRecorder::AddEvents(
     // Record dropped events from the buffer
     RAY_LOG(ERROR) << "Dropping " << events_to_remove << " events from the buffer.";
     dropped_events_counter_.Record(events_to_remove,
-                                   {{"Source"sv, std::string(metric_source_)}});
+                                   {{"Source", std::string(metric_source_)}});
   }
   for (auto &event : data_list) {
     buffer_.push_back(std::move(event));

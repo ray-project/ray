@@ -143,6 +143,9 @@ class ActorManager {
   /// \param actor_id ID of the actor to be subscribed.
   void SubscribeActorState(const ActorID &actor_id);
 
+  /// Returns the actor handle if it exists, nullptr otherwise.
+  std::shared_ptr<ActorHandle> GetActorHandleIfExists(const ActorID &actor_id);
+
  private:
   /// Give this worker a handle to an actor.
   ///

@@ -39,7 +39,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":lease_dependency_manager",
-        ":worker",
+        ":worker_interface",
         ":worker_pool",
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",
@@ -80,11 +80,23 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "worker_interface",
+    hdrs = ["worker_interface.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "worker",
     srcs = ["worker.cc"],
     hdrs = ["worker.h"],
     visibility = [":__subpackages__"],
     deps = [
+        ":worker_interface",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/core_worker_rpc_client:core_worker_client",
@@ -99,21 +111,34 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_worker",
+    hdrs = ["fake_worker.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker",
+        "//src/ray/raylet_ipc_client:client_connection",
+    ],
+)
+
+ray_cc_library(
     name = "worker_pool",
     srcs = ["worker_pool.cc"],
     hdrs = ["worker_pool.h"],
     visibility = [":__subpackages__"],
     deps = [
         ":runtime_env_agent_client",
-        ":worker",
+        ":worker_interface",
         "//src/ray/common:constants",
         "//src/ray/common:lease",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:ray_config",
         "//src/ray/common:runtime_env",
         "//src/ray/common:status",
+        "//src/ray/core_worker_rpc_client:core_worker_client_interface",
         "//src/ray/gcs_rpc_client:gcs_client",
+        "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/raylet_ipc_client:client_connection",
+        "//src/ray/util:container_util",
         "//src/ray/util:network_util",
         "//src/ray/util:time",
         "@boost//:system",
@@ -161,6 +186,7 @@ ray_cc_library(
     deps = [
         ":local_object_manager_interface",
         ":worker_pool",
+        "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -183,15 +209,16 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":worker",
+        ":worker_interface",
         ":worker_pool",
+        "//src/ray/common:lease",
         "//src/ray/common:memory_monitor",
         "@com_google_absl//absl/time",
     ],
 )
 
 ray_cc_library(
-    name = "node_manager",
+    name = "raylet_lib",
     srcs = [
         "node_manager.cc",
     ],
@@ -247,21 +274,6 @@ ray_cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "raylet_lib",
-    srcs = ["raylet.cc"],
-    hdrs = ["raylet.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":node_manager",
-        "//src/ray/common:asio",
-        "//src/ray/object_manager",
-        "//src/ray/util:network_util",
-        "//src/ray/util:time",
-        "@boost//:asio",
     ],
 )
 

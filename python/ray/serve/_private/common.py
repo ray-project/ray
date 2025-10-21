@@ -757,12 +757,17 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
+QUEUED_REQUESTS_KEY = "queued_requests"
 
 
 @dataclass(order=True)
 class TimeStampedValue:
     timestamp: float
     value: float = field(compare=False)
+
+
+# Type alias for time series data
+TimeSeries = List[TimeStampedValue]
 
 
 @dataclass
@@ -795,9 +800,9 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
-    queued_requests: List[TimeStampedValue]
+    queued_requests: TimeSeries
     aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, List[TimeStampedValue]]]
+    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
     timestamp: float
 
     @property
@@ -838,5 +843,5 @@ class ReplicaMetricReport:
 
     replica_id: ReplicaID
     aggregated_metrics: Dict[str, float]
-    metrics: Dict[str, List[TimeStampedValue]]
+    metrics: Dict[str, TimeSeries]
     timestamp: float

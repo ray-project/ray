@@ -82,7 +82,7 @@ def test_load_first_config():
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
         assert config.depsets is not None
-        assert len(config.depsets) == 8
+        assert len(config.depsets) == 7
 
 
 def test_load_second_config():
@@ -101,17 +101,14 @@ def test_load_all_configs_first_config():
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_configs(config_path=Path(tmpdir) / "test.depsets.yaml")
         assert config.depsets is not None
-        assert len(config.depsets) == 11
-
-
-# load all configs should always load all depsets
-def test_load_all_configs_second_config():
+        assert len(config.depsets) == 10
+    # load all configs should always load all depsets
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_configs(config_path=Path(tmpdir) / "test2.depsets.yaml")
         assert config.depsets is not None
-        assert len(config.depsets) == 11
+        assert len(config.depsets) == 10
 
 
 def test_merge_configs():
@@ -122,7 +119,7 @@ def test_merge_configs():
         config2 = workspace.load_config(config_path=Path(tmpdir) / "test2.depsets.yaml")
         merged_config = workspace.merge_configs([config, config2])
         assert merged_config.depsets is not None
-        assert len(merged_config.depsets) == 11
+        assert len(merged_config.depsets) == 10
 
 
 def test_get_configs_dir():
