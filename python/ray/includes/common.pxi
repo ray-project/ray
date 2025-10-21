@@ -27,6 +27,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
+    kRayInternalNamespacePrefix,
 )
 
 from ray.exceptions import (
@@ -159,3 +160,9 @@ RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
 RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
 RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
 RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
+
+RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
+# Prefix for namespaces which are used internally by ray.
+# Jobs within these namespaces should be hidden from users
+# and should not be considered user activity.
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"

@@ -481,7 +481,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
@@ -509,7 +509,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
@@ -587,7 +587,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillOnce(Return(Status::OK()));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
