@@ -53,18 +53,15 @@ export NVSHMEM_MPI_SUPPORT=0
 export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
 export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
-NVSHMEM_VERSION="3.2.5-1"
+NVSHMEM_VERSION="3.4.5"
 (
     echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
-    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_${NVSHMEM_VERSION}.txz
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_${NVSHMEM_VERSION}.tar.gz
     tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
     cd nvshmem_src
-    git init
-    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
-    git apply --reject --whitespace=fix eep_nvshmem.patch
 
     cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
     cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
