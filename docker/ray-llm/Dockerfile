@@ -31,15 +31,75 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
-# Install DeepEP + PPLX kernels via vLLM installation script
-mkdir work
-cd work
-export CUDA_HOME=/usr/local/cuda
-git clone https://github.com/vllm-project/vllm.git
-cd vllm
-git checkout v0.11.0
-cd tools/ep_kernels/
-TORCH_CUDA_ARCH_LIST="9.0" bash install_python_libraries.sh
+# Install DeepEP kernels
+EP_TEMP_DIR=$(pwd)/"ep_temp_dir"
+mkdir -p "${EP_TEMP_DIR}"
+
+NVSHMEM_VERSION="3.2.5-1"
+(
+    echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
+
+    cd "${EP_TEMP_DIR}"
+    mkdir -p nvshmem_src
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_${NVSHMEM_VERSION}.txz
+    tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
+    cd nvshmem_src
+    git init
+    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
+    git apply --reject --whitespace=fix eep_nvshmem.patch
+
+    # disable all features except IBGDA
+    export NVSHMEM_IBGDA_SUPPORT=1
+    export NVSHMEM_SHMEM_SUPPORT=0
+    export NVSHMEM_UCX_SUPPORT=0
+    export NVSHMEM_USE_NCCL=0
+    export NVSHMEM_PMIX_SUPPORT=0
+    export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
+    export NVSHMEM_USE_GDRCOPY=0
+    export NVSHMEM_IBRC_SUPPORT=0
+    export NVSHMEM_BUILD_TESTS=0
+    export NVSHMEM_BUILD_EXAMPLES=0
+    export NVSHMEM_MPI_SUPPORT=0
+    export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
+    export NVSHMEM_BUILD_TXZ_PACKAGE=0
+
+    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
+    cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
+)
+
+# Install PPLX Kernels
+(
+    echo "Installing PPLX Kernels"
+
+    cd "${EP_TEMP_DIR}"
+
+    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
+
+    # build and install pplx, require pytorch installed
+    git clone --depth 1 --no-checkout https://github.com/ppl-ai/pplx-kernels
+    cd pplx-kernels
+    # using a specific commit to make the build deterministic:
+    # https://github.com/ppl-ai/pplx-kernels/commit/1d76f488d794f01dc0e895cd746b235392379757
+    git fetch --depth 1 origin 1d76f488d794f01dc0e895cd746b235392379757
+    git checkout 1d76f488d794f01dc0e895cd746b235392379757
+    # see https://github.com/pypa/pip/issues/9955#issuecomment-838065925
+    # PIP_NO_BUILD_ISOLATION=0 disables build isolation
+    PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
+)
+
+# Install DeepEP Kernels
+{
+    echo "Installing DeepEP Kernels"
+
+    cd "${EP_TEMP_DIR}"
+
+    git clone https://github.com/deepseek-ai/DeepEP.git
+    cd DeepEP
+    git checkout 73b6ea4
+    export NVSHMEM_DIR="${EP_TEMP_DIR}/nvshmem_install"
+    export CUDA_HOME=/usr/local/cuda
+    TORCH_CUDA_ARCH_LIST=9.0 pip install --no-build-isolation -vvv -e .
+}
 
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
