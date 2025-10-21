@@ -687,17 +687,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def update_usages(self):
         self._update_reservation()
 
-        # NOTE: We don't call self._op_budgets.clear() here
-        # so that the last completed operator can reset their
-        # metrics.
+        # NOTE: We don't call self._op_budgets.clear() so that
+        # the streaming executor can indirectly loop through
+        # self._op_budgets and reset their budget gauges.
         for op in self._op_budgets:
             self._op_budgets[op] = ExecutionResources.zero()
 
         eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
-
-        self._op_budgets = {op: None for op in eligible_ops}
 
         # Remaining of shared resources.
         remaining_shared = self._total_shared
