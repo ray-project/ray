@@ -6,7 +6,16 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 from uuid import uuid4
 
 import numpy as np
@@ -454,12 +463,6 @@ class _StatsActor:
         self.next_dataset_id += 1
         return dataset_id
 
-    def update_metrics(self, execution_metrics, iteration_metrics):
-        for metrics in execution_metrics:
-            self.update_execution_metrics(*metrics)
-        for metrics in iteration_metrics:
-            self.update_iteration_metrics(*metrics)
-
     def update_execution_metrics(
         self,
         dataset_tag: str,
@@ -814,6 +817,11 @@ class _StatsManager:
     # _StatsManager._update_thread will close itself.
     UPDATE_THREAD_INACTIVITY_LIMIT = 5
 
+    @dataclass
+    class _MetricState:
+        update_interval_s: float = 5.0
+        last_updated: float = 0.0
+
     def __init__(self):
         # Lazily get stats actor handle to avoid circular import.
         self._stats_actor_handle: Optional[ActorHandle] = None
@@ -828,9 +836,13 @@ class _StatsManager:
         # Lock for updating stats snapshots
         self._stats_lock: threading.Lock = threading.Lock()
 
-        # Background thread to make remote calls to _StatsActor
-        self._update_thread: Optional[threading.Thread] = None
-        self._update_thread_lock: threading.Lock = threading.Lock()
+        # Interval for sending stats to _StatsActor
+        self._execution_metrics_state = self._MetricState(
+            update_interval_s=5.0, last_updated=0.0
+        )
+        self._iteration_metrics_state = self._MetricState(
+            update_interval_s=5.0, last_updated=0.0
+        )
 
     def _get_or_create_stats_actor(
         self, skip_cache: bool = False
@@ -860,78 +872,6 @@ class _StatsManager:
                 )
 
         return self._stats_actor_handle
-
-    def _start_thread_if_not_running(self):
-        # Start background update thread if not running.
-        with self._update_thread_lock:
-            if self._update_thread is None or not self._update_thread.is_alive():
-
-                def _run_update_loop():
-                    iter_stats_inactivity = 0
-                    while True:
-                        if self._last_iteration_stats or self._last_execution_stats:
-                            try:
-                                stats_actor = self._get_or_create_stats_actor()
-                                if stats_actor is None:
-                                    continue
-
-                                # We need to convert the metrics to a snapshot that can be passed
-                                # to the stats actor. Primarily, the histogram metrics need to be
-                                # flushed and reset.
-                                formatted_execution_stats = []
-
-                                with self._stats_lock:
-                                    for (
-                                        dataset_tag,
-                                        op_metrics,
-                                        operator_tags,
-                                        state,
-                                        per_node_metrics,
-                                    ) in self._last_execution_stats.values():
-                                        op_metrics_dicts = [
-                                            metric.as_dict(reset_histogram_metrics=True)
-                                            for metric in op_metrics
-                                        ]
-                                        args = (
-                                            dataset_tag,
-                                            op_metrics_dicts,
-                                            operator_tags,
-                                            state,
-                                            per_node_metrics,
-                                        )
-                                        formatted_execution_stats.append(args)
-
-                                stats_actor.update_metrics.remote(
-                                    execution_metrics=list(formatted_execution_stats),
-                                    iteration_metrics=list(
-                                        self._last_iteration_stats.values()
-                                    ),
-                                )
-                                iter_stats_inactivity = 0
-                            except Exception:
-                                logger.debug(
-                                    "Error occurred during remote call to _StatsActor.",
-                                    exc_info=True,
-                                )
-                                return
-                        else:
-                            iter_stats_inactivity += 1
-                            if (
-                                iter_stats_inactivity
-                                >= _StatsManager.UPDATE_THREAD_INACTIVITY_LIMIT
-                            ):
-                                logger.debug(
-                                    "Terminating StatsManager thread due to inactivity."
-                                )
-                                return
-                        time.sleep(StatsManager.STATS_ACTOR_UPDATE_INTERVAL_SECONDS)
-
-                self._update_thread = threading.Thread(
-                    target=_run_update_loop, daemon=True
-                )
-                self._update_thread.start()
-
-    # Execution methods
 
     def _aggregate_per_node_metrics(
         self, op_metrics: List[OpRuntimeMetrics]
@@ -963,8 +903,13 @@ class _StatsManager:
         state: Dict[str, Any],
         force_update: bool = False,
     ):
-        per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
-        if force_update:
+        now = time.time()
+        if (
+            force_update
+            or (now - self._execution_metrics_state.last_updated)
+            > self._execution_metrics_state.update_interval_s
+        ):
+            per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
             op_metrics_dicts = [
                 metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
             ]
@@ -976,37 +921,18 @@ class _StatsManager:
                 per_node_metrics,
             )
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
-        else:
-            args = (dataset_tag, op_metrics, operator_tags, state, per_node_metrics)
-            with self._stats_lock:
-                self._last_execution_stats[dataset_tag] = args
-            self._start_thread_if_not_running()
+            self._execution_metrics_state.last_updated = now
 
-    def clear_last_execution_stats(self, dataset_tag: str):
-        # After dataset completes execution, remove cached execution stats.
-        # Marks the dataset as finished on job page's Ray Data Overview.
-        with self._stats_lock:
-            if dataset_tag in self._last_execution_stats:
-                del self._last_execution_stats[dataset_tag]
-
-    # Iteration methods
-
-    def update_iteration_metrics(self, stats: "DatasetStats", dataset_tag: str):
-        with self._stats_lock:
-            self._last_iteration_stats[dataset_tag] = (stats, dataset_tag)
-        self._start_thread_if_not_running()
-
-    def clear_iteration_metrics(self, dataset_tag: str):
-        # Delete the last iteration stats so that update thread will have
-        # a chance to terminate.
-        # Note we don't reset the actual metric values through the StatsActor
-        # since the value is essentially a counter value. See
-        # https://github.com/ray-project/ray/pull/48618 for more context.
-        with self._stats_lock:
-            if dataset_tag in self._last_iteration_stats:
-                del self._last_iteration_stats[dataset_tag]
-
-    # Other methods
+    def update_iteration_metrics(self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False):
+        now = time.time()
+        if (
+            force_update
+            or (now - self._iteration_metrics_state.last_updated)
+            > self._iteration_metrics_state.update_interval_s
+        ):
+            args = (stats, dataset_tag)
+            self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
+            self._iteration_metrics_state.last_updated = now
 
     def register_dataset_to_stats_actor(
         self,

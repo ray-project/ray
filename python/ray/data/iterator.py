@@ -22,7 +22,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -1025,10 +1025,6 @@ class DataIterator(abc.ABC):
             execution_plan,
             logical_plan,
         )
-
-    def __del__(self):
-        # Clear metrics on deletion in case the iterator was not fully consumed.
-        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
 
 # Backwards compatibility alias.

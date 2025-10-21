@@ -239,7 +239,7 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
-        StatsManager.clear_iteration_metrics(self._dataset_tag)
+        pass
 
     @contextmanager
     def get_next_batch_context(self):

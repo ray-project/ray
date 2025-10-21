@@ -269,9 +269,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 else DatasetState.FAILED.name,
                 force_update=True,
             )
-            # Once Dataset execution completes, mark it as complete
-            # and remove last cached execution stats.
-            StatsManager.clear_last_execution_stats(self._dataset_id)
+
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
