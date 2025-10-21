@@ -399,6 +399,13 @@ message IsLocalWorkerDeadReply {
   bool is_dead = 1;
 }
 
+message GetWorkerPIDsRequest {}
+
+message GetWorkerPIDsReply {
+  // PIDs of all drivers and workers managed by the local raylet.
+  repeated int32 pids = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -490,7 +497,7 @@ service NodeManagerService {
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that
   // are still needed. And Raylet will release other bundles.
-  // TODO: Need to handle network failure.
+  // Failure: Retries, it's idempotent.
   rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
@@ -512,4 +519,10 @@ service NodeManagerService {
   // Failure: Is currently only used when grpc channel is unavailable for retryable core
   // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
+  // Get the PIDs of all workers currently alive that are managed by the local Raylet.
+  // This includes connected driver processes but excludes system drivers (with namespace
+  // prefix "_ray_internal_")
+  // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
+  // list.
+  rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
 }
