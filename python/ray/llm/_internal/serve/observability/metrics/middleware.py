@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.routing import Match
 from starlette.types import Message
 
-from ray.llm._internal.serve.deployments.routers.middleware import (
+from ray.llm._internal.serve.core.ingress.middleware import (
     get_request_id,
     get_user_id,
 )
