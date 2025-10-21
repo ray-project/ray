@@ -330,6 +330,8 @@ int main(int argc, char *argv[]) {
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
+  std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
+      placement_group_resource_manager;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -916,6 +918,11 @@ int main(int argc, char *argv[]) {
         main_service, ray::ParseUrlEndpoint(raylet_socket_name));
     ray::local_stream_socket socket(main_service);
     ray::SetCloseOnExec(acceptor);
+
+    placement_group_resource_manager =
+        std::make_unique<ray::raylet::NewPlacementGroupResourceManager>(
+            *cluster_resource_scheduler);
+
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
@@ -944,6 +951,7 @@ int main(int argc, char *argv[]) {
         std::move(add_process_to_system_cgroup_hook),
         std::move(cgroup_manager),
         shutting_down,
+        *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket));
 
@@ -959,10 +967,16 @@ int main(int argc, char *argv[]) {
     ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
     metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
         "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
-    metrics_agent_client->WaitForServerReady(
-        [metrics_agent_port](const ray::Status &server_status) {
-          ray::stats::InitOpenTelemetryExporter(metrics_agent_port, server_status);
-        });
+    metrics_agent_client->WaitForServerReady([metrics_agent_port](
+                                                 const ray::Status &server_status) {
+      if (server_status.ok()) {
+        ray::stats::InitOpenTelemetryExporter(metrics_agent_port);
+      } else {
+        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
+                          "Metrics will not be exported. "
+                       << "Exporter agent status: " << server_status.ToString();
+      }
+    });
 
     // Initialize event framework. This should be done after the node manager is
     // initialized.

@@ -9,8 +9,13 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import DeveloperAPI
+from ray.util.metrics import Counter, Histogram
 
 torch, _ = try_import_torch()
 
@@ -67,38 +72,81 @@ class AggregatorActor(FaultAwareApply):
             device=self._device,
         )
 
+        # Ray metrics
+        self._metrics_get_batch_time = Histogram(
+            name="rllib_utils_aggregator_actor_get_batch_time",
+            description="Time spent in AggregatorActor.get_batch()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_get_batch_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_episode_owner_died = Counter(
+            name="rllib_utils_aggregator_actor_episode_owner_died_counter",
+            description="N times ray.get() on an episode ref failed ",
+            tag_keys=("rllib",),
+        )
+        self._metrics_episode_owner_died.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_get_batch_input_episode_refs = Counter(
+            name="rllib_utils_aggregator_actor_get_batch_input_episode_refs_counter",
+            description="Number of episode refs received as input to get_batch()",
+            tag_keys=("rllib",),
+        )
+        self._metrics_get_batch_input_episode_refs.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_get_batch_output_batches = Counter(
+            name="rllib_utils_aggregator_actor_get_batch_output_batches_counter",
+            description="Number of policy batches output by get_batch()",
+            tag_keys=("rllib",),
+        )
+        self._metrics_get_batch_output_batches.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
-        episodes: List[EpisodeType] = []
-        # It's possible that individual refs are invalid due to the EnvRunner
-        # that produced the ref has crashed or had its entire node go down.
-        # In this case, try each ref individually and collect only valid results.
-        try:
-            episodes = tree.flatten(ray.get(episode_refs))
-        except ray.exceptions.OwnerDiedError:
-            for ref in episode_refs:
-                try:
-                    episodes.extend(ray.get(ref))
-                except ray.exceptions.OwnerDiedError:
-                    pass
+        with TimerAndPrometheusLogger(self._metrics_get_batch_time):
+            if len(episode_refs) > 0:
+                self._metrics_get_batch_input_episode_refs.inc(value=len(episode_refs))
 
-        env_steps = sum(len(e) for e in episodes)
+            episodes: List[EpisodeType] = []
+            # It's possible that individual refs are invalid due to the EnvRunner
+            # that produced the ref has crashed or had its entire node go down.
+            # In this case, try each ref individually and collect only valid results.
+            try:
+                episodes = tree.flatten(ray.get(episode_refs))
+            except ray.exceptions.OwnerDiedError:
+                for ref in episode_refs:
+                    try:
+                        episodes.extend(ray.get(ref))
+                    except ray.exceptions.OwnerDiedError:
+                        self._metrics_episode_owner_died.inc(value=1)
 
-        # If we have enough episodes collected to create a single train batch, pass
-        # them at once through the connector to receive a single train batch.
-        batch = self._learner_connector(
-            episodes=episodes,
-            rl_module=self._module,
-            metrics=self.metrics,
-        )
-        # Convert to a dict into a `MultiAgentBatch`.
-        # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
-        #  batch iterators support splitting over a dict).
-        ma_batch = MultiAgentBatch(
-            policy_batches={
-                pid: SampleBatch(pol_batch) for pid, pol_batch in batch.items()
-            },
-            env_steps=env_steps,
-        )
+            env_steps = sum(len(e) for e in episodes)
+
+            # If we have enough episodes collected to create a single train batch, pass
+            # them at once through the connector to receive a single train batch.
+            batch = self._learner_connector(
+                episodes=episodes,
+                rl_module=self._module,
+                metrics=self.metrics,
+            )
+            # Convert to a dict into a `MultiAgentBatch`.
+            # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
+            #  batch iterators support splitting over a dict).
+            ma_batch = MultiAgentBatch(
+                policy_batches={
+                    pid: SampleBatch(pol_batch) for pid, pol_batch in batch.items()
+                },
+                env_steps=env_steps,
+            )
+            self._metrics_get_batch_output_batches.inc(value=1)
         return ma_batch
 
     def get_metrics(self):
