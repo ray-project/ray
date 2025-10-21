@@ -11,6 +11,17 @@ _short_event_max = 1.5
 _long_event_min = 0.1
 _long_event_max = 600.0
 
+
+def linspace(start, stop, num):
+    if num == 1:
+        return [start]
+    step = (stop - start) / (num - 1)
+    return [start + step * i for i in range(num)]
+
+
+DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = linspace(start=0, stop=1, num=_num_buckets)
+DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = linspace(start=0, stop=1, num=_num_buckets)
+
 # More dense at the low end; timing short events.
 # DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = (
 #     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
