@@ -330,6 +330,7 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
 
@@ -685,7 +686,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def update_usages(self):
         self._update_reservation()
-
 
         eligible_ops = self._get_eligible_ops()
 
