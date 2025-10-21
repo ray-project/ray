@@ -4217,13 +4217,12 @@ def read_unity_catalog(
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
 ) -> Dataset:
-    """
-    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    """Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
     with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
