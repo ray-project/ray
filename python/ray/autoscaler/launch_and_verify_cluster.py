@@ -321,7 +321,12 @@ def cleanup_security_groups(config):
 
 
 def run_ray_commands(
-    config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes=1
+    config_yaml,
+    cluster_config,
+    retries,
+    no_config_cache,
+    num_expected_nodes=1,
+    dir=None,
 ):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
@@ -332,24 +337,35 @@ def run_ray_commands(
         retries: The number of retries for the verification step.
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
+        dir: The directory to run the commands in.
     """
 
     print("======================================")
     print("Starting new cluster...")
     cmd = ["ray", "up", "-v", "-y"]
+    python_cmd = ["python", "-I", "-m", "ray", "up", "-v", "-y"]
     if no_config_cache:
         cmd.append("--no-config-cache")
+        python_cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
+    python_cmd.append(str(cluster_config))
 
     print(" ".join(cmd))
 
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True, cwd=dir)
     except subprocess.CalledProcessError as e:
         print(e.output)
         # print stdout and stderr
         print(f"stdout:\n{e.stdout.decode('utf-8')}")
         print(f"stderr:\n{e.stderr.decode('utf-8')}")
+        try:
+            subprocess.run(python_cmd, check=True, capture_output=True, cwd=temp_dir)
+        except subprocess.CalledProcessError as e:
+            print(e.output)
+            print(f"stdout:\n{e.stdout.decode('utf-8')}")
+            print(f"stderr:\n{e.stderr.decode('utf-8')}")
+            raise e
         raise e
 
     print("======================================")
@@ -476,10 +492,15 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Create a new temporary file and dump the updated configuration into it
-    with tempfile.NamedTemporaryFile(suffix=".yaml") as temp:
-        temp.write(yaml.dump(config_yaml).encode("utf-8"))
-        temp.flush()
-        cluster_config = Path(temp.name)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file = os.path.join(temp_dir, "cluster_config.yaml")
+        with open(temp_file, "w") as f:
+            yaml.dump(config_yaml, f)
         run_ray_commands(
-            config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes
+            config_yaml,
+            temp_file,
+            retries,
+            no_config_cache,
+            num_expected_nodes,
+            temp_dir,
         )

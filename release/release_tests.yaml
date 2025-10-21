@@ -3477,6 +3477,7 @@
   team: clusters
   env: azure
   cluster:
+    ray_version: 2.50.0
     byod:
       post_build_script: byod_azure_cluster_launcher.sh
     cluster_compute: azure/tests/azure_compute.yaml
