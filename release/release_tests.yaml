@@ -101,7 +101,7 @@
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
-      frequency: manual
+      frequency: nightly
       cluster:
         cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
