@@ -23,8 +23,6 @@ RECONSTRUCTION_CONFIG = {
     "task_retry_delay_ms": 100,
     "object_timeout_milliseconds": 200,
     "fetch_warn_timeout_milliseconds": 1000,
-    # Required for reducing the retry time of RequestWorkerLease
-    "raylet_rpc_server_reconnect_timeout_s": 0,
 }
 
 
@@ -50,7 +48,6 @@ def test_caller_death(monkeypatch, shutdown_only):
     This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
     be retried indefinitely.
     """
-    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
     ray.init()
 
     @ray.remote
