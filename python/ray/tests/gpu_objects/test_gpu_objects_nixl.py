@@ -41,11 +41,14 @@ class GPUTestActor:
     def gc(self):
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
+        obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
+        assert obj_id in gpu_manager.managed_gpu_object_metadata
         del ref
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
+        assert obj_id not in gpu_manager.managed_gpu_object_metadata
         return "Success"
 
 
