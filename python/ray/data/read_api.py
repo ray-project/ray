@@ -4260,7 +4260,8 @@ def read_unity_catalog(
             ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``.
         token: Databricks Personal Access Token. The token must have ``EXTERNAL USE SCHEMA``
             permission on the schema containing the table.
-        region: AWS region for S3 credential configuration. Only required for AWS S3.
+        region: AWS region for S3 bucket (e.g., ``"us-west-2"``). Required for AWS S3,
+            not required for Azure or GCP.
         reader_kwargs: Additional arguments passed to :meth:`~ray.data.read_delta`.
             For example, you can specify ``columns`` to read only specific columns,
             or ``override_num_blocks`` to control parallelism.

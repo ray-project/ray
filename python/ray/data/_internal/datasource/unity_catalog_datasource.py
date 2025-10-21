@@ -304,7 +304,8 @@ class UnityCatalogConnector:
         base_url: Databricks workspace URL (e.g., "https://dbc-xxx.cloud.databricks.com")
         token: Databricks Personal Access Token with appropriate permissions
         table: Unity Catalog table path in format "catalog.schema.table"
-        region: Optional AWS region for S3 credential configuration
+        region: AWS region for S3 bucket (required for AWS, e.g., "us-west-2").
+            Not required for Azure or GCP.
         reader_kwargs: Additional arguments passed to ray.data.read_delta()
 
     References:
@@ -523,18 +524,26 @@ class UnityCatalogConnector:
         if creds.cloud_provider == CloudProvider.AWS:
             # Create PyArrow S3FileSystem with temporary credentials
             # https://arrow.apache.org/docs/python/generated/pyarrow.fs.S3FileSystem.html
-            if creds.aws_credentials:
-                filesystem = pafs.S3FileSystem(
-                    access_key=creds.aws_credentials.access_key_id,
-                    secret_key=creds.aws_credentials.secret_access_key,
-                    session_token=creds.aws_credentials.session_token,
-                    region=self.region or "us-east-1",
-                )
-            else:
+            if not creds.aws_credentials:
                 raise ValueError(
                     "AWS credentials not found in Unity Catalog response. "
                     "Cannot read Delta table without credentials."
                 )
+
+            if not self.region:
+                raise ValueError(
+                    "The 'region' parameter is required for AWS S3 access. "
+                    "Please specify the AWS region of your S3 bucket (e.g., 'us-west-2'). "
+                    f"Example: ray.data.read_unity_catalog(table='{self.table}', url='...', "
+                    "token='...', region='us-west-2')"
+                )
+
+            filesystem = pafs.S3FileSystem(
+                access_key=creds.aws_credentials.access_key_id,
+                secret_key=creds.aws_credentials.secret_access_key,
+                session_token=creds.aws_credentials.session_token,
+                region=self.region,
+            )
 
         elif creds.cloud_provider == CloudProvider.AZURE:
             # For Azure, the deltalake library can use environment variables
