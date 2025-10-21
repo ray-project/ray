@@ -29,7 +29,7 @@ import gc
 
 import ray
 from ray import train
-from ray.train import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
+from ray.tune import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
