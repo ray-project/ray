@@ -5,7 +5,7 @@ researchers, and folks that love machine learning. Here's a list of tips for get
 - Star and follow us on `on GitHub`_.
 - To post questions or feature requests, check out the `Discussion Board`_.
 - Follow us and spread the word on `Twitter`_.
-- Subscribe our `Luma Calendar`_ to stay up to date with Ray meetups and events.
+- Subscribe to our `Luma Calendar`_ to stay up to date with Ray meetups and events.
 - Use the `[ray]` tag on `StackOverflow`_ to ask and answer questions about Ray usage.
 
 
