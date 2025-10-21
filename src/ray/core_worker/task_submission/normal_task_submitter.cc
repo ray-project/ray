@@ -70,6 +70,7 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     int priority = task_spec.GetMessage().priority();
     scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     scheduling_key_entry.task_queue_map[priority].push_back(std::move(task_spec));
+    scheduling_key_entry.num_tasks_queued++;
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
       // There are idle workers, so we don't need more
@@ -166,8 +167,9 @@ void NormalTaskSubmitter::OnWorkerIdle(
     auto client = core_worker_client_pool_->GetOrConnect(addr);
     if (!task_queue_map.empty() && !lease_entry.is_busy) {
       auto highest_priority_iter = task_queue_map.begin();
-      auto task_queue = highest_priority_iter->second;
+      auto &task_queue = highest_priority_iter->second;
       auto task_spec = std::move(task_queue.front());
+      scheduling_key_entry.num_tasks_queued--;
       task_queue.pop_front();
       if (task_queue.empty()) {
         task_queue_map.erase(highest_priority_iter);
@@ -323,10 +325,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
-  RAY_LOG(ERROR) << "Requesting lease " << lease_id << " from raylet "
+  RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for "
-                 << function_or_actor_name << " with priority "
-                 << lease_spec.GetMessage().priority();
+                 << function_or_actor_name;
 
   raylet_client->RequestWorkerLease(
       lease_spec.GetMessage(),
