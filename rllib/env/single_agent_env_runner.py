@@ -1,14 +1,16 @@
 from collections import defaultdict
-from functools import partial
 import logging
+
+import gymnasium
 import math
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
-import ray
 from gymnasium.wrappers.vector import DictInfoToList
+from gymnasium.envs.registration import VectorizeMode
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.callbacks.utils import make_callback
@@ -25,7 +27,6 @@ from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -157,6 +158,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         Args:
             num_timesteps: The number of timesteps to sample during this call.
+                The episodes returned will contain the total timesteps greater than or
+                equal to num_timesteps and less than num_timesteps + num_envs_per_env_runner.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
@@ -203,6 +206,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # desired timesteps/episodes to sample and exploration behavior.
             if explore is None:
                 explore = self.config.explore
+
             if (
                 num_timesteps is None
                 and num_episodes is None
@@ -649,37 +653,48 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # No env provided -> Error.
         if not self.config.env:
             raise ValueError(
-                "`config.env` is not provided! You should provide a valid environment "
-                "to your config through `config.environment([env descriptor e.g. "
-                "'CartPole-v1'])`."
+                "`config.env` is not provided! "
+                "You should provide a valid environment to your config through "
+                "`config.environment(<env descriptor e.g. 'CartPole-v1'>)`."
             )
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
-        elif isinstance(self.config.env, str) and _global_registry.contains(
-            ENV_CREATOR, self.config.env
-        ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                env_ctx,
+        # callable to the environment, either directly as the Environment or function to the Environment
+        elif not isinstance(self.config.env, str):
+            env_name = "rllib-env-v0"
+            gymnasium.register(
+                env_name,
+                entry_point=self.config.env,
+                vector_entry_point=self.config.env,
             )
+        # the env is in the tune._global_registry
+        elif _global_registry.contains(ENV_CREATOR, self.config.env):
+            env_name = self.config.env
+            env_entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
+            gymnasium.register(
+                self.config.env,
+                entry_point=env_entry_point,
+                vector_entry_point=env_entry_point,
+            )
+        # the env is in the gymnasium registry
+        elif self.config.env in gymnasium.registry:
+            env_name = self.config.env
+        # check if the env is `importlib:env-name` where importlib will register the environment
         else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_descriptor=self.config.env,
-                env_context=env_ctx,
-            )
-        gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
-        vectorize_mode = self.config.gym_env_vectorize_mode
+            env_name = self.config.env
+            contains_importlib = ":" in env_name and len(env_name.split(":")) == 2
 
+            if not contains_importlib:
+                raise ValueError(
+                    f"`config.env` ({self.config.env}) is a string but not contained in the "
+                    "`gymnasium.registry` or `tune._global_registry`"
+                )
+
+        vectorize_mode = VectorizeMode(self.config.gym_env_vectorize_mode)
         self.env = DictInfoToList(
             gym.make_vec(
-                "rllib-single-agent-env-v0",
+                env_name,
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    vectorize_mode
-                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
-                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
-                ),
+                vectorization_mode=vectorize_mode,
+                **self.config.env_config,
             )
         )
 
