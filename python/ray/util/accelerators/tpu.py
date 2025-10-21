@@ -171,7 +171,7 @@ class SlicePlacementGroup:
         bundles = []
 
         # Construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P".
-        accelerator_type = "TPU-" + self.accelerator_version.capitalize()
+        accelerator_type = "TPU-" + self.accelerator_version.upper()
         for _ in range(self.num_slices):
             # Reserving a slice is done through constructing num_workers bundles, each with a label selector for
             # the unique name of an available TPU slice.
