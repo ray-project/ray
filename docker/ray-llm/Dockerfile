@@ -59,8 +59,8 @@ NVSHMEM_VERSION="3.4.5"
 
     cd "${EP_TEMP_DIR}"
     mkdir -p nvshmem_src
-    wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_${NVSHMEM_VERSION}.tar.gz
-    tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz
+    tar -xvf nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz -C nvshmem_src --strip-components=1
     cd nvshmem_src
 
     cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
