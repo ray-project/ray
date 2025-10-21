@@ -10,8 +10,11 @@ from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+
+torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
@@ -109,8 +112,12 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         Args:
             value: The value to be pushed. Can be of any type.
+                PyTorch GPU tensors are kept on GPU until reduce() or peek().
+                TensorFlow tensors are moved to CPU immediately.
         """
-        value = single_value_to_cpu(value)
+        # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
+        if tf and tf.is_tensor(value):
+            value = value.numpy()
 
         if self._window is None:
             if not self.values:
@@ -173,34 +180,61 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             return reduced_values
 
     def running_reduce(self, value_1, value_2) -> Tuple[Any, Any]:
-        """Reduces two values through a native python reduce function.
+        """Reduces two values through a reduce function.
 
-        Returns a single value that is on CPU memory.
+        If values are PyTorch tensors, reduction happens on GPU.
+        Result stays on GPU (or CPU if values were CPU).
 
         Args:
             value_1: The first value to reduce.
             value_2: The second value to reduce.
 
         Returns:
-            The reduced value.
+            The reduced value (may be GPU tensor).
         """
+        # If values are torch tensors, reduce on GPU
+        if (
+            torch
+            and isinstance(value_1, torch.Tensor)
+            and hasattr(self, "_torch_reduce_fn")
+        ):
+            return [self._torch_reduce_fn(torch.stack([value_1, value_2]))]
+        # Otherwise use numpy reduction
         return [self._np_reduce_fn([value_1, value_2])]
 
     def window_reduce(self, values=None) -> Tuple[Any, Any]:
         """Reduces the internal values list according to the constructor settings.
 
-        Returns a single value that is on CPU memory.
+        If values are PyTorch GPU tensors, reduction happens on GPU and result
+        is moved to CPU. Otherwise returns CPU value.
 
         Args:
             values: The list of values to reduce. If not None, use `self.values`
 
         Returns:
-            The reduced value.
+            The reduced value on CPU.
         """
         values = values if values is not None else self.values
 
-        # Special case: Internal values list is empty -> return NaN or 0.0 for max.
-        if len(values) == 0 or np.all(np.isnan(values)):
+        # Special case: Internal values list is empty -> return NaN
+        if len(values) == 0:
+            return [np.nan]
+
+        # If values are torch tensors, reduce on GPU then move to CPU
+        if (
+            torch
+            and isinstance(values[0], torch.Tensor)
+            and hasattr(self, "_torch_reduce_fn")
+        ):
+            stacked = torch.stack(list(values))
+            # Check for all NaN
+            if torch.all(torch.isnan(stacked)):
+                return [np.nan]
+            result = self._torch_reduce_fn(stacked)
+            return [result.detach().cpu().item()]
+
+        # Otherwise use numpy reduction on CPU values
+        if np.all(np.isnan(values)):
             return [np.nan]
         else:
             return [self._np_reduce_fn(values)]

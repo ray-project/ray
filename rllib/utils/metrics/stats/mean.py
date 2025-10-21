@@ -2,8 +2,10 @@ from typing import Any, Union
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.stats.series import SeriesStats
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -15,8 +17,26 @@ class MeanStats(SeriesStats):
     def _np_reduce_fn(self, values):
         return np.nanmean(values)
 
+    def _torch_reduce_fn(self, values):
+        """Reduce function for torch tensors (stays on GPU)."""
+        return torch.nanmean(values)
+
     def push(self, value: Any) -> None:
-        value = single_value_to_cpu(value)
+        """Pushes a value into this Stats object.
+
+        Args:
+            value: The value to be pushed. Can be of any type.
+                PyTorch GPU tensors are kept on GPU until reduce() or peek().
+                TensorFlow tensors are moved to CPU immediately.
+        """
+        from ray.rllib.utils.framework import try_import_tf
+
+        _, tf, _ = try_import_tf()
+
+        # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
+        if tf and tf.is_tensor(value):
+            value = value.numpy()
+
         self.values.append(value)
 
     def reduce(self, compile: bool = True) -> Union[Any, "MeanStats"]:

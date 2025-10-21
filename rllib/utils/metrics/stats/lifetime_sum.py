@@ -2,8 +2,11 @@ from typing import Any, Dict, List, Union
 import time
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+
+torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
@@ -80,7 +83,15 @@ class LifetimeSumStats(StatsBase):
         return 1
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        return self._lifetime_sum if compile else [self._lifetime_sum]
+        """Returns the current lifetime sum value.
+
+        If value is a GPU tensor, it's converted to CPU.
+        """
+        value = self._lifetime_sum
+        # Convert GPU tensor to CPU
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach().cpu().item()
+        return value if compile else [value]
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
@@ -100,20 +111,29 @@ class LifetimeSumStats(StatsBase):
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
-        This puts the value onto CPU memory.
-
         Args:
             value: The value to be pushed. Can be of any type.
+                PyTorch GPU tensors are kept on GPU until reduce() or peek().
+                TensorFlow tensors are moved to CPU immediately.
         """
-        self._lifetime_sum += single_value_to_cpu(value)
+        # Convert TensorFlow tensors to CPU immediately
+        if tf and tf.is_tensor(value):
+            value = value.numpy()
+
+        self._lifetime_sum += value
 
     @property
     def throughput_since_last_reduce(self) -> float:
         """Returns the throughput since the last reduce call."""
         if self.track_throughputs:
-            return (
-                single_value_to_cpu(self._lifetime_sum) - self._value_at_last_reduce
-            ) / (time.perf_counter() - self._last_reduce_time)
+            lifetime_sum = self._lifetime_sum
+            # Convert GPU tensor to CPU
+            if torch and isinstance(lifetime_sum, torch.Tensor):
+                lifetime_sum = lifetime_sum.detach().cpu().item()
+
+            return (lifetime_sum - self._value_at_last_reduce) / (
+                time.perf_counter() - self._last_reduce_time
+            )
         else:
             raise ValueError(
                 "Tracking of throughput since last reduce is not enabled on this Stats object"
@@ -123,19 +143,35 @@ class LifetimeSumStats(StatsBase):
     def throughput_since_last_restore(self) -> float:
         """Returns the total throughput since the last restore."""
         if self.track_throughputs:
-            return (
-                single_value_to_cpu(self._lifetime_sum) - self._value_at_last_restore
-            ) / (time.perf_counter() - self._last_restore_time)
+            lifetime_sum = self._lifetime_sum
+            # Convert GPU tensor to CPU
+            if torch and isinstance(lifetime_sum, torch.Tensor):
+                lifetime_sum = lifetime_sum.detach().cpu().item()
+
+            return (lifetime_sum - self._value_at_last_restore) / (
+                time.perf_counter() - self._last_restore_time
+            )
         else:
             raise ValueError(
                 "Tracking of throughput since last restore is not enabled on this Stats object"
             )
 
     def reduce(self, compile: bool = True) -> Union[Any, "LifetimeSumStats"]:
+        """Reduces the internal value.
+
+        If value is a GPU tensor, it's converted to CPU.
+        """
         value = self._lifetime_sum
+        # Convert GPU tensor to CPU
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach().cpu().item()
 
         if not self._is_root_stats:
-            self._lifetime_sum = 0.0
+            # Reset to 0 with same type (tensor or scalar)
+            if torch and isinstance(self._lifetime_sum, torch.Tensor):
+                self._lifetime_sum = torch.tensor(0.0, device=self._lifetime_sum.device)
+            else:
+                self._lifetime_sum = 0.0
             self._value_at_last_reduce = 0.0
         else:
             self._value_at_last_reduce = value

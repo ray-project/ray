@@ -4,8 +4,12 @@ from collections import deque
 from itertools import chain
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.series import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+
+torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
@@ -116,7 +120,17 @@ class PercentilesStats(StatsBase):
         )
 
     def push(self, value: Any) -> None:
-        value = single_value_to_cpu(value)
+        """Pushes a value into this Stats object.
+
+        Args:
+            value: The value to be pushed. Can be of any type.
+                PyTorch GPU tensors are kept on GPU until reduce() or peek().
+                TensorFlow tensors are moved to CPU immediately.
+        """
+        # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
+        if tf and tf.is_tensor(value):
+            value = value.numpy()
+
         self.values.append(value)
 
     def merge(self, incoming_stats: List["PercentilesStats"], replace=True):
@@ -149,11 +163,14 @@ class PercentilesStats(StatsBase):
             compile: If True, the result is compiled into the percentiles list.
 
         Returns:
-            The result of reducing the internal values list.
+            The result of reducing the internal values list on CPU.
         """
-        values = list(self.values)
-        # (Artur): Numpy can sort faster than Python's built-in sort for large lists. Howoever, if we convert to an array here
-        # and then sort, this only slightly (<2x) improved the runtime of this method, even for an internal values list of 1M values.
+        # Convert GPU tensors to CPU if needed
+        if torch and len(self.values) > 0 and isinstance(self.values[0], torch.Tensor):
+            values = batch_values_to_cpu(self.values)
+        else:
+            values = list(self.values)
+
         values.sort()
 
         if compile:
@@ -167,9 +184,14 @@ class PercentilesStats(StatsBase):
             compile: If True, the result is compiled into a single value if possible.
 
         Returns:
-            The reduced value.
+            The reduced value on CPU.
         """
-        values = list(self.values)
+        # Convert GPU tensors to CPU if needed
+        if torch and len(self.values) > 0 and isinstance(self.values[0], torch.Tensor):
+            values = batch_values_to_cpu(self.values)
+        else:
+            values = list(self.values)
+
         values.sort()
 
         self._set_values([])

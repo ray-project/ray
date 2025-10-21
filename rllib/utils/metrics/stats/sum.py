@@ -3,7 +3,10 @@ import time
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.stats.series import SeriesStats
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -14,6 +17,14 @@ class SumStats(SeriesStats):
 
     def _np_reduce_fn(self, values):
         return np.nansum(values)
+
+    def _torch_reduce_fn(self, values):
+        """Reduce function for torch tensors (stays on GPU)."""
+        # torch.nansum not available, use workaround
+        clean_values = values[~torch.isnan(values)]
+        if len(clean_values) == 0:
+            return torch.tensor(0.0, device=values.device)
+        return torch.sum(clean_values)
 
     def __init__(self, with_throughput: bool = False, **kwargs):
         """Initializes a SumStats instance.

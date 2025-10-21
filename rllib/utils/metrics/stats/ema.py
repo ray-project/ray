@@ -3,8 +3,11 @@ from typing import Any, Dict, List, Union
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+
+torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
@@ -62,19 +65,60 @@ class EmaStats(StatsBase):
         self._value = np.nanmean(all_values)
 
     def push(self, value: Any) -> None:
-        value = single_value_to_cpu(value)
-        if self._value is not np.nan:
+        """Pushes a value into this Stats object.
+
+        Args:
+            value: The value to be pushed. Can be of any type.
+                PyTorch GPU tensors are kept on GPU until reduce() or peek().
+                TensorFlow tensors are moved to CPU immediately.
+        """
+        # Convert TensorFlow tensors to CPU immediately
+        if tf and tf.is_tensor(value):
+            value = value.numpy()
+
+        # Handle EMA calculation
+        if torch and isinstance(self._value, torch.Tensor):
+            # GPU tensor EMA
+            self._value = (
+                self._ema_coeff * value + (1.0 - self._ema_coeff) * self._value
+            )
+        elif (
+            torch
+            and isinstance(value, torch.Tensor)
+            and (isinstance(self._value, float) and np.isnan(self._value))
+        ):
+            # First value is GPU tensor
+            self._value = value
+        elif not (isinstance(self._value, float) and np.isnan(self._value)):
+            # CPU value EMA
             self._value = (
                 self._ema_coeff * value + (1.0 - self._ema_coeff) * self._value
             )
         else:
+            # First value
             self._value = value
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
-        return self._value if compile else [self._value]
+        """Returns the current EMA value.
+
+        If value is a GPU tensor, it's converted to CPU.
+        """
+        value = self._value
+        # Convert GPU tensor to CPU
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach().cpu().item()
+        return value if compile else [value]
 
     def reduce(self, compile: bool = True) -> Union[Any, "EmaStats"]:
+        """Reduces the internal value.
+
+        If value is a GPU tensor, it's converted to CPU.
+        """
         value = self._value
+        # Convert GPU tensor to CPU
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach().cpu().item()
+
         self._value = np.nan
 
         if compile:
