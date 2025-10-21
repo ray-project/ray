@@ -884,6 +884,7 @@ py_test_module_list(
         "test_dataclient_disconnect.py",
         "test_iter.py",
         "test_placement_group.py",
+        "test_ray_get.py",
         "test_state_api_2.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
