@@ -2,15 +2,13 @@ import atexit
 import logging
 import os
 import tempfile
-import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional
 
 import requests  # HTTP library: https://requests.readthedocs.io/
 
 import ray
-from ray.data.datasource import Datasource
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -19,25 +17,6 @@ logger = logging.getLogger(__name__)
 # https://docs.databricks.com/api/workspace/unity-catalog
 # Credential Vending API:
 # https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-
-# Mapping of file formats to Ray Data reader function names
-# https://docs.ray.io/en/latest/data/api/input_output.html
-_FILE_FORMAT_TO_RAY_READER = {
-    "delta": "read_delta",
-    "parquet": "read_parquet",
-    "csv": "read_csv",
-    "json": "read_json",
-    "text": "read_text",
-    "images": "read_images",
-    "avro": "read_avro",
-    "numpy": "read_numpy",
-    "binary": "read_binary_files",
-    "videos": "read_videos",
-    "audio": "read_audio",
-    "lance": "read_lance",
-    "iceberg": "read_iceberg",
-    "hudi": "read_hudi",
-}
 
 
 @dataclass
@@ -55,7 +34,6 @@ class ColumnInfo:
     type_scale: int
     type_json: str
     nullable: bool
-    # Optional fields that may not be present in all API responses
     comment: Optional[str] = None
     partition_index: Optional[int] = None
 
@@ -63,10 +41,6 @@ class ColumnInfo:
     def from_dict(obj: Dict) -> "ColumnInfo":
         """
         Safely construct ColumnInfo from Unity Catalog API response.
-
-        Extracts only the fields defined in ColumnInfo, ignoring any extra
-        fields returned by the API (such as column_masks, which may be present
-        in some API responses but aren't needed for Ray Data operations).
 
         Args:
             obj: Dictionary from Unity Catalog tables API columns field
@@ -138,9 +112,6 @@ class TableInfo:
         """
         Parse table metadata from Unity Catalog API response.
 
-        Handles optional nested structures and safely constructs ColumnInfo
-        instances from the columns field.
-
         Args:
             obj: Dictionary from Unity Catalog tables API response
 
@@ -168,7 +139,6 @@ class TableInfo:
             schema_name=obj["schema_name"],
             table_type=obj["table_type"],
             data_source_format=obj.get("data_source_format", ""),
-            # Use ColumnInfo.from_dict to safely handle API response fields
             columns=[ColumnInfo.from_dict(col) for col in obj.get("columns", [])],
             storage_location=obj.get("storage_location", ""),
             owner=obj.get("owner", ""),
@@ -196,47 +166,6 @@ class TableInfo:
             effective_predictive_optimization_flag=effective_predictive_optimization_flag,
             browse_only=obj.get("browse_only", False),
             metastore_version=obj.get("metastore_version", 0),
-        )
-
-
-@dataclass
-class VolumeInfo:
-    """
-    Metadata for Unity Catalog volumes.
-
-    Represents the response from the Unity Catalog volumes API.
-    """
-
-    name: str
-    catalog_name: str
-    schema_name: str
-    volume_type: str
-    storage_location: str
-    full_name: str
-    owner: Optional[str] = None
-    comment: Optional[str] = None
-    created_at: Optional[int] = None
-    created_by: Optional[str] = None
-    updated_at: Optional[int] = None
-    updated_by: Optional[str] = None
-    volume_id: Optional[str] = None
-
-    @staticmethod
-    def from_dict(obj: Dict) -> "VolumeInfo":
-        return VolumeInfo(
-            name=obj["name"],
-            catalog_name=obj["catalog_name"],
-            schema_name=obj["schema_name"],
-            volume_type=obj.get("volume_type", ""),
-            storage_location=obj.get("storage_location", ""),
-            full_name=obj.get("full_name", ""),
-            owner=obj.get("owner"),
-            comment=obj.get("comment"),
-            created_at=obj.get("created_at"),
-            created_by=obj.get("created_by"),
-            updated_at=obj.get("updated_at"),
-            updated_by=obj.get("updated_by"),
-            volume_id=obj.get("volume_id"),
         )
 
 
@@ -300,9 +229,7 @@ class CredentialsResponse:
     aws_credentials: Optional[AWSCredentials] = None
     azure_credentials: Optional[AzureSASCredentials] = None
     gcp_credentials: Optional[GCPOAuthCredentials] = None
-    # Legacy field for older Azure format
     azure_sas_uri: Optional[str] = None
-    # Legacy field for older GCP format
     gcp_service_account_json: Optional[str] = None
 
     @staticmethod
@@ -359,30 +286,14 @@ class CredentialsResponse:
 @DeveloperAPI
 class UnityCatalogConnector:
     """
-    Connector for reading Unity Catalog tables and volumes into Ray Datasets.
+    Connector for reading Unity Catalog Delta tables into Ray Datasets.
 
-    This connector handles automatic credential vending for secure access to cloud storage
-    backing Unity Catalog tables and volumes. It supports AWS S3, Azure Data Lake Storage,
-    and Google Cloud Storage with temporary, least-privilege credentials.
+    This connector handles automatic credential vending for secure access to cloud
+    storage backing Unity Catalog Delta tables. It supports AWS S3, Azure Data Lake
+    Storage, and Google Cloud Storage with temporary, least-privilege credentials.
 
-    Tables Support Status: PRODUCTION READY
-        - Fully supported and documented
-        - Credential vending API is stable and publicly available
-        - Works across all Databricks workspaces
-
-    Volumes Support Status: PRIVATE PREVIEW - LIMITED AVAILABILITY
-        - API endpoint exists but may not be enabled in all workspaces
-        - Credential vending may return errors even with correct permissions
-        - Contact Databricks support if you encounter credential vending errors
-        - Workaround: Use ray.data.read_*() with your own cloud credentials
-
-    Supported Unity Catalog paths:
-        - Tables: catalog.schema.table
-        - Volumes: catalog.schema.volume/path/to/data (private preview)
-
-    Supported data formats:
-        delta, parquet, csv, json, text, images, avro, numpy, binary, videos,
-        audio, lance, iceberg, hudi, and custom datasources
+    This implementation specifically focuses on Delta Lake tables, which is the most
+    common format in Unity Catalog deployments.
 
     Cloud providers:
         - AWS S3 (with temporary IAM credentials)
@@ -392,14 +303,9 @@ class UnityCatalogConnector:
     Args:
         base_url: Databricks workspace URL (e.g., "https://dbc-xxx.cloud.databricks.com")
         token: Databricks Personal Access Token with appropriate permissions
-        path: Unity Catalog path (table: "catalog.schema.table" or
-            volume: "catalog.schema.volume/subpath")
+        table: Unity Catalog table path in format "catalog.schema.table"
         region: Optional AWS region for S3 credential configuration
-        data_format: Optional format override (delta, parquet, images, etc.)
-        custom_datasource: Optional custom Ray Data Datasource class. If provided,
-            the datasource must accept (storage_url, **reader_kwargs) in its constructor.
-        operation: Credential operation type (default: "READ")
-        reader_kwargs: Additional arguments passed to the Ray Data reader
+        reader_kwargs: Additional arguments passed to ray.data.read_delta()
 
     References:
         - Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
@@ -411,130 +317,22 @@ class UnityCatalogConnector:
         *,
         base_url: str,
         token: str,
-        path: str,
+        table: str,
         region: Optional[str] = None,
-        data_format: Optional[str] = None,
-        custom_datasource: Optional[Type[Datasource]] = None,
-        operation: str = "READ",
         reader_kwargs: Optional[Dict] = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self.path = path
-        self.data_format = data_format.lower() if data_format else None
-        self.custom_datasource = custom_datasource
+        self.table = table
         self.region = region
-        self.operation = operation
         self.reader_kwargs = reader_kwargs or {}
-
-        # Determine if this is a table or volume path
-        self._is_volume = self._detect_volume_path(path)
-
-        # Warn about volumes private preview status and known issues
-        if self._is_volume:
-            warnings.warn(
-                f"\n{'=' * 70}\n"
-                f"Unity Catalog Volumes: PRIVATE PREVIEW Feature\n"
-                f"{'=' * 70}\n"
-                f"Path: {path}\n\n"
-                f"Volumes support is in PRIVATE PREVIEW and may not be fully enabled\n"
-                f"in your Databricks workspace. The credential vending API for volumes\n"
-                f"is not yet publicly documented and may not be accessible.\n\n"
-                f"KNOWN ISSUES:\n"
-                f"  - Credential vending may fail with '400 Bad Request: Missing\n"
-                f"    required field: operation' even though the operation field is\n"
-                f"    provided. This indicates the API exists but isn't fully enabled.\n"
-                f"  - The API endpoint may not be available in all workspaces.\n\n"
-                f"REQUIREMENTS:\n"
-                f"  1. Workspace must have volumes private preview enabled\n"
-                f"  2. You must have READ VOLUME permission on the volume\n"
-                f"  3. You must have EXTERNAL USE SCHEMA permission\n"
-                f"  4. The volume must exist and be accessible\n\n"
-                f"IF YOU ENCOUNTER ERRORS:\n"
-                f"  - Contact Databricks support to verify volumes are enabled\n"
-                f"  - Ask about enabling volumes credential vending for your workspace\n"
-                f"  - Request documentation for the private preview API\n\n"
-                f"WORKAROUND:\n"
-                f"  Use ray.data.read_*() with your own cloud credentials to access\n"
-                f"  the underlying storage directly. You can get the storage location\n"
-                f"  from the Unity Catalog volumes metadata API:\n"
-                f"    GET /api/2.1/unity-catalog/volumes/{{volume_full_name}}\n"
-                f"{'=' * 70}",
-                UserWarning,
-                stacklevel=4,
-            )
 
         # Storage for metadata and credentials
         self._table_info: Optional[TableInfo] = None
-        self._volume_info: Optional[VolumeInfo] = None
         self._table_id: Optional[str] = None
-        self._volume_path: Optional[str] = None
         self._creds_response: Optional[CredentialsResponse] = None
         self._storage_url: Optional[str] = None
         self._gcp_temp_file: Optional[str] = None
-
-    @staticmethod
-    def _detect_volume_path(path: str) -> bool:
-        """
-        Detect if the path refers to a volume or table.
-
-        Unity Catalog paths follow these patterns:
-        - Table: catalog.schema.table (3 parts separated by dots)
-        - Volume: catalog.schema.volume/path/to/data (contains forward slash)
-        - Volume: /Volumes/catalog/schema/volume/path (starts with /Volumes/)
-
-        Args:
-            path: Unity Catalog path
-
-        Returns:
-            True if path refers to a volume, False for table
-        """
-        # Check for /Volumes/ prefix (common pattern)
-        if path.startswith("/Volumes/"):
-            return True
-
-        # Check if path contains a forward slash (indicating volume with subdirectory)
-        if "/" in path:
-            return True
-
-        # Count the number of dot-separated parts
-        parts = path.split(".")
-        # If more than 3 parts, it's likely a volume (e.g., catalog.schema.volume.something)
-        # However, standard format is catalog.schema.volume/path, so this is a fallback
-        return len(parts) > 3
-
-    def _parse_volume_path(self) -> Tuple[str, str]:
-        """
-        Parse volume path into volume identifier and subdirectory path.
-
-        Handles multiple volume path formats:
-        - catalog.schema.volume/path/to/data
-        - /Volumes/catalog/schema/volume/path/to/data
-
-        Returns:
-            Tuple of (volume_full_name, sub_path)
-            Examples:
-                - ("catalog.schema.volume", "path/to/data")
-                - ("catalog.schema.volume", "")
-        """
-        path = self.path
-
-        # Handle /Volumes/ prefix
-        if path.startswith("/Volumes/"):
-            path = path[9:]  # len("/Volumes/") = 9
-            parts = path.split("/")
-            if len(parts) < 3:
-                raise ValueError(f"Invalid /Volumes/ path: {self.path}")
-            volume_full_name = ".".join(parts[:3])
-            sub_path = "/".join(parts[3:])
-            return volume_full_name, sub_path
-
-        if "/" in path:
-            parts = path.split("/", 1)
-            sub_path = parts[1] if len(parts) > 1 else ""
-            return parts[0], sub_path
-
-        return path, ""
 
     def _create_auth_headers(self) -> Dict[str, str]:
         """
@@ -545,32 +343,9 @@ class UnityCatalogConnector:
         """
         return {"Authorization": f"Bearer {self.token}"}
 
-    def _fetch_volume_metadata(self) -> None:
-        """
-        Fetch volume metadata from Unity Catalog volumes API.
-
-        Sets self._volume_info and self._volume_path.
-
-        Raises:
-            requests.HTTPError: If API request fails
-        """
-        volume_full_name, _ = self._parse_volume_path()
-        url = f"{self.base_url}/api/2.1/unity-catalog/volumes/{volume_full_name}"
-        headers = self._create_auth_headers()
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-
-        # Parse and store volume information
-        volume_info = VolumeInfo.from_dict(data)
-        self._volume_info = volume_info
-        self._volume_path = volume_info.storage_location
-
     def _fetch_table_metadata(self) -> TableInfo:
         """
         Fetch table metadata from Unity Catalog tables API.
-
-        Sets self._table_info and self._table_id.
 
         Returns:
             TableInfo object with table metadata
@@ -578,9 +353,9 @@ class UnityCatalogConnector:
         Raises:
             requests.HTTPError: If API request fails
         """
-        url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.path}"
+        url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.table}"
         headers = self._create_auth_headers()
-        logger.debug(f"Fetching table metadata for '{self.path}' from {url}")
+        logger.debug(f"Fetching table metadata for '{self.table}' from {url}")
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         data = resp.json()
@@ -595,247 +370,49 @@ class UnityCatalogConnector:
         )
         return table_info
 
-    def _get_table_info(self) -> Optional[TableInfo]:
-        """
-        Fetch table or volume metadata from Unity Catalog API.
-
-        API Endpoints:
-            Tables: GET /api/2.1/unity-catalog/tables/{full_name}
-            Volumes: GET /api/2.1/unity-catalog/volumes/{full_name}
-
-        Returns:
-            TableInfo object for tables, None for volumes
-
-        Raises:
-            requests.HTTPError: If API request fails
-        """
-        if self._is_volume:
-            self._fetch_volume_metadata()
-            return None
-        else:
-            return self._fetch_table_metadata()
-
-    def _build_credentials_request(self) -> Tuple[str, Dict[str, Any]]:
-        """
-        Build credentials request URL and payload for Unity Catalog API.
-
-        Returns:
-            Tuple of (url, payload) for the credentials API request
-        """
-        if self._is_volume:
-            # Use volumes credential vending API (PRIVATE PREVIEW)
-            volume_full_name, _ = self._parse_volume_path()
-            url = f"{self.base_url}/api/2.1/unity-catalog/temporary-volume-credentials"
-            payload = {
-                "volume_id": volume_full_name,
-                "operation": self.operation,
-            }
-        else:
-            # Use table credential vending API (PUBLIC/PRODUCTION)
-            if not self._table_id:
-                raise ValueError(
-                    "Table ID not available. Call _get_table_info() first."
-                )
-            url = f"{self.base_url}/api/2.1/unity-catalog/temporary-table-credentials"
-            payload = {
-                "table_id": self._table_id,
-                "operation": self.operation,
-            }
-        return url, payload
-
-    def _handle_volume_credential_error(
-        self, error: requests.HTTPError, url: str, payload: Dict[str, Any]
-    ) -> None:
-        """
-        Handle credential vending errors for volumes with detailed error messages.
-
-        Args:
-            error: The HTTP error from the credentials API request
-            url: The API endpoint URL that was called
-            payload: The request payload that was sent
-
-        Raises:
-            ValueError: With detailed error message based on status code
-        """
-        error_msg = (
-            error.response.text if hasattr(error.response, "text") else str(error)
-        )
-
-        if error.response.status_code == 404:
-            raise ValueError(
-                f"\n{'=' * 70}\n"
-                f"Unity Catalog Volumes Credential Vending API Not Found\n"
-                f"{'=' * 70}\n"
-                f"Volume: {self.path}\n"
-                f"API Endpoint: {url}\n"
-                f"Status: 404 Not Found\n\n"
-                f"The volumes credential vending API doesn't exist in your\n"
-                f"Databricks workspace.\n\n"
-                f"POSSIBLE CAUSES:\n"
-                f"  1. Volumes private preview is not enabled\n"
-                f"  2. Your Databricks runtime doesn't support volumes\n"
-                f"  3. The API endpoint has changed (volumes in private preview)\n\n"
-                f"NEXT STEPS:\n"
-                f"  - Contact Databricks support to enable volumes private preview\n"
-                f"  - Verify your workspace supports Unity Catalog volumes\n\n"
-                f"WORKAROUND:\n"
-                f"  Access storage directly using your own cloud credentials\n"
-                f"  with ray.data.read_*() functions.\n"
-                f"{'=' * 70}\n"
-                f"Original error: {error}"
-            ) from error
-
-        elif error.response.status_code == 400:
-            # Check for the specific "Missing required field: operation" error
-            if (
-                "Missing required field" in error_msg
-                or "operation" in error_msg.lower()
-            ):
-                raise ValueError(
-                    f"\n{'=' * 70}\n"
-                    f"Unity Catalog Volumes Credential Vending Not Available\n"
-                    f"{'=' * 70}\n"
-                    f"Volume: {self.path}\n"
-                    f"API Endpoint: {url}\n"
-                    f"Status: 400 Bad Request\n"
-                    f"Error: {error_msg}\n\n"
-                    f"WHAT HAPPENED:\n"
-                    f"  The volumes credential vending API endpoint exists but is\n"
-                    f"  rejecting requests. This is a known issue with volumes in\n"
-                    f"  private preview.\n\n"
-                    f"WHAT WE TRIED:\n"
-                    f"  - Requested temporary READ credentials\n"
-                    f"  - Payload: {payload}\n"
-                    f"  - Response: '{error_msg}'\n\n"
-                    f"WHAT THIS MEANS:\n"
-                    f"  1. API endpoint exists but isn't fully enabled in your\n"
-                    f"     workspace (requires additional configuration)\n"
-                    f"  2. Your workspace may need explicit enablement\n"
-                    f"  3. Additional feature flags may be required\n\n"
-                    f"RECOMMENDED ACTIONS:\n"
-                    f"  1. Contact Databricks support with this error message\n"
-                    f"  2. Ask them to:\n"
-                    f"     - Verify volumes credential vending is enabled\n"
-                    f"     - Provide correct API payload format\n"
-                    f"     - Enable required feature flags\n"
-                    f"  3. Request access to private preview documentation\n\n"
-                    f"WORKAROUND:\n"
-                    f"  Use ray.data.read_*() with your own cloud credentials:\n"
-                    f"  1. Get storage location from volumes metadata API:\n"
-                    f"       GET /api/2.1/unity-catalog/volumes/{self._parse_volume_path()[0]}\n"
-                    f"  2. Use returned 'storage_location' with ray.data.read_*()\n"
-                    f"  3. Provide your own AWS/Azure/GCP credentials\n"
-                    f"{'=' * 70}"
-                ) from error
-            else:
-                raise ValueError(
-                    f"Invalid request for volume '{self.path}': {error_msg}\n"
-                    f"Status: {error.response.status_code}\n"
-                    f"Ensure you have READ VOLUME and EXTERNAL USE SCHEMA permissions."
-                ) from error
-
-        elif error.response.status_code == 403:
-            raise ValueError(
-                f"\n{'=' * 70}\n"
-                f"Permission Denied for Unity Catalog Volume\n"
-                f"{'=' * 70}\n"
-                f"Volume: {self.path}\n"
-                f"Status: 403 Forbidden\n"
-                f"Error: {error_msg}\n\n"
-                f"You don't have the required permissions.\n\n"
-                f"REQUIRED PERMISSIONS:\n"
-                f"  - READ VOLUME on '{self.path}'\n"
-                f"  - EXTERNAL USE SCHEMA on the parent schema\n"
-                f"  - USE CATALOG on the parent catalog\n\n"
-                f"TO GRANT PERMISSIONS:\n"
-                f"  A Databricks admin can run:\n"
-                f"    GRANT READ VOLUME ON VOLUME {self.path} TO `your-user-or-group`;\n"
-                f"{'=' * 70}"
-            ) from error
-
     def _get_creds(self):
         """
         Request temporary credentials from Unity Catalog credential vending API.
 
-        Handles both table and volume credential requests with different support levels.
-
-        Table Credentials (PRODUCTION READY):
-            - Endpoint: /api/2.1/unity-catalog/temporary-table-credentials
-            - Status: Public API, fully documented and supported
-            - Reliability: Stable and available in all workspaces
-
-        Volume Credentials (PRIVATE PREVIEW - LIMITED AVAILABILITY):
-            - Endpoint: /api/2.1/unity-catalog/temporary-volume-credentials
-            - Status: Private preview, not publicly documented
-            - Known Issue: May return 400 "Missing required field: operation"
-              even when operation field is provided, indicating the API exists
-              but isn't fully enabled in the workspace
+        Uses the table credential vending API which is production-ready and publicly
+        documented.
 
         Raises:
             requests.HTTPError: If API request fails
             ValueError: If credential vending is not available or configured
         """
-        url, payload = self._build_credentials_request()
+        if not self._table_id:
+            raise ValueError(
+                "Table ID not available. Call _fetch_table_metadata() first."
+            )
+
+        url = f"{self.base_url}/api/2.1/unity-catalog/temporary-table-credentials"
+        payload = {
+            "table_id": self._table_id,
+            "operation": "READ",
+        }
         headers = self._create_auth_headers()
         headers["Content-Type"] = "application/json"
 
-        resource_type = "volume" if self._is_volume else "table"
+        logger.debug(f"Requesting temporary credentials for table '{self.table}'")
+
+        resp = requests.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+
+        # Parse credentials response into structured dataclass
+        self._creds_response = CredentialsResponse.from_dict(resp.json())
         logger.debug(
-            f"Requesting temporary credentials for {resource_type} '{self.path}'"
+            f"Successfully obtained credentials, "
+            f"cloud provider: {self._creds_response.cloud_provider.value}"
         )
 
-        try:
-            resp = requests.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            # Parse credentials response into structured dataclass
-            self._creds_response = CredentialsResponse.from_dict(resp.json())
-            logger.debug(
-                f"Successfully obtained credentials for {resource_type}, "
-                f"cloud provider: {self._creds_response.cloud_provider.value}"
-            )
-        except requests.HTTPError as e:
-            if self._is_volume:
-                self._handle_volume_credential_error(e, url, payload)
-            # Re-raise for non-volume errors or unhandled status codes
-            raise
-
         # Extract and store storage URL from credentials response
-        self._extract_storage_url()
-
-    def _extract_storage_url(self) -> None:
-        """
-        Extract and set storage URL from credentials response.
-
-        For volumes, constructs full path including subdirectory.
-        For tables, uses URL directly from response.
-
-        Sets self._storage_url.
-
-        Raises:
-            ValueError: If no storage URL is returned in credentials response
-        """
-        if self._is_volume:
-            # For volumes, construct full path with subdirectory
-            volume_full_name, sub_path = self._parse_volume_path()
-            base_url = self._creds_response.url
-            if not base_url:
-                raise ValueError(
-                    f"No storage URL returned for volume '{volume_full_name}'. "
-                    f"Credentials response: {self._creds_response}"
-                )
-            # Construct full path, handling trailing/leading slashes
-            if sub_path:
-                self._storage_url = f"{base_url.rstrip('/')}/{sub_path.lstrip('/')}"
-            else:
-                self._storage_url = base_url
-        else:
-            # For tables, use URL directly from response
-            if not self._creds_response.url:
-                raise ValueError(
-                    f"No storage URL returned for table '{self.path}'. "
-                    f"Credentials response: {self._creds_response}"
-                )
-            self._storage_url = self._creds_response.url
+        if not self._creds_response.url:
+            raise ValueError(
+                f"No storage URL returned for table '{self.table}'. "
+                f"Credentials response: {self._creds_response}"
+            )
+        self._storage_url = self._creds_response.url
 
     def _set_env(self):
         """
@@ -846,11 +423,8 @@ class UnityCatalogConnector:
 
         Supported cloud providers:
             - AWS S3: Sets AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
-              (IAM temporary credentials)
             - Azure: Sets AZURE_STORAGE_SAS_TOKEN
-              (Shared Access Signature token)
             - GCP: Sets GCP_OAUTH_TOKEN or GOOGLE_APPLICATION_CREDENTIALS
-              (OAuth token or service account credentials)
 
         Raises:
             ValueError: If no recognized credential type is found in response
@@ -896,7 +470,7 @@ class UnityCatalogConnector:
                     mode="w",
                     prefix="gcp_sa_",
                     suffix=".json",
-                    delete=False,  # Don't delete immediately
+                    delete=False,
                 )
                 temp_file.write(creds.gcp_service_account_json)
                 temp_file.close()
@@ -904,7 +478,7 @@ class UnityCatalogConnector:
                 env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
                 self._gcp_temp_file = temp_file.name
 
-                # Register cleanup on exit without capturing self to allow garbage collection
+                # Register cleanup on exit
                 atexit.register(self._cleanup_gcp_temp_file_static, temp_file.name)
             else:
                 raise ValueError("GCP credentials not found in response")
@@ -917,76 +491,6 @@ class UnityCatalogConnector:
         for k, v in env_vars.items():
             os.environ[k] = v
 
-    def _infer_data_format(self) -> str:
-        """
-        Infer data format from metadata, explicit specification, or file extensions.
-
-        Priority order:
-        1. Explicitly specified format (self.data_format)
-        2. Table data_source_format from metadata (for tables)
-        3. File extension from storage location URL
-
-        Returns:
-            Inferred format string (e.g., "delta", "parquet", "csv")
-
-        Raises:
-            ValueError: If format cannot be inferred
-        """
-        # Use explicit format if provided
-        if self.data_format:
-            return self.data_format
-
-        # For tables, try to get format from metadata
-        if not self._is_volume and self._table_info:
-            if self._table_info.data_source_format:
-                return self._table_info.data_source_format.lower()
-
-        # Try to infer from storage URL file extension
-        if self._storage_url:
-            # Extract extension from URL (handle query parameters)
-            url_path = self._storage_url.split("?")[0]
-            ext = os.path.splitext(url_path)[-1].replace(".", "").lower()
-            if ext and ext in _FILE_FORMAT_TO_RAY_READER:
-                return ext
-
-        # Default to parquet for volumes if no extension found
-        if self._is_volume:
-            return "parquet"
-
-        raise ValueError(
-            f"Could not infer data format for path '{self.path}'. "
-            f"Please specify the format explicitly using the 'data_format' parameter. "
-            f"Supported formats: {', '.join(_FILE_FORMAT_TO_RAY_READER.keys())}"
-        )
-
-    @staticmethod
-    def _get_ray_reader(data_format: str) -> Callable[..., "ray.data.Dataset"]:
-        """
-        Get the appropriate Ray Data reader function for the specified format.
-
-        Args:
-            data_format: Format name (e.g., "delta", "parquet", "images")
-
-        Returns:
-            Ray Data reader function (e.g., ray.data.read_parquet)
-
-        Raises:
-            ValueError: If format is not supported by Ray Data
-        """
-        fmt = data_format.lower()
-
-        # Check if format is in the standard mapping
-        if fmt in _FILE_FORMAT_TO_RAY_READER:
-            reader_name = _FILE_FORMAT_TO_RAY_READER[fmt]
-            reader_func = getattr(ray.data, reader_name, None)
-            if reader_func:
-                return reader_func
-
-        raise ValueError(
-            f"Unsupported data format: '{fmt}'. "
-            f"Supported formats: {', '.join(sorted(_FILE_FORMAT_TO_RAY_READER.keys()))}"
-        )
-
     @staticmethod
     def _cleanup_gcp_temp_file_static(temp_file_path: str):
         """Clean up temporary GCP service account file if it exists."""
@@ -994,7 +498,6 @@ class UnityCatalogConnector:
             try:
                 os.unlink(temp_file_path)
             except OSError:
-                # File already deleted or inaccessible, ignore
                 pass
 
     def _read_delta_with_credentials(self) -> "ray.data.Dataset":
@@ -1003,7 +506,6 @@ class UnityCatalogConnector:
 
         For Delta Lake tables on AWS S3, the deltalake library needs a configured
         PyArrow S3FileSystem to access tables with temporary session credentials.
-        This method creates the appropriate filesystem and passes it to read_delta.
 
         Returns:
             Ray Dataset containing the Delta table data
@@ -1011,7 +513,7 @@ class UnityCatalogConnector:
         Raises:
             ImportError: If deltalake or pyarrow is not installed
             ValueError: If credentials are not properly configured
-            RuntimeError: If Delta table uses unsupported features (e.g., Deletion Vectors)
+            RuntimeError: If Delta table uses unsupported features
         """
         import pyarrow.fs as pafs
 
@@ -1036,13 +538,12 @@ class UnityCatalogConnector:
 
         elif creds.cloud_provider == CloudProvider.AZURE:
             # For Azure, the deltalake library can use environment variables
-            # that were set in _set_env(), so no special filesystem needed
-            # The AZURE_STORAGE_SAS_TOKEN will be picked up automatically
+            # that were set in _set_env()
             filesystem = None
 
         elif creds.cloud_provider == CloudProvider.GCP:
             # For GCP, the deltalake library can use environment variables
-            # that were set in _set_env() (GCP_OAUTH_TOKEN or GOOGLE_APPLICATION_CREDENTIALS)
+            # that were set in _set_env()
             filesystem = None
 
         # Merge filesystem into reader_kwargs if not already present
@@ -1061,19 +562,19 @@ class UnityCatalogConnector:
                 or "Unsupported reader features" in error_msg
             ):
                 raise RuntimeError(
-                    f"Delta table at '{self.path}' uses Deletion Vectors, which requires "
+                    f"Delta table at '{self.table}' uses Deletion Vectors, which requires "
                     f"deltalake library version 0.10.0 or higher. Current error: {error_msg}\n\n"
                     f"Solutions:\n"
                     f"  1. Upgrade deltalake: pip install --upgrade deltalake>=0.10.0\n"
                     f"  2. Disable deletion vectors on the table in Databricks:\n"
-                    f"     ALTER TABLE {self.path} SET TBLPROPERTIES ('delta.enableDeletionVectors' = 'false');\n"
+                    f"     ALTER TABLE {self.table} SET TBLPROPERTIES ('delta.enableDeletionVectors' = 'false');\n"
                     f"     Then run VACUUM to apply changes.\n"
                     f"  3. Use ray.data.read_parquet() to read the underlying Parquet files directly "
                     f"(note: this bypasses Delta Lake transaction log and may include deleted records)."
                 ) from e
             elif "ColumnMappingMode" in error_msg:
                 raise RuntimeError(
-                    f"Delta table at '{self.path}' uses column mapping, which may not be fully "
+                    f"Delta table at '{self.table}' uses column mapping, which may not be fully "
                     f"supported by your deltalake library version. Current error: {error_msg}\n\n"
                     f"Solutions:\n"
                     f"  1. Upgrade deltalake: pip install --upgrade deltalake\n"
@@ -1082,7 +583,7 @@ class UnityCatalogConnector:
             else:
                 # Re-raise other errors with additional context
                 raise RuntimeError(
-                    f"Failed to read Delta table at '{self.path}': {error_msg}\n\n"
+                    f"Failed to read Delta table at '{self.table}': {error_msg}\n\n"
                     f"This may be due to:\n"
                     f"  - Unsupported Delta Lake features\n"
                     f"  - Credential or permission issues\n"
@@ -1093,53 +594,34 @@ class UnityCatalogConnector:
 
     def read(self) -> "ray.data.Dataset":
         """
-        Read data from Unity Catalog table or volume into a Ray Dataset.
+        Read Unity Catalog Delta table into a Ray Dataset.
 
         This is the main entry point for reading data. It orchestrates:
-        1. Fetch metadata from Unity Catalog (for tables) or validate volume access
+        1. Fetch metadata from Unity Catalog
         2. Obtain temporary credentials via Unity Catalog credential vending
         3. Configure cloud credentials in the current process environment
-        4. Read data using the appropriate Ray Data reader or custom datasource
+        4. Read data using ray.data.read_delta()
 
         The credentials are set in the current process environment and will be
         inherited by Ray Data read tasks automatically.
 
         Returns:
-            Ray Dataset containing the data from the specified table or volume
+            Ray Dataset containing the data from the specified Delta table
 
         Raises:
-            ValueError: If configuration is invalid, path cannot be accessed, or
-                format cannot be inferred
+            ValueError: If configuration is invalid or table cannot be accessed
             requests.HTTPError: If Unity Catalog API requests fail
         """
-        logger.info(f"Reading Unity Catalog path: {self.path}")
+        logger.info(f"Reading Unity Catalog Delta table: {self.table}")
 
-        # Step 1: Get metadata (for both tables and volumes)
-        self._get_table_info()
+        # Step 1: Get table metadata
+        self._fetch_table_metadata()
 
         # Step 2: Get temporary credentials from Unity Catalog
-        # This may fail for volumes - see detailed error messages in _get_creds()
         self._get_creds()
 
         # Step 3: Configure cloud credentials in current process environment
-        # Ray Data readers will inherit these environment variables
         self._set_env()
 
-        # Step 4: Read data using custom datasource or standard Ray Data reader
-        if self.custom_datasource is not None:
-            # Use custom datasource if provided
-            # Custom datasources must accept (storage_url, **reader_kwargs) constructor
-            datasource_instance = self.custom_datasource(
-                self._storage_url, **self.reader_kwargs
-            )
-            return ray.data.read_datasource(datasource_instance)
-        else:
-            # Use standard Ray Data reader based on inferred or specified format
-            data_format = self._infer_data_format()
-
-            # Special handling for Delta format with Unity Catalog credentials
-            if data_format.lower() == "delta":
-                return self._read_delta_with_credentials()
-            else:
-                reader = self._get_ray_reader(data_format)
-                return reader(self._storage_url, **self.reader_kwargs)
+        # Step 4: Read Delta table with Unity Catalog credentials
+        return self._read_delta_with_credentials()

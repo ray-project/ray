@@ -12,7 +12,6 @@ from typing import (
     Optional,
     Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -3155,7 +3154,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3285,12 +3284,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()
@@ -4211,21 +4209,19 @@ def read_clickhouse(
 
 @PublicAPI(stability="alpha")
 def read_unity_catalog(
-    path: str,
+    table: str,
     url: str,
     token: str,
     *,
-    format: Optional[str] = None,
-    datasource: Optional[Type[Datasource]] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from Unity Catalog tables or volumes.
+    """Creates a :class:`~ray.data.Dataset` from Unity Catalog Delta tables.
 
-    This function reads data from Databricks Unity Catalog using credential vending,
-    which provides temporary, least-privilege credentials for secure access to cloud
-    storage. The function authenticates through the Unity Catalog REST API and supports
-    reading from AWS S3, Azure Data Lake Storage, and Google Cloud Storage.
+    This function reads Delta Lake tables from Databricks Unity Catalog using credential
+    vending, which provides temporary, least-privilege credentials for secure access to
+    cloud storage. The function authenticates through the Unity Catalog REST API and
+    supports reading from AWS S3, Azure Data Lake Storage, and Google Cloud Storage.
 
     .. note::
 
@@ -4242,80 +4238,44 @@ def read_unity_catalog(
 
         >>> import ray
         >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
-        ...     path="main.sales.transactions",
+        ...     table="main.sales.transactions",
         ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
         ...     token="dapi..."
         ... )
         >>> ds.show(3)  # doctest: +SKIP
 
-        Read images from a Unity Catalog volume:
+        Read Delta table with custom reader options:
 
         >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
-        ...     path="main.ml_data.images/training/cats",
+        ...     table="main.analytics.events",
         ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
         ...     token="dapi...",
-        ...     format="images"
-        ... )
-
-        Read Parquet files with custom reader options:
-
-        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
-        ...     path="main.analytics.events",
-        ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-        ...     token="dapi...",
-        ...     format="parquet",
         ...     region="us-west-2",
         ...     reader_kwargs={"columns": ["user_id", "timestamp"], "override_num_blocks": 100}
         ... )
 
-        Use a custom datasource:
-
-        >>> from ray.data.datasource import Datasource
-        >>> class MyCustomDatasource(Datasource):  # doctest: +SKIP
-        ...     def __init__(self, paths, **kwargs):
-        ...         # Custom implementation
-        ...         pass
-        ...
-        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
-        ...     path="main.raw_data.custom_format",
-        ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-        ...     token="dapi...",
-        ...     datasource=MyCustomDatasource
-        ... )
-
     Args:
-        path: Unity Catalog path. For tables, use the format ``catalog.schema.table``.
-            For volumes, use ``catalog.schema.volume/path/to/data``.
+        table: Unity Catalog table path in format ``catalog.schema.table``.
         url: Databricks workspace URL. For example,
             ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``.
         token: Databricks Personal Access Token. The token must have ``EXTERNAL USE SCHEMA``
-            permission on the schema containing the table or volume.
-        format: Data format. If not specified, the format is inferred from table
-            metadata or file extension. Supported formats include ``"delta"``,
-            ``"parquet"``, ``"csv"``, ``"json"``, ``"text"``, ``"images"``, ``"avro"``,
-            ``"numpy"``, ``"binary"``, ``"videos"``, ``"audio"``, ``"lance"``,
-            ``"iceberg"``, and ``"hudi"``.
-        datasource: Custom Ray Data :class:`~ray.data.Datasource` class. If provided,
-            this datasource is used instead of the standard format-based readers.
+            permission on the schema containing the table.
         region: AWS region for S3 credential configuration. Only required for AWS S3.
-        reader_kwargs: Additional arguments passed to the underlying Ray Data reader
-            function. The supported arguments depend on the format. For example,
-            for Parquet files, you can pass arguments from
-            :meth:`~ray.data.read_parquet`.
+        reader_kwargs: Additional arguments passed to :meth:`~ray.data.read_delta`.
+            For example, you can specify ``columns`` to read only specific columns,
+            or ``override_num_blocks`` to control parallelism.
 
     Returns:
-        A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
+        A :class:`~ray.data.Dataset` containing the data from the Unity Catalog Delta table.
 
     References:
         - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-        - Unity Catalog Volumes: https://docs.databricks.com/en/connect/unity-catalog/volumes.html
+        - Unity Catalog: https://docs.databricks.com/en/data-governance/unity-catalog/
     """
     connector = UnityCatalogConnector(
         base_url=url,
         token=token,
-        path=path,
-        data_format=format,
-        custom_datasource=datasource,
+        table=table,
         region=region,
         reader_kwargs=reader_kwargs,
     )
