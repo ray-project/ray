@@ -127,16 +127,18 @@ def test_async_generator_crash_restart(ray_start_cluster):
     signal = SignalActor.remote()
 
     @ray.remote(
-        label_selector={"ray.io/node-id": f"!{head_node_id}"}, max_restarts=-1, max_task_retries=-1,
+        label_selector={"ray.io/node-id": f"!{head_node_id}"},
+        max_restarts=-1,
+        max_task_retries=-1,
     )
     class Generator:
         async def generate(self):
             print("Generate first object.")
-            yield np.ones(1024 ** 2, dtype=np.uint8)
+            yield np.ones(1024**2, dtype=np.uint8)
             print("Wait for SignalActor.")
             ray.get(signal.wait.remote())
             print("Generate second object.")
-            yield np.ones(1024 ** 2, dtype=np.uint8)
+            yield np.ones(1024**2, dtype=np.uint8)
 
     @ray.remote(label_selector={"ray.io/node-id": f"!{head_node_id}"})
     def consumer(object_refs: List[ray.ObjectRef]):
