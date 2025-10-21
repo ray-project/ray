@@ -77,7 +77,6 @@ from ray.experimental.compiled_dag_ref import (
     _process_return_vals,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -1041,9 +1040,9 @@ class CompiledDAG:
             # resized, etc.). The driver actor serves as a way for the output writer
             # to invoke remote functions on the driver node.
             return CompiledDAG.DAGDriverProxyActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                }
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()

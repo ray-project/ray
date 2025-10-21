@@ -371,9 +371,7 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    worker_node_id, soft=False
-                )
+                label_selector={"ray.io/node-id": worker_node_id}
             ).remote()
         )
 

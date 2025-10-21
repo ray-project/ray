@@ -33,11 +33,7 @@ def _force_on_node(
         actor class as remote options kwargs.
     """
 
-    scheduling_strategy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=node_id, soft=False
-    )
-
-    options = {"scheduling_strategy": scheduling_strategy}
+    options = {"label_selector": {"ray.io/node-id": node_id}}
 
     if remote_func_or_actor_class is None:
         return options

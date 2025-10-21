@@ -4,7 +4,6 @@ from typing import Dict, Optional, Tuple
 import pytest
 
 import ray
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -104,9 +103,7 @@ def test_remote_package_uri_multi_node(
     # 2) The task was placed on the correct node.
     # 3) The Ray runtime_context was populated with the configured runtime_env.
     task_refs = [
-        task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False)
-        ).remote()
+        task.options(label_selector={"ray.io/node-id": node_id}).remote()
         for node_id in node_ids
     ]
     for i, task_ref in enumerate(task_refs):
@@ -115,9 +112,7 @@ def test_remote_package_uri_multi_node(
         assert env_in_task == env
 
     actors = [
-        actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False)
-        ).remote()
+        actor.options(label_selector={"ray.io/node-id": node_id}).remote()
         for node_id in node_ids
     ]
     actor_task_refs = [a.test_import.remote() for a in actors]
