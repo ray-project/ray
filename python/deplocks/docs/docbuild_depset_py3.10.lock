@@ -395,7 +395,6 @@ markdown-it-py==3.0.0 \
     --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1 \
     --hash=sha256:e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb
     # via
-    #   -r doc/requirements-doc.txt
     #   jupytext
     #   mdit-py-plugins
     #   myst-parser
