@@ -87,7 +87,7 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
   if (!cpu_weight_constraint_.IsValid(system_reserved_cpu_weight)) {
     return Status::InvalidArgument(
-        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+        absl::StrFormat(" Invalid constraint %s=%d. %s must be in the range [%d, %d].",
                         cpu_weight_constraint_.name_,
                         system_reserved_cpu_weight,
                         cpu_weight_constraint_.name_,
@@ -173,10 +173,8 @@ void CgroupManager::RegisterRemoveConstraint(const std::string &cgroup,
   cleanup_operations_.emplace_back(
       [this, constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
         std::string default_value = std::to_string(constraint_to_remove.default_value_);
-        Status s = this->cgroup_driver_->AddConstraint(constrained_cgroup,
-                                                       constraint_to_remove.controller_,
-                                                       constraint_to_remove.name_,
-                                                       default_value);
+        Status s = this->cgroup_driver_->AddConstraint(
+            constrained_cgroup, constraint_to_remove.name_, default_value);
         if (!s.ok()) {
           RAY_LOG(WARNING) << absl::StrFormat(
               "Failed to set constraint %s=%s to default value for cgroup %s with error "
@@ -270,10 +268,11 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, non_ray_cgroup_));
   RegisterMoveAllProcesses(non_ray_cgroup_, base_cgroup_);
 
-  // NOTE: Since the raylet does not own the lifecycle of all system processes,
-  // there's no guarantee that there are no pids in the system leaf cgroup.
+  // NOTE: Since the raylet does not own the lifecycle of all system or worker processes,
+  // there's no guarantee that there are no pids in the system leaf or the workers cgroup.
   // Therefore, pids need to be migrated out of the system cgroup to delete it.
   RegisterMoveAllProcesses(system_leaf_cgroup_, base_cgroup_);
+  RegisterMoveAllProcesses(workers_cgroup_, base_cgroup_);
 
   std::array<const std::string *, 2> cpu_controlled_cgroups{&base_cgroup_, &node_cgroup_};
   std::array<const std::string *, 3> memory_controlled_cgroups{
@@ -292,22 +291,18 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_,
-                                    cpu_weight_constraint_.controller_,
                                     cpu_weight_constraint_.name_,
                                     std::to_string(system_reserved_cpu_weight)));
   RegisterRemoveConstraint(system_cgroup_, cpu_weight_constraint_);
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_,
-                                    memory_min_constraint_.controller_,
                                     memory_min_constraint_.name_,
                                     std::to_string(system_reserved_memory_bytes)));
   RegisterRemoveConstraint(system_cgroup_, memory_min_constraint_);
 
-  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(user_cgroup_,
-                                                  cpu_weight_constraint_.controller_,
-                                                  cpu_weight_constraint_.name_,
-                                                  std::to_string(user_cpu_weight)));
+  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(
+      user_cgroup_, cpu_weight_constraint_.name_, std::to_string(user_cpu_weight)));
   RegisterRemoveConstraint(user_cgroup_, cpu_weight_constraint_);
 
   return Status::OK();

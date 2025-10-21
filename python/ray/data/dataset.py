@@ -343,9 +343,11 @@ class Dataset:
                 that can be instantiated to create such a callable.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -562,7 +564,7 @@ class Dataset:
                     .map_batches(
                         TorchPredictor,
                         # Two workers with one GPU each
-                        concurrency=2,
+                        compute=ray.data.ActorPoolStrategy(size=2),
                         # Batch size is required if you're using GPUs.
                         batch_size=4,
                         num_gpus=1
@@ -583,9 +585,11 @@ class Dataset:
                 to a given map task. Default ``batch_size`` is ``None``.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -597,7 +601,7 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used. Note that
+                block format will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -826,8 +830,8 @@ class Dataset:
         if isinstance(expr, DownloadExpr):
             download_op = Download(
                 self._logical_plan.dag,
-                uri_column_name=expr.uri_column_name,
-                output_bytes_column_name=column_name,
+                uri_column_names=[expr.uri_column_name],
+                output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(download_op, self.context)
@@ -1288,9 +1292,11 @@ class Dataset:
                 that can be instantiated to create such a callable.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -1426,9 +1432,11 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
