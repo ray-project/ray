@@ -54,7 +54,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
+from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -4213,25 +4213,23 @@ def read_unity_catalog(
     url: str,
     token: str,
     *,
+    data_format: Optional[str] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from Unity Catalog Delta tables.
+    """
+    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
 
-    This function reads Delta Lake tables from Databricks Unity Catalog using credential
-    vending, which provides temporary, least-privilege credentials for secure access to
-    cloud storage. The function authenticates through the Unity Catalog REST API and
-    supports reading from AWS S3, Azure Data Lake Storage, and Google Cloud Storage.
+    This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
+    credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
+    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
+    The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
     .. note::
 
        This function is experimental and under active development.
-
-    .. warning::
-
-        The Databricks Unity Catalog credential vending feature is in Public Preview.
-        Ensure your workspace and principal are properly configured with the required
-        permissions before using this function.
 
     Examples:
         Read a Unity Catalog Delta table:
@@ -4240,43 +4238,27 @@ def read_unity_catalog(
         >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
         ...     table="main.sales.transactions",
         ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-        ...     token="dapi..."
+        ...     token="dapi...",
+        ...     region="us-west-2"
         ... )
         >>> ds.show(3)  # doctest: +SKIP
 
-        Read Delta table with custom reader options:
-
-        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
-        ...     table="main.analytics.events",
-        ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
-        ...     token="dapi...",
-        ...     region="us-west-2",
-        ...     reader_kwargs={"columns": ["user_id", "timestamp"], "override_num_blocks": 100}
-        ... )
-
     Args:
         table: Unity Catalog table path in format ``catalog.schema.table``.
-        url: Databricks workspace URL. For example,
-            ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``.
-        token: Databricks Personal Access Token. The token must have ``EXTERNAL USE SCHEMA``
-            permission on the schema containing the table.
-        region: AWS region for S3 bucket (e.g., ``"us-west-2"``). Required for AWS S3,
-            not required for Azure or GCP.
-        reader_kwargs: Additional arguments passed to :meth:`~ray.data.read_delta`.
-            For example, you can specify ``columns`` to read only specific columns,
-            or ``override_num_blocks`` to control parallelism.
+        url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+        token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+        data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
+        region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
+        reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
-        A :class:`~ray.data.Dataset` containing the data from the Unity Catalog Delta table.
-
-    References:
-        - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-        - Unity Catalog: https://docs.databricks.com/en/data-governance/unity-catalog/
+        A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """
     connector = UnityCatalogConnector(
         base_url=url,
         token=token,
-        table=table,
+        table_full_name=table,
+        data_format=data_format,
         region=region,
         reader_kwargs=reader_kwargs,
     )
