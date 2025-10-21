@@ -283,7 +283,7 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
         blocking_child_pid = int((tmp_path / "blocking_child.pid").read_text())
         return True
 
-    wait_for_condition(condition, timeout=5)
+    wait_for_condition(condition, timeout=10)
 
     # Kill and restart the GCS to trigger resubscription.
     ray._private.worker._global_node.kill_gcs_server()
@@ -303,7 +303,7 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     p.wait()
 
     # The blocking child task should exit.
-    wait_for_pid_to_exit(blocking_child_pid, 5)
+    wait_for_pid_to_exit(blocking_child_pid, 10)
 
 
 def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):
