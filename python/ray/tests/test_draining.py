@@ -436,7 +436,9 @@ def test_draining_reason(ray_start_cluster, graceful):
             assert e.preempted
             if graceful:
                 assert "The actor died because its node has died." in str(e)
-                assert "the actor's node was preempted: " + drain_reason_message in str(e)
+                assert "the actor's node was preempted: " + drain_reason_message in str(
+                    e
+                )
         return True
 
     wait_for_condition(check_actor_died_error)
