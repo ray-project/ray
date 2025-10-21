@@ -119,6 +119,16 @@ def test_register_histogram_metric(
     )
     mock_logger_warning.assert_not_called()
 
+    mock_meter.create_histogram.return_value = NoOpHistogram(name="neg_histogram")
+    recorder.register_histogram_metric(
+        name="neg_histogram",
+        description="Histogram with negative first boundary",
+        buckets=[-5.0, 0.0, 10.0],
+    )
+
+    mids = recorder.get_histogram_bucket_midpoints("neg_histogram")
+    assert mids == pytest.approx([-7.5, -2.5, 5.0, 20.0])
+
 
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")

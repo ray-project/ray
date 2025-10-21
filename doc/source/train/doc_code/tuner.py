@@ -1,6 +1,11 @@
 # flake8: noqa
 # isort: skip_file
 
+# TODO: [V2] Deprecated doc code to delete.
+import os
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "0"
+
 # __basic_start__
 import ray
 import ray.tune
