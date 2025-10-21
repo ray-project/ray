@@ -1,9 +1,9 @@
 import copy
-import gymnasium as gym
 import logging
-
-from gymnasium.envs.registration import VectorizeMode
 from typing import Any, Dict, Optional
+
+import gymnasium as gym
+from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector.sync_vector_multi_agent_env import SyncVectorMultiAgentEnv

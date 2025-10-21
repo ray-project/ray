@@ -1,5 +1,6 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.utils.test_utils import check
@@ -159,7 +160,8 @@ class TestLSTMUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
