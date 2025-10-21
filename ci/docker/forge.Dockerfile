@@ -55,9 +55,25 @@ apt-get install -y \
   python3-pip openjdk-8-jre wget jq \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+mkdir -p /usr/local/python
+# Install Python 3.9 using uv
+uv python install --install-dir /usr/local/python 3.9
+uv python pin 3.9
+
+export UV_PYTHON_INSTALL_DIR=/usr/local/python
+# Make Python 3.9 from uv the default by creating symlinks
+PYTHON39_PATH=$(uv python find 3.9)
+echo $PYTHON39_PATH
+ln -s $PYTHON39_PATH /usr/local/bin/python3.9
+ln -s $PYTHON39_PATH /usr/local/bin/python3
+ln -s $PYTHON39_PATH /usr/local/bin/python
+
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==25.0 cffi==1.16.0
+uv pip install --system pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.

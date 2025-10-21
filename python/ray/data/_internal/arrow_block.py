@@ -453,7 +453,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self._table.num_rows == 0:
             return self._table
 
-        from ray.data._expression_evaluator import eval_expr
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
 
         # Evaluate the expression to get a boolean mask
         mask = eval_expr(predicate_expr, self._table)
@@ -528,10 +530,38 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return pac.unique(self._column)
 
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        import pyarrow.compute as pac
+
+        value_counts: pyarrow.StructArray = pac.value_counts(self._column)
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.field("values").to_pylist(),
+            "counts": value_counts.field("counts").to_pylist(),
+        }
+
+    def hash(self) -> BlockColumn:
+        import polars as pl
+
+        df = pl.DataFrame({"col": self._column})
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_arrow()
+
     def flatten(self) -> BlockColumn:
         import pyarrow.compute as pac
 
         return pac.list_flatten(self._column)
+
+    def dropna(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.drop_null(self._column)
+
+    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+        if not types:
+            types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+        return isinstance(self._column.type, types)
 
     def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()

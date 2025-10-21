@@ -43,7 +43,7 @@ py_test(
     name = "test_new_dataset_config",
     size = "large",
     srcs = ["tests/test_new_dataset_config.py"],
-    # TODO: Move over
+    # NOTE: Relevant tests moved to train/v2/tests/test_data_integration.py
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
