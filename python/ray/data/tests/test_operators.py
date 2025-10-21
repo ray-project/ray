@@ -1562,12 +1562,13 @@ def test_apply_transform_dag_consistency():
             return Operator("Transformed B", op.input_dependencies)
         return op
 
-    c_transformed = c._apply_transform(transform_b)
 
     # This should create the DAG:
     #               A --|
     #                   |--> C
     #   B transformed --|
+    c_transformed = c._apply_transform(transform_b)
+
 
     assert c_transformed.name == "C"
     assert c_transformed.input_dependencies[0].output_dependencies[0].name == "C"
