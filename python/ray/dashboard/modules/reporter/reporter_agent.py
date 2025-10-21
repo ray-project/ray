@@ -1739,7 +1739,7 @@ class ReporterAgent(
                 #       executor (TPE) to avoid blocking the Agent's event-loop
                 json_payload = await loop.run_in_executor(
                     self._executor,
-                    self._compose_stats_payload,
+                    self._run_in_executor,
                     autoscaler_status_json_bytes,
                 )
 
@@ -1752,9 +1752,7 @@ class ReporterAgent(
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    def _compose_stats_payload(
-        self, cluster_autoscaling_stats_json: Optional[bytes]
-    ) -> str:
+    def _run_in_executor(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
         return asyncio.run(
             self._async_compose_stats_payload(cluster_autoscaling_stats_json)
         )
