@@ -1,36 +1,40 @@
 import time
 
-# import numpy as np
-
 from ray.util.metrics import Histogram
 
 _num_buckets = 31
-_coeff = 4  # how much denser at the low end
+_coeff = 4
 _short_event_min = 0.0001  # 0.1 ms
 _short_event_max = 1.5
 _long_event_min = 0.1
 _long_event_max = 600.0
 
 
-def linspace(start, stop, num):
+def _create_buckets(coeff, event_min, event_max, num):
+    """Generates a list of `num` buckets between `event_min` and `event_max`.
+    `coeff` - specifies how much denser at the low end
+    """
     if num == 1:
-        return [start]
-    step = (stop - start) / (num - 1)
-    return [start + step * i for i in range(num)]
+        return [event_min]
+    step = 1 / (num - 1)
+    return [
+        (0 + step * i) ** coeff * (event_max - event_min) + event_min
+        for i in range(num)
+    ]
 
 
-DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = linspace(start=0, stop=1, num=_num_buckets)
-DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = linspace(start=0, stop=1, num=_num_buckets)
-
-# More dense at the low end; timing short events.
-# DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = (
-#     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
-# ) * (_short_event_max - _short_event_min) + _short_event_min
-#
-# # More dense at the low end; timing long events.
-# DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = (
-#     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
-# ) * (_long_event_max - _long_event_min) + _long_event_min
+DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = _create_buckets(
+    coeff=_coeff,
+    event_min=_short_event_min,
+    event_max=_short_event_max,
+    num=_num_buckets,
+)
+DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = _create_buckets(
+    coeff=_coeff,
+    event_min=_long_event_min,
+    event_max=_long_event_max,
+    num=_num_buckets,
+)
 
 
 class TimerAndPrometheusLogger:
