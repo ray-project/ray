@@ -44,11 +44,7 @@ NVSHMEM_VERSION="3.2.5-1"
     wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_${NVSHMEM_VERSION}.txz
     tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
     cd nvshmem_src
-    # using a specific commit to make the build deterministic:
-    # https://github.com/deepseek-ai/DeepEP/commit/bdd119f8b249953cab366f4d737ad39d4246fd7e
-    wget https://github.com/deepseek-ai/DeepEP/raw/bdd119f8b249953cab366f4d737ad39d4246fd7e/third-party/nvshmem.patch
     git init
-    git apply -vvv nvshmem.patch
     wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
     git apply --reject --whitespace=fix eep_nvshmem.patch
 
