@@ -9,14 +9,12 @@ import string
 import sys
 import tempfile
 from inspect import signature
-from typing import Any, Coroutine, Dict, Optional, Tuple
+from typing import Any, Coroutine, Dict, Optional
 
 import psutil
 
 
-def import_module_and_attr(
-    full_path: str, *, reload_module: bool = False
-) -> Tuple[Any, Any]:  # type: ignore
+def import_module_and_attr(full_path: str, *, reload_module: bool = False):
     if full_path is None:
         raise TypeError("import path cannot be None")
 
@@ -38,8 +36,26 @@ def import_module_and_attr(
     return module, getattr(module, attr_name)
 
 
-def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
-    return import_module_and_attr(full_path, reload_module=reload_module)[1]
+def import_attr(full_path: str, *, reload_module: bool = False):
+    if full_path is None:
+        raise TypeError("import path cannot be None")
+
+    if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
+        module_name, attr_name = full_path.split(":")
+    else:
+        last_period_idx = full_path.rfind(".")
+        module_name = full_path[:last_period_idx]
+        attr_name = full_path[last_period_idx + 1 :]
+
+    module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
+    return getattr(module, attr_name)
 
 
 def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
