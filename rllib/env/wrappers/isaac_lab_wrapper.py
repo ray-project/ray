@@ -26,11 +26,11 @@ def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"
     return cfg
 
 @PublicAPI
-class IsaacLabEnvWrapper(gym.Env):
+class IsaacLabEnv(gym.Env):
     """A `gym.Env` wrapper for the `Isaac_lab` ."""
 
     def __init__(self, env_name: str, env_cfg: Optional[Union[DirectRLEnvCfg, ManagerBasedRLEnvCfg]] = None):
-        super(IsaacLabEnvWrapper, self).__init__()
+        super(IsaacLabEnv, self).__init__()
         self._env_cfg = _get_cfg_entry_point(env_name)
         
         # Merge configurations: env_cfg takes precedence over self._env_cfg
