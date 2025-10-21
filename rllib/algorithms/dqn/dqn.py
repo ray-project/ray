@@ -9,12 +9,14 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
-from collections import defaultdict
 import logging
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
-from typing_extensions import Self
-import numpy as np
 
+import numpy as np
+from typing_extensions import Self
+
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
@@ -24,21 +26,14 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.execution.train_ops import (
-    train_one_step,
     multi_gpu_train_one_step,
+    train_one_step,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.replay_buffers.utils import (
-    update_priorities_in_episode_replay_buffer,
-    update_priorities_in_replay_buffer,
-    validate_buffer_config,
-)
-from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
@@ -60,10 +55,16 @@ from ray.rllib.utils.metrics import (
     TD_ERROR_KEY,
     TIMERS,
 )
-from ray._common.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    update_priorities_in_episode_replay_buffer,
+    update_priorities_in_replay_buffer,
+    validate_buffer_config,
+)
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
+    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )

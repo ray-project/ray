@@ -9,6 +9,9 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    representation_layer,
+)
 from ray.rllib.algorithms.dreamerv3.torch.models.components.continue_predictor import (
     ContinuePredictor,
 )
@@ -16,9 +19,6 @@ from ray.rllib.algorithms.dreamerv3.torch.models.components.dynamics_predictor i
     DynamicsPredictor,
 )
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.torch.models.components import (
-    representation_layer,
-)
 from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor import (
     RewardPredictor,
 )

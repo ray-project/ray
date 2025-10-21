@@ -1,27 +1,27 @@
 from typing import Dict
 
-from ray.tune.result import TRAINING_ITERATION
+from ray.rllib.algorithms.cql.cql import CQLConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
     QF_LOSS_KEY,
-    QF_MEAN_KEY,
     QF_MAX_KEY,
+    QF_MEAN_KEY,
     QF_MIN_KEY,
     QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
     TD_ERROR_MEAN_KEY,
 )
-from ray.rllib.algorithms.cql.cql import CQLConfig
 from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
+from ray.tune.result import TRAINING_ITERATION
 
 torch, nn = try_import_torch()
 

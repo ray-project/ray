@@ -3,16 +3,15 @@
 Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
-from collections import deque
 import threading
 import time
+from collections import deque
 
 import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import OldAPIStack
-
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
