@@ -22,7 +22,7 @@ autodoc_pydantic==2.2.0
 appnope
 sphinx-docsearch==0.0.7
 
-pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
+pydantic==2.5.0
 
 # MyST
 myst-parser==2.0.0 # Needed to parse markdown
