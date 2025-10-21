@@ -2115,7 +2115,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.allow_out_of_order_execution,
       actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
-      actor_creation_options.labels);
+      actor_creation_options.labels,
+      is_detached);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -2162,11 +2163,36 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::OK();
   }
 
+  auto ref_is_detached_actor = [this](const std::string &object_id) {
+    auto ref_object_id = ObjectID::FromBinary(object_id);
+    if (ObjectID::IsActorID(ref_object_id)) {
+      auto ref_actor_id = ObjectID::ToActorID(ref_object_id);
+      if (auto ref_actor_handle = actor_manager_->GetActorHandleIfExists(ref_actor_id)) {
+        if (ref_actor_handle->IsDetached()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   if (task_spec.MaxActorRestarts() != 0) {
     bool actor_restart_warning = false;
     for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-      if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
+      if (task_spec.ArgByRef(i)) {
         actor_restart_warning = true;
+        break;
+      }
+      if (!task_spec.ArgInlinedRefs(i).empty()) {
+        for (const auto &ref : task_spec.ArgInlinedRefs(i)) {
+          if (!ref_is_detached_actor(ref.object_id())) {
+            // There's an inlined ref that's not a detached actor, so we want to
+            // show the warning.
+            actor_restart_warning = true;
+            break;
+          }
+        }
+      }
+      if (actor_restart_warning) {
         break;
       }
     }
