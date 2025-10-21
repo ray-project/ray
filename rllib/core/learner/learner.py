@@ -1,10 +1,8 @@
 import abc
-from collections import defaultdict
 import copy
 import logging
-import numpy
 import platform
-import tree
+from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -20,7 +18,11 @@ from typing import (
     Union,
 )
 
+import numpy
+import tree
+
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -31,8 +33,8 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.learner.training_data import TrainingData
-from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -47,7 +49,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -62,6 +63,10 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
@@ -82,6 +87,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+from ray.util.metrics import Counter, Histogram
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -275,6 +281,35 @@ class Learner(Checkpointable):
         # repeatable iterator that iterates over a split of the streamed data.
         self.iterator: MiniBatchRayDataIterator = None
 
+        # Ray metrics
+        self._metrics_all_modules_num_env_steps_trained = Counter(
+            name="rllib_learner_all_modules_num_env_steps_trained_counter",
+            description="Number of env steps trained (sum over all modules).",
+            tag_keys=("rllib",),
+        )
+        self._metrics_all_modules_num_env_steps_trained.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_all_modules_num_module_steps_trained = Counter(
+            name="rllib_learner_all_modules_num_module_steps_trained_counter",
+            description="Number of module steps trained (sum over all modules).",
+            tag_keys=("rllib",),
+        )
+        self._metrics_all_modules_num_module_steps_trained.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_learner_inner_update = Histogram(
+            name="rllib_learner_update_inner_update_time",
+            description="Duration of the Learner's inner update.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_inner_update.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Unless there is
     #  a reason related to Train worker group setup.
@@ -315,7 +350,6 @@ class Learner(Checkpointable):
 
         # Log the number of trainable/non-trainable parameters.
         self._log_trainable_parameters()
-
         self._is_built = True
 
     @property
@@ -809,6 +843,7 @@ class Learner(Checkpointable):
             module_id=module_id,
             config=self.config.get_config_for_module(module_id),
         )
+
         return self.config.rl_module_spec
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1073,7 +1108,13 @@ class Learner(Checkpointable):
 
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, _ = self._update(tensor_minibatch.policy_batches)
+            with TimerAndPrometheusLogger(self._metrics_learner_inner_update):
+                fwd_out, loss_per_module, _ = self._update(
+                    tensor_minibatch.policy_batches
+                )
+
+            # Ray metrics
+            self._log_metrics(batch=tensor_minibatch)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -1704,3 +1745,21 @@ class Learner(Checkpointable):
     @Deprecated(new="Learner.compute_losses(...)", error=True)
     def compute_loss(self, *args, **kwargs):
         pass
+
+    def _log_metrics(self, batch: MultiAgentBatch) -> None:
+        _env_steps = int(batch.env_steps())
+        if _env_steps > 0:
+            self._metrics_all_modules_num_env_steps_trained.inc(value=_env_steps)
+            total_module_steps = sum(
+                len(module_batch) for module_batch in batch.policy_batches.values()
+            )
+            self._metrics_all_modules_num_module_steps_trained.inc(
+                value=total_module_steps
+            )
+        else:
+            logger.warning(
+                f"RLlib {self.__class__.__name__}: Skipping Prometheus logging for metrics: "
+                f"{self._metrics_all_modules_num_env_steps_trained.info['name']} and "
+                f"{self._metrics_all_modules_num_module_steps_trained.info['name']}. "
+                f"Received MultiAgentBatch.env_steps()={_env_steps}, but the number of steps must be greater than 0."
+            )
