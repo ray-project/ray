@@ -674,6 +674,27 @@ Windows powershell users need additional escaping:
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if --enable-resource-isolation is set.",
 )
+@click.option(
+    "--enable-chariot-ds",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Enable chariot-ds as backend.",
+)
+@click.option(
+    "--ds-worker-port",
+    required=False,
+    type=int,
+    default=None,
+    help="The port to use for ds worker.",
+)
+@click.option(
+    "--etcd-address",
+    required=False,
+    type=str,
+    default=None,
+    help="The address to use for etcd.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -722,6 +743,9 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    enable_chariot_ds,
+    ds_worker_port,
+    etcd_address,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -831,6 +855,9 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        enable_chariot_ds=enable_chariot_ds,
+        ds_worker_port=ds_worker_port,
+        etcd_address=etcd_address,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
