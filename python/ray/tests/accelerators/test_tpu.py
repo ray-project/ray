@@ -7,10 +7,9 @@ import pytest
 import requests
 
 import ray
+import ray.util.accelerators.tpu as tpu_util
 from ray._private.accelerators import TPUAcceleratorManager, tpu
-from ray.util.accelerators import tpu
 from ray.tests.conftest import _ray_start_cluster
-from ray.util.accelerators import tpu as util_tpu
 
 
 @patch("glob.glob")
@@ -269,7 +268,7 @@ def test_get_current_pod_name_smoke():
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
+        name = tpu_util.get_current_pod_name()
     assert name == "my-tpu"
 
 
@@ -278,7 +277,7 @@ def test_empty_get_current_pod_name_returns_none():
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="",
     ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
+        name = tpu_util.get_current_pod_name()
     assert name is None
 
 
@@ -313,7 +312,7 @@ def test_worker_count(mock_glob, test_case):
         "get_current_node_tpu_pod_type",
         return_value=accelerator_type,
     ):
-        worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
+        worker_count = tpu_util.get_current_pod_worker_count()
 
     assert worker_count == expected_worker_count
 
@@ -327,7 +326,7 @@ def test_num_tpu_chips(mock_glob):
         "/dev/accel3",
     ]
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
+    num_tpu_chips = tpu_util.get_num_tpu_chips_on_node()
     assert num_tpu_chips == 4
 
 
@@ -343,10 +342,10 @@ def test_num_tpu_chips(mock_glob):
         ("v3-4", "4x16", False),
         ("v4-4", "2x2x1", True),
         ("v4-32", "2x4x4", True),
-        ("v4-2304", "12x12x16", True),
+        ("v4-2048", "8x8x16", True),
         ("v4-4", "16x16x16", False),
         ("v5p-64", "4x4x4", True),
-        ("v5p-1728", "12x12x12", True),
+        ("v5p-4096", "16x16x16", True),
         ("v5p-6144", "16x16x24", True),
         ("v5p-4", "24x24x24", False),
         ("v5litepod-16", "2x8", True),
@@ -358,7 +357,7 @@ def test_num_tpu_chips(mock_glob):
     ],
 )
 @patch("glob.glob")
-def test_is_valid_tpu_accelerator_topology(test_case):
+def test_is_valid_tpu_accelerator_topology(_mock_glob, test_case):
     """Test valid TPU accelerator topologies."""
     accelerator_type, accelerator_topology, expected_result = test_case
     actual_result = TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
@@ -394,24 +393,26 @@ def test_get_current_node_tpu_topology_from_metadata():
 
 
 @pytest.mark.parametrize(
-    "topology, accelerator_type, expected_pod_type",
+    "topology, accelerator_type, expected_pod_type, should_raise",
     [
-        ("2x4", "TPU-V6E", "v6e-8"),
-        ("2x2x2", "TPU-V4", "v4-8"),
-        ("2x4x4", "TPU-V3", "v3-32"),
-        ("4x4", "TPU-V5P", "v5p-16"),
-        ("8x16", "TPU-V6E", "v6e-128"),
-        ("", "TPU-V3", None),
-        ("4x", "TPU-V3", None),
+        ("2x4", "TPU-V6E", "v6e-8", False),
+        ("2x2x2", "TPU-V4", "v4-8", False),
+        ("2x4x4", "TPU-V3", "v3-32", False),
+        ("4x4", "TPU-V5P", "v5p-16", False),
+        ("8x16", "TPU-V6E", "v6e-128", False),
+        ("", "TPU-V3", None, False),
+        ("4x", "TPU-V3", None, True),
     ],
 )
 def test_infer_tpu_pod_type_from_topology(
-    topology, accelerator_type, expected_pod_type
+    topology, accelerator_type, expected_pod_type, should_raise
 ):
-    assert (
-        tpu.infer_tpu_pod_type_from_topology(topology, accelerator_type)
-        == expected_pod_type
-    )
+    if should_raise:
+        with pytest.raises(ValueError):
+            tpu.infer_tpu_pod_type_from_topology(topology, accelerator_type)
+    else:
+        actual_result = tpu.infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        assert actual_result == expected_pod_type
 
 
 @pytest.fixture
@@ -428,9 +429,9 @@ def ray_tpu_cluster(monkeypatch):
         monkeypatch.setenv("TPU_NAME", "test-slice-0")
         monkeypatch.setenv("TPU_WORKER_ID", "0")
         monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-8")
-        monkeypatch.setenv("TPU_TOPOLOGY", "2x2x1")
-        monkeypatch.setenv("TPU_TOPOLOGY", "2x2x1")
+        monkeypatch.setenv("TPU_TOPOLOGY", "2x2x2")
 
+        # First slice - 2x2x2 with 2 TPU workers.
         cluster.add_node(
             num_cpus=2,
             resources={"TPU": 4, "TPU-v4-8-head": 1},
@@ -441,8 +442,8 @@ def ray_tpu_cluster(monkeypatch):
             resources={"TPU": 4},
         )
 
-        # second slice
-        monkeypatch.setenv("TPU_NAME", "test-slice2-0")
+        # Second slice - 2x2x2 with 2 TPU workers.
+        monkeypatch.setenv("TPU_NAME", "test-slice-1")
         monkeypatch.setenv("TPU_WORKER_ID", "0")
         cluster.add_node(
             num_cpus=2,
@@ -454,18 +455,6 @@ def ray_tpu_cluster(monkeypatch):
             resources={"TPU": 4},
         )
 
-        # second slice
-        monkeypatch.setenv("TPU_NAME", "test-slice2-0")
-        monkeypatch.setenv("TPU_WORKER_ID", "0")
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4, "TPU-v4-8-head": 1},
-        )
-        monkeypatch.setenv("TPU_WORKER_ID", "1")
-        cluster.add_node(
-            num_cpus=2,
-            resources={"TPU": 4},
-        )
         ray.init(address=cluster.address)
 
         yield cluster
@@ -477,44 +466,56 @@ def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
     tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-8-head": 1}])
     ray.get(tpu_head_pg.ready())
 
-    tpu_slice_name = "test-slice-0"
+    expected_unique_slice_names = {"test-slice-0", "test-slice-1"}
     slice_name = tpu.fetch_tpu_slice_name_from_pg(tpu_head_pg)
-    assert slice_name == tpu_slice_name
+    assert slice_name in expected_unique_slice_names
 
     ray.util.remove_placement_group(tpu_head_pg)
 
 
 def test_reserve_tpu_slice(ray_tpu_cluster):
     """Tests that a TPU slice can be successfully reserved."""
-    tpu_slice_name = "test-slice-0"
-    reserved_name = tpu.reserve_tpu_slice(topology="2x2x1", accelerator_type="TPU-V4")
-    reserved_name = tpu.reserve_tpu_slice(topology="2x2x1", accelerator_type="TPU-V4")
-    assert reserved_name == tpu_slice_name
+    reserved_name_0 = tpu.reserve_tpu_slice(topology="2x2x2", accelerator_type="TPU-V4")
+    reserved_name_1 = tpu.reserve_tpu_slice(topology="2x2x2", accelerator_type="TPU-V4")
+    assert (
+        reserved_name_0 != reserved_name_1
+    ), f"Expected to reserve two different slices, but got the same name: {reserved_name_0}"
+    expected_unique_slice_names = {"test-slice-0", "test-slice-1"}
+    actual_reserved_names = {reserved_name_0, reserved_name_1}
+    assert actual_reserved_names == expected_unique_slice_names, (
+        f"Got unexpected slice names. Expected {expected_unique_slice_names}, "
+        f"but got {actual_reserved_names}"
+    )
 
 
 def test_slice_placement_group(ray_tpu_cluster):
-    """Test that whole single TPU slice can be successfully reserved."""
-    slice_placement_group = util_tpu.slice_placement_group(
-        topology="2x2x1",
+    """Test that single TPU slice can be successfully reserved."""
+    slice_placement_group = tpu_util.slice_placement_group(
+        topology="2x2x2",
         accelerator_version="v4",
     )
     assert slice_placement_group.chips_per_host == 4
-    assert slice_placement_group.num_workers == 1
-    assert slice_placement_group.placement_group.bundle_count == 1
-    assert slice_placement_group.placement_group.bundle_specs == [{"TPU": 4}]
+    assert slice_placement_group.num_workers == 2
+    assert slice_placement_group.placement_group.bundle_count == 2
+    assert slice_placement_group.placement_group.bundle_specs == [
+        {"TPU": 4},
+        {"TPU": 4},
+    ]
 
 
-def test_multislice_placement_group(ray_tpu_cluster):
+def test_multi_slice_placement_group(ray_tpu_cluster):
     """Test that multiple whole TPU slices can be successfully reserved"""
-    multislice_placement_group = util_tpu.multi_slice_placement_group(
-        topology="2x2x1",
+    multi_slice_placement_group = tpu_util.multi_slice_placement_group(
+        topology="2x2x2",
         accelerator_version="v4",
         num_slices=2,
     )
-    assert multislice_placement_group.placement_group.bundle_count == 2
-    assert multislice_placement_group.num_workers == 2
-    assert multislice_placement_group.placement_group.bundle_specs == [
+    assert multi_slice_placement_group.placement_group.bundle_count == 4
+    assert multi_slice_placement_group.num_workers == 4
+    assert multi_slice_placement_group.placement_group.bundle_specs == [
+        {"TPU": 4},  # slice 1
         {"TPU": 4},
+        {"TPU": 4},  # slice 2
         {"TPU": 4},
     ]
 

@@ -3,7 +3,6 @@ import logging
 import os
 import re
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple, Set
 from typing import Dict, List, Optional, Set, Tuple
 
 import requests
@@ -70,13 +69,15 @@ def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
     """Returns a set of larger 3D TPU topologies given the max x,y,z value. Using DEFAULT_TPU_NUM_CHIPS_PER_HOST as increment"""
     topologies = set()
     for x in range(
-        DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_x, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+        DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_x + 1, DEFAULT_TPU_NUM_CHIPS_PER_HOST
     ):
         for y in range(
-            DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_y, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+            DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_y + 1, DEFAULT_TPU_NUM_CHIPS_PER_HOST
         ):
             for z in range(
-                DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_z, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+                DEFAULT_TPU_NUM_CHIPS_PER_HOST,
+                max_z + 1,
+                DEFAULT_TPU_NUM_CHIPS_PER_HOST,
             ):
                 topologies.add(f"{x}x{y}x{z}")
 
@@ -151,6 +152,8 @@ def infer_tpu_pod_type_from_topology(
     topology: str, accelerator_type: str
 ) -> Optional[str]:
     """Infer the TPU pod type (e.g. v4-32) from topology and accelerator type."""
+    if not topology or not accelerator_type:
+        return None
     try:
         num_chips = 1
         for value in topology.strip().lower().split("x"):
@@ -158,10 +161,10 @@ def infer_tpu_pod_type_from_topology(
         generation = accelerator_type.lower().replace("tpu-", "")
         return f"{generation}-{num_chips}"
     except Exception as e:
-        logger.warning(
-            f"Failed to infer pod type from topology {topology} and type {accelerator_type}: {e}"
-        )
-        return None
+        raise ValueError(
+            f"Failed to infer pod type from topology '{topology}' "
+            f"and type '{accelerator_type}'"
+        ) from e
 
 
 def fetch_tpu_slice_name_from_pg(pg):
@@ -178,7 +181,7 @@ def fetch_tpu_slice_name_from_pg(pg):
     return ray.get(tpu_name_ref)
 
 
-def get_chips_per_host(topology: str, accelerator_verison: str) -> int:
+def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     """Get the number of chips per host (aka VMs) based on topology and accelerator version.
     The current rule is as follows:
         Default chips per host is 4.
@@ -188,7 +191,7 @@ def get_chips_per_host(topology: str, accelerator_verison: str) -> int:
 
     Args:
         topology: The TPU topology string (e.g. "2x2x2").
-        accelerator_verison: The accelerator version of the node (e.g. "V4", "v4").
+        accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
 
     Returns:
         A int representing the number of chips per host (aka VM)
@@ -200,7 +203,7 @@ def get_chips_per_host(topology: str, accelerator_verison: str) -> int:
 
     if (
         total_chips <= 8
-        and accelerator_verison.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES
+        and accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES
     ):
         return total_chips
 
@@ -347,7 +350,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             True if it's valid topology, false othrwise
         """
-        tpu_version_formatted = tpu_accelerator_version.strip().lower()
+        tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
         if (
             tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
             or tpu_topology.strip().lower()

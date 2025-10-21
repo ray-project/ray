@@ -1,6 +1,5 @@
-from typing import Optional, Tuple, List, Optional
+from typing import Optional
 
-import ray
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
@@ -51,16 +50,14 @@ def get_num_tpu_chips_on_node() -> int:
 
 @PublicAPI
 class SlicePlacementGroup:
-    """A handle to a placement group reservation for a TPU slice.
-    Added the following definitions for clarification:
+    """
+    A handle to a placement group reservation for a TPU slice.
 
-    Accelerator type - accelerator with version. e.g. TPU-V2, TPU-V6E
-
-    Accelerator size - accelerator version with the # of chips. e.g. v6e-128, v5p-8
-
-    Accelerator topology - accelerator topology representing the structure. e.g. 2x2x2, 16x16
-
-    Accelerator version - accelerator version only. e.g. v6e, v5p, v5litepod
+    The following definitions are added for clarity:
+        - Accelerator type: A string describing the accelerator type and version (e.g. TPU-V2, TPU-V6E).
+        - Accelerator version: The accelerator generation only (e.g. v6e, v5p, v5litepod).
+        - Pod type: The TPU accelerator version and the # of chips in a supported topology. (e.g. v6e-128, v5p-8).
+        - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
         .. testcode::
             import ray
@@ -88,7 +85,7 @@ class SlicePlacementGroup:
 
         Args:
             topology: The TPU topology string (e.g. "2x2x2").
-            accelerator_version: The TPU accelerator version or generation (e.g. "v6", "v5p", "v4")
+            accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
             strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
              - "PACK": Packs Bundles into as few nodes as possible.
@@ -125,10 +122,9 @@ class SlicePlacementGroup:
         self._topology = topology.strip().lower()
         self._accelerator_version = accelerator_version.strip().lower()
         self._num_slices = num_slices
-
         self._validate_tpu_config()
 
-        # implement the logic from Ray Train to reserve the PG using bundle selectors
+        # Reserve a TPU slice of the provided accelerator version and topology.
         self._placement_group = self._reserve_slice(
             strategy,
             name,
@@ -160,29 +156,30 @@ class SlicePlacementGroup:
         self._chips_per_host = get_chips_per_host(
             self._topology, self.accelerator_version
         )
-        num_worker_per_slice = total_chips // self._chips_per_host
-        self._num_workers = num_worker_per_slice * self._num_slices
+        self._num_workers_per_slice = total_chips // self._chips_per_host
+        self._num_workers = self._num_workers_per_slice * self._num_slices
 
     def _reserve_slice(
         self,
-        # below are args related to PG
         strategy: str = "SPREAD",
         name: str = "",
         lifetime: Optional[str] = None,
         _soft_target_node_id: Optional[str] = None,
     ) -> PlacementGroup:
         """Performs the two-step scheduling to reserve a TPU slice."""
-        bundle_label_selector = list()
-        bundles = list()
+        bundle_label_selector = []
+        bundles = []
 
-        # construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P"
+        # Construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P".
         accelerator_type = "TPU-" + self.accelerator_version.capitalize()
         for _ in range(self.num_slices):
+            # Reserving a slice is done through constructing num_workers bundles, each with a label selector for
+            # the unique name of an available TPU slice.
             slice_name = reserve_tpu_slice(self._topology, accelerator_type)
-            bundle_label_selector.append(
+            bundle_label_selector += [
                 {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
-            )
-            bundles.append({"TPU": self._num_workers})
+            ] * self._num_workers_per_slice
+            bundles += [{"TPU": self._chips_per_host}] * self._num_workers_per_slice
 
         pg = placement_group(
             bundles=bundles,
@@ -208,7 +205,7 @@ class SlicePlacementGroup:
 
     @property
     def num_workers(self) -> int:
-        """The number of hosts in the TPU slice."""
+        """The total number of hosts in the SlicePlacementGroup."""
         return self._num_workers
 
     @property
@@ -236,17 +233,16 @@ def slice_placement_group(
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
 
-            A slice placement group reserves a TPU slice and creates a placement
+    A slice placement group reserves a TPU slice and creates a placement
     group for scheduling tasks.
 
-            Args:
-    topology: The desired TPU pod topology, e.g., "4x4", "2x8".
-    accelerator_version: The TPU accelerator_version, e.g., "V4", "V5P", "V6E".
-    **kwargs: Additional arguments for the placement group, such as 'name',
-                      'lifetime', or 'strategy'.
+    Args:
+        topology: The desired TPU pod topology (e.g. "4x4", "2x8").
+        accelerator_version: The TPU accelerator generation, (e.g. "V4", "V5P", "V6E").
+        **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
-            Returns:
-                    The handle for the created SlicePlacementGroup.
+    Returns:
+        The handle for the created SlicePlacementGroup.
     """
 
     return SlicePlacementGroup(
@@ -264,18 +260,17 @@ def multi_slice_placement_group(
 ) -> SlicePlacementGroup:
     """Asynchronously create num_slices of SlicePlacementGroups
 
-        A slice placement group that reserves nums_slices of TPU slices and creates
+    A slice placement group that reserves nums_slices of TPU slices and creates
     a placement group for scheduling tasks
 
         Args:
-    num_slices: The number of tpu slices within the placement group
-    topology: The desired TPU pod topology, e.g., "4x4", "2x8".
-    accelerator_version: The TPU accelerator_version, e.g., "V4", "V5P", "V6E".
-    **kwargs: Additional arguments for the placement group, such as 'name',
-                      'lifetime', or 'strategy'.
+            num_slices: The number of tpu slices within the placement group
+            topology: The desired TPU pod topology, (e.g. "4x4", "16x16").
+            accelerator_version: The TPU accelerator_version (e.g. "V4", "V5P", "V6E").
+            **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
         Returns:
-            The handle for the SlicePlacementGroup
+            The handle for the SlicePlacementGroup.
     """
 
     return SlicePlacementGroup(
