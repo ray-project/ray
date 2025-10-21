@@ -23,7 +23,7 @@ py_test_run_all_notebooks(
 # --------------------------------------------------------------------
 
 filegroup(
-    name = "ray_data_etl_example_configs",
+    name = "etl_ray_data_example_configs",
     srcs = glob(["etl-ray-data/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
