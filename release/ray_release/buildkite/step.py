@@ -155,8 +155,11 @@ def get_step(
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     if test.is_azure():
+        print("Azure test name: ", test["name"])
         for env_var in ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID"]:
             value = os.environ.get(env_var)
+            print("Environment variable: ", env_var)
+            print("Value: ", value)
             if not value:
                 raise ValueError(f"{env_var} must be set")
             env_dict[env_var] = value
