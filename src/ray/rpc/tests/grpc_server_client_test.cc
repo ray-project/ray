@@ -485,8 +485,8 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureWrongToken) {
 
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
   ASSERT_FALSE(result.success) << "Request should fail with wrong client token";
-  ASSERT_TRUE(result.error_msg ==
-              "InvalidAuthToken: Authentication token is missing or incorrect");
+  ASSERT_EQ(result.error_msg,
+            "InvalidAuthToken: Authentication token is missing or incorrect");
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
