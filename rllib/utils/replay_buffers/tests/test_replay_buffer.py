@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
@@ -388,7 +388,8 @@ class TestReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
