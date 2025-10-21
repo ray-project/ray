@@ -365,7 +365,12 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
         budget = self._resource_manager.get_budget(op)
-        if budget is not None:
+        if budget is None:
+            cpu_budget = 0
+            gpu_budget = 0
+            memory_budget = 0
+            object_store_memory_budget = 0
+        else:
             # Convert inf to -1 to represent unlimited budget in metrics
             cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
             gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
@@ -375,10 +380,11 @@ class StreamingExecutor(Executor, threading.Thread):
                 if math.isinf(budget.object_store_memory)
                 else budget.object_store_memory
             )
-            self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-            self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-            self._memory_budget_gauge.set(memory_budget, tags=tags)
-            self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
+
+        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
+        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
+        self._memory_budget_gauge.set(memory_budget, tags=tags)
+        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
 
     def _update_max_bytes_to_read_metric(
         self, op: PhysicalOperator, tags: Dict[str, str]
