@@ -123,8 +123,8 @@ Getting Involved
      - For asking questions about how to use Ray.
      - 3-5 days
      - Community
-   * - `Meetup Group`_
-     - For learning about Ray projects and best practices.
+   * - `Luma Calendar`_
+     - For attending Ray meetups and events.
      - Monthly
      - Ray DevRel
    * - `Twitter`_
@@ -135,6 +135,6 @@ Getting Involved
 .. _`Discourse Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
+.. _`Luma Calendar (Ray Meetups)`: https://luma.com/calendar/cal-v0NBtAknV4Ogv8L
 .. _`Twitter`: https://x.com/raydistributed
 .. _`Slack`: https://www.ray.io/join-slack?utm_source=github&utm_medium=ray_readme&utm_campaign=getting_involved
