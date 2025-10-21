@@ -118,10 +118,11 @@ def check_task_lifecycle_event_states_and_error_info(
 
                 for state in event["task_lifecycle_event"]["state_transitions"]:
                     task_id_states_dict[(task_id, task_attempt)].add(state["state"])
-                    if "ray_error_info" in event["task_lifecycle_event"]:
-                        task_id_error_info_dict[(task_id, task_attempt)] = event[
-                            "task_lifecycle_event"
-                        ]["ray_error_info"]
+
+                if "ray_error_info" in event["task_lifecycle_event"]:
+                    task_id_error_info_dict[(task_id, task_attempt)] = event[
+                        "task_lifecycle_event"
+                    ]["ray_error_info"]
         else:
             if event["eventType"] == "TASK_LIFECYCLE_EVENT":
                 task_id = event["taskLifecycleEvent"]["taskId"]
@@ -131,10 +132,11 @@ def check_task_lifecycle_event_states_and_error_info(
 
                 for state in event["taskLifecycleEvent"]["stateTransitions"]:
                     task_id_states_dict[(task_id, task_attempt)].add(state["state"])
-                    if "rayErrorInfo" in event["taskLifecycleEvent"]:
-                        task_id_error_info_dict[(task_id, task_attempt)] = event[
-                            "taskLifecycleEvent"
-                        ]["rayErrorInfo"]
+
+                if "rayErrorInfo" in event["taskLifecycleEvent"]:
+                    task_id_error_info_dict[(task_id, task_attempt)] = event[
+                        "taskLifecycleEvent"
+                    ]["rayErrorInfo"]
 
     for (
         expected_task_id_attempt,
