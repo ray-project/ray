@@ -988,9 +988,9 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
       continue;
     }
     // If the failed worker was a leased worker's owner, then kill the leased worker.
-    RAY_LOG(ERROR) << "The leased worker " << worker->WorkerId()
-                   << " is killed because the owner process " << owner_worker_id
-                   << " died.";
+    RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
+                  << " is killed because the owner process " << owner_worker_id
+                  << " died.";
     worker->KillAsync(io_service_);
   }
 }
