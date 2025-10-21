@@ -1,0 +1,3 @@
+# Benchmarks
+
+Performance in LLM serving depends heavily on your specific workload characteristics and hardware stack. Rather than publishing universal benchmark numbers that may not reflect real-world conditions, the Ray team maintains the [ray-serve-llm-perf-examples](https://github.com/anyscale/ray-serve-llm-perf-examples) repository with benchmarking snapshots, tooling, and lessons learned. These benchmarks answer critical performance questions about orchestration overhead (Ray Serve's responsibility) and validate the correctness and effectiveness of different serving patterns. You can use these benchmarks to validate Ray Serve LLM performance on your specific configuration.
