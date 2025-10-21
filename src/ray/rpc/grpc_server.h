@@ -142,9 +142,12 @@ class GrpcServer {
     cluster_id_ = cluster_id;
   }
 
-  void SetAuthToken(const std::string &auth_token) { auth_token_ = auth_token; }
-
-  const std::string &GetAuthToken() const { return auth_token_; }
+  /// Set an override token for testing. This takes precedence over RayAuthTokenLoader.
+  /// This is primarily for testing purposes.
+  /// \param override_token The override token to use for this server.
+  void SetAuthTokenOverride(const std::string &override_token) {
+    auth_token_override_ = override_token;
+  }
 
  protected:
   /// Initialize this server.
@@ -164,8 +167,8 @@ class GrpcServer {
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
-  /// Authentication token for token-based authentication.
-  std::string auth_token_;
+  /// Override token for testing. If set, this takes precedence over RayAuthTokenLoader.
+  std::string auth_token_override_;
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.

@@ -26,6 +26,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/rpc/auth_token_loader.h"
 #include "ray/rpc/common.h"
 #include "ray/util/network_util.h"
 #include "ray/util/thread_utils.h"
@@ -178,13 +179,17 @@ void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) 
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
-                                 bool token_auth) {
-  if (token_auth && cluster_id_.IsNil()) {
+                                 bool cluster_id_auth_enabled) {
+  if (cluster_id_auth_enabled && cluster_id_.IsNil()) {
     RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
   }
+  // Use override token if set, otherwise load from RayAuthTokenLoader
+  std::string auth_token = auth_token_override_.empty()
+                               ? RayAuthTokenLoader::instance().GetToken()
+                               : auth_token_override_;
   for (int i = 0; i < num_threads_; i++) {
     service->InitServerCallFactories(
-        cqs_[i], &server_call_factories_, cluster_id_, auth_token_);
+        cqs_[i], &server_call_factories_, cluster_id_, auth_token);
   }
   services_.push_back(std::move(service));
 }

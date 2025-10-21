@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 
 namespace ray {
@@ -24,7 +25,8 @@ namespace rpc {
 /// Supports loading tokens from multiple sources with precedence:
 /// 1. RAY_AUTH_TOKEN environment variable
 /// 2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)
-/// 3. Default token path: ~/.ray/auth_token
+/// 3. Default token path: ~/.ray/auth_token (Unix) or %USERPROFILE%\.ray\auth_token
+/// (Windows)
 ///
 /// Thread-safe with internal caching to avoid repeated file I/O.
 class RayAuthTokenLoader {
@@ -33,14 +35,20 @@ class RayAuthTokenLoader {
   static RayAuthTokenLoader &instance();
 
   /// Get the authentication token.
-  /// \param generate_if_not_found If true, generate and save a new token if not found.
-  /// \return The authentication token, or empty string if not found and generation is
-  /// disabled.
-  const std::string &GetToken(bool generate_if_not_found = false);
+  /// If token authentication is enabled but no token is found, throws an error.
+  /// \return The authentication token, or empty string if auth is disabled.
+  const std::string &GetToken();
 
   /// Check if an authentication token exists.
   /// \return True if a token is available (cached or can be loaded).
   bool HasToken();
+
+  /// Reset the cached token. This ensures that the next call to GetToken() returns the
+  /// token from the sources.
+  void ResetCache() {
+    std::lock_guard<std::mutex> lock(token_mutex_);
+    cached_token_.reset();
+  }
 
   // Prevent copying and moving
   RayAuthTokenLoader(const RayAuthTokenLoader &) = delete;
@@ -50,18 +58,19 @@ class RayAuthTokenLoader {
   RayAuthTokenLoader() = default;
   ~RayAuthTokenLoader() = default;
 
+  /// Read and trim token from a file. Returns empty string if file cannot be opened or is
+  /// empty.
+  std::string ReadTokenFromFile(const std::string &file_path);
+
   /// Load token from available sources (env vars and file).
   std::string LoadTokenFromSources();
 
-  /// Generate a new UUID token and save it to the default path.
-  std::string GenerateToken();
-
-  /// Get the default token file path (~/.ray/auth_token).
+  /// Get the default token file path (~/.ray/auth_token on Unix,
+  /// %USERPROFILE%\.ray\auth_token on Windows).
   std::string GetDefaultTokenPath();
 
   std::mutex token_mutex_;
-  std::string cached_token_;
-  bool token_loaded_ = false;
+  std::optional<std::string> cached_token_;
 };
 
 }  // namespace rpc

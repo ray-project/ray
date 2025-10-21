@@ -36,7 +36,6 @@ RAY_CONFIG(bool, emit_main_service_metrics, true)
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// Whether to enable token-based authentication for RPC calls.
-/// The authentication token is loaded via RayAuthTokenLoader.
 RAY_CONFIG(bool, enable_token_auth, false)
 
 /// The interval of periodic event loop stats print.

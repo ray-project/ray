@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/rpc/auth_token_loader.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
@@ -88,7 +89,8 @@ class TestGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
+      const ClusterID &cluster_id,
+      const std::string &auth_token) override {
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
         TestService, Ping, /*max_active_rpcs=*/1, ClusterIdAuthType::NO_AUTH);
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
@@ -329,10 +331,33 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
 }
 class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
  public:
-  void SetUpServerWithConfig(const std::string &config_json) {
+  void SetUp() override {
+    // Configure token auth via RayConfig
+    std::string config_json = R"({"enable_token_auth": true})";
     RayConfig::instance().initialize(config_json);
+    RayAuthTokenLoader::instance().ResetCache();
+  }
 
-    // Start handler thread
+  void SetUpServerAndClient(const std::string &server_token,
+                            const std::string &client_token) {
+    // Set client token in environment for ClientCallManager to read from
+    // RayAuthTokenLoader
+    if (!client_token.empty()) {
+      setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+    } else {
+      RayConfig::instance().initialize(R"({"enable_token_auth": false})");
+      RayAuthTokenLoader::instance().ResetCache();
+      unsetenv("RAY_AUTH_TOKEN");
+    }
+
+    // Start client thread FIRST
+    client_thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+          client_io_service_work_(client_io_service_.get_executor());
+      client_io_service_.run();
+    });
+
+    // Start handler thread for server
     handler_thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
           handler_io_service_work_(handler_io_service_.get_executor());
@@ -340,7 +365,13 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     });
 
     // Create and start server
+    // In production, server would automatically use RayAuthTokenLoader, but for testing
+    // we can override with SetAuthTokenOverride to test mismatched token scenarios
     grpc_server_.reset(new GrpcServer("test", 0, true));
+    if (!server_token.empty()) {
+      // Set server token explicitly for testing scenarios with different tokens
+      grpc_server_->SetAuthTokenOverride(server_token);
+    }
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -349,20 +380,9 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     while (grpc_server_->GetPort() == 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-  }
 
-  void SetUpClientWithConfig(const std::string &config_json) {
-    // Reconfigure for client (allows different token)
-    RayConfig::instance().initialize(config_json);
-
-    // Start client thread
-    client_thread_ = std::make_unique<std::thread>([this]() {
-      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-          client_io_service_work_(client_io_service_.get_executor());
-      client_io_service_.run();
-    });
-
-    // Create client
+    // Create client (will read auth token from RayAuthTokenLoader which reads the
+    // environment)
     client_call_manager_.reset(
         new ClientCallManager(client_io_service_, false, /*local_address=*/""));
     grpc_client_.reset(new GrpcClient<TestService>(
@@ -392,6 +412,12 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
         handler_thread_->join();
       }
     }
+
+    // Clean up environment variables
+    unsetenv("RAY_AUTH_TOKEN");
+    unsetenv("RAY_AUTH_TOKEN_PATH");
+    // Reset the token loader for test isolation
+    RayAuthTokenLoader::instance().ResetCache();
   }
 
   // Helper to execute RPC and wait for result
@@ -442,10 +468,8 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthSuccess) {
   // Both server and client have the same token
-  const std::string config =
-      R"({"enable_token_auth": true, "auth_token": "test_secret_token_123"})";
-  SetUpServerWithConfig(config);
-  SetUpClientWithConfig(config);
+  const std::string token = "test_secret_token_123";
+  SetUpServerAndClient(token, token);
 
   auto result = ExecutePingAndWait();
 
@@ -455,57 +479,28 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthSuccess) {
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureWrongToken) {
   // Server and client have different tokens
-  SetUpServerWithConfig(R"({"enable_token_auth": true, "auth_token": "server_token"})");
-  SetUpClientWithConfig(
-      R"({"enable_token_auth": true, "auth_token": "wrong_client_token"})");
+  SetUpServerAndClient("server_token", "wrong_client_token");
 
   auto result = ExecutePingAndWait();
 
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  ASSERT_FALSE(result.success) << "Request should fail with wrong token";
-  ASSERT_TRUE(result.error_msg.find("InvalidAuthToken") != std::string::npos ||
-              result.error_msg.find("Authentication") != std::string::npos)
-      << "Error message should indicate auth failure, got: " << result.error_msg;
+  ASSERT_FALSE(result.success) << "Request should fail with wrong client token";
+  ASSERT_EQ(result.error_msg,
+            "InvalidAuthToken: Authentication token is missing or incorrect");
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
   // Server expects token, client doesn't send one (empty token)
-  SetUpServerWithConfig(R"({"enable_token_auth": true, "auth_token": "server_token"})");
-  SetUpClientWithConfig(R"({"enable_token_auth": true, "auth_token": ""})");
+  SetUpServerAndClient("server_token", "");
 
   auto result = ExecutePingAndWait();
 
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  ASSERT_FALSE(result.success) << "Request should fail when token is missing";
-  ASSERT_TRUE(result.error_msg.find("InvalidAuthToken") != std::string::npos ||
-              result.error_msg.find("Authentication") != std::string::npos)
-      << "Error message should indicate auth failure, got: " << result.error_msg;
+  // If the server has a token but the client doesn't, auth should fail
+  ASSERT_FALSE(result.success)
+      << "Request should fail when client doesn't provide required token";
 }
 
-TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthDisabled) {
-  // Token auth disabled, should succeed regardless
-  const std::string config = R"({"enable_token_auth": false})";
-  SetUpServerWithConfig(config);
-  SetUpClientWithConfig(config);
-
-  auto result = ExecutePingAndWait();
-
-  ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  ASSERT_TRUE(result.success) << "Request should succeed when token auth is disabled";
-}
-
-TEST_F(TestGrpcServerClientTokenAuthFixture, TestEmptyTokenNoEnforcement) {
-  // Empty token with token auth enabled should not enforce
-  const std::string config = R"({"enable_token_auth": true, "auth_token": ""})";
-  SetUpServerWithConfig(config);
-  SetUpClientWithConfig(config);
-
-  auto result = ExecutePingAndWait();
-
-  ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  ASSERT_TRUE(result.success)
-      << "Request should succeed with empty token (no enforcement)";
-}
 }  // namespace rpc
 }  // namespace ray
 

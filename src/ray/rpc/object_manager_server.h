@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -77,7 +78,8 @@ class ObjectManagerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
+      const ClusterID &cluster_id,
+      const std::string &auth_token) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
