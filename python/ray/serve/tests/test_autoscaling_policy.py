@@ -1842,6 +1842,7 @@ class TestAppLevelAutoscalingPolicy:
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
         wait_for_condition(check_num_replicas_eq, name="A", target=3)
         ray.get(signal_A.send.remote())
         assert all(result.result(timeout_s=10) for result in results)
