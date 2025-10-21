@@ -188,6 +188,10 @@ class NodeManagerServiceHandler {
   virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
                                    GetWorkerPIDsReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleKillLocalActor(KillLocalActorRequest request,
+                                    KillLocalActorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
