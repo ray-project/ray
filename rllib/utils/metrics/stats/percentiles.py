@@ -172,16 +172,6 @@ class PercentilesStats(StatsBase):
         values = list(self.values)
         values.sort()
 
-        if self._reduce_at_root and not self._is_root_stats:
-            # We sort values at leafs in any case to avoid sorting at root level.
-            if compile:
-                raise ValueError(
-                    "Can not compile at leaf level if reduce_at_root is True"
-                )
-            return_stats = self.clone(self)
-            return_stats.values = values
-            return return_stats
-
         self._set_values([])
 
         if compile:

@@ -56,6 +56,9 @@ class EmaStats(StatsBase):
             raise ValueError(
                 "Can only replace EmaStats when merging. Otherwise we would introduce an 'EMA of EMAs'."
             )
+        if len(all_values) == 0:
+            return
+
         self._value = np.nanmean(all_values)
 
     def push(self, value: Any) -> None:

@@ -25,10 +25,8 @@ class StatsBase(metaclass=ABCMeta):
     def __init__(
         self,
         is_root_stats: bool = False,
-        reduce_at_root: bool = False,
     ):
         self._is_root_stats = is_root_stats
-        self._reduce_at_root = reduce_at_root
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
         self._start_times = {}
@@ -240,9 +238,6 @@ class StatsBase(metaclass=ABCMeta):
 
         The reduction logic depends on the implementation of the subclass.
         Meaning that some classes may reduce to a single value, while others do not or don't even contain values.
-
-        If `reduce_at_root` is True, costly reductions like calculating a mean over multiple values will be performed at the root logger.
-        This is useful for cases where we don't want to spend CPU time in parallel components, e.g. Learner Actors.
 
         Args:
             compile: If True, the result is compiled into a single value if possible.

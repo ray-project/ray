@@ -38,11 +38,6 @@ def actors() -> List:
         def __init__(self):
             self.metrics = MetricsLogger(root=False)
 
-        def _set_reduce_at_root(self, reduce_at_root: bool):
-            # Hack to test reduce_at_root functionality.
-            # Normally, we would set this in the MetricsLogger constructor.
-            self.metrics.reduce_at_root = reduce_at_root
-
         def log_value(self, name, value, **kwargs):
             self.metrics.log_value(name, value, **kwargs)
 
@@ -603,50 +598,6 @@ def test_legacy_stats_conversion():
     assert "mean_metric" in results
     assert "nested" in results
     assert "loss" in results["nested"]
-
-
-def test_reduce_at_root(root_logger, actors):
-    """Test reducing stats at root level."""
-
-    for actor in actors:
-        actor._set_reduce_at_root.remote(True)
-
-    def _log_values(key, reduce, window=5):
-        actors[0].log_value.remote(key, 1, reduce=reduce, window=5)
-        actors[0].log_value.remote(key, 2)
-        actors[0].log_value.remote(key, 3)
-
-        actors[1].log_value.remote(key, 4, reduce=reduce, window=5)
-        actors[1].log_value.remote(key, 5)
-        actors[1].log_value.remote(key, 6)
-
-    _log_values("value", "sum")
-    _log_values("value2", "mean")
-    _log_values("value3", "min")
-    _log_values("value4", "max")
-    _log_values("value5", "mean", window=None)
-
-    metrics = [ray.get(actor.get_metrics.remote()) for actor in actors]
-
-    check(metrics[0]["value"].values, [1, 2, 3])
-    check(metrics[1]["value"].values, [4, 5, 6])
-    check(metrics[0]["value2"].values, [1, 2, 3])
-    check(metrics[1]["value2"].values, [4, 5, 6])
-    check(metrics[0]["value3"].values, [1, 2, 3])
-    check(metrics[1]["value3"].values, [4, 5, 6])
-    check(metrics[0]["value4"].values, [1, 2, 3])
-    check(metrics[1]["value4"].values, [4, 5, 6])
-    check(metrics[0]["value5"].values, [1, 2, 3])
-    check(metrics[1]["value5"].values, [4, 5, 6])
-
-    root_logger.aggregate(metrics)
-    results = root_logger.compile()
-
-    check(results["value"], 21)
-    check(results["value2"], 3.5)
-    check(results["value3"], 1)
-    check(results["value4"], 6)
-    check(results["value5"], 3.5)
 
 
 def test_log_dict(root_logger):

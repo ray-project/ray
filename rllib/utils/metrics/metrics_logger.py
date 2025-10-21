@@ -139,7 +139,6 @@ class MetricsLogger:
         stats_cls_lookup: Optional[
             Dict[str, Type[StatsBase]]
         ] = DEFAULT_STATS_CLS_LOOKUP,
-        reduce_at_root: bool = False,
     ):
         """Initializes a MetricsLogger instance.
 
@@ -148,12 +147,8 @@ class MetricsLogger:
             stats_cls_lookup: A dictionary mapping reduction method names to Stats classes.
                 If not provided, the default lookup (ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP) will be used.
                 You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
-            reduce_at_root: Whether to reduce the stats at the root logger.
-                This is useful for cases where we don't want to spend CPU time in parallel components.
-                For example, we don't want to spend CPU time in Learner Actors.
         """
         self.stats = {}
-        self.reduce_at_root = reduce_at_root
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -331,7 +326,7 @@ class MetricsLogger:
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
-                stats_object = stats_cls(reduce_at_root=self.reduce_at_root, **kwargs)
+                stats_object = stats_cls(**kwargs)
                 if self._is_root_logger:
                     stats_object._is_root_stats = True
 
