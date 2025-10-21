@@ -9,7 +9,6 @@ from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
