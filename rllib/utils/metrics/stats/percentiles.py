@@ -133,11 +133,11 @@ class PercentilesStats(StatsBase):
 
         self.values.append(value)
 
-    def merge(self, incoming_stats: List["PercentilesStats"], replace=True):
+    def merge(self, incoming_stats: List["PercentilesStats"]):
         """Merges PercentilesStats objects.
 
         This method assumes that the incoming stats have the same percentiles and window size.
-        It will replace the internal values with the merged values.
+        It will append the incoming values to the existing values.
 
         Args:
             incoming_stats: The list of PercentilesStats objects to merge.
@@ -147,9 +147,7 @@ class PercentilesStats(StatsBase):
         ), "PercentilesStats should only be merged at root level"
         all_values = [s.values for s in incoming_stats]
         all_values = list(chain.from_iterable(all_values))
-        if not replace:
-            all_values = list(self.values) + all_values
-        # Don't respect window explicitly to respect all incoming values.
+        all_values = list(self.values) + all_values
         self.values = all_values
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:

@@ -478,7 +478,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
 
 
 @pytest.mark.parametrize(
-    "stats_class,init_kwargs,root_values,child1_values,child2_values,expected_replace_true,expected_replace_false",
+    "stats_class,init_kwargs,root_values,child1_values,child2_values,expected_result",
     [
         (
             EmaStats,
@@ -486,8 +486,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2],
             [3, 4],  # 3.01
             [5, 6],  # 5.01
-            4.01,  # replace=True: mean of [3.01, 5.01]
-            4.01,  # replace=False: same as replace=True (EMA doesn't include root values)
+            4.01,  # mean of [3.01, 5.01] (EMA doesn't include root values)
         ),
         (
             MeanStats,
@@ -495,8 +494,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2],
             [3, 4],
             [5, 6],
-            4.5,  # replace=True: mean of [3, 4, 5, 6]
-            3.5,  # replace=False: mean of [1, 2, 3, 4, 5, 6]
+            3.5,  # mean of [1, 2, 3, 4, 5, 6]
         ),
         (
             SumStats,
@@ -504,8 +502,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2, 3],
             [4, 5, 6],
             [7, 8, 9],
-            39,  # replace=True: sum of [4, 5, 6, 7, 8, 9]
-            45,  # replace=False: sum of [1, 2, 3, 4, 5, 6, 7, 8, 9]
+            45,  # sum of [1, 2, 3, 4, 5, 6, 7, 8, 9]
         ),
         (
             MinStats,
@@ -513,8 +510,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2],
             [3, 4],
             [5, 6],
-            3,  # replace=True: min of [3, 4, 5, 6]
-            1,  # replace=False: min of [1, 2, 3, 4, 5, 6]
+            1,  # min of [1, 2, 3, 4, 5, 6]
         ),
         (
             MaxStats,
@@ -522,8 +518,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2],
             [3, 4],
             [5, 6],
-            6,  # replace=True: max of [3, 4, 5, 6]
-            6,  # replace=False: max of [1, 2, 3, 4, 5, 6]
+            6,  # max of [1, 2, 3, 4, 5, 6]
         ),
         (
             LifetimeSumStats,
@@ -531,8 +526,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [10, 20],
             [30, 40],
             [50, 60],
-            210,  # replace=True: LifetimeSumStats ignores replace, adds incoming sums (70+110) to root (30) = 210
-            210,  # replace=False: same as replace=True (LifetimeSumStats ignores replace parameter)
+            210,  # LifetimeSumStats adds incoming sums (70+110) to root (30) = 210
         ),
         (
             ItemSeriesStats,
@@ -540,15 +534,7 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             ["a", "b"],
             ["c", "d"],
             ["e", "f"],
-            ["c", "d", "e", "f"],  # replace=True: only incoming values
-            [
-                "a",
-                "b",
-                "c",
-                "d",
-                "e",
-                "f",
-            ],  # replace=False: incoming first, then root's values
+            ["a", "b", "c", "d", "e", "f"],  # root values + incoming values
         ),
         (
             PercentilesStats,
@@ -556,56 +542,44 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
             [1, 2],
             [3, 4],
             [5, 6],
-            {50: 4.5},  # replace=True: 50th percentile (median) of [3, 4, 5, 6]
-            {50: 3.5},  # replace=False: 50th percentile (median) of [1, 2, 3, 4, 5, 6]
+            {50: 3.5},  # 50th percentile (median) of [1, 2, 3, 4, 5, 6]
         ),
     ],
 )
-def test_stats_merge_with_replace_parameter(
+def test_stats_merge(
     stats_class,
     init_kwargs,
     root_values,
     child1_values,
     child2_values,
-    expected_replace_true,
-    expected_replace_false,
+    expected_result,
 ):
-    """Test Stats.merge() with both replace=True and replace=False for various stats types.
+    """Test Stats.merge() for various stats types.
 
-    With replace=True, the root stats should only contain values from the incoming
-    child stats, not its own previous values.
-
-    With replace=False, the root stats should include both its own previous values
-    and the incoming child stats values (except for EmaStats which doesn't include
-    root values in the merge).
+    The root stats should include both its own previous values and the incoming
+    child stats values (except for EmaStats which doesn't include root values
+    in the merge).
     """
-    for replace, expected_result in [
-        (True, expected_replace_true),
-        (False, expected_replace_false),
-    ]:
-        # Create root stats
-        root_stats = stats_class(**init_kwargs, is_root_stats=True)
-        for value in root_values:
-            root_stats.push(value)
+    # Create root stats
+    root_stats = stats_class(**init_kwargs, is_root_stats=True)
+    for value in root_values:
+        root_stats.push(value)
 
-        # Create first child stats
-        child1 = stats_class(**init_kwargs)
-        for value in child1_values:
-            child1.push(value)
+    # Create first child stats
+    child1 = stats_class(**init_kwargs)
+    for value in child1_values:
+        child1.push(value)
 
-        # Create second child stats
-        child2 = stats_class(**init_kwargs)
-        for value in child2_values:
-            child2.push(value)
+    # Create second child stats
+    child2 = stats_class(**init_kwargs)
+    for value in child2_values:
+        child2.push(value)
 
-        # Merge with the specified replace parameter
-        if stats_class == EmaStats:
-            # Ignore replace parameter for EmaStats becasue replacing would introduce an 'EMA of EMAs'.
-            replace = True
-        root_stats.merge([child1, child2], replace=replace)
+    # Merge
+    root_stats.merge([child1, child2])
 
-        # Check result
-        check(root_stats.peek(), expected_result)
+    # Check result
+    check(root_stats.peek(), expected_result)
 
 
 if __name__ == "__main__":

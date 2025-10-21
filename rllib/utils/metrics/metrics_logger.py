@@ -424,7 +424,7 @@ class MetricsLogger:
         )
         stats = self._get_key(key)
         if isinstance(value, StatsBase):
-            stats.merge([value], replace=False)
+            stats.merge(incoming_stats=[value])
         else:
             stats.push(value)
 
@@ -442,7 +442,7 @@ class MetricsLogger:
         throughput_ema_coeff: Optional[float] = None,
         reduce_per_index_on_aggregate: Optional[bool] = None,
     ) -> None:
-        """Logs all leafs of a possibly nested dict of values to this logger.
+        """Logs all leafs of a possibly nested dict of values or Stats objects to this logger.
 
         Traverses through all leafs of `stats_dict` and - if a path cannot be found in
         this logger yet, will add the `Stats` found at the leaf under that new key.
@@ -450,6 +450,9 @@ class MetricsLogger:
         already logged before. This way, `stats_dict` does NOT have to have
         the same structure as what has already been logged to `self`, but can be used to
         log values under new keys or nested key paths.
+
+        Passing a dict of stats objects allows you to merge dictionaries of stats objects that
+        have been reduced by other, parallel components.
 
         See MetricsLogger.log_value for more details on the arguments.
         """
@@ -566,6 +569,28 @@ class MetricsLogger:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized
                     )
+            else:
+                # Clear existing values before merging to replicate replace=True behavior
+                if hasattr(own_stats, "_set_values"):
+                    # SeriesStats and PercentilesStats
+                    own_stats._set_values([])
+                elif hasattr(own_stats, "_value"):
+                    # EmaStats
+                    import numpy as np
+
+                    own_stats._value = np.nan
+                elif hasattr(own_stats, "items"):
+                    # ItemSeriesStats
+                    from collections import deque
+
+                    if own_stats._window:
+                        own_stats.items = deque(maxlen=own_stats._window)
+                    else:
+                        own_stats.items = deque()
+                elif hasattr(own_stats, "_item"):
+                    # ItemStats - no need to clear, merge will replace
+                    pass
+                # LifetimeSumStats doesn't need clearing as it accumulates
 
             own_stats.merge(incoming_stats=incoming_stats)
 

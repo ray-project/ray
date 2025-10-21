@@ -10,6 +10,9 @@ from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 class ItemStats(StatsBase):
     """A Stats object that tracks a single item.
 
+    Note the follwing limitation: That, when calling `ItemStats.merge()`, we replace the current item.
+    This is because there can only be a single item tracked by definition.
+
     Use this if you want to track a single item that should not be reduced.
     An example would be to log the total loss.
     """
@@ -48,7 +51,7 @@ class ItemStats(StatsBase):
         # Put directly onto CPU memory. peek(), reduce() and merge() don't handle GPU tensors.
         self._item = single_value_to_cpu(item)
 
-    def merge(self, incoming_stats: List["ItemStats"], replace=True):
+    def merge(self, incoming_stats: List["ItemStats"]):
         """Merges ItemStats objects.
 
         Args:
@@ -60,10 +63,6 @@ class ItemStats(StatsBase):
         assert (
             len(incoming_stats) == 1
         ), "ItemStats should only be merged with one other ItemStats object"
-        if not replace:
-            raise ValueError(
-                "Can only replace ItemStats when merging. This is because there can only be a single item tracked."
-            )
 
         self._item = incoming_stats[0]._item
 

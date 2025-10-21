@@ -16,7 +16,6 @@ from ray.rllib.utils.metrics.stats import (
     SumStats,
     LifetimeSumStats,
     PercentilesStats,
-    ItemStats,
     ItemSeriesStats,
 )
 
@@ -743,34 +742,6 @@ def test_log_value_with_stats_objects(
 
     # Check that the merge worked correctly
     check(root_logger.peek(metric_name), expected_after_merge)
-
-
-def test_log_value_with_non_mergeable_stats_objects(root_logger):
-    # Test EmaStats - should work for logging regular values
-    root_logger.log_value("ema_metric", 1.0, reduce="ema", ema_coeff=0.1)
-    root_logger.log_value("ema_metric", 2.0)
-    check(root_logger.peek("ema_metric"), 1.1)  # (1-0.1)*1 + 0.1*2 = 1.1
-
-    # But logging an EmaStats object should fail
-    external_ema_stats = EmaStats(ema_coeff=0.1, is_root_stats=True)
-    external_ema_stats.push(3.0)
-    external_ema_stats.push(4.0)
-    check(external_ema_stats.peek(), 3.1)
-
-    with pytest.raises(ValueError, match="EMA of EMAs"):
-        root_logger.log_value("ema_metric", value=external_ema_stats)
-
-    # Test ItemStats - should work for logging regular values
-    root_logger.log_value("item_metric", "first_item", reduce="item")
-    check(root_logger.peek("item_metric"), "first_item")
-
-    # But logging an ItemStats object should fail
-    external_item_stats = ItemStats(is_root_stats=True)
-    external_item_stats.push("second_item")
-    check(external_item_stats.peek(), "second_item")
-
-    with pytest.raises(ValueError, match="Can only replace"):
-        root_logger.log_value("item_metric", value=external_item_stats)
 
 
 def test_compatibility_logic(root_logger):

@@ -128,28 +128,23 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             # For windowed operations, append to values and trim if needed
             self.values.append(value)
 
-    def merge(self, incoming_stats: List["SeriesStats"], replace=True) -> None:
+    def merge(self, incoming_stats: List["SeriesStats"]) -> None:
         """Merges SeriesStats objects.
 
         Args:
             incoming_stats: The list of SeriesStats objects to merge.
-            replace: If True, replace internal items with the result of the merge.
 
         Returns:
             The merged SeriesStats object.
         """
         assert self._is_root_stats, "SeriesStats should only be merged at root level"
 
-        # If there is only one stat to merge, and it is the same as self, return.
         if len(incoming_stats) == 0:
-            # If none of the stats have values, return.
             return
 
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
-        if not replace:
-            all_items = list(self.values) + all_items
-        # Don't respect window explicitly to respect all incoming values.
+        all_items = list(self.values) + all_items
         self.values = all_items
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:

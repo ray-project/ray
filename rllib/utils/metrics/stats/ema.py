@@ -24,13 +24,9 @@ class EmaStats(StatsBase):
     ):
         """Initializes a EmaStats instance.
 
-        Note the follwing limitation: That, when aggregating EmaStats objects with `EmaStats.merge()`, we take the
-        mean of the incoming means. The output of the aggregated stats is therefore not
-        the exponetially moving average of the values that are logged by parallel components
-        in order, but rather the mean of the EMA logged by parallel components.
-
-        The merged value of multiple components can therefore only be trusted if all there is a reasonable amount of
-        values logged by each component in each 'reduce cycle'.
+        Note the follwing limitation: That, when calling `EmaStats.merge()`, we take the
+        mean of the incoming means. This also means that merges replace the current value.
+        If you merge multiple times (for example during a single reduce cycle), the reduce will only reflect the last merge.
 
         Args:
             ema_coeff: The EMA coefficient to use. Defaults to 0.01.
@@ -43,22 +39,16 @@ class EmaStats(StatsBase):
         """Returns the length of the internal values list."""
         return 1
 
-    def merge(self, incoming_stats: List["EmaStats"], replace=True):
+    def merge(self, incoming_stats: List["EmaStats"]):
         """Merges StatsBase objects.
 
         Args:
             incoming_stats: The list of StatsBase objects to merge.
-            replace: If True, replace internal items with the result of the merge.
 
         Returns:
             The merged StatsBase object.
         """
-        # Take the average of the incoming means
         all_values = [stat._value for stat in incoming_stats]
-        if not replace:
-            raise ValueError(
-                "Can only replace EmaStats when merging. Otherwise we would introduce an 'EMA of EMAs'."
-            )
         if len(all_values) == 0:
             return
 

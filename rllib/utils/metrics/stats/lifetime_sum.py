@@ -183,11 +183,10 @@ class LifetimeSumStats(StatsBase):
         return_stats._lifetime_sum = value
         return return_stats
 
-    def merge(self, incoming_stats: List["LifetimeSumStats"], replace=True):
+    def merge(self, incoming_stats: List["LifetimeSumStats"]):
         assert (
             self._is_root_stats
         ), "LifetimeSumStats should only be merged at root level"
-        # We can ignore `replace`` in case of lifetimesum
         self.push(sum([stat._lifetime_sum for stat in incoming_stats]))
 
     def __repr__(self) -> str:
