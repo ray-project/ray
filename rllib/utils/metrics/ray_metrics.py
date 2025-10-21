@@ -1,6 +1,6 @@
 import time
 
-import numpy as np
+# import numpy as np
 
 from ray.util.metrics import Histogram
 
@@ -12,14 +12,14 @@ _long_event_min = 0.1
 _long_event_max = 600.0
 
 # More dense at the low end; timing short events.
-DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = (
-    np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
-) * (_short_event_max - _short_event_min) + _short_event_min
-
-# More dense at the low end; timing long events.
-DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = (
-    np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
-) * (_long_event_max - _long_event_min) + _long_event_min
+# DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = (
+#     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
+# ) * (_short_event_max - _short_event_min) + _short_event_min
+#
+# # More dense at the low end; timing long events.
+# DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = (
+#     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
+# ) * (_long_event_max - _long_event_min) + _long_event_min
 
 
 class TimerAndPrometheusLogger:
