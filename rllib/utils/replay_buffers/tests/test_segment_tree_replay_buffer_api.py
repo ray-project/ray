@@ -1,4 +1,5 @@
 import unittest
+import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
