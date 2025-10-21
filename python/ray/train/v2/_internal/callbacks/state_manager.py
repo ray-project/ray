@@ -111,8 +111,11 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
                 run_id=self._run_id,
             )
 
-        # Intentionally do not update state manager for transient states like
-        # SHUTTING_DOWN.
+        elif not current_state._state_type.is_transient:
+            logger.warning(
+                "Unexpected state transition to non-transient state "
+                f"{current_state._state_type.state_name}."
+            )
 
     def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
         self._state_manager.create_train_run_attempt(
