@@ -23,7 +23,6 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-namespace gcs {
 
 class PythonGilHolder {
  public:
@@ -127,7 +126,5 @@ template <typename Data>
 using OptionalItemPyCallback = PyCallback<Status, std::optional<Data>>;
 
 using StatusPyCallback = PyCallback<Status>;
-
-}  // namespace gcs
 
 }  // namespace ray
