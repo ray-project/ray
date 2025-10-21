@@ -91,7 +91,19 @@ NVSHMEM_VERSION="3.2.5-1"
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
 )
 
-rm -rf "${EP_TEMP_DIR}"
+# Install DeepEP Kernels
+{
+    echo "Installing DeepEP Kernels"
+
+    cd "${EP_TEMP_DIR}"
+
+    git clone https://github.com/deepseek-ai/DeepEP.git
+    cd DeepEP
+    git checkout 73b6ea4
+    export NVSHMEM_DIR="${EP_TEMP_DIR}/nvshmem_install"
+    export CUDA_HOME=/usr/local/cuda
+    TORCH_CUDA_ARCH_LIST=9.0 pip install --no-build-isolation -vvv -e .
+}
 
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
