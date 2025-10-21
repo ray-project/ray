@@ -687,13 +687,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def update_usages(self):
         self._update_reservation()
 
-        eligible_ops = self._get_eligible_ops()
-
-        for op in eligible_ops:
+        for op in self._op_budgets:
             self._op_budgets[op] = ExecutionResources.zero()
 
+        eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
+
+        self._op_budgets = {op: None for op in eligible_ops}
 
         # Remaining of shared resources.
         remaining_shared = self._total_shared
