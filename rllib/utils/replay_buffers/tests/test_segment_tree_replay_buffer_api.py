@@ -1,7 +1,8 @@
-import numpy as np
 import unittest
 
-from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+import numpy as np
+
+from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 
 
 class TestSegmentTree(unittest.TestCase):
@@ -96,7 +97,8 @@ class TestSegmentTree(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
