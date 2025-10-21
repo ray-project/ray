@@ -21,6 +21,9 @@ _long_event_max = 600.0
 #     np.linspace(start=0, stop=1, num=_num_buckets) ** _coeff
 # ) * (_long_event_max - _long_event_min) + _long_event_min
 
+DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS = None
+DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS = None
+
 
 class TimerAndPrometheusLogger:
     """Context manager for timing code execution.
