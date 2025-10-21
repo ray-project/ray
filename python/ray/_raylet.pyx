@@ -2362,7 +2362,7 @@ cdef execute_task_with_cancellation_handler(
                 " for this method.")
 
 cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
-    # Expected to be idempotent and only called on the primary copy holder.
+    # Expected to be called on the owner process. Will free on the primary copy holder.
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
