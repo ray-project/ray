@@ -241,9 +241,8 @@ async def test_poll_frequency(monkeypatch):
     )
     # Mock worker group to avoid actual polling
     controller._worker_group = create_autospec(DummyWorkerGroup, instance=True)
-    controller._worker_group.poll_status.return_value = (
-        WorkerGroupPollStatus(worker_statuses={}),
-        None,
+    controller._worker_group.poll_status.return_value = WorkerGroupPollStatus(
+        worker_statuses={}
     )
 
     num_polls = 5
