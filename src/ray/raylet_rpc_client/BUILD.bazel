@@ -58,3 +58,20 @@ ray_cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+ray_cc_library(
+    name = "raylet_pxi_client",
+    srcs = [
+        "raylet_pxi_client.cc",
+    ],
+    hdrs = [
+        "raylet_pxi_client.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
