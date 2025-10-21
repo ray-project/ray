@@ -1,4 +1,3 @@
-import numpy as np
 import unittest
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -147,7 +146,8 @@ class TestSegmentTree(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
