@@ -61,11 +61,10 @@ class DummyWorkerGroup(WorkerGroup):
     def poll_status(
         self, *args, **kwargs
     ) -> Tuple[WorkerGroupPollStatus, Optional[Exception]]:
-        return (
-            WorkerGroupPollStatus(
-                worker_statuses=self._worker_statuses,
-            ),
-            self._poll_failure,
+        if self._poll_failure:
+            raise self._poll_failure
+        return WorkerGroupPollStatus(
+            worker_statuses=self._worker_statuses,
         )
 
     def _start(self):
