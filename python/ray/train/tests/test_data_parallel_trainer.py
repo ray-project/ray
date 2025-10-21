@@ -14,6 +14,7 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.utils import _in_ray_train_worker
 from ray.tune.callback import Callback
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -375,6 +376,16 @@ def test_config_accelerator_type(
             resources_per_worker={"GPU": num_gpus},
         ),
     )
+    trainer.fit()
+
+
+def test_in_ray_train_worker(ray_start_4_cpus):
+    assert not _in_ray_train_worker()
+
+    def train_fn():
+        assert _in_ray_train_worker()
+
+    trainer = DataParallelTrainer(train_fn)
     trainer.fit()
 
 

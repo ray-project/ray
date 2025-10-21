@@ -70,19 +70,31 @@ class LogFileInfo:
 
     def reopen_if_necessary(self):
         """Check if the file's inode has changed and reopen it if necessary.
+
         There are a variety of reasons what we would logically consider a file
         would have different inodes, such as log rotation or file syncing
         semantics.
+
+        If the file is smaller than our recorded file position, we assume it has been
+        rotated and start reading it from the beginning.
         """
         try:
             open_inode = None
             if self.file_handle and not self.file_handle.closed:
                 open_inode = os.fstat(self.file_handle.fileno()).st_ino
 
-            new_inode = os.stat(self.filename).st_ino
-            if open_inode != new_inode:
+            new_statinfo = os.stat(self.filename)
+            if new_statinfo.st_ino != open_inode:
                 self.file_handle = open(self.filename, "rb")
+
+                # If the new file is smaller than the last read position, assume that
+                # the file has been rotated and read from the beginning. Else, continue
+                # from the existing file position.
+                if new_statinfo.st_size < self.file_position:
+                    self.file_position = 0
+
                 self.file_handle.seek(self.file_position)
+                self.size_when_last_opened = new_statinfo.st_size
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 

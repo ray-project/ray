@@ -103,6 +103,11 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetAllNodeInfo(GetAllNodeInfoRequest request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllNodeAddressAndLiveness(
+      GetAllNodeAddressAndLivenessRequest request,
+      GetAllNodeAddressAndLivenessReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 class NodeResourceInfoGcsServiceHandler {
