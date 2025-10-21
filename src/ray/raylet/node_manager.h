@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <utility>
@@ -122,6 +123,12 @@ struct NodeManagerConfig {
   absl::flat_hash_map<std::string, std::string> labels;
 };
 
+enum RayletShutdownState : std::uint8_t {
+  ALIVE,
+  SHUTDOWN_QUEUED,
+  SHUTTING_DOWN,
+};
+
 class NodeManager : public rpc::NodeManagerServiceHandler,
                     public syncer::ReporterInterface,
                     public syncer::ReceiverInterface {
@@ -155,15 +162,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
           mutable_object_provider,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
-      std::unique_ptr<CgroupManagerInterface> cgroup_manager);
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager,
+      std::atomic_bool &shutting_down,
+      boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
+      local_stream_socket socket);
 
-  /// Handle an unexpected error that occurred on a client connection.
-  /// The client will be disconnected and no more messages will be processed.
-  ///
-  /// \param client The client whose connection the error occurred on.
-  /// \param error The error details.
-  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
-                                   const boost::system::error_code &error);
+  void Start(rpc::GcsNodeInfo &&self_node_info);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -200,10 +204,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
-
-  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
-
-  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -294,8 +294,24 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `DrainRaylet` request.
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+
+  /// Handle an accepted client connection.
+  void HandleAccept(const boost::system::error_code &error);
+
+  /// Handle an unexpected error that occurred on a client connection.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
+                                   const boost::system::error_code &error);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -329,7 +345,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.
-  void NodeAdded(const GcsNodeInfo &data);
+  void NodeAdded(const rpc::GcsNodeAddressAndLiveness &data);
 
   /// Handler for the removal of a GCS node.
   /// \param node_id Id of the removed node.
@@ -581,11 +597,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `DrainRaylet` request.
-  void HandleDrainRaylet(rpc::DrainRayletRequest request,
-                         rpc::DrainRayletReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
-
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
@@ -695,15 +706,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
   /// Creates the detail message for the worker that is killed due to memory running low.
-  const std::string CreateOomKillMessageDetails(
-      const std::shared_ptr<WorkerInterface> &worker,
-      const NodeID &node_id,
-      const MemorySnapshot &system_memory,
-      float usage_threshold) const;
+  std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
+                                          const NodeID &node_id,
+                                          const MemorySnapshot &system_memory,
+                                          float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
-  const std::string CreateOomKillMessageSuggestions(
+  std::string CreateOomKillMessageSuggestions(
       const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
@@ -856,7 +866,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t last_metrics_recorded_at_ms_;
+  uint64_t last_metrics_recorded_at_ms_ = 0;
 
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;
@@ -870,9 +880,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
-
-  /// Whether or not if the shutdown raylet request has been initiated and in progress.
-  bool is_shutting_down_ = false;
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
@@ -888,6 +895,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   // Controls the lifecycle of the CgroupManager.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+
+  std::atomic_bool &shutting_down_;
+
+  /// An acceptor for new clients.
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
+
+  /// The socket to listen on for new clients.
+  local_stream_socket socket_;
 };
 
 }  // namespace ray::raylet

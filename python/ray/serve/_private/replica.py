@@ -94,6 +94,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     get_component_file_name,  # noqa: F401
@@ -301,6 +302,40 @@ class ReplicaMetricsManager:
         )
 
     def should_collect_ongoing_requests(self) -> bool:
+        """Determine if replicas should collect ongoing request metrics.
+
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                               │
+        ├─────────────────────────────────────────────────────────────────┤
+        │                                                                 │
+        │  Client          Handle            Replicas                     │
+        │  ┌──────┐      ┌────────┐                                       │
+        │  │  App │─────>│ Handle │────┬───>┌─────────┐                  │
+        │  │      │      │ Tracks │    │    │ Replica │                  │
+        │  └──────┘      │ Queued │    │    │    1    │                  │
+        │                │Requests│    │    │ Tracks  │                  │
+        │                └────────┘    │    │ Running │                  │
+        │                     │        │    └─────────┘                  │
+        │                     │        │         │                       │
+        │                     │        │         │                       │
+        │                     │        │    ┌─────────┐                  │
+        │                     │        └───>│ Replica │                  │
+        │                     │             │    2    │                  │
+        │                     │             │ Tracks  │                  │
+        │                     │             │ Running │                  │
+        │                     │             └─────────┘                  │
+        │                     │                  │                        │
+        │                     │                  │                        │
+        │                     ▼                  ▼                        │
+        │              ┌──────────────────────────────┐                  │
+        │              │        Controller            │                  │
+        │              │  • Queued metrics (handle)   │                  │
+        │              │  • Running metrics (replica1)│                  │
+        │              │  • Running metrics (replica2)│                  │
+        │              └──────────────────────────────┘                  │
+        │                                                                │
+        └────────────────────────────────────────────────────────────────┘
+        """
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
@@ -1626,6 +1661,7 @@ class UserCallableWrapper:
                 self._callable.initialize_callable(
                     self._deployment_config.max_ongoing_requests
                 )
+                ServeUsageTag.NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE.record("1")
 
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
