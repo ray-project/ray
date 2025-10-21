@@ -183,7 +183,7 @@ If applicable, make sure that you properly set up credentials on each training w
         .. testcode::
             :skipif: True
             
-            mlflow.set_tracking_uri("file://some_shared_storage_path/mlruns")
+            mlflow.set_tracking_uri(uri="file://some_shared_storage_path/mlruns")
             mlflow.set_experiment("my_experiment")
             mlflow.start_run()
 
