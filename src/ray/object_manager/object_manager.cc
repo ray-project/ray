@@ -238,8 +238,8 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // be received if the list of locations is empty. The set of node IDs has
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
-    RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+    object_directory_->SubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback);
   }
 
   return request_id;
@@ -248,8 +248,8 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 void ObjectManager::CancelPull(uint64_t request_id) {
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id));
+    object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
+                                                  object_id);
   }
 }
 
@@ -646,7 +646,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
-    const auto &node_info_map = gcs_client_.Nodes().GetAll();
+    const auto &node_info_map = gcs_client_.Nodes().GetAllNodeAddressAndLiveness();
     for (const auto &[node_id, _] : node_info_map) {
       if (node_id == self_node_id_) {
         continue;
@@ -721,7 +721,8 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info = gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  auto *node_info =
+      gcs_client_.Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
   if (node_info == nullptr) {
     return nullptr;
   }

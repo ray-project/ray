@@ -1,9 +1,9 @@
-from collections import defaultdict
 import copy
-from dataclasses import dataclass, field
 import logging
 import sys
 import time
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -11,7 +11,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayError, RayTaskError
 from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -621,7 +620,7 @@ class FaultTolerantActorManager:
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str], Tuple[str]] = (),
+        tags: Union[str, List[str], Tuple[str, ...]] = (),
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -675,6 +674,80 @@ class FaultTolerantActorManager:
                 del self._in_flight_req_to_actor_id[obj_ref]
 
         return remote_results
+
+    @DeveloperAPI
+    def foreach_actor_async_fetch_ready(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
+        tag: Optional[str] = None,
+        *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+        timeout_seconds: Optional[float] = 0.0,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        healthy_only: bool = True,
+        remote_actor_ids: Optional[List[int]] = None,
+        ignore_ray_errors: bool = True,
+        return_actor_ids: bool = False,
+    ) -> List[Union[Tuple[int, Any], Any]]:
+        """Calls the given function asynchronously and returns previous results if any.
+
+        This is a convenience function that calls `fetch_ready_async_reqs()` to get
+        previous results and then `foreach_actor_async()` to start new async calls.
+
+        Args:
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length. Alternatively, you can use the name of the
+                remote method to be called, instead, or a list of remote method names.
+            tag: A tag to identify the results from this async call.
+            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
+                list of provided `func` or `remote_actor_ids`. In the first case (single
+                dict), use `kwargs` on all remote calls. The latter case (list of
+                dicts) allows you to define individualized kwarg dicts per actor.
+            timeout_seconds: Time to wait for results from previous calls. Default is 0,
+                meaning those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+            healthy_only: Apply `func` on known-to-be healthy actors only.
+            remote_actor_ids: Apply func on a selected set of remote actors.
+            ignore_ray_errors: Whether to ignore RayErrors in results.
+            return_actor_ids: Whether to return actor IDs in the results.
+                If True, the results will be a list of (actor_id, result) tuples.
+                If False, the results will be a list of results.
+        Returns:
+            The results from previous async requests that were ready.
+        """
+        # First fetch any ready results from previous async calls
+        remote_results = self.fetch_ready_async_reqs(
+            tags=tag,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        # Then start new async calls
+        self.foreach_actor_async(
+            func,
+            tag=tag,
+            kwargs=kwargs,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_actor_ids,
+        )
+
+        # Handle errors the same way as fetch_ready_async_reqs does
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=ignore_ray_errors,
+        )
+
+        if return_actor_ids:
+            return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+        else:
+            return [r.get() for r in remote_results.ignore_errors()]
 
     @staticmethod
     def handle_remote_call_result_errors(
@@ -787,13 +860,16 @@ class FaultTolerantActorManager:
         if remote_actor_ids is None:
             remote_actor_ids = self.actor_ids()
 
+        calls = []
         if isinstance(func, list):
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
 
-        calls = []
-        if isinstance(func, list):
+            assert isinstance(
+                kwargs, list
+            ), "If func is a list of functions, kwargs has to be a list of kwargs."
+
             for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
                     calls.append(
@@ -816,7 +892,7 @@ class FaultTolerantActorManager:
                 )
         else:
             for raid in remote_actor_ids:
-                calls.append(self._actors[raid].apply.remote(func))
+                calls.append(self._actors[raid].apply.remote(func=func, **kwargs or {}))
 
         return calls
 
@@ -964,7 +1040,7 @@ class FaultTolerantActorManager:
         return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
-        self, tags: Optional[Union[str, List[str], Tuple[str]]] = None
+        self, tags: Optional[Union[str, List[str], Tuple[str, ...]]] = None
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
         """Return all the in flight requests that match the given tags, if any.
 
