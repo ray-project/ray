@@ -259,7 +259,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 include_parent=False
             )
             # Reset the scheduling loop duration gauge + resource manager budgets/usages.
-            self._resource_manager.clear_usages_and_budget()
+            self._resource_manager.update_usages()
             self.update_metrics(0)
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
