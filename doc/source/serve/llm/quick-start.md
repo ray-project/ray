@@ -206,8 +206,6 @@ serve.run(ingress_deployment, blocking=True)
 
 ::::
 
-See also {ref}`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
-
 ## Production deployment
 
 For production deployments, Ray Serve LLM provides utilities for config-driven deployments. You can specify your deployment configuration with YAML files:
@@ -1013,4 +1011,6 @@ The Ray Team collects usage data to improve Ray Serve LLM. The team collects dat
 - GPU type used and number of GPUs used.
 
 To opt-out of usage data collection, you can follow {ref}`Ray usage stats <ref-usage-stats>` to disable it.
+
+For monitoring and observability, see {doc}`Observability <user-guides/observability>`.
 

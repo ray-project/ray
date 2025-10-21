@@ -601,7 +601,7 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used. Note that
+                block format will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -4372,6 +4372,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4469,6 +4470,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4569,6 +4571,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,

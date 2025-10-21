@@ -2,19 +2,19 @@ import sys
 
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import ModelLoadingConfig
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
+from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
+from ray.llm._internal.serve.core.ingress.builder import (
+    IngressClsConfig,
+)
+from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
     ProxyClsConfig,
     build_pd_openai_app,
 )
-from ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server import (
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,
 )
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
-    IngressClsConfig,
-)
-from ray.llm._internal.serve.deployments.routers.router import OpenAiIngress
 from ray.serve.llm import LLMConfig
 
 
@@ -108,7 +108,7 @@ class TestPDServingArgs:
             prefill_config=prefill,
             decode_config=decode,
             proxy_cls_config={
-                "proxy_cls": "ray.llm._internal.serve.deployments.prefill_decode_disagg.pd_server:PDProxyServer"
+                "proxy_cls": "ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server:PDProxyServer"
             },
         )
         assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
@@ -146,7 +146,7 @@ class TestPDServingArgs:
             prefill_config=prefill,
             decode_config=decode,
             ingress_cls_config={
-                "ingress_cls": "ray.llm._internal.serve.deployments.routers.router:OpenAiIngress"
+                "ingress_cls": "ray.llm._internal.serve.core.ingress.ingress:OpenAiIngress"
             },
         )
         assert args_str.ingress_cls_config.ingress_cls == OpenAiIngress

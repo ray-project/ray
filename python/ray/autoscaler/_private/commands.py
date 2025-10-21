@@ -385,7 +385,10 @@ def _bootstrap_config(
                     cf.bold("--no-config-cache"),
                 )
 
-            return config_cache["config"]
+            cached_config = config_cache["config"]
+            if "provider" in cached_config:
+                cached_config["provider"]["_config_cache_path"] = cache_key
+            return cached_config
         else:
             cli_logger.warning(
                 "Found cached cluster config "
@@ -432,6 +435,7 @@ def _bootstrap_config(
             "update your install command."
         )
     resolved_config = provider_cls.bootstrap_config(config)
+    resolved_config["provider"]["_config_cache_path"] = cache_key
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -578,6 +582,20 @@ def teardown_cluster(
                 "{} nodes remaining after {} second(s).", cf.bold(len(A)), POLL_INTERVAL
             )
         cli_logger.success("No nodes remaining.")
+
+        # Cleanup shared cluster resources if provider supports it
+        if hasattr(provider, "cleanup_cluster_resources") and not workers_only:
+            try:
+                cli_logger.print("Cleaning up shared cluster resources...")
+                provider.cleanup_cluster_resources()
+                cli_logger.success("Shared cluster resources cleaned up.")
+            except Exception as e:
+                cli_logger.verbose_error("{}", str(e))
+                cli_logger.warning(
+                    "Failed to cleanup shared cluster resources "
+                    "(use -v to see details). "
+                    "You may need to manually delete MSI, NSG, and Subnet resources."
+                )
 
 
 def kill_node(
