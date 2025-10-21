@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script is used to build an extra layer on top of the base anyscale/ray image
-# to run the PyTorch Lightning release test.
+# to run the Hugging Face Transformers release test.
 
 set -exo pipefail
 
