@@ -84,4 +84,4 @@ class ItemStats(StatsBase):
         return [self._item]
 
     def __repr__(self) -> str:
-        return f"ValueStats({self.peek()}"
+        return f"ItemStats({self.peek()}"

@@ -803,9 +803,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
         # Per sample cycle stats.
-        self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum")
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
             num_steps,

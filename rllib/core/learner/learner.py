@@ -1597,9 +1597,7 @@ class Learner(Checkpointable):
         self._named_optimizers = {}
         self._module_optimizers = defaultdict(list)
         self._optimizer_lr_schedules = {}
-        self.metrics = MetricsLogger(
-            stats_cls_lookup=self.config.custom_stats_cls_lookup
-        )
+        self.metrics = MetricsLogger(stats_cls_lookup=self.config.stats_cls_lookup)
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):

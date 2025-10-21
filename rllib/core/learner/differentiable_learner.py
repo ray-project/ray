@@ -709,9 +709,7 @@ class DifferentiableLearner(Checkpointable):
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):
-        self.metrics = MetricsLogger(
-            stats_cls_lookup=self.config.custom_stats_cls_lookup
-        )
+        self.metrics = MetricsLogger(stats_cls_lookup=self.config.stats_cls_lookup)
         self._is_built = False
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".

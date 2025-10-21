@@ -424,9 +424,9 @@ def test_edge_cases(root_logger):
     with pytest.raises(ValueError):
         root_logger.log_value("invalid_window_ema", 0.1, window=2, ema_coeff=0.1)
 
-    # Test clear_on_reduce
-    root_logger.log_value("clear_test", 0.1, clear_on_reduce=True)
-    root_logger.log_value("clear_test", 0.2, clear_on_reduce=True)
+    # Test clearing on reduce
+    root_logger.log_value("clear_test", 0.1)
+    root_logger.log_value("clear_test", 0.2)
     results = root_logger.reduce()
     check(results["clear_test"], 0.101)
     check(root_logger.peek("clear_test"), np.nan)  # Should be cleared

@@ -48,7 +48,6 @@ The :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API offers
 - Log scalar values over time, such as losses, individual rewards, or episode returns.
 - Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can choose to not
   reduce at all by using ``item`` or ``item_series``, leaving the logged values untouched.
-- A `clear_on_reduce=True`` setting allows for automatically clearing all logged values on each ``reduce`` event.
 - Specify sliding windows, over which reductions take place, for example ``window=100`` to average over the
   last 100 logged values per parallel component, or specify exponential moving average (EMA) coefficients, through which the weight of older values
   in the computed mean should decay over time.
@@ -162,7 +161,7 @@ To use reduce methods, other than "mean", specify the ``reduce`` argument in
 Because you didn't specify a ``window`` and are using ``reduce="max"``, RLlib uses the infinite window,
 meaning :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` reports the maximum value,
 whenever reduction takes place or you peek at the current value.
-Since we didn't specify ``clear_on_reduce=False``, the maximum value will be reset after each ``reduce()`` operation.
+The maximum value will be reset after each ``reduce()`` operation.
 
 .. testcode::
 
@@ -179,10 +178,10 @@ However, use your best judgement whether what you are logging should be reported
 
 .. testcode::
 
-    logger.log_value("some_items", value="a", reduce="item_series, clear_on_reduce=True)
-    logger.log_value("some_items", value="b", reduce="item_series", clear_on_reduce=True)
-    logger.log_value("some_items", value="c", reduce="item_series", clear_on_reduce=True)
-    logger.log_value("some_items", value="d", reduce="item_series", clear_on_reduce=True)
+    logger.log_value("some_items", value="a", reduce="item_series)
+    logger.log_value("some_items", value="b", reduce="item_series")
+    logger.log_value("some_items", value="c", reduce="item_series")
+    logger.log_value("some_items", value="d", reduce="item_series")
 
     logger.peek("some_items")  # expect a list: ["a", "b", "c", "d"]
 
@@ -213,13 +212,12 @@ For example, to log three consecutive image frames from a ``CartPole`` environme
     env = gym.make("CartPole-v1")
 
     # Log three consecutive render frames from the env.
-    # Make sure to set ``clear_on_reduce=True`` to avoid memory leaks.
     env.reset()
-    logger.log_value("some_images", value=env.render(), reduce="item_series", clear_on_reduce=True)
+    logger.log_value("some_images", value=env.render(), reduce="item_series")
     env.step(0)
-    logger.log_value("some_images", value=env.render(), reduce="item_series", clear_on_reduce=True)
+    logger.log_value("some_images", value=env.render(), reduce="item_series")
     env.step(1)
-    logger.log_value("some_images", value=env.render(), reduce="item_series", clear_on_reduce=True)
+    logger.log_value("some_images", value=env.render(), reduce="item_series")
 
 Or you can use the ``reduce="item"`` to log a single item per iteration.
 For example to log the total loss of a model update:
@@ -272,8 +270,6 @@ In case you want to count things, for example the number of environment steps ta
 counts either over the lifetime or over some particular phase, use the ``reduce="sum"`` argument in the call to
 :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value`.
 
-Combine this with ``clear_on_reduce=True``, if you want the count to only accumulate until the next "reduce" event.
-Set ``clear_on_reduce=False``, which is the default, if you want the count to accumulate over the lifetime.
 
 .. testcode::
 
@@ -281,28 +277,15 @@ Set ``clear_on_reduce=False``, which is the default, if you want the count to ac
 
     logger = MetricsLogger()
 
-    logger.log_value("my_counter", 50, reduce="sum", window=None)
-    logger.log_value("my_counter", 25, reduce="sum", window=None)
-    logger.peek("my_counter")  # expect: 75
-
-    # Even if your logger gets "reduced" from time to time, the counter keeps increasing
-    # because we set clear_on_reduce=False (default behavior):
-    logger.reduce()
-    logger.peek("my_counter")  # still expect: 75
-
-    # To clear the sum after each "reduce" event, set `clear_on_reduce=True`:
-    logger.log_value("my_temp_counter", 50, reduce="sum", window=None, clear_on_reduce=True)
-    logger.log_value("my_temp_counter", 25, reduce="sum", window=None, clear_on_reduce=True)
+    logger.log_value("my_temp_counter", 50, reduce="sum")
+    logger.log_value("my_temp_counter", 25, reduce="sum")
     logger.peek("my_counter")  # expect: 75
     logger.reduce()
     logger.peek("my_counter")  # expect: 0 (upon reduction, all values are cleared)
 
-Counters
-~~~~~~~~
-
 Sometimes, you may want to count the number of times a particular event occurs over the course of an entire experiment.
-You can do this with ``reduce="lifetime_sum"``. Note that you can not meaningfully peek lifetime_sum values outside of the root MetricsLogger.
-This is because only the root MetricsLogger can compute the lifetime sum of all parallel components.
+You can do this with ``reduce="lifetime_sum"``. 
+Note that you can not meaningfully peek ``lifetime_sum`` values outside of the root MetricsLogger.
 
 
 Automatic throughput measurements
@@ -434,7 +417,7 @@ You can log metrics inside your custom loss functions. Use the Learner's ``self.
 
         # Log a specific loss term.
         # Each learner will sum up the loss_xyz value and send it to the root MetricsLogger.
-        self.metrics.log_value("special_loss_term", reduce="sum", value=loss_xyz, clear_on_reduce=True)
+        self.metrics.log_value("special_loss_term", reduce="sum", value=loss_xyz)
 
         total_loss = loss_abc + loss_xyz
 

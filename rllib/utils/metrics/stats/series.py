@@ -127,8 +127,6 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             # For windowed operations, append to values and trim if needed
             self.values.append(value)
-            if self._window is not None and len(self.values) > self._window:
-                self.values.popleft()
 
     def merge(self, incoming_stats: List["SeriesStats"], replace=True) -> None:
         """Merges SeriesStats objects.
@@ -179,7 +177,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             return reduced_values
 
-    def running_reduce(self, value_1, value_2) -> Tuple[Any, Any]:
+    def running_reduce(self, value_1, value_2) -> List[Any]:
         """Reduces two values through a reduce function.
 
         If values are PyTorch tensors, reduction happens on GPU.

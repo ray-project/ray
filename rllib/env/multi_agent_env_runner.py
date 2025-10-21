@@ -963,9 +963,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
         # Env steps.
-        self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum")
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_steps,
@@ -974,7 +972,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
         # Completed episodes.
         if episode.is_done:
-            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
+            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum")
             self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="lifetime_sum")
 
         # Record agent and module metrics.
