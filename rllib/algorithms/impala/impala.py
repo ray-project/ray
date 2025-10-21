@@ -566,6 +566,9 @@ class IMPALA(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
+        # Initialize so it does not default to None
+        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
+
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
         self.local_mixin_buffer = None  # @OldAPIStack
@@ -739,10 +742,9 @@ class IMPALA(Algorithm):
                 num_learner_group_results_received = 0
 
                 return_state = (
-                    self.metrics.peek(
-                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                        default=0,
-                    )
+                    self._counters[
+                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+                    ]
                     >= self.config.broadcast_interval
                 )
                 with TimerAndPrometheusLogger(
@@ -806,10 +808,11 @@ class IMPALA(Algorithm):
                     value=num_learner_group_results_received,
                 )
 
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
             self.metrics.log_value(
                 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                1,
-                reduce="item",
+                self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS],
+                reduce="mean",
             )
 
             # Update LearnerGroup's own stats.
@@ -819,9 +822,9 @@ class IMPALA(Algorithm):
             # Note: `learner_results` is a List of n (num async calls) Lists of m
             # (num Learner workers) ResultDicts each.
             if rl_module_state is not None:
-                self.metrics.log_value(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
-                )
+                self._counters[
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+                ] = 0
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                     with TimerAndPrometheusLogger(
