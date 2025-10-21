@@ -17,10 +17,6 @@ import psutil
 def import_module_and_attr(
     full_path: str, *, reload_module: bool = False
 ) -> Tuple[Any, Any]:  # type: ignore
-    """Given a full import path to a module attr, return the imported module and attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-    """
     if full_path is None:
         raise TypeError("import path cannot be None")
 
@@ -43,18 +39,6 @@ def import_module_and_attr(
 
 
 def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
     return import_module_and_attr(full_path, reload_module=reload_module)[1]
 
 
