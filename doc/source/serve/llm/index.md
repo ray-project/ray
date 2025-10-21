@@ -8,7 +8,7 @@ Ray Serve LLM provides a high-performance, scalable framework for deploying Larg
 
 Ray Serve LLM excels at highly distributed multi-node inference workloads:
 
-- **Advanced parallelism strategies**: Seamlessly combine pipeline parallelism, tensor parallelism, expert parallelism, and data parallelism for models of any size.
+- **Advanced parallelism strategies**: Seamlessly combine pipeline parallelism, tensor parallelism, expert parallelism, and data parallel attention for models of any size.
 - **Prefill-decode disaggregation**: Separates and optimizes prefill and decode phases independently for better resource utilization and cost efficiency.
 - **Custom request routing**: Implements prefix-aware, session-aware, or custom routing logic to maximize cache hits and reduce latency.
 - **Multi-node deployments**: Serves massive models that span multiple nodes with automatic placement and coordination.
@@ -22,7 +22,7 @@ Ray Serve LLM excels at highly distributed multi-node inference workloads:
 - 🔄 Multi-LoRA support with shared base models
 - 🚀 Engine-agnostic architecture (vLLM, SGLang, etc.)
 - 📊 Built-in metrics and Grafana dashboards
-- 🎯 Advanced serving patterns (PD disaggregation, data parallelism)
+- 🎯 Advanced serving patterns (PD disaggregation, data parallel attention)
 
 ## Requirements
 
