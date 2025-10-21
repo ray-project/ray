@@ -1369,3 +1369,104 @@ class ApproximateQuantile(AggregateFnV2):
 
     def finalize(self, accumulator: bytes) -> List[float]:
         return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
+
+
+@PublicAPI(stability="alpha")
+class ApproximateTopK(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import frequent_strings_sketch
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateTopK requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return frequent_strings_sketch
+
+    def __init__(
+        self,
+        on: str,
+        top_k_items: int,
+        lg_capacity: int = 15,
+        alias_name: Optional[str] = None,
+    ):
+        """
+        Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+        https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
+
+        Guarantees:
+            - Any item with true frequency > N / (2^lg_capacity) is guaranteed to appear in the results
+            - Reported counts may have an error of at most ± N / (2^lg_capacity).
+
+        Typical settings:
+            - lg_capacity = 10 → 1024 counters (≈ 8 KB), good if heavy hitters are ≥0.1-1%.
+            - lg_capacity = 12 → 4096 counters (≈ 32 KB), good for mid-sized vocabularies.
+            - lg_capacity = 15 → 32768 counters (≈ 256 KB), can track down to ~0.003% of N.
+
+        If lg_capacity is too small for your data:
+            - Low-frequency items may be evicted from the sketch, potentially causing the top-k
+              results to miss items that should appear in the output.
+            - The error bounds increase, reducing the accuracy of the reported counts.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateTopK
+
+                ds = ray.data.from_items([
+                    {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+                    {"word": "cherry"}, {"word": "apple"}
+                ])
+
+                result = ds.aggregate(ApproximateTopK(on="word", top_k_items=2))
+                # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+
+        Args:
+            on: The name of the column to aggregate.
+            top_k_items: The number of top items to return.
+            lg_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+                Higher values increase accuracy but use more memory. Defaults to 15.
+            alias_name: The name of the aggregate. Defaults to None.
+        """
+
+        self.top_k_items = top_k_items
+        self._lg_capacity = lg_capacity
+        self._frequent_strings_sketch = self._require_datasketches()
+        super().__init__(
+            alias_name if alias_name else f"approx_topk({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: self.zero(lg_capacity).serialize(),
+        )
+
+    def zero(self, lg_capacity: int):
+        return self._frequent_strings_sketch(lg_max_k=lg_capacity)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = self.zero(self._lg_capacity)
+        for value in column:
+            if value.as_py() is not None:
+                sketch.update(str(value.as_py()))
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = self.zero(self._lg_capacity)
+        combined.merge(self._frequent_strings_sketch.deserialize(current_accumulator))
+        combined.merge(self._frequent_strings_sketch.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
+        from datasketches import frequent_items_error_type
+
+        heavy_hitters = self._frequent_strings_sketch.deserialize(
+            accumulator
+        ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
+        return [
+            {self.get_target_column(): str(item[0]), "count": int(item[1])}
+            for item in heavy_hitters[: self.top_k_items]
+        ]
