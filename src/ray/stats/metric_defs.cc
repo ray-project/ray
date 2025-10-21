@@ -110,46 +110,6 @@ DEFINE_stats(operation_queue_time_ms,
 DEFINE_stats(
     operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
 
-/// GRPC server
-DEFINE_stats(grpc_server_req_process_time_ms,
-             "Request latency in grpc server",
-             ("Method"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(grpc_server_req_new,
-             "New request number in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_handling,
-             "Request number are handling in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_finished,
-             "Finished request number in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_succeeded,
-             "Succeeded request count in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_failed,
-             "Failed request count in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-
-/// Number of failures observed from gRPC client(s).
-/// A failure is an RPC whose response status was not `OK`.
-DEFINE_stats(grpc_client_req_failed,
-             "Number of gRPC client failures (non-OK response statuses).",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-
 /// Object Manager.
 DEFINE_stats(object_manager_bytes,
              "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
