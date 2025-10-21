@@ -1398,10 +1398,6 @@ class ApproximateTopK(AggregateFnV2):
             - Any item with true frequency > N / (2^lg_capacity) is guaranteed to appear in the results
             - Reported counts may have an error of at most ± N / (2^lg_capacity).
 
-        Typical settings:
-            - lg_capacity = 10 → 1024 counters (≈ 8 KB), good if heavy hitters are ≥0.1-1%.
-            - lg_capacity = 12 → 4096 counters (≈ 32 KB), good for mid-sized vocabularies.
-            - lg_capacity = 15 → 32768 counters (≈ 256 KB), can track down to ~0.003% of N.
 
         If lg_capacity is too small for your data:
             - Low-frequency items may be evicted from the sketch, potentially causing the top-k
