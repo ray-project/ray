@@ -18,7 +18,7 @@ def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"
     else:
         cfg_cls = cfg_entry_point
     # load the configuration
-    print(f"[INFO]: Parsing configuration from: {cfg_entry_point}")
+    logging.info(f"[INFO]: Parsing configuration from: {cfg_entry_point}")
     if callable(cfg_cls):
         cfg = cfg_cls()
     else:
