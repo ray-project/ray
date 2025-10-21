@@ -9,8 +9,6 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 
 COPY . .
 
-RUN mv python/deplocks/docs/docbuild_depset_py${PYTHON}.lock python_depset.lock
-
 SHELL ["/bin/bash", "-ice"]
 
 RUN --mount=type=bind,from=ray_core,target=/mnt/ray-core \
@@ -26,6 +24,6 @@ cp /mnt/ray-core/ray_pkg.zip /opt/ray-build/ray_pkg.zip
 cp /mnt/ray-core/ray_py_proto.zip /opt/ray-build/ray_py_proto.zip
 cp /mnt/ray-dashboard/dashboard.tar.gz /opt/ray-build/dashboard.tar.gz
 
-pip install -r python_depset.lock
+pip install -r python/deplocks/docs/docbuild_depset_py${PYTHON}.lock
 
 EOF

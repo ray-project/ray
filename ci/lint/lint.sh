@@ -104,18 +104,6 @@ test_coverage() {
   python ci/pipeline/check-test-run.py
 }
 
-_install_ray() {
-  if [[ -d /opt/ray-build ]]; then
-    unzip -o -q /opt/ray-build/ray_pkg.zip -d python
-    unzip -o -q /opt/ray-build/ray_py_proto.zip -d python
-    mkdir -p python/ray/dashboard/client/build
-    tar -xzf /opt/ray-build/dashboard.tar.gz -C python/ray/dashboard/client/build
-    SKIP_BAZEL_BUILD=1 pip install -e "python[all]" --no-deps
-  else
-    RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
-  fi
-}
-
 _install_ray_no_deps() {
   if [[ -d /opt/ray-build ]]; then
     unzip -o -q /opt/ray-build/ray_pkg.zip -d python
