@@ -219,8 +219,6 @@ void GcsServer::Start() {
                               GetOrGenerateClusterId(
                                   {[this, gcs_init_data](ClusterID cluster_id) {
                                      rpc_server_.SetClusterId(cluster_id);
-                                     rpc_server_.SetAuthToken(
-                                         RayAuthTokenLoader::instance().GetToken());
                                      DoStart(*gcs_init_data);
                                    },
                                    io_context_provider_.GetDefaultIOContext()});

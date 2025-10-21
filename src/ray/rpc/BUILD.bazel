@@ -127,6 +127,7 @@ ray_cc_library(
     hdrs = ["grpc_server.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":auth_token_loader",
         ":common",
         ":server_call",
         "//src/ray/common:asio",
