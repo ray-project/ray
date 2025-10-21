@@ -172,7 +172,8 @@ async def test_failure_handling():
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ShuttingDownState)
-    assert isinstance(controller.get_state().next_state, ErroredState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ErroredState)
 
 
 @pytest.mark.parametrize(
@@ -327,9 +328,10 @@ async def test_controller_callback():
     assert callback.failure_decision_called
     assert isinstance(callback.latest_state_update[0], RunningState)
     assert isinstance(callback.latest_state_update[1], ShuttingDownState)
-    assert isinstance(callback.latest_state_update[1].next_state, ErroredState)
 
-    controller._shutdown()
+    await controller._run_control_loop_iteration()
+    assert isinstance(callback.latest_state_update[0], ShuttingDownState)
+    assert isinstance(callback.latest_state_update[1], ErroredState)
     assert callback.shutdown_called
 
 

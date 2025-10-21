@@ -29,8 +29,7 @@ class TrainControllerStateType(Enum):
 
     Args:
         state_name: The name of the state.
-        is_terminal: Whether this is a terminal state, meaning that we are done processing
-            worker group(s).
+        is_terminal: Whether this is a terminal state that should not be further processed.
         needs_new_run_attempt: Whether this state requires starting a new run attempt, where
             a run attempt is a logical unit that encompasses both scheduling workers and
             executing training on those workers.
@@ -44,7 +43,7 @@ class TrainControllerStateType(Enum):
     RUNNING = ("RUNNING", False, False, False)
     RESTARTING = ("RESTARTING", False, True, False)
     RESIZING = ("RESIZING", False, True, False)
-    SHUTTING_DOWN = ("SHUTTING_DOWN", True, False, True)
+    SHUTTING_DOWN = ("SHUTTING_DOWN", False, False, True)
     ERRORED = ("ERRORED", True, False, False)
     FINISHED = ("FINISHED", True, False, False)
     ABORTED = ("ABORTED", True, False, False)
