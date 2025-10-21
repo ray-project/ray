@@ -2163,7 +2163,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::OK();
   }
 
-  static auto ref_is_detached_actor = [this](const std::string &object_id) {
+  auto ref_is_detached_actor = [this](const std::string &object_id) {
     auto ref_object_id = ObjectID::FromBinary(object_id);
     if (ObjectID::IsActorID(ref_object_id)) {
       auto ref_actor_id = ObjectID::ToActorID(ref_object_id);
