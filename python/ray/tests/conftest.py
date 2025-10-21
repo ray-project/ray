@@ -535,6 +535,9 @@ def class_ray_instance():
 
 @contextmanager
 def _ray_start(**kwargs):
+    if ray.is_initialized():
+        ray.shutdown()
+
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
