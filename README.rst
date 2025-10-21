@@ -123,7 +123,7 @@ Getting Involved
      - For asking questions about how to use Ray.
      - 3-5 days
      - Community
-   * - `Luma Calendar`_
+   * - `Luma Calendar (Ray Meetups)`_
      - For attending Ray meetups and events.
      - Monthly
      - Ray DevRel
