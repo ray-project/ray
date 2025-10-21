@@ -5,7 +5,7 @@ set -euo pipefail
 
 # Retrieve credentials from Secrets Manager
 SECRET="$(aws secretsmanager get-secret-value \
-  --secret-id azure-service-principal-oss-release \
+  --secret-id arn:aws:secretsmanager:us-west-2:029272617770:secret:azure-service-principal-oss-release-XLR5pz \
   --query SecretString \
   --region us-west-2 \
   --output text)"
@@ -16,7 +16,7 @@ TENANT_ID="$(echo "$SECRET" | jq -r '.tenant_id')"
 temp_dir=$(mktemp -d)
 
 aws secretsmanager get-secret-value \
---secret-id azure-service-principal-certificate \
+--secret-id arn:aws:secretsmanager:us-west-2:029272617770:secret:azure-service-principal-certificate-I5Zyp0 \
 --query SecretString \
 --region us-west-2 \
 --output text > "${temp_dir}/azure_cert.pem"
