@@ -657,6 +657,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetWorkerPIDs` request.
+  void HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
+                           rpc::GetWorkerPIDsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
   /// we disconnect and kill the worker process.
