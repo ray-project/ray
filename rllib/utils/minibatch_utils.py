@@ -2,8 +2,7 @@ import math
 from typing import List, Optional
 
 from ray.data import DataIterator
-from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import DeviceType, EpisodeType

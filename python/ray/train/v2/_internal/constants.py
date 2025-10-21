@@ -118,7 +118,7 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
 
 def is_v2_enabled() -> bool:
-    return env_bool(V2_ENABLED_ENV_VAR, False)
+    return env_bool(V2_ENABLED_ENV_VAR, True)
 
 
 def get_env_vars_to_propagate() -> Dict[str, str]:

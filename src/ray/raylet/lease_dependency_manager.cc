@@ -14,10 +14,13 @@
 
 #include "ray/raylet/lease_dependency_manager.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "ray/object_manager/pull_manager.h"
 
 namespace ray {
 
@@ -112,66 +115,94 @@ void LeaseDependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   wait_requests_.erase(req_iter);
 }
 
-void LeaseDependencyManager::StartOrUpdateGetRequest(
-    const WorkerID &worker_id,
-    const std::vector<rpc::ObjectReference> &required_objects) {
-  RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
-  auto &get_request = get_requests_[worker_id];
-  bool modified = false;
+GetRequestId LeaseDependencyManager::StartGetRequest(
+    const WorkerID &worker_id, std::vector<rpc::ObjectReference> &&required_objects) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(required_objects.size());
+
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    if (get_request.first.insert(obj_id).second) {
-      RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.get on object " << obj_id;
-      auto it = GetOrInsertRequiredObject(obj_id, ref);
-      it->second.dependent_get_requests.insert(worker_id);
-      modified = true;
-    }
+    object_ids.emplace_back(obj_id);
+    auto it = GetOrInsertRequiredObject(obj_id, ref);
+    it->second.dependent_get_requests.insert(worker_id);
   }
 
-  if (modified) {
-    std::vector<rpc::ObjectReference> refs;
-    for (auto &obj_id : get_request.first) {
-      auto it = required_objects_.find(obj_id);
-      RAY_CHECK(it != required_objects_.end());
-      ray::rpc::ObjectReference ref;
-      ref.set_object_id(obj_id.Binary());
-      ref.mutable_owner_address()->CopyFrom(it->second.owner_address);
-      refs.push_back(std::move(ref));
-    }
-    // Pull the new dependencies before canceling the old request, in case some
-    // of the old dependencies are still being fetched.
-    uint64_t new_request_id =
-        object_manager_.Pull(refs, BundlePriority::GET_REQUEST, {"", false});
-    if (get_request.second != 0) {
-      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                     << " request: " << get_request.second;
-      object_manager_.CancelPull(get_request.second);
-    }
-    get_request.second = new_request_id;
-    RAY_LOG(DEBUG) << "Started pull for get request from worker " << worker_id
-                   << " request: " << get_request.second;
-  }
+  uint64_t new_pull_request_id = object_manager_.Pull(
+      std::move(required_objects), BundlePriority::GET_REQUEST, {"", false});
+
+  const GetRequestId get_request_id = get_request_counter_++;
+
+  const std::pair<WorkerID, GetRequestId> worker_and_request_ids =
+      std::make_pair(worker_id, get_request_id);
+
+  get_requests_.emplace(std::move(worker_and_request_ids),
+                        std::make_pair(std::move(object_ids), new_pull_request_id));
+  worker_to_requests_[worker_id].emplace(get_request_id);
+
+  return get_request_id;
 }
 
-void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
-  RAY_LOG(DEBUG) << "Canceling get request for worker " << worker_id;
-  auto req_iter = get_requests_.find(worker_id);
-  if (req_iter == get_requests_.end()) {
+void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id,
+                                              const GetRequestId &request_id) {
+  std::pair<WorkerID, int64_t> worker_and_req_id = std::make_pair(worker_id, request_id);
+
+  if (get_requests_.find(worker_and_req_id) == get_requests_.end()) {
     return;
   }
 
-  RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
-                 << " request: " << req_iter->second.second;
-  object_manager_.CancelPull(req_iter->second.second);
+  std::pair<std::vector<ObjectID>, PullRequestId> &get_request =
+      get_requests_[worker_and_req_id];
+  std::vector<ObjectID> &object_ids = get_request.first;
+  PullRequestId pull_request_id = get_request.second;
 
-  for (const auto &obj_id : req_iter->second.first) {
+  object_manager_.CancelPull(pull_request_id);
+
+  for (const auto &obj_id : object_ids) {
     auto obj_iter = required_objects_.find(obj_id);
     RAY_CHECK(obj_iter != required_objects_.end());
     obj_iter->second.dependent_get_requests.erase(worker_id);
     RemoveObjectIfNotNeeded(obj_iter);
   }
 
-  get_requests_.erase(req_iter);
+  get_requests_.erase(worker_and_req_id);
+  worker_to_requests_[worker_id].erase(request_id);
+
+  if (worker_to_requests_[worker_id].empty()) {
+    worker_to_requests_.erase(worker_id);
+  }
+}
+
+void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
+  if (worker_to_requests_.find(worker_id) == worker_to_requests_.end()) {
+    return;
+  }
+
+  for (const GetRequestId &request_id : worker_to_requests_[worker_id]) {
+    std::pair<WorkerID, int64_t> worker_and_req_id =
+        std::make_pair(worker_id, request_id);
+
+    if (get_requests_.find(worker_and_req_id) == get_requests_.end()) {
+      continue;
+    }
+
+    std::pair<std::vector<ObjectID>, PullRequestId> &get_request =
+        get_requests_[worker_and_req_id];
+    std::vector<ObjectID> &object_ids = get_request.first;
+    PullRequestId pull_request_id = get_request.second;
+
+    object_manager_.CancelPull(pull_request_id);
+
+    for (const auto &obj_id : object_ids) {
+      auto obj_iter = required_objects_.find(obj_id);
+      RAY_CHECK(obj_iter != required_objects_.end());
+      obj_iter->second.dependent_get_requests.erase(worker_id);
+      RemoveObjectIfNotNeeded(obj_iter);
+    }
+
+    get_requests_.erase(worker_and_req_id);
+  }
+
+  worker_to_requests_.erase(worker_id);
 }
 
 /// Request dependencies for a queued lease.
