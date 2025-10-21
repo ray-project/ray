@@ -498,9 +498,9 @@ class TrainController:
         self._shutdown()
 
         # Call after_controller_finish with the final result
-        result = self._build_result()
         if isinstance(self.get_state(), ShuttingDownState):
             self._set_state(self.get_state().next_state)
+        result = self._build_result()
         for callback in self._controller_callbacks:
             callback.after_controller_finish(result)
 

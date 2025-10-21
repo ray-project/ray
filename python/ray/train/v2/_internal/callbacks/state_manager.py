@@ -111,9 +111,9 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
                 run_id=self._run_id,
             )
 
-        elif not current_state._state_type.is_transient:
+        elif not current_state._state_type.is_hidden:
             logger.warning(
-                "Unexpected state transition to non-transient state "
+                "Unexpected state transition to non-hidden state "
                 f"{current_state._state_type.state_name}."
             )
 

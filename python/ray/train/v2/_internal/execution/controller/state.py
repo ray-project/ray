@@ -34,7 +34,7 @@ class TrainControllerStateType(Enum):
         needs_new_run_attempt: Whether this state requires starting a new run attempt, where
             a run attempt is a logical unit that encompasses both scheduling workers and
             executing training on those workers.
-        is_transient: Whether this is a transient state that should not show up on the Train
+        is_hidden: Whether this is a hidden state that should not show up on the Train
             Dashboard UI.
     """
 
@@ -54,12 +54,12 @@ class TrainControllerStateType(Enum):
         state_name: str,
         is_terminal: bool,
         needs_new_run_attempt: bool,
-        is_transient: bool,
+        is_hidden: bool,
     ):
         self.state_name = state_name
         self.is_terminal = is_terminal
         self.needs_new_run_attempt = needs_new_run_attempt
-        self.is_transient = is_transient
+        self.is_hidden = is_hidden
 
 
 class TrainControllerState:
