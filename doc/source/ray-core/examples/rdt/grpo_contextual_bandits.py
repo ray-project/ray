@@ -384,17 +384,12 @@ def run_once(total_steps: int) -> None:
     # Initialize generator with current learner weights
     weights_ref = learner.get_weights.remote()
     version_ref = learner.get_version.remote()
-    # Block until the generator actor finishes loading the initial weights.
     ray.get(generator.update_weights.remote(weights_ref, version_ref))
 
     num_steps = total_steps
 
     # Pre-fill ReplayBuffer before starting PPO.
-    prefill_tasks = [
-        generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE))
-        for _ in range(3)
-    ]
-    ray.get(prefill_tasks)
+    ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
 
     with tqdm(
         total=num_steps, desc="Training", unit="step", leave=True, mininterval=1.0
