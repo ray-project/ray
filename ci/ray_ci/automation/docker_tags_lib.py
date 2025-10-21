@@ -86,7 +86,7 @@ def list_image_tag_suffixes(
         python_version_tags.append("")
     if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image
-    if platform == GPU_PLATFORM:
+    if platform in GPU_PLATFORM:
         platform_tags.append("-gpu")  # gpu is alias for cu11.8.0
         if ray_type == RayType.RAY_ML:
             platform_tags.append("")  # no tag is alias to gpu for ray-ml image
