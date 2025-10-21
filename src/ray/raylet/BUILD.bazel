@@ -111,6 +111,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_worker",
+    hdrs = ["fake_worker.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker",
+        "//src/ray/raylet_ipc_client:client_connection",
+    ],
+)
+
+ray_cc_library(
     name = "worker_pool",
     srcs = ["worker_pool.cc"],
     hdrs = ["worker_pool.h"],
