@@ -1,8 +1,9 @@
 from typing import List
 
 import time
-import pytest
+
 import numpy as np
+import pytest
 
 import ray
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -795,7 +796,8 @@ def test_compatibility_logic(root_logger):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
