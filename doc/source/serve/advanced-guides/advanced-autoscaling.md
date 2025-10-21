@@ -217,7 +217,7 @@ with its own timing parameters:
 
 Replicas and deployment handles continuously record autoscaling metrics:
 - **What**: Number of ongoing requests (queued + running)
-- **Frequency**: Every 10s (configurable via [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst))
+- **Frequency**: Every 10s (configurable via `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S`)
 - **Storage**: Metrics are stored locally as a timeseries
 
 #### Stage 2: Metric pushing
@@ -309,7 +309,7 @@ and a warning is logged.
 
 * **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`** (default: 10.0s): Minimum timeout
 for handle metrics collection. The system uses the maximum of this value and
-`2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to determine when to drop stale handle metrics.
+`2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` to determine when to drop stale handle metrics.
 
 #### Advanced feature flags
 
@@ -562,8 +562,8 @@ autoscaler to react more quickly to changes, especially bursts, of traffic.
 autoscaler scales up more aggressively than normal. This setting can allow your
 deployment to be more sensitive to bursts of traffic.
 
-* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst).
-Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to be less than
+* Lower the [`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst).
+Always set [`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) to be less than
 or equal to `upscale_delay_s`, otherwise upscaling is delayed because the
 autoscaler doesn't receive fresh information often enough.
 
