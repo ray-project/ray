@@ -53,6 +53,7 @@ ray_cc_test(
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:publisher_interface",

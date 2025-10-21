@@ -30,6 +30,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/reference_counter_interface.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/rpc/utils.h"
@@ -43,16 +44,21 @@ namespace core {
 class ReferenceCounter : public ReferenceCounterInterface,
                          public LocalityDataProviderInterface {
  public:
-  ReferenceCounter(rpc::Address rpc_address,
-                   pubsub::PublisherInterface *object_info_publisher,
-                   pubsub::SubscriberInterface *object_info_subscriber,
-                   std::function<bool(const NodeID &node_id)> is_node_dead,
-                   bool lineage_pinning_enabled = false)
+  ReferenceCounter(
+      rpc::Address rpc_address,
+      pubsub::PublisherInterface *object_info_publisher,
+      pubsub::SubscriberInterface *object_info_subscriber,
+      std::function<bool(const NodeID &node_id)> is_node_dead,
+      ray::observability::MetricInterface &owned_object_by_state_counter,
+      ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
+      bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        is_node_dead_(std::move(is_node_dead)) {}
+        is_node_dead_(std::move(is_node_dead)),
+        owned_object_count_by_state_(owned_object_by_state_counter),
+        owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
   ~ReferenceCounter() override = default;
 
@@ -165,20 +171,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   size_t NumObjectsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
-
-  size_t OwnedObjectsPendingCreation() const override;
-
-  size_t OwnedObjectsInMemory() const override;
-
-  size_t OwnedObjectsSpilled() const override;
-
-  size_t OwnedObjectsInPlasma() const override;
-
-  int64_t OwnedObjectsSizeInMemory() const override;
-
-  int64_t OwnedObjectsSizeSpilled() const override;
-
-  int64_t OwnedObjectsSizeInPlasma() const override;
 
   void RecordMetrics() override;
 
@@ -814,6 +806,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::atomic<int64_t> owned_objects_size_in_memory_{0};
   std::atomic<int64_t> owned_objects_size_spilled_{0};
   std::atomic<int64_t> owned_objects_size_in_plasma_{0};
+
+  ray::observability::MetricInterface &owned_object_count_by_state_;
+  ray::observability::MetricInterface &owned_object_sizes_by_state_;
 };
 
 }  // namespace core

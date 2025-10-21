@@ -96,8 +96,6 @@ DECLARE_stats(spill_manager_objects);
 DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
-DECLARE_stats(owned_objects);
-DECLARE_stats(owned_objects_size);
 
 /// Object Store
 DECLARE_stats(object_store_memory);

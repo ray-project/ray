@@ -21,8 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/stats/metric_defs.h"
-#include "ray/stats/tag_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
@@ -996,46 +994,21 @@ size_t ReferenceCounter::NumActorsOwnedByUs() const {
   return num_actors_owned_by_us_;
 }
 
-size_t ReferenceCounter::OwnedObjectsPendingCreation() const {
-  return owned_objects_pending_creation_.load();
-}
-
-size_t ReferenceCounter::OwnedObjectsInMemory() const {
-  return owned_objects_in_memory_.load();
-}
-
-size_t ReferenceCounter::OwnedObjectsSpilled() const {
-  return owned_objects_spilled_.load();
-}
-
-size_t ReferenceCounter::OwnedObjectsInPlasma() const {
-  return owned_objects_in_plasma_.load();
-}
-
-int64_t ReferenceCounter::OwnedObjectsSizeInMemory() const {
-  return owned_objects_size_in_memory_.load();
-}
-
-int64_t ReferenceCounter::OwnedObjectsSizeSpilled() const {
-  return owned_objects_size_spilled_.load();
-}
-
-int64_t ReferenceCounter::OwnedObjectsSizeInPlasma() const {
-  return owned_objects_size_in_plasma_.load();
-}
-
 void ReferenceCounter::RecordMetrics() {
-  // N.B. Metric reporting can interleave with counter updates, and may have an innacurate
+  // N.B. Metric reporting can interleave with counter updates, and may have an inaccurate
   // accounting at certain critical sections of counter updates.
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsSpilled(), "Spilled");
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsInMemory(), "InMemory");
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsInPlasma(), "InPlasma");
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsPendingCreation(),
-                                         "PendingCreation");
+  owned_object_count_by_state_.Record(owned_objects_spilled_, {{"State", "Spilled"}});
+  owned_object_count_by_state_.Record(owned_objects_in_memory_, {{"State", "InMemory"}});
+  owned_object_count_by_state_.Record(owned_objects_in_plasma_, {{"State", "InPlasma"}});
+  owned_object_count_by_state_.Record(owned_objects_pending_creation_,
+                                      {{"State", "PendingCreation"}});
 
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeInMemory(), "InMemory");
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeSpilled(), "Spilled");
-  ray::stats::STATS_owned_objects.Record(OwnedObjectsSizeInPlasma(), "InPlasma");
+  owned_object_sizes_by_state_.Record(owned_objects_size_spilled_,
+                                      {{"State", "Spilled"}});
+  owned_object_sizes_by_state_.Record(owned_objects_size_in_memory_,
+                                      {{"State", "InMemory"}});
+  owned_object_sizes_by_state_.Record(owned_objects_size_in_plasma_,
+                                      {{"State", "InPlasma"}});
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {

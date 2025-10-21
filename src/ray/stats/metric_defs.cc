@@ -269,20 +269,6 @@ DEFINE_stats(spill_manager_throughput_mb,
              (),
              ray::stats::GAUGE);
 
-DEFINE_stats(owned_objects,
-             "The number of alive owned objects in {Spilled, InMemory, InPlasma, "
-             "PendingCreation} state",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(owned_objects_size,
-             "The size of alive owned objects in {Spilled, InMemory, InPlasma, "
-             "PendingCreation} state",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
-
 /// Memory Manager
 DEFINE_stats(
     memory_manager_worker_eviction_total,
