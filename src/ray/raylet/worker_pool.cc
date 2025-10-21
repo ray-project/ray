@@ -1657,8 +1657,12 @@ bool WorkerPool::IsWorkerAvailableForScheduling() const {
   return false;
 }
 
+bool IsInternalNamespace(const std::string &ray_namespace) {
+  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
+}
+
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
-    bool filter_dead_drivers) const {
+    bool filter_dead_drivers, bool filter_system_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1670,6 +1674,14 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDriver
       if (filter_dead_drivers && driver->IsDead()) {
         continue;
       }
+
+      if (filter_system_drivers) {
+        auto job_config = GetJobConfig(driver->GetAssignedJobId());
+        if (job_config.has_value() && IsInternalNamespace(job_config->ray_namespace())) {
+          continue;
+        }
+      }
+
       drivers.push_back(driver);
     }
   }
