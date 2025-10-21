@@ -384,10 +384,8 @@ def run_once(total_steps: int) -> None:
     # Initialize generator with current learner weights
     weights_ref = learner.get_weights.remote()
     version_ref = learner.get_version.remote()
-    generator.update_weights.remote(weights_ref, version_ref)
-    # Wait for the generator actor to finish loading the initial weights.
-    while not ray.get(signal.is_generation_allowed.remote()):
-        time.sleep(0.05)
+    # Block until the generator actor finishes loading the initial weights.
+    ray.get(generator.update_weights.remote(weights_ref, version_ref))
 
     num_steps = total_steps
 
