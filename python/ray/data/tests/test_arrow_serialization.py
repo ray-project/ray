@@ -651,11 +651,8 @@ def test_variable_shape_tensor_serialization():
             "shape": [4, 5],
         },
     ]
-    if parse_version(pa.__version__) < parse_version("10.0.0"):
-        storage = pa.array(values, type=t.storage_type)
-        ar = pa.ExtensionArray.from_storage(t, storage)
-    else:
-        ar = pa.array(values, type=t)
+    storage = pa.array(values, type=t.storage_type)
+    ar = pa.ExtensionArray.from_storage(t, storage)
     payload = PicklableArrayPayload.from_array(ar)
     ar2 = payload.to_array()
     assert ar == ar2
