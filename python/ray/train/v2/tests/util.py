@@ -2,7 +2,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 from ray.train import Checkpoint
@@ -58,9 +58,7 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_group_state = None
         self._worker_statuses = {}
 
-    def poll_status(
-        self, *args, **kwargs
-    ) -> Tuple[WorkerGroupPollStatus, Optional[Exception]]:
+    def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
         if self._poll_failure:
             raise self._poll_failure
         return WorkerGroupPollStatus(
