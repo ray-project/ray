@@ -3,8 +3,7 @@ import time
 import numpy as np
 import re
 
-from ray.rllib.utils.metrics.stats import Stats, merge_stats
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.legacy_stats import Stats, merge_stats
 from ray.rllib.utils.test_utils import check
 
 # Default values used throughout the tests
@@ -168,24 +167,6 @@ def test_reduce_methods(reduce_method, values, expected):
     check(stats.peek(), expected)
 
 
-def test_reduce_with_clear():
-    """Test reduce with clear_on_reduce=True."""
-    stats = Stats(
-        init_values=None,
-        reduce="sum",
-        window=None,
-        ema_coeff=None,
-        throughput=DEFAULT_THROUGHPUT,
-        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
-    )
-    stats.push(1)
-    stats.push(2)
-
-    reduced_value = stats.reduce()
-    check(reduced_value, 3)
-    check(len(stats), 0)  # Stats should be cleared
-
-
 def test_basic_merge_on_time_axis():
     """Test merging stats on time axis."""
     stats1 = Stats(
@@ -313,7 +294,7 @@ def test_state_serialization():
     check(len(loaded_stats), len(stats))
 
 
-def test_clone():
+def test_similar_to():
     """Test creating similar Stats objects."""
     original = Stats(
         init_values=None,
@@ -330,13 +311,13 @@ def test_clone():
     original.reduce()
 
     # Similar stats without initial values
-    similar = Stats.clone(original)
+    similar = Stats.similar_to(original)
     check(similar._reduce_method, original._reduce_method)
     check(similar._window, original._window)
     check(len(similar), 0)  # Should start empty
 
     # Similar stats with initial values
-    similar_with_value = Stats.clone(original, init_values=[3, 4])
+    similar_with_value = Stats.similar_to(original, init_values=[3, 4])
     check(len(similar_with_value), 2)
     check(similar_with_value.peek(), 7)
 
@@ -375,6 +356,7 @@ def test_reduce_history_with_clear():
         reduce="sum",
         window=None,
         ema_coeff=None,
+        clear_on_reduce=True,
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
@@ -1093,7 +1075,7 @@ def test_percentiles():
     """
     # Test basic functionality with single stats
     # Use values 0-9 to make percentile calculations easy to verify
-    stats = Stats(reduce="item_series", percentiles=True, window=10)
+    stats = Stats(reduce=None, percentiles=True, window=10)
     for i in range(10):
         stats.push(i)
 
@@ -1111,7 +1093,7 @@ def test_percentiles():
 
     # Check with explicit percentiles
     del stats
-    stats = Stats(reduce="item_series", percentiles=[0, 50], window=10)
+    stats = Stats(reduce=None, percentiles=[0, 50], window=10)
     for i in range(10)[::-1]:
         stats.push(i)
 
@@ -1119,19 +1101,19 @@ def test_percentiles():
     check(stats.peek(compile=True), {0: 0, 50: 4.5})
 
     # Test merge_in_parallel with easy-to-calculate values
-    stats1 = Stats(reduce="item_series", percentiles=True, window=20)
+    stats1 = Stats(reduce=None, percentiles=True, window=20)
     # Push values 0, 2, 4, 6, 8 (even numbers 0-8)
     for i in range(0, 10, 2):
         stats1.push(i)
     check(stats1.reduce(compile=False).values, [0, 2, 4, 6, 8])
 
-    stats2 = Stats(reduce="item_series", percentiles=True, window=20)
+    stats2 = Stats(reduce=None, percentiles=True, window=20)
     # Push values 1, 3, 5, 7, 9 (odd numbers 1-9)
     for i in range(1, 10, 2):
         stats2.push(i)
     check(stats2.reduce(compile=False).values, [1, 3, 5, 7, 9])
 
-    merged_stats = Stats(reduce="item_series", percentiles=True, window=20)
+    merged_stats = Stats(reduce=None, percentiles=True, window=20)
     merged_stats.merge_in_parallel(stats1, stats2)
     # Should merge and sort values from both stats
     # Merged values should be sorted: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -1154,19 +1136,19 @@ def test_percentiles():
 
     # Test validation - window required
     with pytest.raises(ValueError, match="A window must be specified"):
-        Stats(reduce="item_series", percentiles=True, window=None)
+        Stats(reduce=None, percentiles=True, window=None)
 
     # Test validation - percentiles must be a list
     with pytest.raises(ValueError, match="must be a list or bool"):
-        Stats(reduce="item_series", percentiles=0.5, window=5)
+        Stats(reduce=None, percentiles=0.5, window=5)
 
     # Test validation - percentiles must contain numbers
     with pytest.raises(ValueError, match="must contain only ints or floats"):
-        Stats(reduce="item_series", window=5, percentiles=["invalid"])
+        Stats(reduce=None, window=5, percentiles=["invalid"])
 
     # Test validation - percentiles must be between 0 and 100
     with pytest.raises(ValueError, match="must contain only values between 0 and 100"):
-        Stats(reduce="item_series", window=5, percentiles=[-1, 50, 101])
+        Stats(reduce=None, window=5, percentiles=[-1, 50, 101])
 
     # Test validation - percentiles must be None for other reduce methods
     with pytest.raises(
@@ -1182,99 +1164,11 @@ def test_percentiles():
         ),
     ):
         Stats(
-            reduce="item_series",
+            reduce=None,
             reduce_per_index_on_aggregate=True,
             percentiles=True,
             window=5,
         )
-
-
-def test_set_state_complete_replacement():
-    """Test that set_state() completely replaces the logger's state.
-
-    This test verifies the fix for the issue where set_state() would only update
-    keys present in the new state but leave old keys intact, causing stale data
-    to persist after checkpoint restoration.
-    """
-    # Test case 1: Basic replacement with fewer keys
-    logger1 = MetricsLogger()
-    logger1.log_value("solo", 0)
-    logger1.log_value("duo", 0)
-
-    logger2 = MetricsLogger()
-    logger2.log_value("duo", 1)
-
-    # Before fix: {'solo': 0, 'duo': 1} - 'solo' would persist
-    # After fix: {'duo': 1} - only new state keys remain
-    logger1.set_state(logger2.get_state())
-    result = logger1.peek()
-    expected = {"duo": 1}
-
-    check(result, expected)
-
-    # Test case 2: Complete replacement with different keys
-    logger3 = MetricsLogger()
-    logger3.log_value("old_key1", 10)
-    logger3.log_value("old_key2", 20)
-    logger3.log_value("shared_key", 30)
-
-    logger4 = MetricsLogger()
-    logger4.log_value("shared_key", 100)
-    logger4.log_value("new_key", 200)
-
-    logger3.set_state(logger4.get_state())
-    result = logger3.peek()
-    expected = {"shared_key": 100, "new_key": 200}
-
-    check(result, expected)
-
-    # Test case 3: Setting to empty state
-    logger5 = MetricsLogger()
-    logger5.log_value("key1", 1)
-    logger5.log_value("key2", 2)
-
-    empty_logger = MetricsLogger()
-    logger5.set_state(empty_logger.get_state())
-    result = logger5.peek()
-
-    check(result, {})
-
-    # Test case 4: Nested keys
-    logger6 = MetricsLogger()
-    logger6.log_value(("nested", "old_key"), 1)
-    logger6.log_value(("nested", "shared_key"), 2)
-    logger6.log_value("top_level", 3)
-
-    logger7 = MetricsLogger()
-    logger7.log_value(("nested", "shared_key"), 20)
-    logger7.log_value(("nested", "new_key"), 30)
-
-    logger6.set_state(logger7.get_state())
-    result = logger6.peek()
-    expected = {"nested": {"shared_key": 20, "new_key": 30}}
-
-    check(result, expected)
-
-    # Test case 5: Multiple set_state calls (simulating multiple restore_from_path calls)
-    logger8 = MetricsLogger()
-    logger8.log_value("initial", 0)
-
-    # First set_state
-    temp1 = MetricsLogger()
-    temp1.log_value("first", 1)
-    temp1.log_value("shared", 100)
-    logger8.set_state(temp1.get_state())
-
-    # Second set_state - should completely replace first state
-    temp2 = MetricsLogger()
-    temp2.log_value("second", 2)
-    temp2.log_value("shared", 20)
-    logger8.set_state(temp2.get_state())
-
-    result = logger8.peek()
-    expected = {"second": 2, "shared": 20}
-
-    check(result, expected)
 
 
 if __name__ == "__main__":

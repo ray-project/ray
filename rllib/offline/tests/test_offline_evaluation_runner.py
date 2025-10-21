@@ -116,9 +116,11 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Ensure that the metrics of the `default_policy` are also a dict.
         self.assertIsInstance(metrics[DEFAULT_MODULE_ID], ResultDict)
         # Make sure that the metric for the total eval loss is a `Stats` instance.
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
-        self.assertIsInstance(metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], Stats)
+        self.assertIsInstance(
+            metrics[DEFAULT_MODULE_ID][TOTAL_EVAL_LOSS_KEY], StatsBase
+        )
         # Ensure that the `_batch_iterator` instance was built. Note, this is
         # built in the first call to `OfflineEvaluationRunner.run()`.
         from ray.rllib.utils.minibatch_utils import MiniBatchRayDataIterator

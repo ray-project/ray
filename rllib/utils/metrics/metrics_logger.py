@@ -51,7 +51,6 @@ def stats_from_legacy_state(
     if state.get("clear_on_reduce", True) is False:
         if cls_identifier == "sum":
             # lifetime sum
-            _cls = DEFAULT_STATS_CLS_LOOKUP["lifetime_sum"]
 
             if is_root_stats:
                 # With the new stats, only the root logger tracks values for lifetime sum.
@@ -72,7 +71,8 @@ def stats_from_legacy_state(
             else:
                 new_state["track_throughputs"] = False
 
-            stats = LifetimeSumStats.from_state(state=new_state)
+            _cls = DEFAULT_STATS_CLS_LOOKUP["lifetime_sum"]
+            stats = _cls.from_state(state=new_state)
             return stats
         else:
             deprecation_warning(
@@ -99,6 +99,8 @@ def stats_from_legacy_state(
         new_state["window"] = state["window"]
         if cls_identifier == "sum" and state.get("throughput_stats") is not None:
             new_state["track_throughput"] = True
+        else:
+            new_state["track_throughput"] = False
     elif cls_identifier is None and state.get("percentiles", False) is not False:
         # This is a percentiles stats (reduce=None with percentiles specified)
         cls_identifier = "percentiles"

@@ -440,9 +440,9 @@ class Stats:
                 # return_values will be be 0 if we reduce a sum over zero elements
                 # But we don't want to create such a zero out of nothing for our new
                 # Stats object that we return here
-                return Stats.clone(self)
+                return Stats.similar_to(self)
 
-            return Stats.clone(self, init_values=return_values)
+            return Stats.similar_to(self, init_values=return_values)
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.

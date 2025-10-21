@@ -35,7 +35,6 @@ class SumStats(SeriesStats):
         super().__init__(**kwargs)
 
         self.track_throughput = with_throughput
-        self._last_reduce_value = 0.0
         # We initialize this to the current time which may result in a low first throughput value
         # It seems reasonable that starting from a checkpoint or starting an experiment results in a low first throughput value
         self._last_throughput_measure_time = time.perf_counter()
@@ -57,18 +56,18 @@ class SumStats(SeriesStats):
             self.track_throughput
         ), "Throughput tracking is not enabled on this Stats object"
 
-        return (self.peek(compile=True) - self._last_reduce_value) / (
+        return self.peek(compile=True) / (
             time.perf_counter() - self._last_throughput_measure_time
         )
 
     def reduce(self, compile: bool = True) -> Union[Any, "SumStats"]:
-        self._last_reduce_value = super().reduce(compile=True)
+        reduce_value = super().reduce(compile=True)
 
         if compile:
-            return self._last_reduce_value
+            return reduce_value
 
         return_stats = self.clone(self)
-        return_stats.values = [self._last_reduce_value]
+        return_stats.values = [reduce_value]
         return return_stats
 
     @staticmethod
@@ -91,13 +90,11 @@ class SumStats(SeriesStats):
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
         state = super().get_state()
-        state["values_at_last_reduce"] = self._last_reduce_value
         state["track_throughput"] = self.track_throughput
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
-        self._last_reduce_value = state["values_at_last_reduce"]
         self.track_throughput = state["track_throughput"]
 
     def __repr__(self) -> str:
