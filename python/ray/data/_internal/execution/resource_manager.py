@@ -693,7 +693,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # clear(), will wipe out that information and that gauge won't
         # update.
         for op in self._op_budgets:
-            self._op_budgets[op] = ExecutionResources.zero()
+            self._op_budgets[op] = None
 
         eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
