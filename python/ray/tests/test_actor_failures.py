@@ -104,14 +104,12 @@ def test_async_generator_crash_restart(ray_start_cluster):
     """
     Timeline:
 
-    1. On a worker node, run a generator task that generates 2 objects in total and
-       another task that consumes the objects.
-    2. After the generator generates 1 object, kill the node they're both running on.
-       The first ObjectRef will have been generated, but its data lost, and the second
-       ObjectRef won't have been generated yet.
-    3. Add a new worker node for the tasks to be re-run on.
-    4. Verify that the generator task is retried and the consumer task successfully
-       retrieves its outputs.
+    1. On a worker node, run a generator task that generates 2 objects in total and run
+       it to completion.
+    2. Kill the worker node so the objects are lost but the object refs exist.
+    3. Submit a consumer task that depends on the generated object refs.
+    4. Add a new worker node that the generator and the consumer can be run on
+    5. Verify that the generator outputs are reconstructed and the consumer succeeds.
     """
     cluster = ray_start_cluster
     head_node_id = cluster.add_node(
