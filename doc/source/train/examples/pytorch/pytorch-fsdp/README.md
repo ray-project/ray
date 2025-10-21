@@ -170,7 +170,7 @@ def train_func(config):
     loaded_checkpoint = ray.train.get_checkpoint()
     if loaded_checkpoint:
         latest_epoch = load_fsdp_checkpoint(model, optimizer, loaded_checkpoint)
-        start_epoch = latest_epoch + 1
+        start_epoch = latest_epoch + 1 if latest_epoch else 0
         logger.info(f"Resuming training from epoch {start_epoch}")
 
     # Prepare training data
@@ -447,7 +447,7 @@ class AppState(Stateful):
     and optimizer.
     """
 
-    def __init__(self, model, optimizer=None, epoch=0):
+    def __init__(self, model, optimizer=None, epoch=None):
         self.model = model
         self.optimizer = optimizer
         self.epoch = epoch
