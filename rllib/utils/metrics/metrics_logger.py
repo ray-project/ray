@@ -97,6 +97,8 @@ def stats_from_legacy_state(
     elif cls_identifier in ["min", "max", "sum"]:
         new_state["values"] = state["values"]
         new_state["window"] = state["window"]
+        if cls_identifier == "sum" and state.get("throughput_stats") is not None:
+            new_state["track_throughput"] = True
     elif cls_identifier is None and state.get("percentiles", False) is not False:
         # This is a percentiles stats (reduce=None with percentiles specified)
         cls_identifier = "percentiles"
