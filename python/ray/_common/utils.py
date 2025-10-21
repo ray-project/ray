@@ -9,24 +9,14 @@ import string
 import sys
 import tempfile
 from inspect import signature
-from typing import Any, Coroutine, Dict, Optional
+from typing import Any, Coroutine, Dict, Optional, Tuple
 
 import psutil
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
+def import_module_and_attr(
+    full_path: str, *, reload_module: bool = False
+) -> Tuple[Any, Any]:  # type: ignore
     if full_path is None:
         raise TypeError("import path cannot be None")
 
@@ -45,7 +35,11 @@ def import_attr(full_path: str, *, reload_module: bool = False):
     module = importlib.import_module(module_name)
     if reload_module:
         importlib.reload(module)
-    return getattr(module, attr_name)
+    return module, getattr(module, attr_name)
+
+
+def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
+    return import_module_and_attr(full_path, reload_module=reload_module)[1]
 
 
 def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
