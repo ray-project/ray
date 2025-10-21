@@ -503,7 +503,7 @@ py_test(
 
 py_test(
     name = "test_torch_gpu",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_gpu.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -519,7 +519,7 @@ py_test(
 
 py_test(
     name = "test_torch_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -551,7 +551,7 @@ py_test(
 
 py_test(
     name = "test_util",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_util.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
