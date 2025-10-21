@@ -1,5 +1,5 @@
 from ray import serve
-from ray.serve._private.autoscaling_state import AutoscalingContext
+from ray.serve.config import AutoscalingContext
 
 
 def custom_autoscaling_policy(ctx: AutoscalingContext):
