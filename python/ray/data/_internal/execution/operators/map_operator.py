@@ -755,10 +755,10 @@ class _OrderedOutputQueue(_OutputQueue):
 
     def get_next(self) -> RefBundle:
         next_bundle = self._task_outputs[self._current_output_index].popleft()
+        self._size -= 1
         if len(self._task_outputs[self._current_output_index]) == 0:
             if self._current_output_index in self._completed_tasks:
                 self._move_to_next_task()
-        self._size -= 1
         return next_bundle
 
     def __len__(self) -> int:
