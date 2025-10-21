@@ -689,7 +689,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # NOTE: We don't call self._op_budgets.clear() so that
         # the streaming executor can indirectly loop through
-        # self._op_budgets and reset their budget gauges.
+        # self._op_budgets and reset each operator's budget gauges.
+        # clear(), will wipe out that information.
         for op in self._op_budgets:
             self._op_budgets[op] = ExecutionResources.zero()
 
