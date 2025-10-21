@@ -6,6 +6,7 @@ import time
 import uuid
 
 import gymnasium as gym
+import tree
 from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
@@ -238,12 +239,12 @@ class SingleAgentEpisode:
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
-                etc..). If larger 0, will interpret the first `len_lookback_buffer`
-                items in each type of data as NOT part of this actual
+                etc..). If larger than 0, the first `len_lookback_buffer`
+                items of each type of data are interpreted as NOT part of this actual
                 episode chunk, but instead serve as "historical" record that may be
                 viewed and used to derive new data from. For example, it might be
                 necessary to have a lookback buffer of four if you would like to do
-                observation frame stacking and your episode has been cut and you are now
+                observation frame stacking and your episode has been cut and you're now
                 operating on a new chunk (continuing from the cut one). Then, for the
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
@@ -616,7 +617,17 @@ class SingleAgentEpisode:
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        tree.assert_same_structure(other.observations[0], self.observations[-1])
+        # Use tree.map_structure with np.array_equal to check every leaf node are equivalent
+        #   then np.all on flatten to validate all are tree
+        assert np.all(
+            tree.flatten(
+                tree.map_structure(
+                    np.array_equal, other.observations[0], self.observations[-1]
+                )
+            )
+        )
+
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
