@@ -854,18 +854,12 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
-  // Decrement counter for old state
-  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
-
   it->second.pinned_at_node_id_.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
     it->second.spilled_url = "";
     it->second.spilled_node_id = NodeID::Nil();
   }
-
-  // Increment counter for new state
-  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
 }
 
 bool ReferenceCounter::AddObjectRefDeletedCallback(
@@ -906,7 +900,9 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_node_id_.value_or(NodeID::Nil()) == node_id ||
         it->second.spilled_node_id == node_id) {
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
       UnsetObjectPrimaryCopy(it);
+      UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -943,16 +939,16 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+      // Decrement counter for old state
+      UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
       if (!is_node_dead_(node_id)) {
-        // Decrement counter for old state
-        UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
         it->second.pinned_at_node_id_ = node_id;
-        // Increment counter for new state
-        UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
       } else {
         UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
+      // Increment counter for new state
+      UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
     }
   }
 }
