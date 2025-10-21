@@ -33,8 +33,7 @@ class TrainControllerStateType(Enum):
         needs_new_run_attempt: Whether this state requires starting a new run attempt, where
             a run attempt is a logical unit that encompasses both scheduling workers and
             executing training on those workers.
-        is_hidden: Whether this is a hidden state that should not show up on the Train
-            Dashboard UI.
+        is_hidden: Whether this is a hidden state that should not show up as a RunStatus.
     """
 
     INITIALIZING = ("INITIALIZING", False, True, False)
