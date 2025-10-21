@@ -306,9 +306,7 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             detail = dump_info["data"]["detail"]
             pids = [worker["pid"] for worker in detail["workers"]]
-            if len(pids) < 2:  # might include idle worker
-                time.sleep(1)
-                return False
+            assert len(pids) >= 2  # might include idle worker
             assert uv_actor_pid in pids
             assert driver_pid in pids
             return True
