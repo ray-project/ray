@@ -504,7 +504,7 @@ def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ck
         with ckpt.as_directory() as checkpoint_dir:
             # Create state wrapper for DCP loading
             app_state = AppState(model, optimizer)
-            state_dict = {"app": AppState(model, optimizer)}
+            state_dict = {"app": app_state}
             
             # Load the distributed checkpoint
             dcp.load(
