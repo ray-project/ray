@@ -534,7 +534,7 @@ service CoreWorkerService {
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.
-  // Failure: TODO: needs failure behavior
+  // Failure: Retries, it's idempotent
   rpc CancelRemoteTask(CancelRemoteTaskRequest) returns (CancelRemoteTaskReply);
 
   // From raylet to get metrics from its workers.
