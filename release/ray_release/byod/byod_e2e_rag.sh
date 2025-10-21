@@ -8,4 +8,4 @@ sudo apt-get update && \
     sudo rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-pip3 install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
+uv pip install -r python_depset.lock --system --no-deps --index-strategy unsafe-best-match
