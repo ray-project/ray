@@ -31,9 +31,27 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
+# The following roughly matches vllm/tools/ep_kernels/install_python_libraries.sh
+# with the addition of eep_nvshmem.patch
+
 # Install DeepEP kernels
 EP_TEMP_DIR=$(pwd)/"ep_temp_dir"
 mkdir -p "${EP_TEMP_DIR}"
+
+# disable all features except IBGDA
+export NVSHMEM_IBGDA_SUPPORT=1
+export NVSHMEM_SHMEM_SUPPORT=0
+export NVSHMEM_UCX_SUPPORT=0
+export NVSHMEM_USE_NCCL=0
+export NVSHMEM_PMIX_SUPPORT=0
+export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
+export NVSHMEM_USE_GDRCOPY=0
+export NVSHMEM_IBRC_SUPPORT=0
+export NVSHMEM_BUILD_TESTS=0
+export NVSHMEM_BUILD_EXAMPLES=0
+export NVSHMEM_MPI_SUPPORT=0
+export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
+export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
 NVSHMEM_VERSION="3.2.5-1"
 (
@@ -47,21 +65,6 @@ NVSHMEM_VERSION="3.2.5-1"
     git init
     wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
     git apply --reject --whitespace=fix eep_nvshmem.patch
-
-    # disable all features except IBGDA
-    export NVSHMEM_IBGDA_SUPPORT=1
-    export NVSHMEM_SHMEM_SUPPORT=0
-    export NVSHMEM_UCX_SUPPORT=0
-    export NVSHMEM_USE_NCCL=0
-    export NVSHMEM_PMIX_SUPPORT=0
-    export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
-    export NVSHMEM_USE_GDRCOPY=0
-    export NVSHMEM_IBRC_SUPPORT=0
-    export NVSHMEM_BUILD_TESTS=0
-    export NVSHMEM_BUILD_EXAMPLES=0
-    export NVSHMEM_MPI_SUPPORT=0
-    export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
-    export NVSHMEM_BUILD_TXZ_PACKAGE=0
 
     cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
     cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
