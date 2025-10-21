@@ -687,6 +687,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def update_usages(self):
         self._update_reservation()
 
+        # NOTE: We don't call self._op_budgets.clear() here
+        # so that the last completed operator can reset their
+        # metrics.
         for op in self._op_budgets:
             self._op_budgets[op] = ExecutionResources.zero()
 
