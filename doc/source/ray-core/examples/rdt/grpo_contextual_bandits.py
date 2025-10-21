@@ -4,7 +4,6 @@ Reinforcement learning example using GPU-to-GPU Ray Direct Transport (RDT) and G
 import argparse
 import copy
 import threading
-import time
 from contextlib import contextmanager
 from typing import Any
 
@@ -271,7 +270,7 @@ class Learner:
 
     # NOTE: cannot use async method with tensor transport
     @ray.method(tensor_transport="nixl")
-    def get_weights(self):
+    def get_weights(self) -> dict[str, torch.Tensor]:
         """Return a GPU ObjectRef to current model weights."""
         state_dict = self.model.state_dict()
         assert next(iter(state_dict.values())).device.type == "cuda", (
@@ -382,9 +381,11 @@ def run_once(total_steps: int) -> None:
     generator = Generator.remote(scorer, signal)
 
     # Initialize generator with current learner weights
-    weights_ref = learner.get_weights.remote()
-    version_ref = learner.get_version.remote()
-    ray.get(generator.update_weights.remote(weights_ref, version_ref))
+    ray.get(
+        generator.update_weights.remote(
+            learner.get_weights_ref.remote(), learner.get_version.remote()
+        )
+    )
 
     num_steps = total_steps
 
