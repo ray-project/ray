@@ -30,8 +30,8 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -104,7 +104,8 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (record_stats_ && !status.ok()) {
-      stats::STATS_grpc_client_req_failed.Record(1.0, stats_handle_->event_name);
+      grpc_client_req_failed_counter_.Record(1.0,
+                                             {{"Method", stats_handle_->event_name}});
     }
     if (callback_ != nullptr) {
       // This should be only called once.
@@ -145,6 +146,9 @@ class ClientCallImpl : public ClientCall {
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
+
+  ray::stats::Count grpc_client_req_failed_counter_{
+      GetGrpcClientReqFailedCounterMetric()};
 
   friend class ClientCallManager;
 };

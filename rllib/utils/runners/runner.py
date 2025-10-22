@@ -1,7 +1,7 @@
 import abc
 import logging
 
-from typing import Any, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
