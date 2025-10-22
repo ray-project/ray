@@ -17,8 +17,9 @@ from tqdm.auto import trange
 
 
 STATE_DIM = 2  # Contextual bandit in 2D
-# AKA 'group size'. Eight compass directions: [W, NW, N, NE, E, SE, S, SW]
+# Eight compass directions: [W, NW, N, NE, E, SE, S, SW]
 ACTION_DIM = 8
+GROUP_SIZE = 8
 BASE_LR = 5e-6
 ADAM_EPS = 1e-8
 EMA_DECAY = 0.999
@@ -267,9 +268,9 @@ class Learner:
     def get_weights(self) -> dict[str, torch.Tensor]:
         """The tensor_transport="nixl" option uses NIXL via RDT to transfer model weight tensors. Removing it will default to the Ray object store."""
         state_dict = self.model.state_dict()
-        assert next(iter(state_dict.values())).device.type == "cuda", (
-            "Expected tensors to be on cuda on sender"
-        )
+        assert (
+            next(iter(state_dict.values())).device.type == "cuda"
+            ), "Expected tensors to be on cuda on sender"
         return self.model.state_dict()
 
     def get_version(self) -> int:
@@ -335,12 +336,12 @@ class Generator:
 
             # Create distribution for each state (batch_size distributions over ACTION_DIM actions each)
             dist = Categorical(logits=logits)
-            # Sample ACTION_DIM actions from each state's distribution.
-            acts = dist.sample((ACTION_DIM,))  # [ACTION_DIM, batch_size]
-            # Vectorized log_prob over the sampled actions for each state
-            logps = dist.log_prob(acts)  # [ACTION_DIM, batch_size]
-            acts = acts.transpose(0, 1).contiguous()  # [batch_size, ACTION_DIM]
-            logps = logps.transpose(0, 1).contiguous()  # [batch_size, ACTION_DIM]
+            # Sample GROUP_SIZE actions from each state's distribution.
+            acts = dist.sample((GROUP_SIZE,))  # [GROUP_SIZE, batch_size]
+            logps = dist.log_prob(acts)  # [GROUP_SIZE, batch_size]
+            # Transpose actions and logprobs for compatibility with the state tensor.
+            acts = acts.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
+            logps = logps.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
 
         # Create trajectory slices and enqueue trajectory slices for Scorer
         slice_batch = {
