@@ -13,12 +13,13 @@
 // limitations under the License.
 
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/rpc/auth_token_loader.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
@@ -90,7 +91,7 @@ class TestGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::string &auth_token) override {
+      const std::optional<AuthenticationToken> &auth_token) override {
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
         TestService, Ping, /*max_active_rpcs=*/1, ClusterIdAuthType::NO_AUTH);
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
@@ -333,20 +334,20 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
  public:
   void SetUp() override {
     // Configure token auth via RayConfig
-    std::string config_json = R"({"enable_token_auth": true})";
+    std::string config_json = R"({"auth_mode": "ray_token"})";
     RayConfig::instance().initialize(config_json);
-    RayAuthTokenLoader::instance().ResetCache();
+    AuthenticationTokenLoader::instance().ResetCache();
   }
 
   void SetUpServerAndClient(const std::string &server_token,
                             const std::string &client_token) {
     // Set client token in environment for ClientCallManager to read from
-    // RayAuthTokenLoader
+    // AuthenticationTokenLoader
     if (!client_token.empty()) {
       setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
     } else {
-      RayConfig::instance().initialize(R"({"enable_token_auth": false})");
-      RayAuthTokenLoader::instance().ResetCache();
+      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      AuthenticationTokenLoader::instance().ResetCache();
       unsetenv("RAY_AUTH_TOKEN");
     }
 
@@ -365,13 +366,12 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     });
 
     // Create and start server
-    // In production, server would automatically use RayAuthTokenLoader, but for testing
-    // we can override with SetAuthTokenOverride to test mismatched token scenarios
-    grpc_server_.reset(new GrpcServer("test", 0, true));
+    // Pass server token explicitly for testing scenarios with different tokens
+    std::optional<AuthenticationToken> server_auth_token;
     if (!server_token.empty()) {
-      // Set server token explicitly for testing scenarios with different tokens
-      grpc_server_->SetAuthTokenOverride(server_token);
+      server_auth_token = AuthenticationToken(server_token);
     }
+    grpc_server_.reset(new GrpcServer("test", 0, true, 1, 7200000, server_auth_token));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -381,7 +381,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Create client (will read auth token from RayAuthTokenLoader which reads the
+    // Create client (will read auth token from AuthenticationTokenLoader which reads the
     // environment)
     client_call_manager_.reset(
         new ClientCallManager(client_io_service_, false, /*local_address=*/""));
@@ -417,7 +417,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     unsetenv("RAY_AUTH_TOKEN");
     unsetenv("RAY_AUTH_TOKEN_PATH");
     // Reset the token loader for test isolation
-    RayAuthTokenLoader::instance().ResetCache();
+    AuthenticationTokenLoader::instance().ResetCache();
   }
 
   // Helper to execute RPC and wait for result
@@ -429,27 +429,22 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
 
   PingResult ExecutePingAndWait() {
     PingRequest request;
-    std::atomic<bool> done(false);
-    bool success = false;
-    std::string error_msg;
+    auto result_promise = std::make_shared<std::promise<PingResult>>();
+    std::future<PingResult> result_future = result_promise->get_future();
 
-    Ping(request,
-         [&done, &success, &error_msg](const Status &status, const PingReply &reply) {
-           RAY_LOG(INFO) << "Token auth test replied, status=" << status;
-           success = status.ok();
-           if (!status.ok()) {
-             error_msg = status.message();
-           }
-           done = true;
-         });
+    Ping(request, [result_promise](const Status &status, const PingReply &reply) {
+      RAY_LOG(INFO) << "Token auth test replied, status=" << status;
+      bool success = status.ok();
+      std::string error_msg = status.ok() ? "" : status.message();
+      result_promise->set_value({true, success, error_msg});
+    });
 
     // Wait for response with timeout
-    auto start = std::chrono::steady_clock::now();
-    while (!done && std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (result_future.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
+      return {false, false, "Request timed out"};
     }
 
-    return {done, success, error_msg};
+    return result_future.get();
   }
 
  protected:
@@ -485,8 +480,10 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureWrongToken) {
 
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
   ASSERT_FALSE(result.success) << "Request should fail with wrong client token";
-  ASSERT_EQ(result.error_msg,
-            "InvalidAuthToken: Authentication token is missing or incorrect");
+  ASSERT_TRUE(result.error_msg.find(
+                  "InvalidAuthToken: Authentication token is missing or incorrect") !=
+              std::string::npos)
+      << "Error message should contain token auth error. Got: " << result.error_msg;
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
@@ -499,6 +496,19 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
   // If the server has a token but the client doesn't, auth should fail
   ASSERT_FALSE(result.success)
       << "Request should fail when client doesn't provide required token";
+}
+
+TEST_F(TestGrpcServerClientTokenAuthFixture,
+       TestClientProvidesTokenServerDoesNotRequire) {
+  // Client provides token, but server doesn't require one (should succeed)
+  SetUpServerAndClient("", "client_token");
+
+  auto result = ExecutePingAndWait();
+
+  ASSERT_TRUE(result.completed) << "Request did not complete in time";
+  // Server should accept request even though client sent unnecessary token
+  ASSERT_TRUE(result.success)
+      << "Request should succeed when server doesn't require token";
 }
 
 }  // namespace rpc

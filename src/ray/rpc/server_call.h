@@ -20,6 +20,7 @@
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "ray/common/asio/asio_chaos.h"
@@ -28,6 +29,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
@@ -172,7 +174,7 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::string &auth_token,
+      const std::optional<AuthenticationToken> &auth_token,
       bool record_metrics,
       std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
@@ -203,15 +205,9 @@ class ServerCallImpl : public ServerCall {
     bool cluster_id_auth_failed = false;
 
     // Token authentication
-    // Empty token = no authentication required
-    if (!auth_token_.empty()) {
-      auto &metadata = context_.client_metadata();
-      auto it = metadata.find(kAuthTokenKey);
-      if (it == metadata.end() || it->second != auth_token_) {
-        RAY_LOG(WARNING) << "Invalid or missing auth token in request!";
-        auth_success = false;
-        token_auth_failed = true;
-      }
+    if (!ValidateBearerToken()) {
+      auth_success = false;
+      token_auth_failed = true;
     }
 
     // Cluster ID authentication
@@ -259,10 +255,10 @@ class ServerCallImpl : public ServerCall {
       if (auth_success) {
         SendReply(Status::Invalid("HandleServiceClosed"));
       } else if (token_auth_failed) {
-        SendReply(Status::AuthError(
+        SendReply(Status::Unauthenticated(
             "InvalidAuthToken: Authentication token is missing or incorrect"));
       } else {
-        SendReply(Status::AuthError("WrongClusterID"));
+        SendReply(Status::Unauthenticated("WrongClusterID"));
       }
     }
   }
@@ -287,12 +283,12 @@ class ServerCallImpl : public ServerCall {
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this, token_auth_failed]() {
         if (token_auth_failed) {
-          SendReply(Status::AuthError(
+          SendReply(Status::Unauthenticated(
               "InvalidAuthToken: Authentication token is missing or incorrect"));
         } else {
-          SendReply(
-              Status::AuthError("WrongClusterID: Perhaps the client is accessing GCS "
-                                "after it has restarted."));
+          SendReply(Status::Unauthenticated(
+              "WrongClusterID: Perhaps the client is accessing GCS "
+              "after it has restarted."));
         }
       });
     } else {
@@ -342,6 +338,32 @@ class ServerCallImpl : public ServerCall {
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
+  /// Validates token-based authentication.
+  /// Returns true if authentication succeeds or is not required.
+  /// Returns false if authentication is required but fails.
+  bool ValidateBearerToken() {
+    if (!auth_token_.has_value() || auth_token_->empty()) {
+      return true;  // No auth required
+    }
+
+    const auto &metadata = context_.client_metadata();
+    auto it = metadata.find(kAuthTokenKey);
+    if (it == metadata.end()) {
+      RAY_LOG(WARNING) << "Missing authorization header in request!";
+      return false;
+    }
+
+    const std::string_view header(it->second.data(), it->second.length());
+    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
+
+    if (!auth_token_->Equals(provided_token)) {
+      RAY_LOG(WARNING) << "Invalid bearer token in request!";
+      return false;
+    }
+
+    return true;
+  }
+
   /// Log the duration this query used
   void LogProcessTime() {
     EventTracker::RecordEnd(std::move(stats_handle_));
@@ -410,8 +432,7 @@ class ServerCallImpl : public ServerCall {
   const ClusterID &cluster_id_;
 
   /// Authentication token for token-based authentication.
-  /// Empty string means no token authentication.
-  const std::string auth_token_;
+  std::optional<AuthenticationToken> auth_token_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -482,7 +503,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::string &auth_token,
+      const std::optional<AuthenticationToken> &auth_token,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -548,7 +569,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   const ClusterID cluster_id_;
 
   /// Authentication token for token-based authentication.
-  const std::string auth_token_;
+  std::optional<AuthenticationToken> auth_token_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

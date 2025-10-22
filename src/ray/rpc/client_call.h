@@ -31,7 +31,8 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/rpc/auth_token_loader.h"
+#include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/thread_utils.h"
@@ -73,7 +74,7 @@ class ClientCallImpl : public ClientCall {
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           const ClusterID &cluster_id,
-                          const std::string &auth_token,
+                          const std::optional<AuthenticationToken> &auth_token,
                           std::shared_ptr<StatsHandle> stats_handle,
                           bool record_stats,
                           int64_t timeout_ms = -1)
@@ -88,9 +89,9 @@ class ClientCallImpl : public ClientCall {
     if (!cluster_id.IsNil()) {
       context_.AddMetadata(kClusterIdKey, cluster_id.Hex());
     }
-    // Add authentication token if provided (empty = disabled)
-    if (!auth_token.empty()) {
-      context_.AddMetadata(kAuthTokenKey, auth_token);
+    // Add authentication token if provided
+    if (auth_token.has_value()) {
+      auth_token->SetMetadata(context_);
     }
   }
 
@@ -220,7 +221,6 @@ class ClientCallManager {
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
       : cluster_id_(cluster_id),
-        auth_token_(RayAuthTokenLoader::instance().GetToken()),
         main_service_(main_service),
         num_threads_(num_threads),
         record_stats_(record_stats),
@@ -279,12 +279,13 @@ class ClientCallManager {
       method_timeout_ms = call_timeout_ms_;
     }
 
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback,
-                                                        cluster_id_,
-                                                        auth_token_,
-                                                        std::move(stats_handle),
-                                                        record_stats_,
-                                                        method_timeout_ms);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(
+        callback,
+        cluster_id_,
+        AuthenticationTokenLoader::instance().GetToken(),
+        std::move(stats_handle),
+        record_stats_,
+        method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -367,9 +368,6 @@ class ClientCallManager {
   /// UUID of the cluster. Potential race between creating a ClientCall object
   /// and setting the cluster ID.
   ClusterID cluster_id_;
-
-  /// Cached authentication token for token-based authentication.
-  const std::string auth_token_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;

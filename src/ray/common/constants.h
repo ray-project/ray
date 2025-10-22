@@ -42,7 +42,8 @@ constexpr int kRayletStoreErrorExitCode = 100;
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 
 constexpr char kClusterIdKey[] = "ray_cluster_id";
-constexpr char kAuthTokenKey[] = "ray_auth_token";
+constexpr char kAuthTokenKey[] = "authorization";
+constexpr char kBearerPrefix[] = "Bearer ";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";

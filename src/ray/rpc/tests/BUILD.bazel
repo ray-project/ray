@@ -42,14 +42,28 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "auth_token_loader_test",
+    name = "authentication_token_loader_test",
     size = "small",
     srcs = [
-        "auth_token_loader_test.cc",
+        "authentication_token_loader_test.cc",
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/rpc:auth_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/common:ray_config",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "authentication_token_test",
+    size = "small",
+    srcs = [
+        "authentication_token_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc/authentication:authentication_token",
         "@com_google_googletest//:gtest_main",
     ],
 )

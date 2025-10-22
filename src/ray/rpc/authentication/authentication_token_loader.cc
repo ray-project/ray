@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/rpc/auth_token_loader.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
-#include <stdexcept>
-#include <string>
 
-#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -40,12 +37,12 @@
 namespace ray {
 namespace rpc {
 
-RayAuthTokenLoader &RayAuthTokenLoader::instance() {
-  static RayAuthTokenLoader instance;
+AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
+  static AuthenticationTokenLoader instance;
   return instance;
 }
 
-const std::string &RayAuthTokenLoader::GetToken() {
+std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   // If already loaded, return cached value
@@ -53,51 +50,47 @@ const std::string &RayAuthTokenLoader::GetToken() {
     return *cached_token_;
   }
 
-  // If token auth is disabled, return empty string without loading
-  if (!RayConfig::instance().enable_token_auth()) {
-    cached_token_ = "";
-    return *cached_token_;
+  // If token auth is disabled, return std::nullopt
+  if (GetAuthenticationMode() == AuthenticationMode::DISABLED) {
+    cached_token_ = std::nullopt;
+    return std::nullopt;
   }
 
   // Token auth is enabled, try to load from sources
-  std::string token = LoadTokenFromSources();
+  AuthenticationToken token = LoadTokenFromSources();
 
-  // If no token found and auth is enabled, throw error
-  if (token.empty()) {
-    RAY_LOG(ERROR) << "Token authentication is enabled but no authentication token was "
-                      "found. Please set RAY_AUTH_TOKEN environment variable, "
-                      "RAY_AUTH_TOKEN_PATH to a file containing the token, or create a "
-                      "token file at ~/.ray/auth_token";
-    throw std::runtime_error(
-        "Token authentication is enabled but no authentication token was found");
-  }
+  // If no token found and auth is enabled, fail with RAY_CHECK
+  RAY_CHECK(!token.empty())
+      << "Token authentication is enabled but no authentication token was found. "
+      << "Please set RAY_AUTH_TOKEN environment variable, RAY_AUTH_TOKEN_PATH to a file "
+      << "containing the token, or create a token file at ~/.ray/auth_token";
 
   // Cache and return the loaded token
-  cached_token_ = token;
+  cached_token_ = std::move(token);
   return *cached_token_;
 }
 
-bool RayAuthTokenLoader::HasToken() {
+bool AuthenticationTokenLoader::HasToken() {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
-  // If already loaded, check if non-empty
+  // If already loaded, check if present
   if (cached_token_.has_value()) {
-    return !cached_token_->empty();
+    return cached_token_->has_value();
   }
 
   // If token auth is disabled, no token needed
-  if (!RayConfig::instance().enable_token_auth()) {
+  if (GetAuthenticationMode() == AuthenticationMode::DISABLED) {
     return false;
   }
 
   // Try to load token
-  std::string token = LoadTokenFromSources();
+  AuthenticationToken token = LoadTokenFromSources();
   return !token.empty();
 }
 
 // Read token from the first line of the file. trim whitespace.
 // Returns empty string if file cannot be opened or is empty.
-std::string RayAuthTokenLoader::ReadTokenFromFile(const std::string &file_path) {
+std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file_path) {
   std::ifstream token_file(file_path);
   if (!token_file.is_open()) {
     return "";
@@ -115,22 +108,22 @@ std::string RayAuthTokenLoader::ReadTokenFromFile(const std::string &file_path) 
   return token;
 }
 
-std::string RayAuthTokenLoader::LoadTokenFromSources() {
+AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   // Precedence 1: RAY_AUTH_TOKEN environment variable
   const char *env_token = std::getenv("RAY_AUTH_TOKEN");
   if (env_token != nullptr && std::string(env_token).length() > 0) {
     RAY_LOG(DEBUG) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
                       "variable";
-    return std::string(env_token);
+    return AuthenticationToken(std::string(env_token));
   }
 
   // Precedence 2: RAY_AUTH_TOKEN_PATH environment variable
   const char *env_token_path = std::getenv("RAY_AUTH_TOKEN_PATH");
   if (env_token_path != nullptr && std::string(env_token_path).length() > 0) {
-    std::string token = ReadTokenFromFile(env_token_path);
-    if (!token.empty()) {
+    std::string token_str = ReadTokenFromFile(env_token_path);
+    if (!token_str.empty()) {
       RAY_LOG(DEBUG) << "Loaded authentication token from file: " << env_token_path;
-      return token;
+      return AuthenticationToken(token_str);
     } else {
       RAY_LOG(WARNING) << "RAY_AUTH_TOKEN_PATH is set but file cannot be opened: "
                        << env_token_path;
@@ -139,18 +132,18 @@ std::string RayAuthTokenLoader::LoadTokenFromSources() {
 
   // Precedence 3: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
-  std::string token = ReadTokenFromFile(default_path);
-  if (!token.empty()) {
+  std::string token_str = ReadTokenFromFile(default_path);
+  if (!token_str.empty()) {
     RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
-    return token;
+    return AuthenticationToken(token_str);
   }
 
   // No token found
   RAY_LOG(DEBUG) << "No authentication token found in any source";
-  return "";
+  return AuthenticationToken();
 }
 
-std::string RayAuthTokenLoader::GetDefaultTokenPath() {
+std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
   std::string home_dir;
 
 #ifdef _WIN32

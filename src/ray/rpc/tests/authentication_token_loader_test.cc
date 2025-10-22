@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/rpc/auth_token_loader.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
 #include <string>
-#include <thread>
-#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <sys/stat.h>
@@ -44,11 +41,11 @@
 namespace ray {
 namespace rpc {
 
-class RayAuthTokenLoaderTest : public ::testing::Test {
+class AuthenticationTokenLoaderTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication for tests
-    RayConfig::instance().initialize(R"({"enable_token_auth": true})");
+    RayConfig::instance().initialize(R"({"auth_mode": "ray_token"})");
 
     // If HOME is not set (e.g., in Bazel sandbox), set it to a test directory
     // This ensures tests work in environments where HOME isn't provided
@@ -84,16 +81,16 @@ class RayAuthTokenLoaderTest : public ::testing::Test {
 #endif
     cleanup_env();
     // Reset the singleton's cached state for test isolation
-    RayAuthTokenLoader::instance().ResetCache();
+    AuthenticationTokenLoader::instance().ResetCache();
   }
 
   void TearDown() override {
     // Clean up after test
     cleanup_env();
     // Reset the singleton's cached state for test isolation
-    RayAuthTokenLoader::instance().ResetCache();
+    AuthenticationTokenLoader::instance().ResetCache();
     // Disable token auth after tests
-    RayConfig::instance().initialize(R"({"enable_token_auth": false})");
+    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
   }
 
   void cleanup_env() {
@@ -159,19 +156,21 @@ class RayAuthTokenLoaderTest : public ::testing::Test {
   std::string test_home_dir_;  // Fallback home directory for tests
 };
 
-TEST_F(RayAuthTokenLoaderTest, TestLoadFromEnvVariable) {
+TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvVariable) {
   // Set token in environment variable
   set_env_var("RAY_AUTH_TOKEN", "test-token-from-env");
 
   // Create a new instance to avoid cached state
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
-  EXPECT_EQ(token, "test-token-from-env");
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected("test-token-from-env");
+  EXPECT_TRUE(token_opt->Equals(expected));
   EXPECT_TRUE(loader.HasToken());
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestLoadFromEnvPath) {
+TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
   // Create a temporary token file
   std::string temp_token_path = get_temp_token_path();
   write_token_file(temp_token_path, "test-token-from-file");
@@ -179,25 +178,29 @@ TEST_F(RayAuthTokenLoaderTest, TestLoadFromEnvPath) {
   // Set path in environment variable
   set_env_var("RAY_AUTH_TOKEN_PATH", temp_token_path.c_str());
 
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
-  EXPECT_EQ(token, "test-token-from-file");
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected("test-token-from-file");
+  EXPECT_TRUE(token_opt->Equals(expected));
   EXPECT_TRUE(loader.HasToken());
 
   // Clean up
   remove(temp_token_path.c_str());
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestLoadFromDefaultPath) {
+TEST_F(AuthenticationTokenLoaderTest, TestLoadFromDefaultPath) {
   // Create directory and token file in default location
   ensure_ray_dir_exists();
   write_token_file(default_token_path_, "test-token-from-default");
 
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
-  EXPECT_EQ(token, "test-token-from-default");
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected("test-token-from-default");
+  EXPECT_TRUE(token_opt->Equals(expected));
   EXPECT_TRUE(loader.HasToken());
 }
 
@@ -214,12 +217,12 @@ struct TokenSourceConfig {
   std::string default_token = "token-from-default";
 };
 
-class RayAuthTokenLoaderPrecedenceTest
-    : public RayAuthTokenLoaderTest,
+class AuthenticationTokenLoaderPrecedenceTest
+    : public AuthenticationTokenLoaderTest,
       public ::testing::WithParamInterface<TokenSourceConfig> {};
 
 INSTANTIATE_TEST_SUITE_P(TokenPrecedenceCases,
-                         RayAuthTokenLoaderPrecedenceTest,
+                         AuthenticationTokenLoaderPrecedenceTest,
                          ::testing::Values(
                              // All set: env should win
                              TokenSourceConfig{true, true, true, "token-from-env"},
@@ -229,7 +232,7 @@ INSTANTIATE_TEST_SUITE_P(TokenPrecedenceCases,
                              TokenSourceConfig{
                                  false, false, true, "token-from-default"}));
 
-TEST_P(RayAuthTokenLoaderPrecedenceTest, Precedence) {
+TEST_P(AuthenticationTokenLoaderPrecedenceTest, Precedence) {
   const auto &param = GetParam();
 
   // Optionally set environment variable
@@ -257,10 +260,12 @@ TEST_P(RayAuthTokenLoaderPrecedenceTest, Precedence) {
   }
 
   // Always create a new instance to avoid cached state
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
-  EXPECT_EQ(token, param.expected_token);
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected(param.expected_token);
+  EXPECT_TRUE(token_opt->Equals(expected));
 
   // Clean up token file if it was written
   if (param.set_file) {
@@ -272,55 +277,64 @@ TEST_P(RayAuthTokenLoaderPrecedenceTest, Precedence) {
   }
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
+TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   // Disable auth for this specific test
-  RayConfig::instance().initialize(R"({"enable_token_auth": false})");
-  RayAuthTokenLoader::instance().ResetCache();
+  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  AuthenticationTokenLoader::instance().ResetCache();
 
   // No token set anywhere, but auth is disabled
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
-  EXPECT_EQ(token, "");
+  EXPECT_FALSE(token_opt.has_value());
   EXPECT_FALSE(loader.HasToken());
 
   // Re-enable for other tests
-  RayConfig::instance().initialize(R"({"enable_token_auth": true})");
+  RayConfig::instance().initialize(R"({"auth_mode": "ray_token"})");
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
+TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
   // Token auth is already enabled in SetUp()
-  // No token exists, should throw an error
-  auto &loader = RayAuthTokenLoader::instance();
-  EXPECT_THROW(loader.GetToken(), std::runtime_error);
+  // No token exists, should trigger RAY_CHECK failure
+  EXPECT_DEATH(
+      {
+        auto &loader = AuthenticationTokenLoader::instance();
+        loader.GetToken();
+      },
+      "Token authentication is enabled but no authentication token was found");
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestCaching) {
+TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
   // Set token in environment
   set_env_var("RAY_AUTH_TOKEN", "cached-token");
 
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token1 = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt1 = loader.GetToken();
 
   // Change environment variable (shouldn't affect cached value)
   set_env_var("RAY_AUTH_TOKEN", "new-token");
-  std::string token2 = loader.GetToken();
+  auto token_opt2 = loader.GetToken();
 
   // Should still return the cached token
-  EXPECT_EQ(token1, token2);
-  EXPECT_EQ(token2, "cached-token");
+  ASSERT_TRUE(token_opt1.has_value());
+  ASSERT_TRUE(token_opt2.has_value());
+  EXPECT_TRUE(token_opt1->Equals(*token_opt2));
+  AuthenticationToken expected("cached-token");
+  EXPECT_TRUE(token_opt2->Equals(expected));
 }
 
-TEST_F(RayAuthTokenLoaderTest, TestWhitespaceHandling) {
+TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   // Create token file with whitespace
   ensure_ray_dir_exists();
   write_token_file(default_token_path_, "  token-with-spaces  \n\t");
 
-  auto &loader = RayAuthTokenLoader::instance();
-  std::string token = loader.GetToken();
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
 
   // Whitespace should be trimmed
-  EXPECT_EQ(token, "token-with-spaces");
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected("token-with-spaces");
+  EXPECT_TRUE(token_opt->Equals(expected));
 }
 
 }  // namespace rpc
