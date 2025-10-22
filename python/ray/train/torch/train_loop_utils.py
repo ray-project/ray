@@ -182,12 +182,18 @@ def prepare_model(
         )
 
     record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_MODEL, "1")
-    return get_accelerator(_TorchAccelerator).prepare_model(
+    prepared_model = get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
         parallel_strategy=parallel_strategy,
         parallel_strategy_kwargs=parallel_strategy_kwargs,
     )
+
+    # Auto-register for JIT checkpointing if enabled
+    from ray.train.torch.jit_checkpoint_utils import _auto_register_model
+    _auto_register_model(prepared_model)
+
+    return prepared_model
 
 
 @PublicAPI(stability="stable")
@@ -304,7 +310,13 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
         A wrapped optimizer.
     """
     _log_amp_deprecation_warning()
-    return get_accelerator(_TorchAccelerator).prepare_optimizer(optimizer)
+    prepared_optimizer = get_accelerator(_TorchAccelerator).prepare_optimizer(optimizer)
+
+    # Auto-register for JIT checkpointing if enabled
+    from ray.train.torch.jit_checkpoint_utils import _auto_register_optimizer
+    _auto_register_optimizer(prepared_optimizer)
+
+    return prepared_optimizer
 
 
 @Deprecated

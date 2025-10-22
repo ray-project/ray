@@ -1,0 +1,44 @@
+# Dockerfile for Ray with Automatic JIT Checkpointing
+# Base: rayproject/ray:2.50.1-py39
+# Adds: JIT checkpoint files with automatic model/optimizer tracking
+
+FROM rayproject/ray:2.50.1-py39
+
+USER root
+
+# Copy all modified JIT checkpoint files
+COPY python/ray/train/_internal/jit_checkpoint.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/_internal/jit_checkpoint.py
+COPY python/ray/train/_internal/jit_checkpoint_config.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/_internal/jit_checkpoint_config.py
+COPY python/ray/train/_internal/backend_executor.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/_internal/backend_executor.py
+COPY python/ray/train/_internal/session.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/_internal/session.py
+COPY python/ray/train/torch/jit_checkpoint_utils.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/torch/jit_checkpoint_utils.py
+COPY python/ray/train/torch/__init__.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/torch/__init__.py
+COPY python/ray/train/torch/train_loop_utils.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/torch/train_loop_utils.py
+
+# Copy modified data_parallel_trainer.py (with env var support)
+COPY python/ray/train/data_parallel_trainer.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/data_parallel_trainer.py
+
+# Copy modified trainer.py (TrainingIterator with JIT params)
+COPY python/ray/train/trainer.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/trainer.py
+
+# Copy constants.py if it has the env var definitions
+COPY python/ray/train/constants.py /home/ray/anaconda3/lib/python3.9/site-packages/ray/train/constants.py
+
+# Install PyTorch for testing
+RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+
+# Create checkpoint directory with proper permissions
+RUN mkdir -p /mnt/ray-checkpoints && chmod 777 /mnt/ray-checkpoints
+
+# Switch back to ray user
+USER ray
+
+# Verify installations
+RUN python -c "import torch; print(f'PyTorch {torch.__version__} installed')" && \
+    python -c "from ray.train._internal.jit_checkpoint import JITCheckpointHandler; print('JIT checkpoint module OK')" && \
+    python -c "from ray.train.torch.jit_checkpoint_utils import enable_auto_jit_checkpoint; print('Auto JIT utils OK')" && \
+    python -c "from ray.train.torch import prepare_model; print('Torch utils OK')"
+
+WORKDIR /home/ray
+
+CMD ["/bin/bash"]

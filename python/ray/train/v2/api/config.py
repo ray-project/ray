@@ -23,6 +23,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+    from ray.train._internal.jit_checkpoint_config import JITCheckpointConfig
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,10 @@ class RunConfig:
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
+        jit_checkpoint_config: [Alpha] [Deprecated] Just-In-Time checkpointing configuration.
+            This parameter is deprecated. Use environment variables instead:
+            - RAY_TRAIN_JIT_CHECKPOINT_ENABLED=1 to enable
+            - RAY_TRAIN_JIT_CHECKPOINT_KILL_WAIT=3.0 to set wait time
         callbacks: [DeveloperAPI] A list of callbacks that the Ray Train controller
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
@@ -183,6 +188,7 @@ class RunConfig:
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     failure_config: Optional[FailureConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
+    jit_checkpoint_config: Optional["JITCheckpointConfig"] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
 

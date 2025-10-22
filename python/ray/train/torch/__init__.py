@@ -8,6 +8,7 @@ except ModuleNotFoundError:
 # isort: on
 
 from ray.train.torch.config import TorchConfig
+from ray.train.torch.jit_checkpoint_utils import enable_auto_jit_checkpoint
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train.torch.torch_detection_predictor import TorchDetectionPredictor
 from ray.train.torch.torch_predictor import TorchPredictor
@@ -50,6 +51,7 @@ __all__ = [
     "prepare_data_loader",
     "backward",
     "enable_reproducibility",
+    "enable_auto_jit_checkpoint",
     "TorchPredictor",
     "TorchDetectionPredictor",
 ]

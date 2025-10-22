@@ -115,6 +115,14 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
+# Set this to 1 or "true" to enable automatic JIT checkpointing on SIGTERM.
+# Defaults to 0 (disabled).
+RAY_TRAIN_JIT_CHECKPOINT_ENABLED = "RAY_TRAIN_JIT_CHECKPOINT_ENABLED"
+
+# Seconds to wait after SIGTERM before triggering JIT checkpoint.
+# Defaults to 3.0 seconds.
+RAY_TRAIN_JIT_CHECKPOINT_KILL_WAIT = "RAY_TRAIN_JIT_CHECKPOINT_KILL_WAIT"
+
 # Set this to 1 to only store the checkpoint score attribute with the Checkpoint
 # in the CheckpointManager. The Result will only have the checkpoint score attribute
 # but files written to disk like result.json will still have all the metrics.
@@ -146,6 +154,8 @@ TRAIN_ENV_VARS = {
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
+    RAY_TRAIN_JIT_CHECKPOINT_ENABLED,
+    RAY_TRAIN_JIT_CHECKPOINT_KILL_WAIT,
     TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
