@@ -58,7 +58,7 @@ class RayFossaPreprocessor:
         
     def run_bazel_query(self, target: str, depth: Optional[int] = None) -> List[str]:
         """Run bazel query with correct syntax"""
-        if depth is None:
+        if depth is None or depth == -1:
             # All transitive dependencies
             cmd = ["bazel", "query", f"deps({target})", "--output=label"]
         elif depth == 0:
@@ -213,15 +213,8 @@ class RayFossaPreprocessor:
         for target in self.DELIVERABLE_TARGETS:
             print(f"\nAnalyzing dependencies for {target}")
             
-            if self.transitive_depth == -1:
-                # Get ALL transitive dependencies
-                deps = self.run_bazel_query(target)
-            elif self.transitive_depth == 0:
-                # Direct dependencies only
-                deps = self.run_bazel_query(target, 1)
-            else:
-                # Specific depth
-                deps = self.run_bazel_query(target, self.transitive_depth)
+            # Use the depth parameter directly - run_bazel_query handles the logic
+            deps = self.run_bazel_query(target, self.transitive_depth)
             
             # Filter for C/C++ dependencies
             c_cpp_deps, excluded_deps = self.filter_c_cpp_dependencies(deps)
