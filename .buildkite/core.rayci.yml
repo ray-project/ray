@@ -451,10 +451,8 @@ steps:
       - corebuild
 
   - label: ":core: core: spark-on-ray tests"
-    # NOTE: the Spark-on-Ray tests intentionally aren't triggered by the `java` tag.
-    # Although Spark-on-Ray depends on the Java bindings, we `java` tests are triggered
-    # by all C++ changes and we don't want to run Spark-on-Ray tests every time we
-    # change C++ code.
+    # NOTE: The Spark-on-Ray tests intentionally aren't triggered by the `java` tag to
+    # avoid running them for every C++ code change.
     tags:
       - spark_on_ray
       - oss
