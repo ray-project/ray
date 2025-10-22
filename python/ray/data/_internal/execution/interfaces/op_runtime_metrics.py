@@ -485,13 +485,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Time spent running tasks to completion.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Counter,
     )
     task_completion_time_excl_backpressure_s: float = metric_field(
         default=0,
         description="Time spent running tasks to completion without backpressure.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Counter,
     )
     block_size_bytes: list[int] = metric_field(
         default_factory=list,
