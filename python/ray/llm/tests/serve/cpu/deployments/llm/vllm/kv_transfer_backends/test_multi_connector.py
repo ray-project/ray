@@ -122,12 +122,14 @@ class TestMultiConnectorBackend:
             backend.setup()
 
     def test_setup_passes_isolated_config_to_sub_connectors(self):
-        """Test that each sub-connector receives its own isolated configuration."""
+        """Test that sub-connectors inherit parent config and receive their specific settings."""
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test-model"),
             engine_kwargs=dict(
                 kv_transfer_config=dict(
                     kv_connector="MultiConnector",
+                    engine_id="test-engine-123",
+                    kv_role="kv_both",
                     kv_connector_extra_config=dict(
                         connectors=[
                             {
@@ -140,34 +142,44 @@ class TestMultiConnectorBackend:
                 )
             ),
         )
-        backend = MultiConnectorBackend(llm_config)
 
         captured_configs = []
 
-        def capture_create_backend(name, config):
+        def capture_config(name, config):
             captured_configs.append((name, config.engine_kwargs["kv_transfer_config"]))
-            mock = MagicMock(spec=BaseConnectorBackend)
-            return mock
+            return MagicMock(spec=BaseConnectorBackend)
 
         with patch.object(
-            KVConnectorBackendFactory,
-            "create_backend",
-            side_effect=capture_create_backend,
+            KVConnectorBackendFactory, "create_backend", side_effect=capture_config
         ):
-            backend.setup()
+            MultiConnectorBackend(llm_config).setup()
 
-        # Verify each sub-connector received its specific config, not the parent MultiConnector config
         assert len(captured_configs) == 2
 
-        # First connector should have its specific config
-        assert captured_configs[0][0] == "LMCacheConnectorV1"
-        assert captured_configs[0][1]["kv_connector"] == "LMCacheConnectorV1"
-        assert captured_configs[0][1]["custom_param"] == "value1"
+        # Verify each connector gets: inherited parent fields + its own specific config
+        expected_configs = [
+            (
+                "LMCacheConnectorV1",
+                {"kv_connector": "LMCacheConnectorV1", "custom_param": "value1"},
+            ),
+            (
+                "NixlConnector",
+                {"kv_connector": "NixlConnector", "custom_param": "value2"},
+            ),
+        ]
 
-        # Second connector should have its specific config
-        assert captured_configs[1][0] == "NixlConnector"
-        assert captured_configs[1][1]["kv_connector"] == "NixlConnector"
-        assert captured_configs[1][1]["custom_param"] == "value2"
+        for (actual_name, actual_config), (expected_name, expected_specific) in zip(
+            captured_configs, expected_configs
+        ):
+            assert actual_name == expected_name
+            # Check inherited parent fields
+            assert actual_config["engine_id"] == "test-engine-123"
+            assert actual_config["kv_role"] == "kv_both"
+            # Check connector-specific fields
+            for key, value in expected_specific.items():
+                assert actual_config[key] == value
+            # Verify kv_connector_extra_config is not passed to sub-connectors
+            assert "kv_connector_extra_config" not in actual_config
 
 
 if __name__ == "__main__":

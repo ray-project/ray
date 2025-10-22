@@ -33,9 +33,16 @@ class MultiConnectorBackend(BaseConnectorBackend):
                     "Nesting MultiConnector within MultiConnector is not supported."
                 )
 
-            # Create a new LLMConfig for the sub-connector with its specific config.
+            # Merge parent config with connector-specific config
             sub_llm_config = copy.deepcopy(self.llm_config)
-            sub_llm_config.engine_kwargs["kv_transfer_config"] = connector
+            sub_llm_config.engine_kwargs["kv_transfer_config"] = {
+                **{
+                    k: v
+                    for k, v in kv_transfer_config.items()
+                    if k != "kv_connector_extra_config"
+                },
+                **connector,
+            }
 
             # Use factory to get backend class lazily
             connector_backend = KVConnectorBackendFactory.create_backend(
