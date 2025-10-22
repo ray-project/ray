@@ -114,7 +114,10 @@ class ReplayBuffer:
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
         """Sample n scored trajectory slices."""
-        assert len(self.storage) > 0
+        if len(self.storage) < n:
+            print(f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices...")
+            while len(self.storage) < n:
+                time.sleep(0.05)
         # The probability of sampling a slice is proportional to its policy version.
         total = sum(version for version, _ in self.storage)
         probs = [version / total for version, _ in self.storage]
@@ -365,6 +368,7 @@ def train(total_steps: int) -> None:
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
+    # The ReplayBuffer waits for scored trajectories when there aren't enough slices to sample a batch.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
 
     for i in trange(total_steps, desc="Training", unit="step"):
