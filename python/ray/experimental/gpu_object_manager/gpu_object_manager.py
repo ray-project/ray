@@ -317,6 +317,7 @@ class GPUObjectManager:
         if tensor_transport not in [
             TensorTransportEnum.OBJECT_STORE,
             TensorTransportEnum.NIXL,
+            TensorTransportEnum.DS,
         ]:
             raise ValueError(
                 f"Currently ray.get() only supports OBJECT_STORE and NIXL tensor transport, got {tensor_transport}, please specify the correct tensor transport in ray.get()."
