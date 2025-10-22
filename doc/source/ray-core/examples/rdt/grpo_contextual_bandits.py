@@ -240,7 +240,7 @@ class Learner:
         return loss.detach()
 
     def step(self) -> dict[str, Any]:
-        """Perform one training step and return lightweight metrics."""
+        """Perform one training step and return metrics."""
         slices: list[TrajectorySlice] = ray.get(
             self.replay_buffer.sample_from.remote(BATCH_SIZE)
         )
@@ -273,7 +273,9 @@ class Learner:
 
     @ray.method(tensor_transport="nixl")
     def get_weights(self) -> dict[str, torch.Tensor]:
-        """The tensor_transport="nixl" option uses NIXL via RDT to transfer model weight tensors. Removing it will default to the Ray object store."""
+        """Get the current model weights as a state_dict.
+        
+        The tensor_transport="nixl" option uses NIXL via RDT to transfer model weight tensors. Removing it will default to the Ray object store."""
         state_dict = self.model.state_dict()
         assert (
             next(iter(state_dict.values())).device.type == "cuda"
@@ -295,6 +297,7 @@ class Generator:
 
     @ray.method(tensor_transport="nixl")
     def generate(self, states: torch.Tensor):
+        """Generate actions using the current policy and send them to the Scorer."""
         with torch.no_grad():
             states = states.to("cuda")
             logits = self.model(states)  # [batch_size, ACTION_DIM]
@@ -320,7 +323,7 @@ class Generator:
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
 
     def update_weights(self, cuda_weights, version: int) -> bool:
-        """Apply GPU-to-GPU policy weight updates."""
+        """Update the generator's weights from the learner's weights."""
         # The actor is single-threaded, so weight loads do not overlap with generation.
         first_tensor = next(iter(cuda_weights.values()))
         if first_tensor.device.type != "cuda":
@@ -333,7 +336,7 @@ class Generator:
         return True
 
 
-def run_once(total_steps: int) -> None:
+def train(total_steps: int) -> None:
     """Run one end-to-end training session."""
     # Instantiate one instance of each actor.
     replay_buf = ReplayBuffer.remote()
@@ -378,5 +381,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(ignore_reinit_error=True)
-    run_once(total_steps=args.steps)
+    train(total_steps=args.steps)
     print("Done!")
