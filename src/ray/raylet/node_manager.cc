@@ -3394,9 +3394,10 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
           RAY_LOG(DEBUG) << msg;
           timer->cancel();
           send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
-        } else {
-          send_reply_callback(Status::OK(), nullptr, nullptr);
         }
+        // NOTE: on a successful kill, we don't expect a reply back from the dead actor.
+        // The only case where we receive a reply is if the mismatched actor ID check is
+        // triggered.
       });
 }
 
