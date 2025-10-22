@@ -300,9 +300,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
     LeaseSpecification lease_spec;
-    // Tasks that are queued for execution. We keep an individual queue per
-    // scheduling class to ensure fairness.
-    std::deque<TaskSpecification> task_queue;
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
     absl::flat_hash_set<rpc::Address> active_workers;
@@ -336,7 +333,7 @@ class NormalTaskSubmitter {
 
     // Get the current backlog size for this scheduling key
     int64_t BacklogSize() const {
-      if (task_queue.size() < pending_lease_requests.size()) {
+      if (num_tasks_queued < pending_lease_requests.size()) {
         // This can happen if worker is reused.
         return 0;
       }

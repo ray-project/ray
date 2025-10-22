@@ -20,6 +20,7 @@
 #include <boost/range/join.hpp>
 #include <limits>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -129,7 +130,7 @@ void LocalLeaseManager::ScheduleAndGrantLeases() {
 }
 
 void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
-  absl::flat_hash_set<int32_t> priorities;
+  std::set<int32_t> priorities;
   for (const auto &[_, priority_map] : leases_to_grant_) {
     for (const auto &[priority, __] : priority_map) {
       priorities.insert(priority);

@@ -198,7 +198,7 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleLease();
 
-  absl::flat_hash_set<int32_t> priorities;
+  std::set<int32_t> priorities;
   for (const auto &[_, priority_map] : leases_to_schedule_) {
     for (const auto &[priority, __] : priority_map) {
       priorities.insert(priority);
