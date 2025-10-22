@@ -7,8 +7,8 @@ import tempfile
 
 import pytest
 
-from ray._common.utils import get_ray_temp_dir
 from ray._private.ray_constants import SESSION_LATEST
+from ray._private.utils import get_default_ray_temp_dir
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
     MAX_PERCENTAGE_EXPRESSION,
@@ -45,7 +45,7 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
     ) as context:
         session_dir = context["session_dir"]
-        temp_dir = temp_dir_val if is_temp_dir_set else get_ray_temp_dir()
+        temp_dir = temp_dir_val if is_temp_dir_set else get_default_ray_temp_dir()
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )

@@ -3,6 +3,7 @@ import binascii
 import errno
 import importlib
 import inspect
+import logging
 import os
 import random
 import string
@@ -11,7 +12,11 @@ import tempfile
 from inspect import signature
 from typing import Any, Coroutine, Dict, Optional
 
+from ray._raylet import GcsClient
+
 import psutil
+
+logger = logging.getLogger(__name__)
 
 
 def import_attr(full_path: str, *, reload_module: bool = False):
@@ -200,7 +205,46 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def resolve_user_ray_temp_dir(gcs_address, node_id):
+    # Attempt to fetch temp dir as specified by --temp-dir at creation time.
+    if gcs_address is not None and node_id is not None:
+        gcs_client = GcsClient(gcs_address)
+        node_info = None
+        for id, node_info in gcs_client.get_all_node_info().items():
+            if id.hex() == node_id:
+                node_info = node_info
+                break
+        if node_info is not None:
+            if "temp_dir" in node_info:
+                return node_info["temp_dir"]
+
+    # fallback to default ray temp dir
+    tmp_dir = None
+    if "RAY_TMPDIR" in os.environ:
+        tmp_dir = os.environ["RAY_TMPDIR"]
+    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
+        tmp_dir = os.environ["TMPDIR"]
+    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tmp_dir = os.path.join(os.sep, "tmp")
+    else:
+        tmp_dir = tempfile.gettempdir()
+
+    return os.path.join(tmp_dir, "ray")
+
+
 def get_user_temp_dir():
+    """
+    get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+
+    Note: There should not be a notion of user temp dir. Instead,
+    user specified temp directories for ray should overwrite /tmp/ray.
+    """
+    logger.warning(
+        "get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
+    )
+
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -215,12 +259,18 @@ def get_user_temp_dir():
 
 
 def get_ray_temp_dir():
+    """
+    get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+    """
+    logger.warning(
+        "get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
+    )
     return os.path.join(get_user_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
+        temp_dir = resolve_user_ray_temp_dir(None, None)
     return os.path.join(temp_dir, "ray_current_cluster")
 
 

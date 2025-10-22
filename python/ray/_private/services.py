@@ -941,7 +941,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._common.utils.get_ray_temp_dir(),
+            ray._private.utils.get_default_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -2151,7 +2151,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = ray._common.utils.get_user_temp_dir()
+                plasma_directory = temp_dir
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -2161,13 +2161,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        ray._common.utils.get_user_temp_dir(),
+                        temp_dir,
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = ray._common.utils.get_user_temp_dir()
+            plasma_directory = temp_dir
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

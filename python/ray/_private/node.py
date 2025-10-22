@@ -461,40 +461,43 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
+        self._temp_dir = self._ray_params.temp_dir
         if self.head:
-            self._ray_params.update_if_absent(
-                temp_dir=ray._common.utils.get_ray_temp_dir()
-            )
-            self._temp_dir = self._ray_params.temp_dir
+            if self._temp_dir is None:
+                self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
         else:
-            if self._ray_params.temp_dir is None:
+            if self._temp_dir is None:
                 assert not self._default_worker
-                temp_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.get_gcs_client(),
-                    "temp_dir",
-                    ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                )
-                self._temp_dir = ray._common.utils.decode(temp_dir)
-            else:
-                self._temp_dir = self._ray_params.temp_dir
+                # fetch head node info using gcs client
+                all_nodes = self.get_gcs_client().get_all_node_info(timeout=30)
+                head_node_id = None
+                node_info = None  # type: ignore
+                for node_id, node_info in all_nodes.items():
+                    if node_info.is_head_node:
+                        head_node_id = node_id
+                        node_info = node_info
+                        break
+
+                if head_node_id is None:
+                    logger.warning(
+                        "Head node ID not found in GCS. Using Ray's default temp dir."
+                    )
+                    self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+                else:
+                    self._temp_dir = (
+                        getattr(node_info, "temp_dir", None)
+                        or ray._private.utils.get_default_ray_temp_dir()
+                    )
+                    if not self._temp_dir:
+                        logger.warning(
+                            "Head node temp_dir not found in NodeInfo. "
+                            "Using Ray's default temp dir."
+                        )
+                        self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
 
         try_to_create_directory(self._temp_dir)
 
-        if self.head:
-            self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        else:
-            if self._temp_dir is None or self._session_name is None:
-                assert not self._default_worker
-                session_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.get_gcs_client(),
-                    "session_dir",
-                    ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                )
-                self._session_dir = ray._common.utils.decode(session_dir)
-            else:
-                self._session_dir = os.path.join(self._temp_dir, self._session_name)
+        self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -514,8 +517,11 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
-        user_temp_dir = ray._common.utils.get_user_temp_dir()
-        tpu_log_dir = f"{user_temp_dir}/tpu_logs"
+        if "TPU_LOG_DIR" in os.environ and os.path.isdir(os.environ["TPU_LOG_DIR"]):
+            tpu_log_dir = os.environ["TPU_LOG_DIR"]
+        else:
+            tpu_log_dir = "/tmp/tpu_logs"
+
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)
@@ -754,7 +760,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._common.utils.get_ray_temp_dir()
+            directory_name = self._temp_dir
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -1321,18 +1327,6 @@ class Node:
                 f"error connecting to Redis."
             )
 
-        self.get_gcs_client().internal_kv_put(
-            b"session_dir",
-            self._session_dir.encode(),
-            True,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        self.get_gcs_client().internal_kv_put(
-            b"temp_dir",
-            self._temp_dir.encode(),
-            True,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:

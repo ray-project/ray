@@ -247,6 +247,7 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
+  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -990,6 +991,8 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_manager_address(node_ip_address);
     self_node_info.set_node_name(node_name);
     self_node_info.set_raylet_socket_name(raylet_socket_name);
+    self_node_info.set_temp_dir(temp_dir);
+    self_node_info.set_session_dir(session_dir);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
