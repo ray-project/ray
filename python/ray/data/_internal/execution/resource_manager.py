@@ -277,14 +277,6 @@ class ResourceManager:
         """Return the resource usage of the given operator at the current time."""
         return self._op_usages[op]
 
-    def get_mem_op_internal(self, op: PhysicalOperator) -> int:
-        """Return the memory usage of the internal buffers of the given operator."""
-        return self._mem_op_internal[op]
-
-    def get_mem_op_outputs(self, op: PhysicalOperator) -> int:
-        """Return the memory usage of the outputs of the given operator."""
-        return self._mem_op_outputs[op]
-
     def get_op_usage_str(self, op: PhysicalOperator) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
@@ -296,8 +288,8 @@ class ResourceManager:
         )
         if self._debug:
             usage_str += (
-                f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
+                f" (in={memory_string(self._mem_op_internal[op])},"
+                f"out={memory_string(self._mem_op_outputs[op])})"
             )
             if (
                 isinstance(self._op_resource_allocator, ReservationOpResourceAllocator)
@@ -380,12 +372,12 @@ class ResourceManager:
             else:
                 yield from self.get_downstream_eligible_ops(next_op)
 
-    def get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> float:
+    def get_op_outputs_object_store_usage_with_downstream(self, op: PhysicalOperator) -> int:
         """Get the outputs memory usage of the given operator, including the downstream
         ineligible operators.
         """
         # Outputs usage of the current operator.
-        op_outputs_usage = self.get_mem_op_outputs(op)
+        op_outputs_usage = self._mem_op_outputs[op]
         # Also account the downstream ineligible operators' memory usage.
         op_outputs_usage += sum(
             self.get_op_usage(next_op).object_store_memory
@@ -393,13 +385,11 @@ class ResourceManager:
         )
         return op_outputs_usage
 
-    def get_op_outputs_usage_with_internal_and_downstream(
+    def get_op_internal_object_store_usage(
         self, op: PhysicalOperator
-    ) -> float:
-        """Get the outputs memory usage of the given operator, including the internal usage and the downstream ineligible operators."""
-        return self.get_mem_op_internal(op) + self.get_op_outputs_usage_with_downstream(
-            op
-        )
+    ) -> int:
+        """Get the internal object store memory usage of the given operator"""
+        return self._mem_op_internal[op]
 
 
 class OpResourceAllocator(ABC):
@@ -685,7 +675,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._resource_manager.get_op_outputs_usage_with_downstream(
+        op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
             op
         )
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
@@ -715,11 +705,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager.get_mem_op_internal(op)
+            op_mem_usage += self._resource_manager.get_op_internal_object_store_usage(op)
             # Add the portion of op outputs usage that has
             # exceeded `_reserved_for_op_outputs`.
             op_outputs_usage = (
-                self._resource_manager.get_op_outputs_usage_with_downstream(op)
+                self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
             )
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
             op_usage = self._resource_manager.get_op_usage(op).copy(

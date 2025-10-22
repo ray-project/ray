@@ -292,8 +292,12 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Test with high pressure (queue > threshold)
         with patch.object(
             policy._resource_manager,
-            "get_op_outputs_usage_with_internal_and_downstream",
-            return_value=2000,
+            "get_op_internal_object_store_usage",
+            return_value=1000,
+        ), patch.object(
+            policy._resource_manager,
+            "get_op_outputs_object_store_usage_with_downstream",
+            return_value=1000,
         ):
             effective_cap = policy._effective_cap(mock_op)
             # Should be reduced due to high pressure
