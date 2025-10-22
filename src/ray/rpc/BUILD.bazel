@@ -15,12 +15,12 @@ ray_cc_library(
         "//src/ray/core_worker:__pkg__",
     ],
     deps = [
-        "//src/ray/rpc/authentication:authentication_token_loader",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -117,12 +117,12 @@ ray_cc_library(
     hdrs = ["grpc_server.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/rpc/authentication:authentication_token_loader",
         ":common",
         ":server_call",
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:network_util",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
