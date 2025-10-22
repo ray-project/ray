@@ -245,7 +245,6 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
 
         # Test that threshold is maintained when calculated threshold is lower
-        # threshold = max(10 + 4*1, 150) = 150, which is < 200, so should be maintained
         threshold = policy._update_queue_threshold(mock_op, 150)
 
         # Should maintain the existing threshold (no decrease)
@@ -273,7 +272,6 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         policy._queue_history[mock_op] = deque([50, 60, 70, 80, 90, 100])
 
         # Test that threshold is increased when calculated threshold is higher
-        # threshold = max(50 + 4*20, 200) = 200, which is > 100, so should be updated
         threshold = policy._update_queue_threshold(mock_op, 200)
 
         # Should increase the threshold
@@ -515,7 +513,6 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         policy._q_level_dev[mock_op] = 1.0  # Very low deviation
         policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
         threshold3 = policy._update_queue_threshold(mock_op, 150)
-        # threshold = max(10 + 4*1, 150) = 150, which is < 200, so should maintain 200
         self.assertEqual(threshold3, 200)
 
         # Test 4: Zero threshold case
