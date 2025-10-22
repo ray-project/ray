@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical, kl_divergence
-from tqdm.auto import tqdm
+from tqdm.auto import trange
 
 
 STATE_DIM = 2  # Contextual bandit in 2D
@@ -382,34 +382,25 @@ def run_once(total_steps: int) -> None:
         )
     )
 
-    num_steps = total_steps
-
     # Pre-fill ReplayBuffer before starting PPO.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
 
-    with tqdm(
-        total=num_steps, desc="Training", unit="step", leave=True, mininterval=1.0
-    ) as pbar:
-        for _ in range(num_steps):
-            states = sample_unit_vector(
-                batch_size=BATCH_SIZE
-            )  # [BATCH_SIZE, STATE_DIM]
-            generator.generate.remote(states)
-            step_result = ray.get(learner.step.remote())
+    
 
-            pbar.set_postfix(
-                {
-                    "loss": f"{step_result['loss']:.3f}",
-                    "cosine_gap": f"{step_result['cosine_gap']:.3f}",
-                },
-                refresh=False,
-            )
-            pbar.update(1)
+    for i in trange(total_steps, desc="Training", unit="step"):
+        states = sample_unit_vector(
+            batch_size=BATCH_SIZE
+        )  # [BATCH_SIZE, STATE_DIM]
+        generator.generate.remote(states)
+        step_result = ray.get(learner.step.remote())
 
-            # Update generator with new weights/version
-            weights_ref = learner.get_weights.remote()
-            version_ref = learner.get_version.remote()
-            generator.update_weights.remote(weights_ref, version_ref)
+        if i % 100 == 0:
+            print(f"loss: {step_result['loss']:.3f}, cosine_gap: {step_result['cosine_gap']:.3f}")
+
+        # Update generator with new weights/version
+        weights_ref = learner.get_weights.remote()
+        version_ref = learner.get_version.remote()
+        generator.update_weights.remote(weights_ref, version_ref)
 
 
 if __name__ == "__main__":
