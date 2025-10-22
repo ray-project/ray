@@ -1098,8 +1098,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             max_memory_per_aggregator = (
                 total_available_cluster_resources.memory / num_aggregators
             )
-            # NOTE: In cases when dataset estimate isn't available we conservatively reserve 50% of total
-            # available memory for a join operation.
             modest_memory_per_aggregator = max_memory_per_aggregator / 2
 
             estimated_aggregator_memory_required = min(
