@@ -15,6 +15,8 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "ray/util/logging.h"
 
