@@ -88,7 +88,7 @@ class ReplayBuffer:
 
     def put(self, slice: TrajectorySlice) -> None:
         # Note: Ray implicitly does a ray.get() when an actor calls another actor.
-        self.storage.append((int(slice["policy_version"]), slice))
+        self.storage.append((slice["policy_version"]), slice)
         self.total += slice["policy_version"]
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
@@ -123,11 +123,10 @@ class Scorer:
     @ray.method(tensor_transport="nixl")
     def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
         """Score a batched trajectory slice synchronously."""
-        # Note: Ray implicitly materializes the batched_slices with ray.get() in the background when an actor calls another actor.
         states = batched_slices["state"]
         actions = batched_slices["actions"]
         old_logps = batched_slices["old_logps"]
-        policy_version = int(batched_slices["policy_version"])
+        policy_version = batched_slices["policy_version"]
 
         # Ray delivers actor calls one-at-a-time, so doing the work inline keeps
         # ordering deterministic while maintaining a synchronous API surface.
@@ -281,7 +280,7 @@ class Learner:
         return self.model.state_dict()
 
     def get_version(self) -> int:
-        return int(self.policy_version)
+        return self.policy_version
 
 
 @ray.remote(num_cpus=0)
@@ -370,7 +369,7 @@ class Generator:
                 )
             self.model.load_state_dict(cuda_weights)
             self.model.eval()
-            self.policy_version = int(version)
+            self.policy_version = version
         return True
 
 
