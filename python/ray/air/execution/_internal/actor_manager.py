@@ -578,6 +578,7 @@ class RayActorManager:
             a callback will be invoked once it is terminated.
 
         """
+        print(f">>> [debugging] RayActorManager: Removing actor {tracked_actor.actor_id}, kill: {kill}, stop_future: {stop_future}")
         if tracked_actor.actor_id in self._failed_actor_ids:
             logger.debug(
                 f"Tracked actor already failed, no need to remove: {tracked_actor}"
@@ -605,12 +606,24 @@ class RayActorManager:
                     tracked_actor._on_stop = None
                     tracked_actor._on_error = None
 
+                terminate_after_stop = stop_future is not None
+                
                 def on_actor_stop(*args, **kwargs):
+                    print(f">>> [debugging] we entered here to on_actor_stop for trial actor [{tracked_actor.actor_id}]")
+                    if terminate_after_stop:
+                        try:
+                            ra, _ = self._live_actors_to_ray_actors_resources[tracked_actor]
+                            print(f">>> [debugging] we entered here to ray_terminate for trial actor [{tracked_actor.actor_id}]")
+                            ra.__ray_terminate__.remote()
+                        except Exception:
+                            pass
                     self._actor_stop_resolved(tracked_actor=tracked_actor)
 
+                
                 if stop_future:
                     # If the stop future was schedule via the actor manager,
                     # discard (track it as state future instead).
+                    print(f">>> [debugging] we entered here to discard future for trial actor [{tracked_actor.actor_id}]")
                     self._actor_task_events.discard_future(stop_future)
                 else:
                     stop_future = ray_actor.__ray_terminate__.remote()
