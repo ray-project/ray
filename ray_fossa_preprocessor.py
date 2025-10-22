@@ -15,16 +15,12 @@ Date: 2024
 
 import argparse
 import json
-import os
-import platform
-import re
 import subprocess
 import sys
 import yaml
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 
 class RayFossaPreprocessor:
     """Main class for Ray FOSSA preprocessing"""
@@ -43,53 +39,22 @@ class RayFossaPreprocessor:
         "rules_foreign_cc", "rules_proto", "rules_cc"
     ]
     
-    # Platform configurations
-    PLATFORM_CONFIGS = {
-        'linux_x86_64': {
-            'target_platform': '@platforms//os:linux',
-            'cpu_arch': '@platforms//cpu:x86_64',
-            'binary_extension': '',
-            'analysis_tool': 'ldd'
-        },
-        'linux_arm64': {
-            'target_platform': '@platforms//os:linux', 
-            'cpu_arch': '@platforms//cpu:arm64',
-            'binary_extension': '',
-            'analysis_tool': 'ldd'
-        },
-        'darwin_arm64': {
-            'target_platform': '@platforms//os:osx',
-            'cpu_arch': '@platforms//cpu:arm64', 
-            'binary_extension': '',
-            'analysis_tool': 'otool'
-        },
-        'windows_x86_64': {
-            'target_platform': '@platforms//os:windows',
-            'cpu_arch': '@platforms//cpu:x86_64',
-            'binary_extension': '.exe',
-            'analysis_tool': 'dumpbin'
-        }
-    }
     
     def __init__(self, ray_root: str, 
                  transitive_depth: int = -1,
                  include_build_tools: bool = False,
-                 include_test_deps: bool = False,
-                 platforms: List[str] = None):
+                 include_test_deps: bool = False):
         self.ray_root = Path(ray_root)
         self.transitive_depth = transitive_depth
         self.include_build_tools = include_build_tools
         self.include_test_deps = include_test_deps
-        self.platforms = platforms or ['linux_x86_64', 'darwin_arm64']
         
         # Data storage
-        self.direct_deps = {}
         self.transitive_deps = {}
         self.build_deps = {}
         self.runtime_deps = {}
         self.patches = {}
         self.custom_c_code = {}
-        self.platform_results = {}
         
     def run_bazel_query(self, target: str, depth: Optional[int] = None) -> List[str]:
         """Run bazel query with correct syntax"""
@@ -182,69 +147,32 @@ class RayFossaPreprocessor:
         """Get current timestamp in YYYYMMDD_HHMMSS format"""
         return datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    def validate_c_cpp_dependencies(self, deps: List[str]) -> Dict[str, Any]:
-        """Validate that dependencies are actually C/C++ related"""
-        validation = {
-            'total_deps': len(deps),
-            'c_cpp_deps': 0,
-            'suspicious_deps': [],
-            'file_extensions': {},
-            'patterns': {}
-        }
-        
-        c_cpp_extensions = ['.h', '.hpp', '.c', '.cpp', '.cc', '.cxx', '.c++']
-        suspicious_patterns = ['python', 'py_', 'pip_', 'node', 'npm', 'java', 'go_', 'rust_']
-        
-        for dep in deps:
-            # Check file extensions
-            if '.' in dep:
-                ext = '.' + dep.split('.')[-1]
-                validation['file_extensions'][ext] = validation['file_extensions'].get(ext, 0) + 1
-            
-            # Check for suspicious patterns
-            is_suspicious = any(pattern in dep.lower() for pattern in suspicious_patterns)
-            if is_suspicious:
-                validation['suspicious_deps'].append(dep)
-            else:
-                validation['c_cpp_deps'] += 1
-        
-        return validation
     
     def classify_dependency_types(self, deps: List[str]) -> Dict[str, Any]:
-        """Classify dependencies as runtime, build-only, test-only, etc."""
+        """Classify dependencies as runtime or build-only"""
         classified = {
             'runtime': [],
-            'build_only': [],
-            'test_only': [],
-            'build_tools': [],
-            'excluded': []
+            'build_only': []
         }
         
         for dep in deps:
             dep_info = {
                 'name': dep,
-                'type': 'unknown',
-                'compliance_required': False,
-                'excluded': False,
-                'exclusion_reason': None
+                'type': 'runtime',
+                'compliance_required': True
             }
             
             # Check if it's a build tool
             if any(tool in dep.lower() for tool in self.BUILD_TOOLS):
                 if self.include_build_tools:
                     dep_info['type'] = 'build_tool'
-                    dep_info['compliance_required'] = True
-                    classified['build_tools'].append(dep_info)
+                    classified['build_only'].append(dep_info)
                 else:
-                    dep_info['excluded'] = True
-                    dep_info['exclusion_reason'] = 'build_tool'
-                    classified['excluded'].append(dep_info)
-                continue
-            
-            # For now, assume all C/C++ deps are runtime (can be enhanced with binary analysis)
-            dep_info['type'] = 'runtime'
-            dep_info['compliance_required'] = True
-            classified['runtime'].append(dep_info)
+                    # Skip build tools if not including them
+                    continue
+            else:
+                # All other C/C++ deps are runtime
+                classified['runtime'].append(dep_info)
         
         return classified
     
@@ -267,14 +195,6 @@ class RayFossaPreprocessor:
             
             # Filter for C/C++ dependencies
             c_cpp_deps = self.filter_c_cpp_dependencies(deps)
-            
-            # Validate the filtering
-            validation = self.validate_c_cpp_dependencies(c_cpp_deps)
-            print(f"  - Validation: {validation['c_cpp_deps']} C/C++ deps, {len(validation['suspicious_deps'])} suspicious")
-            
-            if validation['suspicious_deps']:
-                print(f"  - Suspicious dependencies found: {validation['suspicious_deps'][:3]}")
-            
             all_dependencies[target] = c_cpp_deps
             
             print(f"Found {len(c_cpp_deps)} C/C++ dependencies for {target}")
@@ -362,56 +282,6 @@ class RayFossaPreprocessor:
         print(f"Found {len(custom_code)} custom C files")
         return custom_code
     
-    def analyze_binary_dependencies(self, binary_path: str) -> Dict[str, Any]:
-        """Analyze how dependencies are linked in binaries"""
-        linking_info = {
-            'static_libs': [],
-            'dynamic_libs': [],
-            'system_libs': [],
-            'bundled_libs': []
-        }
-        
-        if not os.path.exists(binary_path):
-            print(f"Binary not found: {binary_path}")
-            return linking_info
-        
-        # Use platform-specific tools
-        if platform.system() == "Darwin":  # macOS
-            cmd = ["otool", "-L", binary_path]
-        elif platform.system() == "Linux":
-            cmd = ["ldd", binary_path]
-        else:
-            print(f"Binary analysis not supported on {platform.system()}")
-            return linking_info
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            linking_info['dynamic_libs'] = self.parse_linking_output(result.stdout)
-        except subprocess.CalledProcessError as e:
-            print(f"Error analyzing binary {binary_path}: {e}")
-        
-        return linking_info
-    
-    def parse_linking_output(self, output: str) -> List[str]:
-        """Parse output from ldd/otool to extract library names"""
-        libs = []
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Extract library name (different formats for ldd vs otool)
-            if '=>' in line:  # ldd format
-                lib_name = line.split('=>')[0].strip()
-            elif line.startswith('/'):  # otool format
-                lib_name = line.split()[0]
-            else:
-                continue
-            
-            if lib_name and not lib_name.startswith('['):
-                libs.append(lib_name)
-        
-        return libs
     
     def generate_fossa_config(self) -> str:
         """Generate .fossa.yml configuration file"""
@@ -501,22 +371,10 @@ class RayFossaPreprocessor:
                 'total_dependencies': 0,
                 'runtime_dependencies': 0,
                 'build_only_dependencies': 0,
-                'test_only_dependencies': 0,
-                'compliance_required': 0,
-                'platforms_analyzed': self.platforms
-            },
-            'runtime_dependencies': {
-                'high_risk': [],
-                'medium_risk': [],
-                'low_risk': []
-            },
-            'build_only_dependencies': {
-                'note': 'These do not affect final binary distribution',
-                'dependencies': []
+                'compliance_required': 0
             },
             'patches_analysis': self.patches,
-            'custom_c_code': self.custom_c_code,
-            'platform_differences': self.platform_results
+            'custom_c_code': self.custom_c_code
         }
         
         # Calculate summary statistics - fix the unhashable type error
@@ -617,13 +475,11 @@ class RayFossaPreprocessor:
 - **Total Dependencies**: {report['summary']['total_dependencies']}
 - **Runtime Dependencies**: {report['summary']['runtime_dependencies']}
 - **Compliance Required**: {report['summary']['compliance_required']}
-- **Platforms Analyzed**: {', '.join(report['summary']['platforms_analyzed'])}
 
 ## Analysis Configuration
 
 - **Transitive Depth**: {'All' if self.transitive_depth == -1 else self.transitive_depth}
 - **Include Build Tools**: {self.include_build_tools}
-- **Include Test Dependencies**: {self.include_test_deps}
 
 ## Dependencies by Target
 
@@ -665,10 +521,6 @@ def main():
                        help='Include build tools in compliance analysis')
     parser.add_argument('--include-test-deps', action='store_true', default=False,
                        help='Include test dependencies in compliance analysis')
-    parser.add_argument('--platforms', nargs='+', 
-                       choices=['linux_x86_64', 'linux_arm64', 'darwin_arm64', 'windows_x86_64'],
-                       default=['linux_x86_64', 'darwin_arm64'],
-                       help='Platforms to analyze')
     
     args = parser.parse_args()
     
@@ -687,8 +539,7 @@ def main():
         ray_root=str(ray_root),
         transitive_depth=args.transitive_depth,
         include_build_tools=args.include_build_tools,
-        include_test_deps=args.include_test_deps,
-        platforms=args.platforms
+        include_test_deps=args.include_test_deps
     )
     
     try:
