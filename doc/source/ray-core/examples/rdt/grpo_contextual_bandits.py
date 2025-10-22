@@ -326,8 +326,8 @@ class Generator:
     def generate(self, states: torch.Tensor):
         ray.get(self._generation_signal.wait_for_generation.remote())
         with torch.no_grad():
-            states_cuda = states.cuda()
-            logits = self.model(states_cuda)  # [batch_size, ACTION_DIM]
+            states = states.to("cuda")
+            logits = self.model(states)  # [batch_size, ACTION_DIM]
 
             # GRPO requires sampling from the current policy (not just the greedy action).
 
@@ -343,7 +343,7 @@ class Generator:
         # Create trajectory slices and enqueue them for scoring.
         slice_batch = {
             "policy_version": self.policy_version,
-            "state": states_cuda,
+            "state": states,
             "actions": actions,
             "old_logps": logps,
         }
