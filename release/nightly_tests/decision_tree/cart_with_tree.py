@@ -367,4 +367,4 @@ if __name__ == "__main__":
         print(f"Test Accuracy: {accuracy}")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"build_time": treetime, "success": 1}))
+        f.write(json.dumps({"build_time": treetime}))

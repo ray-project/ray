@@ -1027,7 +1027,7 @@ def generate_rsa_key_pair():
 
 def generate_ssh_key_paths(key_name):
     public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}".format(key_name))
     return public_key_path, private_key_path
 
 
