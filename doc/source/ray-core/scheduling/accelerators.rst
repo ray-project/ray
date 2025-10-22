@@ -619,6 +619,11 @@ so multiple tasks and actors can share the same accelerator.
 
         Rebellions RBLN doesn't support fractional resources.
 
+    .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        Not sure about MBLT doesn't support fractional resources.
+
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
