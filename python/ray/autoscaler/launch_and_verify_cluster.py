@@ -351,6 +351,7 @@ def run_ray_commands(
     python_cmd.append(str(cluster_config))
 
     print(" ".join(cmd))
+    time.sleep(5 * 60 * 60)  # 5 hours
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, cwd=dir)
