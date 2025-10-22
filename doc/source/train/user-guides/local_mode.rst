@@ -4,8 +4,8 @@ Local Mode
 ==========
 
 .. important::
-    This user guide shows how to use local mode for Ray Train V2 only.
-    **This user guide assumes that you're using Ray Train V2 with the environment variable ``RAY_TRAIN_V2_ENABLED=1`` enabled.**
+    This user guide shows how to use local mode with Ray Train V2 only.
+    For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: https://github.com/ray-project/ray/issues/49454
 
 Local mode in Ray Train allows you to run your training function directly in the local process.
 This is useful for development, testing, and rapid iteration.
@@ -18,7 +18,7 @@ Local mode is particularly useful in the following scenarios:
 * **Isolated testing**: Test your training function without the distributed complexity of Ray Train, making it easier to locate issues in your training logic.
 * **Unit testing**: Test your training logic quickly without the overhead of launching a Ray cluster.
 * **Development**: Iterate rapidly on your training function before scaling to distributed training.
-* **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to transfer from other frameworks.
+* **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to migrate from other frameworks.
 
 .. note::
     In local mode, Ray Train itself doesn't launch any Ray actors, but your code may still launch
@@ -121,7 +121,6 @@ First, create your training script (``train_script.py``):
     def train_func(config):
         # Load dataset with file locking to avoid multiple downloads
         transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
-        data_dir = "./data"
         data_dir = "./data"
         # Only local rank 0 downloads the dataset
         local_rank = get_context().get_local_rank()
