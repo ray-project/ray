@@ -98,7 +98,7 @@ Single-node multi-GPU training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example shows how to use torchrun with local mode for multi-GPU training on a single node.
-This example uses standard PyTorch DataLoader for data loading, making it easy to adapt existing PyTorch training code.
+This example uses the standard PyTorch DataLoader for data loading, making it easy to adapt existing PyTorch training code.
 
 First, create your training script (``train_script.py``):
 
