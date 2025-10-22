@@ -39,6 +39,9 @@ The accelerators natively supported by Ray Core are:
    * - Rebellions RBLN
      - RBLN
      - Experimental, supported by the community
+   * - Mobilint MBLT
+     - MBLT
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -128,6 +131,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``RBLN_DEVICES`` environment variable before starting a Ray node
             to limit the Rebellions RBLNs that are visible to Ray.
             For example, ``RBLN_DEVICES=1,3 ray start --head --resources='{"RBLN": 2}'``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. tip::
+
+            You can set the ``MBLT_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Mobilint NPUs that are visible to Ray.
+            For example, ``MBLT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
             lets Ray only see devices 1 and 3.
 
 .. note::
