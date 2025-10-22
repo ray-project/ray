@@ -32,11 +32,9 @@ class RayFossaPreprocessor:
     # Deliverable binaries that need compliance analysis
     DELIVERABLE_TARGETS = [
         "//:gen_ray_pkg",
-        "//src/ray/raylet", 
-        "//src/ray/gcs:gcs_server",
-        "//src/ray/core_worker",
-        "//src/ray/raylet_ipc_client",
-        "//src/ray/gcs_rpc_client"
+        # "//src/ray/raylet", 
+        # "//src/ray/gcs:gcs_server",
+        # "//src/ray/raylet_ipc_client"
     ]
     
     # Build tools that can be optionally included
