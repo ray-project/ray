@@ -3871,8 +3871,8 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                                        rpc::RemoteCancelTaskReply *reply,
+void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
+                                        rpc::CancelRemoteTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
