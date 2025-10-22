@@ -1,0 +1,20 @@
+build_arg_sets:
+  ray_2_49_2_py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+    PYPI_WHEEL_URL: "https://files.pythonhosted.org/packages/69/ca/94791be5c3b68ed0df85589a8ca558334818a47bf2978000f85533245aed/ray-2.49.2-cp312-cp312-manylinux2014_x86_64.whl"
+
+
+depsets:
+  - name: ai_libs_${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/deplocks/summit25_templates/requirements/ai_libs.in
+      - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements_compiled.txt
+    output: python/deplocks/summit25_templates/ai_libs_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - ray_2_49_2_py312
