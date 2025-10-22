@@ -323,8 +323,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
-  auto owned_objects_count_metric = GetOwnedObjectsByStateGaugeMetric();
-  auto owned_objects_size_metric = GetSizeOfOwnedObjectsByStateGaugeMetric();
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
@@ -333,8 +331,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
-      owned_objects_count_metric,
-      owned_objects_size_metric,
+      owned_objects_count_gauge_,
+      owned_objects_size_gauge_,
       RayConfig::instance().lineage_pinning_enabled());
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {

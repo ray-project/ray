@@ -850,7 +850,9 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
+  UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
@@ -1543,7 +1545,9 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
+    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
     UnsetObjectPrimaryCopy(it);
+    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
     objects_to_recover_.push_back(object_id);
   }
 

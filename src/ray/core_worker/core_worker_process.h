@@ -187,6 +187,8 @@ class CoreWorkerProcessImpl {
 
   ray::stats::Gauge task_by_state_gauge_{GetTaskByStateGaugeMetric()};
   ray::stats::Gauge actor_by_state_gauge_{GetActorByStateGaugeMetric()};
+  ray::stats::Gauge owned_objects_count_gauge_{GetOwnedObjectsByStateGaugeMetric()};
+  ray::stats::Gauge owned_objects_size_gauge_{GetSizeOfOwnedObjectsByStateGaugeMetric()};
 };
 }  // namespace core
 }  // namespace ray
