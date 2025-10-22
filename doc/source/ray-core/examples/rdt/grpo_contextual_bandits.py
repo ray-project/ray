@@ -175,8 +175,8 @@ class Learner:
         Returns:
             Advantages tensor [batch_size * GROUP_SIZE]
         """
-        # First, reshape rewards to [batch_size, GROUP_SIZE] to compute per-state baseline
-        # Reshape the rewards to [batch_size, GROUP_SIZE].
+        # Unflatten rewards into [batch_size, GROUP_SIZE] in order to
+        # compute per-state mean baselines.
         batch_size = rewards.shape[0] // GROUP_SIZE
         rewards_reshaped = rewards.view(batch_size, GROUP_SIZE)
 
@@ -249,7 +249,7 @@ class Learner:
         best_first_reward = float(torch.max(cosine_values).item())
         cosine_gap = abs(best_first_reward - first_reward)
 
-        # Prepare tensors for the policy update.
+        # Prepare the tensors for the policy update.
         states = raw_states.repeat_interleave(GROUP_SIZE, 0).to("cuda")
         actions = actions.to("cuda")
         old_logps = old_logps.to("cuda")
