@@ -1,5 +1,4 @@
 import sys
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,25 +15,17 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector import (
 from ray.serve.llm import LLMConfig
 
 
-@pytest.fixture
-def engine_id():
-    """Fixture for the engine ID."""
-    return str(uuid.uuid4())
-
-
 class TestMultiConnectorBackend:
     """Test suite for MultiConnectorBackend."""
 
     @pytest.fixture
-    def basic_llm_config(self, engine_id: str):
+    def basic_llm_config(self):
         """Fixture for basic LLM config with MultiConnector."""
         return LLMConfig(
             model_loading_config=dict(model_id="test-model"),
             engine_kwargs=dict(
                 kv_transfer_config=dict(
                     kv_connector="MultiConnector",
-                    kv_role="kv_both",
-                    engine_id=engine_id,
                     kv_connector_extra_config=dict(
                         connectors=[
                             {"kv_connector": "LMCacheConnectorV1"},
@@ -71,17 +62,13 @@ class TestMultiConnectorBackend:
             mock_backend1.setup.assert_called_once()
             mock_backend2.setup.assert_called_once()
 
-    def test_setup_raises_error_when_connector_missing_kv_connector(
-        self, engine_id: str
-    ):
+    def test_setup_raises_error_when_connector_missing_kv_connector(self):
         """Test that setup raises ValueError when a connector is missing kv_connector."""
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test-model"),
             engine_kwargs=dict(
                 kv_transfer_config=dict(
                     kv_connector="MultiConnector",
-                    kv_role="kv_both",
-                    engine_id=engine_id,
                     kv_connector_extra_config=dict(
                         connectors=[
                             {"some_other_key": "value"},
@@ -95,15 +82,13 @@ class TestMultiConnectorBackend:
         with pytest.raises(ValueError, match="kv_connector is not set"):
             backend.setup()
 
-    def test_setup_with_invalid_connector_type(self, engine_id: str):
+    def test_setup_with_invalid_connector_type(self):
         """Test setup with an invalid connector type."""
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test-model"),
             engine_kwargs=dict(
                 kv_transfer_config=dict(
                     kv_connector="MultiConnector",
-                    kv_role="kv_both",
-                    engine_id=engine_id,
                     kv_connector_extra_config=dict(
                         connectors=[
                             {"kv_connector": "InvalidConnector"},
