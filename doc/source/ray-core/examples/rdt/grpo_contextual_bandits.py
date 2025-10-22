@@ -166,7 +166,7 @@ class Scorer:
 
 @ray.remote(num_gpus=1)
 class Learner:
-    """Updates policy based on collected experiences using PPO algorithm."""
+    """Updates policy based on collected experiences using GRPO algorithm."""
 
     def __init__(self, replay_buffer) -> None:
         self.model = MLP().to("cuda")
@@ -222,7 +222,7 @@ class Learner:
         old_logps: torch.Tensor,
         advantages: torch.Tensor,
     ) -> torch.Tensor:
-        """Apply PPO update to policy network."""
+        """Apply GRPO update to the model."""
         # Compute new log probabilities and their ratio to the reference.
         dist_new = Categorical(logits=self.model(states))
         new_logps = dist_new.log_prob(actions)
@@ -364,7 +364,7 @@ def train(total_steps: int) -> None:
         )
     )
 
-    # Pre-fill the ReplayBuffer before starting PPO.
+    # Pre-fill the ReplayBuffer before starting GRPO.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
 
     for i in trange(total_steps, desc="Training", unit="step"):
