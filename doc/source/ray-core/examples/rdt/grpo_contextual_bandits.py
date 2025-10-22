@@ -263,10 +263,9 @@ class Learner:
             "cosine_gap": float(cosine_gap),
         }
 
-    # NOTE: cannot use async method with tensor transport
     @ray.method(tensor_transport="nixl")
     def get_weights(self) -> dict[str, torch.Tensor]:
-        """Return a GPU ObjectRef to current model weights."""
+        """The tensor_transport="nixl" option uses NIXL via RDT to transfer model weight tensors. Removing it will default to the Ray object store."""
         state_dict = self.model.state_dict()
         assert next(iter(state_dict.values())).device.type == "cuda", (
             "Expected tensors to be on cuda on sender"
@@ -369,6 +368,7 @@ class Generator:
 
 def run_once(total_steps: int) -> None:
     """Run one end-to-end training session."""
+    # Instantiate one instance of each actor.
     replay_buf = ReplayBuffer.remote()
     learner = Learner.remote(replay_buf)
     scorer = Scorer.remote(replay_buf)
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--steps",
         type=int,
-        default=2,
+        default=2000,
     )
 
     args = parser.parse_args()
