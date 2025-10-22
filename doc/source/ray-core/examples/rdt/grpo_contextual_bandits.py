@@ -131,7 +131,7 @@ class Scorer:
         for i in range(states.shape[0]):
 
             # Compute rewards on GPU: rewards = dot(state, unit_dir)
-            dirs = self.action_dirs[actions[i]]  # [ACTION_DIM, STATE_DIM]
+            dirs = self.action_dirs[actions[i]]  # [GROUP_SIZE, STATE_DIM]
             rewards = torch.mv(dirs, states[i])
 
             scored = TrajectorySlice(
@@ -171,23 +171,23 @@ class Learner:
         and then normalizing to stabilize training.
 
         Args:
-            rewards: Raw rewards tensor [batch_size * ACTION_DIM]
+            rewards: Raw rewards tensor [batch_size * GROUP_SIZE]
 
         Returns:
-            Advantages tensor [batch_size * ACTION_DIM]
+            Advantages tensor [batch_size * GROUP_SIZE]
         """
-        # First, reshape rewards to [batch_size, ACTION_DIM] to compute per-state baseline
-        batch_size = rewards.shape[0] // ACTION_DIM
-        rewards_reshaped = rewards.view(batch_size, ACTION_DIM)
+        # First, reshape rewards to [batch_size, GROUP_SIZE] to compute per-state baseline
+        batch_size = rewards.shape[0] // GROUP_SIZE
+        rewards_reshaped = rewards.view(batch_size, GROUP_SIZE)
 
         # Compute baseline (mean reward) for each state
         baselines = rewards_reshaped.mean(dim=1, keepdim=True)  # [batch_size, 1]
 
         # Subtract baseline from rewards to get advantages
-        advantages = rewards_reshaped - baselines  # [batch_size, ACTION_DIM]
+        advantages = rewards_reshaped - baselines  # [batch_size, GROUP_SIZE]
 
         # Reshape back to original shape
-        advantages = advantages.reshape(-1)  # [batch_size * ACTION_DIM]
+        advantages = advantages.reshape(-1)  # [batch_size * GROUP_SIZE]
 
         # Normalize advantages for training stability
         if advantages.numel() > 1:  # Check if we have more than one element
@@ -250,7 +250,7 @@ class Learner:
         cosine_gap = abs(best_first_reward - first_reward)
 
         # Prepare tensors for update
-        states = raw_states.repeat_interleave(ACTION_DIM, 0).to("cuda")
+        states = raw_states.repeat_interleave(GROUP_SIZE, 0).to("cuda")
         actions = actions.to("cuda")
         old_logps = old_logps.to("cuda")
         rewards = rewards.to("cuda")
