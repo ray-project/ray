@@ -82,6 +82,8 @@ class ReplayBuffer:
     def __init__(self) -> None:
         # (policy_version, TrajectorySlice with CPU tensors)
         self.storage: list[tuple[int, TrajectorySlice]] = []
+        # Sum of policy versions. Used for weighted sampling proportional to 
+        # policy version.
         self.total = 0
 
     def put(self, slice: TrajectorySlice) -> None:
