@@ -21,7 +21,7 @@ Local mode is particularly useful in the following scenarios:
 * **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to transfer from other frameworks.
 
 .. note::
-    In local mode, Ray Train doesn't launch Ray Train worker actors, but your code may still launch
+    In local mode, Ray Train itself doesn't launch any Ray actors, but your code may still launch
     other Ray actors if needed. Local mode works with both single-process and multi-process training
     (through torchrun).
 
