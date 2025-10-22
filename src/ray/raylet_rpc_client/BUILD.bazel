@@ -35,6 +35,24 @@ ray_cc_library(
     deps = [
         ":raylet_client_interface",
         "//src/ray/common:bundle_spec",
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc:retryable_grpc_client",
+        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_client_with_io_context_lib",
+    srcs = ["raylet_client_with_io_context.cc"],
+    hdrs = ["raylet_client_with_io_context.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":raylet_client_interface",
+        ":raylet_client_lib",
+        "//src/ray/common:bundle_spec",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "//src/ray/rpc:retryable_grpc_client",
