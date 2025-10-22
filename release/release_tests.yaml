@@ -1895,7 +1895,9 @@
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
-  frequency: nightly
+  # Ray Train V2 doesn't support colocation.
+  # TODO: Decide whether to remove this test or re-enable it if we add support again.
+  frequency: manual
   team: ml
 
   cluster:
