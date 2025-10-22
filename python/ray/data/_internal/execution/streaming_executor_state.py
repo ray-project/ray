@@ -317,6 +317,18 @@ class OpState:
     def has_pending_bundles(self) -> bool:
         return any(len(q) > 0 for q in self.input_queues)
 
+    def total_enqueued_input_bundles_bytes(self) -> int:
+        """Total number of bytes occupied by input bundles currently enqueued among:
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+        return self.input_queue_bytes() + internal_queue_size_bytes
+
     def update_display_metrics(self, resource_manager: ResourceManager):
         """Update display metrics with current metrics."""
         usage = resource_manager.get_op_usage(self.op)
