@@ -48,4 +48,29 @@ inline ray::stats::Gauge GetActorByStateGaugeMetric() {
   };
 }
 
+inline ray::stats::Gauge GetObjectStoreMemoryGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"object_store_memory",
+      /*description=*/"Object store memory by various sub-kinds on this node",
+      /*unit=*/"",
+      /// Location:
+      ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
+      ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
+      ///      e.g. /tmp.
+      ///    - WORKER_HEAP: ray objects smaller than ('max_direct_call_object_size',
+      ///      default 100KiB) stored in process memory, i.e. inlined return
+      ///      values, placeholders for objects stored in plasma store.
+      ///    - SPILLED: current number of bytes from objects spilled
+      ///      to external storage. Note this might be smaller than
+      ///      the physical storage incurred on the external storage because
+      ///      Ray might fuse spilled objects into a single file, so a deleted
+      ///      spill object might still exist in the spilled file. Check
+      ///      spilled object fusing for more details.
+      /// ObjectState:
+      ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+      ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+      /*tag_keys=*/{"Location", "ObjectState"},
+  };
+}
+
 }  // namespace ray
