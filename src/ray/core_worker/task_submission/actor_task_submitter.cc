@@ -272,6 +272,7 @@ void ActorTaskSubmitter::CancelDependencyResolution(const TaskID &task_id) {
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.client_address_ = std::nullopt;
+  queue.raylet_address_ = std::nullopt;
   // If the actor on the worker is dead, the worker is also dead.
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id_));
   queue.worker_id_.clear();
@@ -336,7 +337,12 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     // So new RPCs go out with the right intended worker id to the right address.
     queue->second.worker_id_ = address.worker_id();
     queue->second.client_address_ = address;
+    NodeID node_id = NodeID::FromBinary(address.node_id());
 
+    auto node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
+    RAY_CHECK(node_info != nullptr);
+    queue->second.raylet_address_ = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, node_info->node_manager_address(), node_info->node_manager_port());
     SendPendingTasks(actor_id);
   }
 
@@ -1008,32 +1014,35 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    rpc::CancelTaskRequest request;
+    rpc::CancelLocalTaskRequest request;
     request.set_intended_task_id(task_spec.TaskIdBinary());
     request.set_force_kill(force_kill);
     request.set_recursive(recursive);
     request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
-    auto client = core_worker_client_pool_.GetOrConnect(*queue->second.client_address_);
-    client->CancelTask(request,
-                       [this, task_spec = std::move(task_spec), recursive, task_id](
-                           const Status &status, const rpc::CancelTaskReply &reply) {
-                         RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-                             << "CancelTask RPC response received with status "
-                             << status.ToString();
+    request.set_executor_worker_address(
+        queue->second.client_address_->SerializeAsString());
+    auto raylet_client =
+        raylet_client_pool_.GetOrConnectByAddress(*queue->second.raylet_address_);
+    raylet_client->CancelLocalTask(
+        request,
+        [this, task_spec = std::move(task_spec), recursive, task_id](
+            const Status &status, const rpc::CancelLocalTaskReply &reply) {
+          RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+              << "CancelTask RPC response received with status " << status.ToString();
 
-                         // Keep retrying every 2 seconds until a task is officially
-                         // finished.
-                         if (!task_manager_.GetTaskSpec(task_id)) {
-                           // Task is already finished.
-                           RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-                               << "Task is finished. Stop a cancel request.";
-                           return;
-                         }
+          // Keep retrying every 2 seconds until a task is officially
+          // finished.
+          if (!task_manager_.GetTaskSpec(task_id)) {
+            // Task is already finished.
+            RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+                << "Task is finished. Stop a cancel request.";
+            return;
+          }
 
-                         if (!reply.attempt_succeeded()) {
-                           RetryCancelTask(task_spec, recursive, 2000);
-                         }
-                       });
+          if (!reply.attempt_succeeded()) {
+            RetryCancelTask(task_spec, recursive, 2000);
+          }
+        });
   }
 }
 

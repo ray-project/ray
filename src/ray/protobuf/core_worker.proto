@@ -529,8 +529,9 @@ service CoreWorkerService {
   // Failure: TODO: Never retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
-  // Request from owner worker to executor worker to cancel a task.
-  // Failure: Will retry, TODO: Needs tests for failure behavior.
+  // Request from local raylet to executor worker to cancel a task.
+  // Failure: Idempotent, does not retry for network failures. However requests
+  // should only be sent via CancelLocalTask from the raylet which does implement retries
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.

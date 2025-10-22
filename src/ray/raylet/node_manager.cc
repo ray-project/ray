@@ -3339,4 +3339,89 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
+void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
+                                        rpc::CancelLocalTaskReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  rpc::Address executor_address;
+  if (!executor_address.ParseFromString(request.executor_worker_address())) {
+    send_reply_callback(
+        Status::Invalid("Failed to parse executor worker address"), nullptr, nullptr);
+    return;
+  }
+
+  auto worker = worker_pool_.GetRegisteredWorker(
+      WorkerID::FromBinary(executor_address.worker_id()));
+  // If the worker is not registered, then it must have already been killed
+  if (!worker || worker->IsDead()) {
+    reply->set_attempt_succeeded(true);
+    reply->set_requested_task_running(false);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  WorkerID worker_id = worker->WorkerId();
+
+  rpc::CancelTaskRequest cancel_task_request;
+  cancel_task_request.set_intended_task_id(request.intended_task_id());
+  cancel_task_request.set_force_kill(request.force_kill());
+  cancel_task_request.set_recursive(request.recursive());
+  cancel_task_request.set_caller_worker_id(request.caller_worker_id());
+  if (!request.force_kill()) {
+    worker->rpc_client()->CancelTask(
+        cancel_task_request,
+        [reply, send_reply_callback](const Status &status,
+                                     const rpc::CancelTaskReply &cancel_task_reply) {
+          if (!status.ok()) {
+            send_reply_callback(
+                Status::Invalid("Failed to cancel task"), nullptr, nullptr);
+          } else {
+            reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+            reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+            send_reply_callback(Status::OK(), nullptr, nullptr);
+          }
+        });
+    return;
+  }
+  auto timer = execute_after(
+      io_service_,
+      [this, reply, send_reply_callback, worker_id]() {
+        auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+        if (current_worker) {
+          // If the worker is still alive, force kill it
+          RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+                        << " did not exit after "
+                        << RayConfig::instance().kill_worker_timeout_milliseconds()
+                        << "ms, force killing with SIGKILL.";
+          DestroyWorker(current_worker,
+                        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                        "Actor killed by GCS",
+                        /*force=*/true);
+        }
+        reply->set_attempt_succeeded(true);
+        reply->set_requested_task_running(false);
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      },
+      std::chrono::milliseconds(
+          RayConfig::instance().kill_worker_timeout_milliseconds()));
+
+  worker->rpc_client()->CancelTask(
+      cancel_task_request,
+      [task_id = request.intended_task_id(), timer, reply, send_reply_callback](
+          const ray::Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
+        if (!status.ok()) {
+          std::ostringstream stream;
+          stream << "CancelTask RPC failed for task " << task_id << ": "
+                 << status.ToString();
+          const auto &msg = stream.str();
+          RAY_LOG(DEBUG) << msg;
+          // NOTE: We'll escalate the graceful shutdown to SIGKILL which is done by the
+          // timer above
+        } else {
+          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
+}
+
 }  // namespace ray::raylet

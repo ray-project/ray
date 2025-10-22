@@ -179,7 +179,8 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
-      executing_tasks_.emplace(task_spec.TaskId(), addr);
+      executing_tasks_.emplace(task_spec.TaskId(),
+                               std::make_pair(addr, lease_entry.addr));
       PushNormalTask(
           addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
@@ -665,7 +666,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                task_spec.GetDependencyIds(),
                                task_spec.GetRuntimeEnvHash());
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  std::shared_ptr<RayletClientInterface> raylet_client = nullptr;
+  rpc::Address executor_worker_address;
   {
     absl::MutexLock lock(&mu_);
     generators_to_resubmit_.erase(task_id);
@@ -700,9 +702,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This will get removed either when the RPC call to cancel is returned, when all
     // dependencies are resolved, or when dependency resolution is successfully cancelled.
     RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
-    auto rpc_client = executing_tasks_.find(task_id);
-
-    if (rpc_client == executing_tasks_.end()) {
+    auto rpc_client_address = executing_tasks_.find(task_id);
+    if (rpc_client_address == executing_tasks_.end()) {
       if (failed_tasks_pending_failure_cause_.contains(task_id)) {
         // We are waiting for the task failure cause. Do not fail it here; instead,
         // wait for the cause to come in and then handle it appropriately.
@@ -723,22 +724,24 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return;
     }
     // Looks for an RPC handle for the worker executing the task.
-    client = core_worker_client_pool_->GetOrConnect(rpc_client->second);
+    raylet_client =
+        raylet_client_pool_->GetOrConnectByAddress(rpc_client_address->second.second);
+    executor_worker_address = rpc_client_address->second.first;
   }
 
-  RAY_CHECK(client != nullptr);
-  auto request = rpc::CancelTaskRequest();
+  auto request = rpc::CancelLocalTaskRequest();
   request.set_intended_task_id(task_spec.TaskIdBinary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
-  client->CancelTask(
+  request.set_executor_worker_address(executor_worker_address.SerializeAsString());
+  raylet_client->CancelLocalTask(
       request,
       [this,
        task_spec = std::move(task_spec),
        scheduling_key = std::move(scheduling_key),
        force_kill,
-       recursive](const Status &status, const rpc::CancelTaskReply &reply) mutable {
+       recursive](const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();

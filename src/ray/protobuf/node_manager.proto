@@ -406,6 +406,26 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message CancelLocalTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
+  // The worker address of the executor.
+  bytes executor_worker_address = 5;
+}
+
+message CancelLocalTaskReply {
+  // Whether the requested task is the currently running task.
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -525,4 +545,7 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Forwards the CancelTask request from the caller core worker to the executor
+  // Failure: Retries, it's idempotent.
+  rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
 }

@@ -491,5 +491,17 @@ void RayletClient::GetWorkerPIDs(
                             timeout_ms);
 }
 
+void RayletClient::CancelLocalTask(
+    const rpc::CancelLocalTaskRequest &request,
+    const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            CancelLocalTask,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 }  // namespace rpc
 }  // namespace ray
