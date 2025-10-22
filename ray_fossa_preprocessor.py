@@ -62,17 +62,24 @@ class RayFossaPreprocessor:
         if depth is None or depth == -1:
             # All transitive dependencies
             cmd = ["bazel", "query", f"deps({target})", "--output=label"]
+            depth_str = "all transitive"
         elif depth == 0:
             # Direct dependencies only
             cmd = ["bazel", "query", f"deps({target}, 1)", "--output=label"]
+            depth_str = "direct"
         else:
             # Specific depth
             cmd = ["bazel", "query", f"deps({target}, {depth})", "--output=label"]
+            depth_str = f"depth {depth}"
+        
+        print(f"    Running bazel query for {target} ({depth_str} dependencies)...")
         
         try:
             result = subprocess.run(cmd, cwd=self.ray_root, 
                                   capture_output=True, text=True, check=True)
-            return result.stdout.strip().split('\n')
+            deps = result.stdout.strip().split('\n')
+            print(f"    Found {len(deps)} total dependencies")
+            return deps
         except subprocess.CalledProcessError as e:
             print(f"Error running bazel query for {target}: {e}")
             return []
@@ -143,10 +150,15 @@ class RayFossaPreprocessor:
         """Filter for C/C++ related dependencies using Bazel target analysis"""
         c_cpp_deps = []
         excluded_deps = []
+        total_deps = len(all_deps)
         
-        print(f"  - Analyzing {len(all_deps)} dependencies for C/C++ content...")
+        print(f"  - Analyzing {total_deps} dependencies for C/C++ content...")
         
-        for dep in all_deps:
+        for i, dep in enumerate(all_deps, 1):
+            # Show progress every 25 dependencies or at the end
+            if i % 25 == 0 or i == total_deps:
+                progress = (i / total_deps) * 100
+                print(f"    Progress: {i}/{total_deps} ({progress:.1f}%) - Found {len(c_cpp_deps)} C/C++ deps", end='\r')
             # Skip Bazel tools and internal targets
             if dep.startswith('@bazel_tools//') or dep.startswith('@local_config_'):
                 excluded_deps.append({
@@ -193,7 +205,8 @@ class RayFossaPreprocessor:
                     'category': 'unknown'
                 })
         
-        # Print debugging information
+        # Clear the progress line and print final results
+        print()  # New line after progress indicator
         print(f"  - Total dependencies analyzed: {len(all_deps)}")
         print(f"  - C/C++ dependencies found: {len(c_cpp_deps)}")
         print(f"  - Excluded dependencies: {len(excluded_deps)}")
@@ -226,7 +239,15 @@ class RayFossaPreprocessor:
             'test_only': []
         }
         
-        for dep in deps:
+        total_deps = len(deps)
+        if total_deps > 0:
+            print(f"    Classifying {total_deps} C/C++ dependencies...")
+        
+        for i, dep in enumerate(deps, 1):
+            # Show progress every 50 dependencies or at the end
+            if total_deps > 50 and (i % 50 == 0 or i == total_deps):
+                progress = (i / total_deps) * 100
+                print(f"      Classification progress: {i}/{total_deps} ({progress:.1f}%)", end='\r')
             dep_info = {
                 'name': dep,
                 'type': 'runtime',
@@ -253,6 +274,9 @@ class RayFossaPreprocessor:
             else:
                 # All other C/C++ deps are runtime
                 classified['runtime'].append(dep_info)
+        
+        if total_deps > 50:
+            print()  # New line after progress indicator
         
         return classified
     
