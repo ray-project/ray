@@ -8,7 +8,7 @@ Local Mode
     **This user guide assumes that you're using Ray Train V2 with the environment variable ``RAY_TRAIN_V2_ENABLED=1`` enabled.**
 
 Local mode in Ray Train allows you to run your training function directly in the local process.
-This is useful for testing, development, and quick iterations.
+This is useful for development, testing, and rapid iteration.
 
 When to use local mode
 ----------------------
