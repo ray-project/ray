@@ -89,14 +89,25 @@ def sample_unit_vector(dim: int = STATE_DIM, batch_size: int = 1) -> torch.Tenso
 
 @ray.remote
 class ReplayBuffer:
-    """Storage for scored trajectory slices."""
+    """Storage for scored trajectory slices.
+
+    This class stores the past experiences (AKA trajectories, or slices) of the model.
+    This allows the learner to sample and learn from the same experiences multiple times
+    by comparing the latest model with previous models.
+    
+    The sampler weights the trajectories by the policy version, such trajectories produced
+    by more recent versions of the model are more likely to be sampled.
+    """
 
     def __init__(self) -> None:
         # Each entry stores (policy_version, TrajectorySlice with CPU tensors).
         self.storage: list[tuple[int, TrajectorySlice]] = []
 
     def put(self, slice: TrajectorySlice) -> None:
-        """Add a new slice to the buffer, and remove items if the buffer gets too large."""
+        """Add a new slice to the buffer.
+        
+        The buffer discards the oldest slices if the buffer gets too large to prevent memory leaks.
+        """
         self.storage.append((slice["policy_version"], slice))
         if len(self.storage) > MAX_BUFFER_SIZE:
             self.storage = self.storage[-MAX_BUFFER_SIZE:]
