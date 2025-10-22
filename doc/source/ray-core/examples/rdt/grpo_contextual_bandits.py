@@ -29,7 +29,7 @@ GRAD_CLIP_NORM = 1.0
 
 # Unit direction vectors for 8 compass actions (W, NW, N, NE, E, SE, S, SW)
 diag = 2**0.5 / 2.0
-action_dirs = torch.tensor(
+ACTION_DIRECTIONS = torch.tensor(
     [
         [-1.0, 0.0],  # W
         [-diag, diag],  # NW
@@ -116,7 +116,7 @@ class Scorer:
         # Actor methods execute one at a time, so we can stay synchronous while
         # still keeping the driver fire-and-forget.
         self.replay_buffer = replay_buffer
-        self.action_dirs = action_dirs.to("cuda")  # [ACTION_DIM, STATE_DIM]
+        self.action_dirs = ACTION_DIRECTIONS.to("cuda")  # [ACTION_DIM, STATE_DIM]
 
     @ray.method(tensor_transport="nixl")
     def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
@@ -249,7 +249,7 @@ class Learner:
         # Track cosine gap between best possible action and model prediction for reporting.
         first_state = raw_states[0]
         first_reward = float(rewards[0].item())
-        cosine_values = torch.mv(action_dirs, first_state)
+        cosine_values = torch.mv(ACTION_DIRECTIONS, first_state)
         best_first_reward = float(torch.max(cosine_values).item())
         cosine_gap = abs(best_first_reward - first_reward)
 
