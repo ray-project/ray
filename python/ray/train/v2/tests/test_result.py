@@ -1,6 +1,7 @@
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -8,6 +9,7 @@ from ray import train
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
@@ -195,6 +197,54 @@ def test_result_restore(
 
     with pytest.raises(RuntimeError, match="Invalid metric name.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
+
+
+@pytest.mark.parametrize("storage", ["local", "remote"])
+@pytest.mark.parametrize("path_type", ["str", "PathLike"])
+def test_result_from_path_validation(
+    ray_start_4_cpus,
+    tmp_path,
+    storage,
+    mock_s3_bucket_uri,
+    path_type,
+):
+    """Test that Result.from_path raises RuntimeError when folder or snapshot file doesn't exist."""
+
+    if path_type == "PathLike" and storage == "remote":
+        # Path will collapse URI scheme separators (s3:// becomes s3:/)
+        return
+
+    if storage == "local":
+        storage_path = str(tmp_path)
+        nonexistent_folder = str(tmp_path / "nonexistent_experiment")
+        existing_folder = str(tmp_path / "existing_experiment")
+    elif storage == "remote":
+        storage_path = str(mock_s3_bucket_uri)
+        nonexistent_folder = uri_join(storage_path, "nonexistent_experiment")
+        existing_folder = uri_join(storage_path, "existing_experiment")
+
+    # Test 1: Folder doesn't exist
+    folder_path = (
+        Path(nonexistent_folder) if path_type == "PathLike" else nonexistent_folder
+    )
+    with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist!"):
+        Result.from_path(folder_path)
+
+    # Test 2: Folder exists but snapshot file doesn't exist
+    if storage == "local":
+        Path(existing_folder).mkdir(parents=True, exist_ok=True)
+    else:
+        # For S3, we need to create a dummy file to ensure the folder exists
+        fs, fs_path = pyarrow.fs.FileSystem.from_uri(existing_folder)
+        with fs.open_output_stream(f"{fs_path}/.dummy") as f:
+            f.write(b"dummy")
+
+    folder_path = Path(existing_folder) if path_type == "PathLike" else existing_folder
+    with pytest.raises(
+        RuntimeError,
+        match=f"Failed to restore the Result object: {CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the experiment folder!",
+    ):
+        Result.from_path(folder_path)
 
 
 if __name__ == "__main__":
