@@ -397,19 +397,18 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             (0.0, -1.0, 0, "Neutral pressure + declining trend -> hold"),
         ]
 
+        # Create a policy instance to access the helper method
+        mock_op = MagicMock()
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            {mock_op: MagicMock()},
+            MagicMock(),
+        )
+
         for pressure_signal, trend_signal, expected_step, description in test_cases:
             with self.subTest(description=description):
-                # Inlined decision step logic from the policy
-                if pressure_signal >= 2.0 and trend_signal >= 1.0:
-                    step = -1
-                elif pressure_signal >= 1.0 and trend_signal > 0.0:
-                    step = 0
-                elif pressure_signal <= -2.0 and trend_signal <= -2.0:
-                    step = +2
-                elif pressure_signal <= -1.0 and trend_signal <= -1.0:
-                    step = +1
-                else:
-                    step = 0
+                # Use the actual helper method from the policy
+                step = policy._quantized_controller_step(pressure_signal, trend_signal)
 
                 self.assertEqual(
                     step,

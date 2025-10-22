@@ -180,7 +180,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             last_effective_cap = self._last_effective_caps.get(op, None)
             if last_effective_cap != effective_cap:
                 logger.debug(
-                    "Effective concurrency cap changed for operator %s: %d -> %d"
+                    "Effective concurrency cap changed for operator %s: %d -> %d "
                     "running=%d tasks, queue=%d bytes, threshold=%d bytes",
                     op.name,
                     last_effective_cap,
@@ -322,11 +322,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Uses same asymmetric behavior as EWMA: slow to adjust downward
         # Example: prev_threshold=200, threshold=100 -> smoothed using asymmetric EWMA
         smoothed = int(self._update_ewma_asymmetric(prev_threshold, threshold))
-        if smoothed >= prev_threshold:
-            # Ensures progress when small deltas round to 0
-            # Example: prev_threshold=200, threshold=195 -> smoothed=199, but 199>=200, so use 199
-            smoothed = prev_threshold - 1
-
         self._queue_thresholds[op] = max(1, smoothed)
         return self._queue_thresholds[op]
 
@@ -423,16 +418,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         trend_signal = (recent_avg - older_avg) / scale
 
         # Quantized controller decision
-        if pressure_signal >= 2.0 and trend_signal >= 1.0:
-            step = -1
-        elif pressure_signal >= 1.0 and trend_signal > 0.0:
-            step = 0
-        elif pressure_signal <= -1.0 and trend_signal <= -1.0:
-            step = +1
-        elif pressure_signal <= -2.0 and trend_signal <= -2.0:
-            step = +2
-        else:
-            step = 0
+        step = self._quantized_controller_step(pressure_signal, trend_signal)
 
         # Apply step to current running concurrency, clamp by configured cap.
         target = max(1, running + step)
@@ -440,3 +426,33 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         if not math.isinf(cap_cfg):
             target = min(target, int(cap_cfg))
         return target
+
+    def _quantized_controller_step(
+        self, pressure_signal: float, trend_signal: float
+    ) -> int:
+        """Compute the quantized controller step based on pressure and trend signals.
+
+        This method implements the decision logic for the quantized controller:
+        - High pressure + growing trend = emergency backoff (-1)
+        - High pressure + stable/declining trend = wait and see (0)
+        - Low pressure + declining trend = safe to grow (+1)
+        - Very low pressure + strong improvement = aggressive growth (+2)
+        - Moderate signals = maintain current concurrency (0)
+
+        Args:
+            pressure_signal: Normalized pressure signal (queue vs threshold)
+            trend_signal: Normalized trend signal (recent vs older average)
+
+        Returns:
+            Step adjustment: -1, 0, +1, or +2
+        """
+        if pressure_signal >= 2.0 and trend_signal >= 1.0:
+            return -1
+        elif pressure_signal >= 1.0 and trend_signal >= 0.0:
+            return 0
+        elif pressure_signal <= -2.0 and trend_signal <= -2.0:
+            return +2
+        elif pressure_signal <= -1.0 and trend_signal <= -1.0:
+            return +1
+        else:
+            return 0
