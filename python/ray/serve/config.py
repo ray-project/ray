@@ -236,6 +236,7 @@ class RequestRouterConfig(BaseModel):
         )
         cloudpickle.register_pickle_by_value(request_router_module)
         self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+        cloudpickle.unregister_pickle_by_value(request_router_module)
 
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
@@ -303,6 +304,7 @@ class AutoscalingPolicy(BaseModel):
             policy_module, policy_function = import_module_and_attr(policy_path)
             cloudpickle.register_pickle_by_value(policy_module)
             self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
+            cloudpickle.unregister_pickle_by_value(policy_module)
 
         self.policy_function = policy_path
 

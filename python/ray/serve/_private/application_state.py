@@ -1393,7 +1393,9 @@ def build_serve_application(
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
             cloudpickle.register_pickle_by_value(module)
-            return cloudpickle.dumps(attr)
+            serialized = cloudpickle.dumps(attr)
+            cloudpickle.unregister_pickle_by_value(module)
+            return serialized
 
         application_serialized_autoscaling_policy_def = None
         if application_autoscaling_policy_function is not None:

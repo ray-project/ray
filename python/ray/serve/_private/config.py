@@ -166,7 +166,7 @@ class DeploymentConfig(BaseModel):
     )
 
     request_router_config: RequestRouterConfig = Field(
-        default=RequestRouterConfig(),
+        default_factory=RequestRouterConfig,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
