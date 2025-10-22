@@ -61,6 +61,20 @@ class TestKVConnectorBackendFactory:
         assert backend_class is not None
         assert issubclass(backend_class, BaseConnectorBackend)
 
+    def test_get_backend_class_import_error_handling(self):
+        """Test that ImportError during backend loading is handled with clear message."""
+        # Register a backend with a non-existent module
+        KVConnectorBackendFactory.register_backend(
+            "BadBackend",
+            "non.existent.module",
+            "NonExistentClass",
+        )
+
+        with pytest.raises(
+            ImportError, match="Failed to load connector backend 'BadBackend'"
+        ):
+            KVConnectorBackendFactory.get_backend_class("BadBackend")
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

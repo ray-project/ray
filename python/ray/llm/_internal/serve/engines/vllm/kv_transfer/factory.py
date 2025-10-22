@@ -50,13 +50,17 @@ class KVConnectorBackendFactory:
 
         Raises:
             ValueError: If the connector backend isn't registered
+            ImportError: If the backend fails to load
         """
         if name not in cls._registry:
             raise ValueError(
                 f"Unsupported connector backend: {name}. "
                 f"Registered backends: {list(cls._registry.keys())}"
             )
-        return cls._registry[name]()
+        try:
+            return cls._registry[name]()
+        except (ImportError, AttributeError) as e:
+            raise ImportError(f"Failed to load connector backend '{name}': {e}") from e
 
     @classmethod
     def create_backend(
