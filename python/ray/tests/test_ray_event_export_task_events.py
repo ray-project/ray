@@ -225,6 +225,7 @@ def run_driver_script_and_wait_for_events(script, httpserver, cluster, validatio
     # the workers to the aggregator agent are estabilished with the backoff strategy
     # before start the driver script. A longer term fix is to improve the start up
     # sequence of the dashboard agent and the workers.
+    # Followup issue: https://github.com/ray-project/ray/issues/58007
     time.sleep(3)
     run_string_as_driver_nonblocking(script)
     wait_for_condition(lambda: get_and_validate_events(httpserver, validation_func))
@@ -625,6 +626,10 @@ except Exception as e:
             script, httpserver, ray_start_cluster_head_with_env_vars, validate_events
         )
 
+    @pytest.mark.skipif(
+        True,
+        reason="Disabled till https://github.com/ray-project/ray/issues/58016 is fixed",
+    )
     @_cluster_with_aggregator_target
     def test_task_failed_due_to_node_failure(
         self,
