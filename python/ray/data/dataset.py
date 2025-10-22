@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr
+from ray.data.expressions import Expr, star
 
 logger = logging.getLogger(__name__)
 
@@ -838,9 +838,7 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                cols=None,
-                cols_rename=None,
-                exprs={column_name: expr},
+                exprs=[star(), expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1067,24 +1065,25 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
+        from ray.data.expressions import col
+
         if isinstance(cols, str):
-            cols = [cols]
+            exprs = [col(cols)]
         elif isinstance(cols, list):
             if not all(isinstance(col, str) for col in cols):
                 raise ValueError(
                     "select_columns requires all elements of 'cols' to be strings."
                 )
+            if len(cols) != len(set(cols)):
+                raise ValueError(
+                    "select_columns expected unique column names, "
+                    f"got duplicate column names: {cols}"
+                )
+            exprs = [col(c) for c in cols]
         else:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-
-        if len(cols) != len(set(cols)):
-            raise ValueError(
-                "select_columns expected unique column names, "
-                f"got duplicate column names: {cols}"
-            )
-
         # Don't feel like we really need this
         from ray.data._internal.compute import TaskPoolStrategy
 
@@ -1093,8 +1092,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=cols,
-            cols_rename=None,
+            exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1157,6 +1155,10 @@ class Dataset:
                 :func:`ray.remote` for details.
         """  # noqa: E501
 
+        from ray.data.expressions import col
+
+        exprs = []
+
         if isinstance(names, dict):
             if not names:
                 raise ValueError("rename_columns received 'names' with no entries.")
@@ -1173,8 +1175,8 @@ class Dataset:
                     "rename_columns requires both keys and values in the 'names' "
                     "to be strings."
                 )
+            exprs = [col(old).alias(new) for old, new in names.items()]
 
-            cols_rename = names
         elif isinstance(names, list):
             if not names:
                 raise ValueError(
@@ -1198,7 +1200,10 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            cols_rename = dict(zip(current_names, names))
+            exprs = [
+                col(old).alias(new)
+                for old, new in dict(zip(current_names, names)).items()
+            ]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1219,8 +1224,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=None,
-            cols_rename=cols_rename,
+            exprs=[star()] + exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -3592,7 +3596,7 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, cols=[]))
+        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
