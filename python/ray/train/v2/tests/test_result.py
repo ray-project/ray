@@ -119,6 +119,7 @@ def test_get_best_checkpoint():
 @pytest.mark.parametrize("storage", ["local", "remote"])
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
 @pytest.mark.parametrize("pass_storage_filesystem", [True, False])
+@pytest.mark.parametrize("trailing_slash", [False, True])
 def test_result_restore(
     ray_start_4_cpus,
     monkeypatch,
@@ -127,6 +128,7 @@ def test_result_restore(
     mock_s3_bucket_uri,
     path_type,
     pass_storage_filesystem,
+    trailing_slash,
 ):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
 
@@ -165,6 +167,10 @@ def test_result_restore(
     else:
         trial_dir = uri_join(storage_path, exp_name)
         file_system = None
+
+    # Add trailing slash if parameterized to test that case
+    if trailing_slash:
+        trial_dir = trial_dir + "/"
 
     # For PathLike test, only use Path() for local paths, not URIs
     if path_type == "PathLike":

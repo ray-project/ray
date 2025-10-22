@@ -57,6 +57,9 @@ class Result(ResultV1):
         if not _exists_at_fs_path(fs, fs_path):
             raise RuntimeError(f"Experiment folder {fs_path} doesn't exist!")
 
+        # Remove trailing slashes to handle paths correctly
+        # os.path.basename() returns empty string for paths with trailing slashes
+        fs_path = fs_path.rstrip("/")
         storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
             fs_path
         )
