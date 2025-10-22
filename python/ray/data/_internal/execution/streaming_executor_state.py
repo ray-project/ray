@@ -409,7 +409,7 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_num_blocks()} ({self.total_enqueued_input_bundles_bytes() / GiB:.2f}Gb)"
+        desc += f"; Queued blocks: {self.total_enqueued_num_blocks()} ({memory_string(self.total_enqueued_input_bundles_bytes())})"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.

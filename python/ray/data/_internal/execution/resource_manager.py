@@ -345,7 +345,7 @@ def _get_first_pending_shuffle_op(topology: "Topology") -> int:
 
 
 def _is_shuffle_op(op: PhysicalOperator) -> bool:
-    return isinstance(op, AllToAllOperator) or isinstance(op, HashShufflingOperatorBase)
+    return isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
 
 
 class OpResourceAllocator(ABC):
@@ -430,7 +430,7 @@ class OpResourceAllocator(ABC):
         self,
         *,
         limits: ExecutionResources,
-        task_resources_usage: Dict[PhysicalOperator, ExecutionResources],
+        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
         internal_object_store_usage: Dict[PhysicalOperator, int],
         outputs_object_store_usage: Dict[PhysicalOperator, int],
     ):
@@ -718,7 +718,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def _get_op_outputs_usage_with_downstream(
         self,
         op: PhysicalOperator,
-        task_resources_usage: Dict[PhysicalOperator, ExecutionResources],
+        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
         outputs_object_store_usage: Dict[PhysicalOperator, int],
     ) -> float:
         """Get the outputs memory usage of the given operator, including the downstream
@@ -779,7 +779,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self,
         *,
         limits: ExecutionResources,
-        task_resources_usage: Dict[PhysicalOperator, ExecutionResources],
+        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
         internal_object_store_usage: Dict[PhysicalOperator, int],
         outputs_object_store_usage: Dict[PhysicalOperator, int],
     ):
