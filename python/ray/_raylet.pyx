@@ -4951,7 +4951,7 @@ def get_session_key_from_storage(host, port, username, password, use_ssl, config
 
 def reset_auth_token_cache():
     """Reset the C++ authentication token cache.
-    
+
     This forces the RayAuthTokenLoader to reload the token from environment
     variables or files on the next request.
     """
