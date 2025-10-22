@@ -30,6 +30,7 @@ GROUP_SIZE = 8
 EMA_DECAY = 0.999
 PPO_CLIP_EPS = 0.5
 KL_COEFF = 0.1
+MAX_BUFFER_SIZE = 10000
 
 # Action space definition
 # Unit direction vectors for the eight compass actions (W, NW, N, NE, E, SE, S, SW).
@@ -93,18 +94,19 @@ class ReplayBuffer:
     def __init__(self) -> None:
         # Each entry stores (policy_version, TrajectorySlice with CPU tensors).
         self.storage: list[tuple[int, TrajectorySlice]] = []
-        # The sum of policy versions; used for the weighted sampling calculation.
-        self.total = 0
 
     def put(self, slice: TrajectorySlice) -> None:
+        """Add a new slice to the buffer, and remove items if the buffer gets too large."""
         self.storage.append((slice["policy_version"], slice))
-        self.total += slice["policy_version"]
+        if len(self.storage) > MAX_BUFFER_SIZE:
+            self.storage = self.storage[-MAX_BUFFER_SIZE:]
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
         """Sample n scored trajectory slices."""
         assert len(self.storage) > 0
         # The probability of sampling a slice is proportional to its policy version.
-        probs = [version / self.total for version, _ in self.storage]
+        total = sum(version for version, _ in self.storage)
+        probs = [version / total for version, _ in self.storage]
         indices = list(range(len(self.storage)))
         # Sample with replacement without exceeding the buffer's size.
         n = min(n, len(self.storage))  
