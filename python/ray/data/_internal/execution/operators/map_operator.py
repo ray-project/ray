@@ -346,7 +346,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             task_inputs: List[_TaskInput] = self._task_input_builder.add_input(refs)
             self._metrics.on_input_dequeued(refs)
             for task_input in task_inputs:
-                self._schedule_task_input(task_input)
+                self._submit_task_input(task_input)
             return
 
         # Add RefBundle to the bundler.
@@ -401,7 +401,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
 
-    def _schedule_task_input(self, task_input: _TaskInput) -> None:
+    def _submit_task_input(self, task_input: _TaskInput) -> None:
         """Submit a ready-to-run task input produced by a task input builder."""
         self._add_bundled_input(task_input.bundle, task_input.task_kwargs)
 
@@ -500,7 +500,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def all_inputs_done(self):
         if self._task_input_builder is not None:
             for task_input in self._task_input_builder.finish():
-                self._schedule_task_input(task_input)
+                self._submit_task_input(task_input)
             super().all_inputs_done()
             return
 
