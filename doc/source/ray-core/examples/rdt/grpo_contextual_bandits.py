@@ -117,7 +117,6 @@ class Scorer:
         self.replay_buffer = replay_buffer
         self.action_dirs = ACTION_DIRECTIONS.to("cuda")  # [ACTION_DIM, STATE_DIM]
 
-    @ray.method(tensor_transport="nixl")
     def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
         """Score a batched trajectory slice synchronously."""
         states = batched_slices["state"]
@@ -125,8 +124,6 @@ class Scorer:
         old_logps = batched_slices["old_logps"]
         policy_version = batched_slices["policy_version"]
 
-        # Ray delivers actor calls one-at-a-time, so doing the work inline keeps
-        # ordering deterministic while maintaining a synchronous API surface.
         for i in range(states.shape[0]):
 
             # Compute rewards on the GPU: rewards = dot(state, unit_dir).
