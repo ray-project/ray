@@ -231,6 +231,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
+                    "app_name": "",
                 },
                 {
                     "targets": [
@@ -243,6 +244,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
+                    "app_name": "",
                 },
             ],
         }
