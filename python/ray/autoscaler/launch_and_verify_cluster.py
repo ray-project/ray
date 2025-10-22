@@ -348,6 +348,7 @@ def run_ray_commands(
     cmd1 = ["which", "python"]
     cmd2 = [
         "python",
+        "-I",
         "-c",
         "import os; print(os.environ.get('PYTHONPATH')); import sys; print(sys.path); import azure.common; print(azure.common.__file__)",
     ]
@@ -361,7 +362,7 @@ def run_ray_commands(
     try:
 
         env = os.environ.copy()
-        env["PYTHONPATH"] = ""
+        env.pop("PYTHONPATH", None)
         tmp_dir = tempfile.mkdtemp()
         print("Created temporary directory: ", tmp_dir)
         result1 = subprocess.run(
