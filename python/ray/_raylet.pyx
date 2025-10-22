@@ -114,6 +114,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CGrpcStatusCode,
     CLineageReconstructionTask,
+    CRayAuthTokenLoader,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -4946,3 +4947,12 @@ def get_session_key_from_storage(host, port, username, password, use_ssl, config
     else:
         logger.info("Could not retrieve session key from storage.")
         return None
+
+
+def reset_auth_token_cache():
+    """Reset the C++ authentication token cache.
+    
+    This forces the RayAuthTokenLoader to reload the token from environment
+    variables or files on the next request.
+    """
+    CRayAuthTokenLoader.instance().ResetCache()

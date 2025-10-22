@@ -797,3 +797,9 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+
+cdef extern from "ray/rpc/auth_token_loader.h" namespace "ray::rpc" nogil:
+    cdef cppclass CRayAuthTokenLoader "ray::rpc::RayAuthTokenLoader":
+        @staticmethod
+        CRayAuthTokenLoader& instance()
+        void ResetCache()

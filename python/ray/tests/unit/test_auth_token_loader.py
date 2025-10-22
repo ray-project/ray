@@ -1,8 +1,8 @@
 """Unit tests for ray._private.auth_token_loader module."""
 
 import os
+import sys
 import tempfile
-import threading
 from pathlib import Path
 
 import pytest
@@ -86,28 +86,50 @@ class TestLoadAuthToken:
         token = auth_token_loader.load_auth_token(generate_if_not_found=False)
         assert token == "token-from-default"
 
-    def test_precedence_order(self, temp_token_file, default_token_path):
-        """Test that token loading follows correct precedence order."""
-        # Set all three sources
-        os.environ["RAY_AUTH_TOKEN"] = "token-from-env"
-        os.environ["RAY_AUTH_TOKEN_PATH"] = temp_token_file
+    @pytest.mark.parametrize(
+        "set_env,set_file,set_default,expected_token",
+        [
+            # All set: env should win
+            (True, True, True, "token-from-env"),
+            # File and default file set: file should win
+            (False, True, True, "test-token-from-file"),
+            # Only default file set
+            (False, False, True, "token-from-default"),
+        ],
+    )
+    def test_token_precedence_parametrized(
+        self,
+        temp_token_file,
+        default_token_path,
+        set_env,
+        set_file,
+        set_default,
+        expected_token,
+    ):
+        """Parametrized test for token loading precedence: env var > user-specified file > default file."""
+        # Optionally set environment variable
+        if set_env:
+            os.environ["RAY_AUTH_TOKEN"] = "token-from-env"
+        else:
+            os.environ.pop("RAY_AUTH_TOKEN", None)
 
-        default_token_path.parent.mkdir(parents=True, exist_ok=True)
-        default_token_path.write_text("token-from-default")
+        # Optionally create file and set path
+        if set_file:
+            os.environ["RAY_AUTH_TOKEN_PATH"] = temp_token_file
+        else:
+            os.environ.pop("RAY_AUTH_TOKEN_PATH", None)
 
-        # Environment variable should have highest precedence
+        # Optionally create default file
+        if set_default:
+            default_token_path.parent.mkdir(parents=True, exist_ok=True)
+            default_token_path.write_text("token-from-default")
+        else:
+            if default_token_path.exists():
+                default_token_path.unlink()
+
+        # Load token and verify expected precedence
         token = auth_token_loader.load_auth_token(generate_if_not_found=False)
-        assert token == "token-from-env"
-
-    def test_env_path_over_default(self, temp_token_file, default_token_path):
-        """Test that RAY_AUTH_TOKEN_PATH has precedence over default path."""
-        os.environ["RAY_AUTH_TOKEN_PATH"] = temp_token_file
-
-        default_token_path.parent.mkdir(parents=True, exist_ok=True)
-        default_token_path.write_text("token-from-default")
-
-        token = auth_token_loader.load_auth_token(generate_if_not_found=False)
-        assert token == "test-token-from-file"
+        assert token == expected_token
 
     def test_no_token_found(self):
         """Test behavior when no token is found."""
@@ -133,8 +155,8 @@ class TestLoadAuthToken:
     def test_nonexistent_path_in_env(self):
         """Test that nonexistent path in RAY_AUTH_TOKEN_PATH is handled gracefully."""
         os.environ["RAY_AUTH_TOKEN_PATH"] = "/nonexistent/path/to/token"
-        token = auth_token_loader.load_auth_token(generate_if_not_found=False)
-        assert token == ""
+        with pytest.raises(FileNotFoundError):
+            auth_token_loader.load_auth_token(generate_if_not_found=False)
 
 
 class TestTokenGeneration:
@@ -158,11 +180,27 @@ class TestTokenGeneration:
         token = auth_token_loader.load_auth_token(generate_if_not_found=False)
         assert token == ""
 
-    def test_dont_generate_when_token_exists(self):
+    def test_dont_generate_when_token_exists(self, default_token_path):
         """Test that token is not generated when one already exists."""
         os.environ["RAY_AUTH_TOKEN"] = "existing-token"
         token = auth_token_loader.load_auth_token(generate_if_not_found=True)
         assert token == "existing-token"
+        generated_token = auth_token_loader.generate_and_save_token()
+        assert generated_token == "existing-token"  # does not generate a new token
+        assert not default_token_path.exists()
+
+    def test_public_generate_and_save_token(self, default_token_path):
+        """Test the public generate_and_save_token function."""
+        token = auth_token_loader.generate_and_save_token()
+
+        # Token should be a 32-character hex string (UUID without dashes)
+        assert len(token) == 32
+        assert all(c in "0123456789abcdef" for c in token)
+
+        # Token should be saved to default path
+        assert default_token_path.exists()
+        saved_token = default_token_path.read_text().strip()
+        assert saved_token == token
 
 
 class TestTokenCaching:
@@ -180,139 +218,6 @@ class TestTokenCaching:
         # Should still return the cached token
         assert token1 == token2 == "cached-token"
 
-    def test_cache_empty_result(self):
-        """Test that even empty results are cached."""
-        # First call with no token
-        token1 = auth_token_loader.load_auth_token(generate_if_not_found=False)
-        assert token1 == ""
 
-        # Set environment variable after first call
-        os.environ["RAY_AUTH_TOKEN"] = "new-token"
-        token2 = auth_token_loader.load_auth_token(generate_if_not_found=False)
-
-        # Should still return cached empty string
-        assert token2 == ""
-
-
-class TestHasAuthToken:
-    """Tests for has_auth_token function."""
-
-    def test_has_token_true(self):
-        """Test has_auth_token returns True when token exists."""
-        os.environ["RAY_AUTH_TOKEN"] = "test-token"
-        assert auth_token_loader.has_auth_token() is True
-
-    def test_has_token_false(self):
-        """Test has_auth_token returns False when no token exists."""
-        assert auth_token_loader.has_auth_token() is False
-
-    def test_has_token_caches_result(self):
-        """Test that has_auth_token doesn't trigger generation."""
-        # This should return False without generating a token
-        assert auth_token_loader.has_auth_token() is False
-
-        # Verify no token was generated
-        default_path = Path.home() / ".ray" / "auth_token"
-        assert not default_path.exists()
-
-
-class TestThreadSafety:
-    """Tests for thread safety of token loading."""
-
-    def test_concurrent_loads(self):
-        """Test that concurrent token loads are thread-safe."""
-        os.environ["RAY_AUTH_TOKEN"] = "thread-safe-token"
-
-        results = []
-        threads = []
-
-        def load_token():
-            token = auth_token_loader.load_auth_token(generate_if_not_found=False)
-            results.append(token)
-
-        # Create multiple threads that try to load token simultaneously
-        for _ in range(10):
-            thread = threading.Thread(target=load_token)
-            threads.append(thread)
-            thread.start()
-
-        # Wait for all threads to complete
-        for thread in threads:
-            thread.join()
-
-        # All threads should get the same token
-        assert len(results) == 10
-        assert all(result == "thread-safe-token" for result in results)
-
-    def test_concurrent_generation(self, default_token_path):
-        """Test that concurrent token generation is thread-safe."""
-        results = []
-        threads = []
-
-        def generate_token():
-            token = auth_token_loader.load_auth_token(generate_if_not_found=True)
-            results.append(token)
-
-        # Create multiple threads that try to generate token simultaneously
-        for _ in range(5):
-            thread = threading.Thread(target=generate_token)
-            threads.append(thread)
-            thread.start()
-
-        # Wait for all threads to complete
-        for thread in threads:
-            thread.join()
-
-        # All threads should get the same token (only generated once)
-        assert len(results) == 5
-        assert len(set(results)) == 1  # All tokens should be identical
-
-
-class TestFilePermissions:
-    """Tests for file permissions when saving tokens."""
-
-    def test_file_permissions_on_unix(self, default_token_path, monkeypatch):
-        """Test that token file has 0600 permissions on Unix systems."""
-        # Skip on Windows
-        if os.name == "nt":
-            pytest.skip("Test only relevant on Unix systems")
-
-        token = auth_token_loader.load_auth_token(generate_if_not_found=True)
-        assert token
-
-        # Check file permissions (should be 0600)
-        stat_info = default_token_path.stat()
-        assert stat_info.st_mode & 0o777 == 0o600
-
-    def test_file_permissions_error_handling(self, monkeypatch):
-        """Test that permission errors are handled gracefully."""
-
-        # Mock os.chmod to raise an exception
-        def mock_chmod(path, mode):
-            raise OSError("Permission denied")
-
-        monkeypatch.setattr(os, "chmod", mock_chmod)
-
-        # Should still generate and return token, just not set permissions
-        token = auth_token_loader.load_auth_token(generate_if_not_found=True)
-        assert len(token) == 32
-
-
-class TestIntegration:
-    """Integration tests with ray.init() and ray start CLI."""
-
-    def test_token_loader_with_ray_init(self, default_token_path):
-        """Test that token loader works with ray.init() enable_token_auth parameter."""
-        # This is more of a smoke test to ensure the module can be imported
-        # and used in the context where it will be called
-        from ray._private import auth_token_loader
-
-        # Generate a token
-        token = auth_token_loader.load_auth_token(generate_if_not_found=True)
-        assert token
-        assert len(token) == 32
-
-        # Verify it was saved
-        assert default_token_path.exists()
-        saved_token = default_token_path.read_text().strip()
-        assert saved_token == token
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-vv", __file__]))

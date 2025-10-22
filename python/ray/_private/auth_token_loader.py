@@ -13,7 +13,9 @@ import os
 import threading
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
+
+from ray._raylet import Config, reset_auth_token_cache
 
 logger = logging.getLogger(__name__)
 
@@ -51,21 +53,11 @@ def load_auth_token(generate_if_not_found: bool = False) -> str:
 
         # Generate if requested and not found
         if not token and generate_if_not_found:
-            token = _generate_and_save_token()
+            token = _generate_and_save_token_internal()
 
         # Cache the result (even if empty)
         _cached_token = token
         return _cached_token
-
-
-def has_auth_token() -> bool:
-    """Check if an authentication token exists.
-
-    Returns:
-        True if a token is available (cached or can be loaded), False otherwise.
-    """
-    token = load_auth_token(generate_if_not_found=False)
-    return bool(token)
 
 
 def _load_token_from_sources() -> str:
@@ -85,21 +77,13 @@ def _load_token_from_sources() -> str:
     # Precedence 2: RAY_AUTH_TOKEN_PATH environment variable
     env_token_path = os.environ.get("RAY_AUTH_TOKEN_PATH", "").strip()
     if env_token_path:
-        try:
-            token_path = Path(env_token_path).expanduser()
-            if token_path.exists():
-                token = token_path.read_text().strip()
-                if token:
-                    logger.debug(f"Loaded authentication token from file: {token_path}")
-                    return token
-            else:
-                logger.warning(
-                    f"RAY_AUTH_TOKEN_PATH is set but file does not exist: {token_path}"
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to read token from RAY_AUTH_TOKEN_PATH ({env_token_path}): {e}"
-            )
+        token_path = Path(env_token_path).expanduser()
+        if not token_path.exists():
+            raise FileNotFoundError(f"Token file not found: {token_path}")
+        token = token_path.read_text().strip()
+        if token:
+            logger.debug(f"Loaded authentication token from file: {token_path}")
+            return token
 
     # Precedence 3: Default token path ~/.ray/auth_token
     default_path = _get_default_token_path()
@@ -119,12 +103,31 @@ def _load_token_from_sources() -> str:
     return ""
 
 
-def _generate_and_save_token() -> str:
-    """Generate a new UUID token and save it to the default path.
+def generate_and_save_token() -> str:
+    """Generate a new random token and save it in the default token path.
 
     Returns:
         The newly generated authentication token.
     """
+    global _cached_token
+
+    with _token_lock:
+        # Check if we already have a cached token
+        if _cached_token is not None:
+            logger.warning(
+                "Returning cached authentication token instead of generating new one. "
+                "Call load_auth_token() to use existing token or clear cache first."
+            )
+            return _cached_token
+
+        # Generate and save token without nested lock
+        return _generate_and_save_token_internal()
+
+
+def _generate_and_save_token_internal() -> str:
+    """Internal function to generate and save token. Assumes lock is already held."""
+    global _cached_token
+
     # Generate a UUID-based token
     token = uuid.uuid4().hex
 
@@ -137,17 +140,13 @@ def _generate_and_save_token() -> str:
         # Write token to file
         token_path.write_text(token)
 
-        # Set file permissions to 0600 on Unix systems
-        try:
-            # This will work on Unix systems, but not on Windows
-            os.chmod(token_path, 0o600)
-        except (OSError, AttributeError):
-            # chmod may not work on Windows or may fail for other reasons
-            # This is not critical, so we just log a debug message
-            logger.debug(
-                f"Could not set file permissions to 0600 for {token_path}. "
-                "This is expected on Windows."
-            )
+        # Ensure file is flushed to disk immediately
+        # This is critical for subprocess/C++ code to read it immediately
+        import os
+
+        fd = os.open(str(token_path), os.O_RDONLY)
+        os.fsync(fd)
+        os.close(fd)
 
         logger.info(f"Generated new authentication token and saved to {token_path}")
     except Exception as e:
@@ -156,6 +155,8 @@ def _generate_and_save_token() -> str:
             "Token will only be available in memory."
         )
 
+    # Cache the generated token
+    _cached_token = token
     return token
 
 
@@ -166,3 +167,58 @@ def _get_default_token_path() -> Path:
         Path object pointing to ~/.ray/auth_token
     """
     return Path.home() / ".ray" / "auth_token"
+
+
+def setup_and_verify_auth(
+    system_config: Optional[Dict] = None, is_new_cluster: bool = True
+) -> None:
+    """Verify auth configuration and ensure token is available when auth is enabled.
+
+    This is called early during ray.init() to:
+    1. Check for _system_config misuse and provide helpful error
+    2. Verify token is available if auth is enabled
+    3. Generate default token for new local clusters if needed
+
+    Args:
+        system_config: The _system_config dict from ray.init() (checked for misuse)
+        is_new_cluster: True if starting new local cluster, False if connecting to an existing cluster
+
+    Raises:
+        ValueError: If _system_config is used for enabling auth (should use env var instead)
+    """
+    # Check for _system_config misuse
+    if system_config and system_config.get("enable_token_auth", False):
+        raise ValueError(
+            "Authentication mode should be configured via environment variable, "
+            "not _system_config (which is for testing only).\n"
+            "Please set: RAY_enable_token_auth=1\n"
+            "Or in Python: os.environ['RAY_enable_token_auth'] = '1'"
+        )
+
+    Config.initialize("")
+
+    if Config.enable_token_auth():
+        # For new clusters: generate token if not found
+        # For existing clusters: only use existing token (don't generate)
+        token = load_auth_token(generate_if_not_found=is_new_cluster)
+
+        if not is_new_cluster and not token:
+            raise RuntimeError(
+                "Token authentication is enabled on the cluster you're connecting to, "
+                "but no authentication token was found. Please provide a token using one of:\n"
+                "  1. RAY_AUTH_TOKEN environment variable\n"
+                "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
+                "  3. Default token file: ~/.ray/auth_token"
+            )
+
+
+def _reset_token_cache_for_testing():
+    """Reset both Python and C++ token caches.
+
+    Should only be used for testing purposes.
+    """
+    global _cached_token
+    _cached_token = None
+
+    # Also reset the C++ token cache
+    reset_auth_token_cache()
