@@ -192,7 +192,7 @@ First, create your training script (``train_script.py``):
     )
     result = trainer.fit()
 
-Then, launch the training with torchrun:
+Then, launch training with torchrun:
 
 .. code-block:: bash
 
