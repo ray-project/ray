@@ -7,11 +7,13 @@ from ray._private.accelerators.accelerator import (
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
+from ray._private.accelerators.mblt import MBLTAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
 from ray._private.accelerators.rbln import RBLNAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
+
 
 
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
@@ -25,6 +27,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         HPUAcceleratorManager,
         NPUAcceleratorManager,
         RBLNAcceleratorManager,
+        MBLTAcceleratorManager
     }
 
 
@@ -77,6 +80,7 @@ __all__ = [
     "HPUAcceleratorManager",
     "NPUAcceleratorManager",
     "RBLNAcceleratorManager",
+    "MBLTAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",
