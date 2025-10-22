@@ -86,6 +86,7 @@ steps:
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
+      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
     tags: cibase
 
   - name: docgpubuild
