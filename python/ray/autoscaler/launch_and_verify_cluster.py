@@ -346,7 +346,11 @@ def run_ray_commands(
     print("PYTHONPATH: ", os.environ.get("PYTHONPATH"))
 
     cmd1 = ["which", "python"]
-    cmd2 = ["python", "-c", "import azure; print(azure.__file__)"]
+    cmd2 = [
+        "python",
+        "-c",
+        "import os; print(os.environ.get('PYTHONPATH')); import sys; print(sys.path); import azure.common; print(azure.common.__file__)",
+    ]
     # cmd3 = ["ls", "-l", "/home/ray/anaconda3/lib/python3.9/site-packages"]
     # cmd2 = ["python", "-c", "from azure.common.credentials import get_cli_profile"]
     cmd = ["ray", "up", "-v", "-y"]
@@ -355,25 +359,26 @@ def run_ray_commands(
     cmd.append(str(cluster_config))
 
     try:
-        # env.pop("PYTHONPATH", None)
+
         env = os.environ.copy()
-        env[
-            "PYTHONPATH"
-        ] = f"/home/ray/anaconda3/lib/python3.9/site-packages:{os.environ.get('PYTHONPATH', '')}"
-        print("new PYTHONPATH: ", env["PYTHONPATH"])
+        env["PYTHONPATH"] = ""
+        tmp_dir = tempfile.mkdtemp()
+        print("Created temporary directory: ", tmp_dir)
         result1 = subprocess.run(
-            cmd1, check=True, capture_output=True, cwd=dir, env=env
+            cmd1, check=True, capture_output=True, cwd=tmp_dir, env=env
         )
         print(f"cmd1 stdout:\n{result1.stdout.decode('utf-8')}")
         print(f"cmd1 stderr:\n{result1.stderr.decode('utf-8')}")
 
         result2 = subprocess.run(
-            cmd2, check=True, capture_output=True, cwd=dir, env=env
+            cmd2, check=True, capture_output=True, cwd=tmp_dir, env=env
         )
         print(f"cmd2 stdout:\n{result2.stdout.decode('utf-8')}")
         print(f"cmd2 stderr:\n{result2.stderr.decode('utf-8')}")
 
-        result3 = subprocess.run(cmd, check=True, capture_output=True, cwd=dir, env=env)
+        result3 = subprocess.run(
+            cmd, check=True, capture_output=True, cwd=tmp_dir, env=env
+        )
         print(f"cmd3 stdout:\n{result3.stdout.decode('utf-8')}")
         print(f"cmd3 stderr:\n{result3.stderr.decode('utf-8')}")
     except subprocess.CalledProcessError as e:

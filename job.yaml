@@ -21,5 +21,5 @@ cloud: anyscale_aks_public_default_cloud_us_west_2
 ray_version: 2.50.0
 entrypoint: >-
   RAY_UP_enable_autoscaler_v2=1 python -I
-  launch_and_verify_cluster.py azuree/tests/azure-cluster.yaml
+  launch_and_verify_cluster.py azure/tests/azure-cluster.yaml
 max_retries: 0
