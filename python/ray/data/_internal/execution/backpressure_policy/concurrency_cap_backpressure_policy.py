@@ -302,11 +302,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Step 4: cache & return with gentle downward response using EWMA_ALPHA
         prev_threshold = self._queue_thresholds[op]
 
-        # Idle/off allowed
-        if threshold == 0:
-            self._queue_thresholds[op] = 0
-            return 0
-
         # Bootstrap
         if prev_threshold == 0:
             self._queue_thresholds[op] = max(1, threshold)
