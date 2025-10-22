@@ -393,7 +393,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
   for (const auto &entry : ready_in_plasma) {
     ready->insert(entry);
   }
-  if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+  if (ctx.NotifyRayletWhenBlocked()) {
     RAY_RETURN_NOT_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
   return Status::OK();
