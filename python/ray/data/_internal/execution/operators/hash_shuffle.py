@@ -1097,6 +1097,17 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
             )
 
+            max_memory_per_aggregator = total_available_cluster_resources.memory / num_aggregators
+            # NOTE: Don't over subscribe the memory, because the total available resources
+            # can fluctuate between when this method is called, and when the actor is
+            # actually created and scheduled on a node.
+            modest_max_memory_per_aggregator = (max_memory_per_aggregator / 2)
+
+            estimated_aggregator_memory_required = min(
+                modest_max_memory_per_aggregator,
+                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
+            )
+
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
                 total_available_cluster_resources,
