@@ -101,7 +101,7 @@ class _CallableClassProtocol(Protocol[T, U]):
 UserDefinedFunction = Union[
     Callable[[T], U],
     Callable[[T], Iterator[U]],
-    "_CallableClassProtocol",
+    type["_CallableClassProtocol"],
 ]
 
 # A list of block references pending computation by a single task. For example,
