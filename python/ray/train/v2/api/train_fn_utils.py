@@ -133,16 +133,6 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
-
-    if _in_tune_session():
-        raise DeprecationWarning(
-            "`ray.train.get_context` is deprecated when running in a function "
-            "passed to Ray Tune. Please use `ray.tune.get_context` instead. "
-            "See this issue for more context: "
-            "https://github.com/ray-project/ray/issues/49454"
-        )
-
     return get_train_fn_utils().get_context()
 
 
@@ -191,16 +181,6 @@ def get_checkpoint() -> Optional["Checkpoint"]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
-    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
-
-    if _in_tune_session():
-        raise DeprecationWarning(
-            "`ray.train.get_checkpoint` is deprecated when running in a function "
-            "passed to Ray Tune. Please use `ray.tune.get_checkpoint` instead. "
-            "See this issue for more context: "
-            "https://github.com/ray-project/ray/issues/49454"
-        )
-
     return get_train_fn_utils().get_checkpoint()
 
 
