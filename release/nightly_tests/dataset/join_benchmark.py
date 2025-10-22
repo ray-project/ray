@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max_aggregators",
         required=True,
-        type=str,
+        type=int,
         help="Max number of hash shuffle aggregators",
     )
     return parser.parse_args()
