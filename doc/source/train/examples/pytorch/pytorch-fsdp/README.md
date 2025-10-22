@@ -170,7 +170,7 @@ def train_func(config):
     loaded_checkpoint = ray.train.get_checkpoint()
     if loaded_checkpoint:
         latest_epoch = load_fsdp_checkpoint(model, optimizer, loaded_checkpoint)
-        start_epoch = latest_epoch + 1 if latest_epoch else 0
+        start_epoch = latest_epoch + 1 if latest_epoch != None else 0
         logger.info(f"Resuming training from epoch {start_epoch}")
 
     # Prepare training data
@@ -486,7 +486,7 @@ import torch.distributed.checkpoint as dcp
 
 
 ```python
-def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint) -> int:
+def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint) -> int | None:
     """Load an FSDP checkpoint into the model and optimizer.
     
     This function handles distributed checkpoint loading with automatic resharding
