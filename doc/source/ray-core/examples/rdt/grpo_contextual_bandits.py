@@ -27,9 +27,7 @@ GRAD_CLIP_NORM = 1.0
 
 # GRPO algorithm parameters
 GROUP_SIZE = 8
-EMA_DECAY = 0.999
 PPO_CLIP_EPS = 0.5
-KL_COEFF = 0.1
 MAX_BUFFER_SIZE = 10000
 
 # Action space definition
@@ -232,28 +230,16 @@ class Learner:
         ratio = (new_logps - old_logps).exp()
         unclipped = ratio * advantages
         clipped = torch.clamp(ratio, 1 - PPO_CLIP_EPS, 1 + PPO_CLIP_EPS) * advantages
-        ppo_loss = -torch.min(unclipped, clipped).mean()
+        grpo_loss = -torch.min(unclipped, clipped).mean()
 
-        # Compute the KL divergence between the new policy and the reference policy.
-        with torch.no_grad():
-            ref_logits = self.ref_model(states)
-        kl = kl_divergence(Categorical(logits=ref_logits), dist_new).mean()
-
-        # Combine the PPO loss and KL divergence to prevent large policy updates.
-        loss = ppo_loss + KL_COEFF * kl
 
         # Update the policy network.
         self.optim.zero_grad()
-        loss.backward()
+        grpo_loss.backward()
         nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP_NORM)
         self.optim.step()
-        # Update the EMA teacher weights.
-        with torch.no_grad():
-            for p_ref, p in zip(self.ref_model.parameters(), self.model.parameters()):
-                # decay * old + (1 - decay) * new
-                p_ref.mul_(EMA_DECAY).add_(p.data, alpha=1.0 - EMA_DECAY)
         self.policy_version += 1
-        return loss.detach()
+        return grpo_loss.detach()
 
     def step(self) -> dict[str, Any]:
         """Perform one training step and return metrics."""
