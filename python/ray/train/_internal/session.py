@@ -128,6 +128,8 @@ class _TrainSession:
         detailed_autofilled_metrics: bool = False,
         storage: Optional[StorageContext] = None,
         synchronous_result_reporting: bool = False,
+        enable_jit_checkpoint: bool = False,
+        jit_checkpoint_kill_wait: float = 3.0,
     ):
         # `synchronous_result_reporting` refers to whether or not the
         # training function is immediately unblocked to continue running
@@ -174,6 +176,17 @@ class _TrainSession:
 
         self.accelerator = None
         self._state = {}
+
+        # Initialize JIT checkpoint handler if enabled
+        self.jit_checkpoint_handler = None
+        if enable_jit_checkpoint:
+            from ray.train._internal.jit_checkpoint import JITCheckpointHandler
+
+            self.jit_checkpoint_handler = JITCheckpointHandler(
+                train_session=self, kill_wait=jit_checkpoint_kill_wait
+            )
+            self.jit_checkpoint_handler.register_signal_handler()
+            logger.info("JIT checkpointing enabled for this training session")
 
     def get_state(self, key: str) -> Any:
         return self._state.get(key)
@@ -253,6 +266,10 @@ class _TrainSession:
 
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
+
+        # Cleanup JIT checkpoint handler if enabled
+        if self.jit_checkpoint_handler:
+            self.jit_checkpoint_handler.cleanup()
 
         # Force a final (blocking) sync of artifacts in the trial path to storage.
         self.storage.persist_artifacts(force=True)
@@ -450,6 +467,15 @@ class _TrainSession:
 
             metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
         else:
+            # Track iteration for JIT checkpoint resume (no checkpoint created)
+            # True JIT checkpointing only saves on SIGTERM, not on every train.report()
+            if os.getenv("RAY_TRAIN_JIT_CHECKPOINT_ENABLED", "").lower() == "true":
+                try:
+                    from ray.train.torch.jit_checkpoint_utils import _get_auto_jit_manager
+                    _get_auto_jit_manager().increment_iteration()
+                except Exception as e:
+                    logger.debug(f"Failed to increment iteration: {e}")
+            
             metrics[CHECKPOINT_DIR_NAME] = None
 
         # Persist trial artifacts to storage.

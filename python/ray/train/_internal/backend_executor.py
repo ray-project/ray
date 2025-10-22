@@ -465,6 +465,8 @@ class BackendExecutor:
         data_config: DataConfig,
         storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
+        enable_jit_checkpoint: bool = False,
+        jit_checkpoint_kill_wait: float = 3.0,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -496,6 +498,8 @@ class BackendExecutor:
             dataset_shard,
             metadata,
             storage,
+            enable_jit_checkpoint,
+            jit_checkpoint_kill_wait,
         ):
             try:
                 init_session(
@@ -511,6 +515,8 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     storage=storage,
+                    enable_jit_checkpoint=enable_jit_checkpoint,
+                    jit_checkpoint_kill_wait=jit_checkpoint_kill_wait,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -553,6 +559,8 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     storage=storage,
+                    enable_jit_checkpoint=enable_jit_checkpoint,
+                    jit_checkpoint_kill_wait=jit_checkpoint_kill_wait,
                 )
             )
 

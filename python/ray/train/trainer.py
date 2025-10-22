@@ -45,6 +45,8 @@ class TrainingIterator:
         metadata: Dict[str, Any],
         data_config: DataConfig,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
+        enable_jit_checkpoint: bool = False,
+        jit_checkpoint_kill_wait: float = 3.0,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
@@ -52,6 +54,8 @@ class TrainingIterator:
         self._datasets = datasets
         self._metadata = metadata
         self._data_config = data_config
+        self._enable_jit_checkpoint = enable_jit_checkpoint
+        self._jit_checkpoint_kill_wait = jit_checkpoint_kill_wait
 
         self._start_training(
             train_func=train_func,
@@ -86,6 +90,8 @@ class TrainingIterator:
                 data_config=data_config,
                 storage=storage,
                 checkpoint=checkpoint,
+                enable_jit_checkpoint=self._enable_jit_checkpoint,
+                jit_checkpoint_kill_wait=self._jit_checkpoint_kill_wait,
             )
         )
 

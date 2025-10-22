@@ -23,6 +23,7 @@ from ray.train._internal.session import get_checkpoint, get_dataset_shard, repor
 from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
 from ray.train.base_trainer import TrainingFailedError
+from ray.train.checkpoint_utils import get_checkpoint_start_epoch
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import TrainContext, get_context
 from ray.train.v2._internal.constants import is_v2_enabled
@@ -61,6 +62,7 @@ if is_v2_enabled():
 
 __all__ = [
     "get_checkpoint",
+    "get_checkpoint_start_epoch",
     "get_context",
     "get_dataset_shard",
     "report",
@@ -79,6 +81,7 @@ __all__ = [
 ]
 
 get_checkpoint.__module__ = "ray.train"
+get_checkpoint_start_epoch.__module__ = "ray.train"
 get_context.__module__ = "ray.train"
 get_dataset_shard.__module__ = "ray.train"
 report.__module__ = "ray.train"
