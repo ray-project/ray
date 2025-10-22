@@ -657,13 +657,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._total_shared = remaining
 
-    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        if op not in self._op_budgets:
-            return True
-        budget = self._op_budgets[op]
-        res = op.incremental_resource_usage().satisfies_limit(budget)
-        return res
-
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)
 
