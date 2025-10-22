@@ -1,17 +1,13 @@
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Deque, Iterable, List, Optional
+from typing import Deque, Iterable, List, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.execution.operators.map_operator import _TaskInput
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.types import ObjectRef
-
-if TYPE_CHECKING:  # pragma: no cover
-    from ray.data.block import Schema
-
 
 STREAMING_REPARTITION_SPEC_KEY = "streaming_repartition_spec"
 
