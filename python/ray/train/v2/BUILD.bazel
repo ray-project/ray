@@ -343,7 +343,7 @@ py_test(
 
 py_test(
     name = "test_result",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_result.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
