@@ -20,6 +20,11 @@ Local mode is particularly useful in the following scenarios:
 * **Development**: Iterate rapidly on your training function before scaling to distributed training.
 * **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to migrate from other frameworks.
 
+You can easily switch between Ray Train and local mode for debugging purposes with minimal code changes.
+Because every ``ray.train`` function has a local analogue, all you need to do is set ``num_workers=0`` 
+in your :class:`~ray.train.ScalingConfig` and your code runs without any other changes. This makes it 
+simple to debug your training logic locally before scaling to distributed training.
+
 .. note::
     In local mode, Ray Train itself doesn't launch any Ray actors, but your code may still launch
     other Ray actors if needed. Local mode works with both single-process and multi-process training
@@ -243,10 +248,6 @@ On the worker node:
         --rdzv_id=job_id \
         train_script.py
 
-.. note::
-    When using torchrun with local mode, Ray Data isn't supported. The training relies on standard
-    PyTorch data loading mechanisms.
-
 Using local mode with Ray Data
 -------------------------------
 
@@ -316,14 +317,55 @@ a unit test with local mode:
     if __name__ == "__main__":
         unittest.main()
 
-Limitations
------------
+Limitations and API differences
+--------------------------------
 
-Local mode has the following limitations:
+Local mode provides simplified implementations of Ray Train APIs to enable rapid debugging without distributed overhead. However, this means some features behave differently or aren't available.
 
-* **No Ray Train**: Local mode does not come with the benefits of Ray Train, such as worker-level fault tolerance.
-* **Ray Data limitations**: Ray Data isn't supported when using torchrun with local mode for multi-process training.
-* **Different behavior**: Some framework-specific behaviors might differ slightly from Ray Train's distributed mode.
+Ray Train features not available in local mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* **Worker-level fault tolerance**: Ray Train's automatic fault tolerance features, such as worker restart on failure, aren't available. If you configured :class:`~ray.train.FailureConfig`, the settings don't apply in local mode.
+* **Callbacks**: User-defined callbacks specified in :class:`~ray.train.RunConfig` aren't invoked in local mode.
+* **Ray Data with multi-process training**: Ray Data isn't supported when using torchrun with local mode for multi-process training. Use standard PyTorch data loading mechanisms instead.
+
+API behavior differences in local mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following ``ray.train`` APIs have different behavior in local mode:
+
+* :func:`ray.train.report`:
+
+  * Checkpoints aren't persisted to storage. They're only stored in memory.
+  * The ``checkpoint_upload_mode``, ``checkpoint_upload_fn``, ``validate_fn``, and ``delete_local_checkpoint_after_upload`` parameters have no effect.
+  * Metrics are logged locally instead of being sent through the reporting pipeline.
+  * No synchronization barrier across workers.
+
+* :func:`ray.train.get_checkpoint`:
+
+  * Returns the last checkpoint stored in memory from the current run.
+  * Doesn't load checkpoints from persistent storage.
+
+* :func:`ray.train.get_all_reported_checkpoints`:
+
+  * Always returns an empty list.
+  * Historical checkpoint tracking isn't available.
+
+* :func:`ray.train.collective.barrier`:
+
+  * No-op in single-process mode.
+  * In multi-process mode with torchrun, relies on PyTorch's distributed primitives.
+
+* :func:`ray.train.collective.broadcast_from_rank_zero`:
+
+  * Returns the data as-is in single-process mode without broadcasting.
+  * In multi-process mode with torchrun, relies on PyTorch's distributed primitives.
+
+* :meth:`ray.train.get_context().get_storage() <ray.train.TrainContext.get_storage>`:
+
+  * Raises ``NotImplementedError``.
+
+
 
 Transitioning from local mode to distributed training
 -----------------------------------------------------
