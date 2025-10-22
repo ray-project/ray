@@ -171,10 +171,7 @@ def test_cluster_token_authentication(tokens_match):
 
     finally:
         # Ensure cleanup
-        try:
-            ray.shutdown()
-        except:
-            pass
+        ray.shutdown()
         cluster.shutdown()
 
 
