@@ -33,6 +33,7 @@ class RayFossaPreprocessor:
     ]
     
     # Build tools that can be optionally included
+    # not used anywhere
     BUILD_TOOLS = [
         "protoc", "cmake", "ninja", "bazel", "python", "cython",
         "rules_foreign_cc", "rules_proto", "rules_cc"
@@ -122,7 +123,7 @@ class RayFossaPreprocessor:
         return False
     
     def is_excluded_target(self, target: str) -> bool:
-        """Check if target should be explicitly excluded"""
+        """Check if target should be explicitly excluded (non-C/C++ patterns)"""
         # Patterns to explicitly exclude (Python, JS, etc.)
         exclude_patterns = [
             'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
@@ -152,6 +153,24 @@ class RayFossaPreprocessor:
                     'dependency': dep,
                     'reason': 'bazel_internal',
                     'category': 'system'
+                })
+                continue
+            
+            # Skip Ray's own internal code
+            if dep.startswith('//src/ray/'):
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'ray_internal',
+                    'category': 'internal'
+                })
+                continue
+            
+            # Skip other internal Ray targets (except our deliverable targets)
+            if dep.startswith('//:') and not dep.startswith('//:gen_ray_pkg'):
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'ray_internal',
+                    'category': 'internal'
                 })
                 continue
             
