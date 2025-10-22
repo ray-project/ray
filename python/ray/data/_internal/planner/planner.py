@@ -103,6 +103,22 @@ def plan_join_op(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
+    """Plan a logical join operation to physical execution.
+
+    This function converts a logical Join operator to a physical JoinOperator
+    that can execute the join operation using hash-based shuffling and aggregation.
+
+    Args:
+        logical_op: The logical join operation to plan.
+        physical_children: List of physical operators for the left and right inputs.
+        data_context: Ray Data context for configuration and settings.
+
+    Returns:
+        Physical JoinOperator that can execute the join operation.
+
+    Raises:
+        AssertionError: If the number of physical children is not exactly 2.
+    """
     assert len(physical_children) == 2
     return JoinOperator(
         data_context=data_context,
