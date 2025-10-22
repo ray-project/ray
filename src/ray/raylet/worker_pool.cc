@@ -846,6 +846,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
+bool IsInternalNamespace(const std::string &ray_namespace) {
+  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
+}
+
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const StartupToken worker_startup_token = worker->GetStartupToken();
@@ -907,6 +911,13 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   const auto job_id = driver->GetAssignedJobId();
+  // A subset of the Ray Dashboard Modules are registered as drivers under an
+  // internal namespace. These are system processes and therefore, do not need to be moved
+  // into the workers cgroup.
+  if (!IsInternalNamespace(job_config.ray_namespace())) {
+    add_to_cgroup_hook_(std::to_string(driver->GetProcess().GetId()));
+  }
+
   HandleJobStarted(job_id, job_config);
 
   if (driver->GetLanguage() == Language::JAVA) {
@@ -1655,10 +1666,6 @@ bool WorkerPool::IsWorkerAvailableForScheduling() const {
     }
   }
   return false;
-}
-
-bool IsInternalNamespace(const std::string &ray_namespace) {
-  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
