@@ -87,7 +87,6 @@ class ReplayBuffer:
         self.total = 0
 
     def put(self, slice: TrajectorySlice) -> None:
-        # Note: Ray implicitly does a ray.get() when an actor calls another actor.
         self.storage.append((slice["policy_version"]), slice)
         self.total += slice["policy_version"]
 
@@ -115,8 +114,6 @@ class Scorer:
     """
 
     def __init__(self, replay_buffer) -> None:
-        # Actor methods execute one at a time, so we can stay synchronous while
-        # still keeping the driver fire-and-forget.
         self.replay_buffer = replay_buffer
         self.action_dirs = ACTION_DIRECTIONS.to("cuda")  # [ACTION_DIM, STATE_DIM]
 
@@ -131,19 +128,16 @@ class Scorer:
         # Ray delivers actor calls one-at-a-time, so doing the work inline keeps
         # ordering deterministic while maintaining a synchronous API surface.
         for i in range(states.shape[0]):
-            state = states[i].to("cuda")
-            sampled_actions = actions[i].to("cuda")
-            logps = old_logps[i].to("cuda")
 
             # Compute rewards on GPU: rewards = dot(state, unit_dir)
-            dirs = self.action_dirs[sampled_actions]  # [ACTION_DIM, STATE_DIM]
-            rewards = torch.mv(dirs, state)
+            dirs = self.action_dirs[actions[i]]  # [ACTION_DIM, STATE_DIM]
+            rewards = torch.mv(dirs, states[i])
 
             scored = TrajectorySlice(
                 policy_version=policy_version,
-                state=state.detach().cpu(),
-                actions=sampled_actions.detach().cpu(),
-                old_logps=logps.detach().cpu(),
+                state=states[i].detach().cpu(),
+                actions=actions[i].detach().cpu(),
+                old_logps=old_logps[i].detach().cpu(),
                 rewards=rewards.detach().cpu(),
             )
 
