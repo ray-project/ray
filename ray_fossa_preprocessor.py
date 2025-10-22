@@ -3,7 +3,7 @@
 Ray C/C++ Dependency Analyzer
 
 This script analyzes Ray's C/C++ dependencies and generates dependency reports.
-It handles Bazel's complex dependency structure, including external dependencies, patches,
+It handles Bazel's complex dependency structure, including external dependencies
 and custom C code.
 
 Usage:
@@ -53,7 +53,6 @@ class RayFossaPreprocessor:
         self.build_deps = {}
         self.runtime_deps = {}
         self.test_deps = {}
-        self.patches = {}
         self.custom_c_code = {}
         
     def run_bazel_query(self, target: str, depth: Optional[int] = None) -> List[str]:
@@ -220,38 +219,6 @@ class RayFossaPreprocessor:
         
         return all_dependencies
     
-    def analyze_patches(self) -> Dict[str, Any]:
-        """Analyze thirdparty/patches/ for license implications"""
-        patches_dir = self.ray_root / "thirdparty" / "patches"
-        patch_analysis = {}
-        
-        if not patches_dir.exists():
-            print("No patches directory found")
-            return patch_analysis
-        
-        for patch_file in patches_dir.glob("*.patch"):
-            patch_info = {
-                'file': str(patch_file),
-                'target': 'unknown',
-                'files_modified': [],
-                'license_impact': 'none',
-                'description': 'Unknown'
-            }
-            
-            # Try to determine target from filename
-            patch_name = patch_file.stem
-            if 'spdlog' in patch_name:
-                patch_info['target'] = 'com_github_spdlog'
-            elif 'grpc' in patch_name:
-                patch_info['target'] = 'com_github_grpc_grpc'
-            elif 'redis' in patch_name:
-                patch_info['target'] = 'com_github_antirez_redis'
-            # Add more mappings as needed
-            
-            patch_analysis[patch_file.name] = patch_info
-        
-        print(f"Analyzed {len(patch_analysis)} patch files")
-        return patch_analysis
     
     def scan_custom_c_code(self) -> Dict[str, Any]:
         """Scan src/ray/thirdparty/ for embedded C libraries"""
@@ -307,7 +274,6 @@ class RayFossaPreprocessor:
                 'test_dependencies': 0,
                 'compliance_required': 0
             },
-            'patches_analysis': self.patches,
             'custom_c_code': self.custom_c_code
         }
         
@@ -353,16 +319,12 @@ class RayFossaPreprocessor:
             self.build_deps[target] = [dep['name'] for dep in classified['build_only']]
             self.test_deps[target] = [dep['name'] for dep in classified['test_only']]
         
-        # Step 3: Analyze patches
-        print("\n3. Analyzing patches...")
-        self.patches = self.analyze_patches()
-        
-        # Step 4: Scan custom C code
-        print("\n4. Scanning custom C code...")
+        # Step 3: Scan custom C code
+        print("\n3. Scanning custom C code...")
         self.custom_c_code = self.scan_custom_c_code()
         
-        # Step 5: Generate outputs
-        print("\n5. Generating output files...")
+        # Step 4: Generate outputs
+        print("\n4. Generating output files...")
         self.generate_outputs()
         
         print("\nAnalysis complete!")
@@ -382,9 +344,6 @@ class RayFossaPreprocessor:
         with open(self.ray_root / 'test_dependencies.json', 'w') as f:
             json.dump(self.test_deps, f, indent=2)
         
-        with open(self.ray_root / 'patches_analysis.json', 'w') as f:
-            json.dump(self.patches, f, indent=2)
-        
         with open(self.ray_root / 'custom_c_analysis.json', 'w') as f:
             json.dump(self.custom_c_code, f, indent=2)
         
@@ -402,7 +361,6 @@ class RayFossaPreprocessor:
         print("  - build_dependencies.json")
         if self.include_test_deps:
             print("  - test_dependencies.json")
-        print("  - patches_analysis.json")
         print("  - custom_c_analysis.json")
         print("  - compliance_report.json")
         print("  - compliance_report.md")
@@ -444,7 +402,6 @@ class RayFossaPreprocessor:
 
 - `dependencies.json` - Complete dependency data
 - `runtime_dependencies.json` - Runtime dependencies only
-- `patches_analysis.json` - Patch impact analysis
 - `custom_c_analysis.json` - Custom C code analysis
 - `compliance_report.json` - Machine-readable report
 - `compliance_report.md` - Human-readable report
