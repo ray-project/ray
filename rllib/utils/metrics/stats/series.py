@@ -144,6 +144,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
+        # Implicitly may convert internal to list.
+        # That's ok because we don't want to evict items from the deque if we merge in this object's values.
         all_items = list(self.values) + list(all_items)
         self.values = all_items
 

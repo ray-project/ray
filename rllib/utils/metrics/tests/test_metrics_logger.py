@@ -283,8 +283,8 @@ def test_aggregate(root_logger):
     root_logger.aggregate([results1, results2])
 
     # Check merged results
-    # We expect 0.33 here because we calculate a "mean of means" which results in a bias towards the 0.5 logged at the root.
-    check(root_logger.peek("loss"), 0.33)
+    # We calculate a "mean of means" which results in a bias towards the 0.5 logged at the root.
+    check(root_logger.peek("loss"), (0.15 + 0.35 + 0.5) / 3)
 
 
 def test_throughput_tracking(root_logger, actors):
