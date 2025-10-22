@@ -608,11 +608,16 @@ def _run_many(
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
 
-        return client.deploy_applications(
+        handles = client.deploy_applications(
             built_apps,
             wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
             wait_for_applications_running=wait_for_applications_running,
         )
+
+        client.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+        return handles
 
 
 @PublicAPI(stability="stable")
