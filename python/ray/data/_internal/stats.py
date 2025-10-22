@@ -798,20 +798,20 @@ def _get_or_create_stats_actor():
 class _StatsManager:
     """A Class containing util functions that manage remote calls to _StatsActor.
 
-    This class collects stats from execution and iteration codepaths and keeps
-    track of the latest snapshot.
-
-    An instance of this class runs a single background thread that periodically
-    forwards the latest execution/iteration stats to the _StatsActor.
-
-    This thread will terminate itself after being inactive (meaning that there are
-    no active executors or iterators) for STATS_ACTOR_UPDATE_THREAD_INACTIVITY_LIMIT
-    iterations. After terminating, a new thread will start if more calls are made
-    to this class.
+    Ray Data updates metrics through the _StatsManager, and direct remote calls
+    to the _StatsActor is discouraged. Some functionalities provided by
+    _StatsManager:
+        - Format and update iteration metrics
+        - Format and update execution metrics
+        - Aggregate per node metrics
+        - Dataset registration (for grafana dashboard)
     """
 
-    # Interval for making remote calls to the _StatsActor.
-    STATS_ACTOR_UPDATE_INTERVAL_SECONDS = 5
+    # Interval for making execution remote calls to the _StatsActor.
+    UPDATE_EXECUTION_METRICS_INTERVAL_S = 5
+
+    # Interval for making iteration remote calls to the _StatsActor.
+    UPDATE_ITERATION_METRICS_INTERVAL_S = 5
 
     # After this many iterations of inactivity,
     # _StatsManager._update_thread will close itself.
@@ -827,21 +827,17 @@ class _StatsManager:
         self._stats_actor_handle: Optional[ActorHandle] = None
         self._stats_actor_cluster_id = None
 
-        # Last execution stats snapshots for all executing datasets
-        self._last_execution_stats = {}
-        # Last iteration stats snapshots for all running iterators
-        self._last_iteration_stats: Dict[
-            str, Tuple[Dict[str, str], "DatasetStats"]
-        ] = {}
         # Lock for updating stats snapshots
         self._stats_lock: threading.Lock = threading.Lock()
 
         # Interval for sending stats to _StatsActor
         self._execution_metrics_state = self._MetricState(
-            update_interval_s=5.0, last_updated=0.0
+            update_interval_s=_StatsManager.UPDATE_EXECUTION_METRICS_INTERVAL_S,
+            last_updated=0.0,
         )
         self._iteration_metrics_state = self._MetricState(
-            update_interval_s=5.0, last_updated=0.0
+            update_interval_s=_StatsManager.UPDATE_ITERATION_METRICS_INTERVAL_S,
+            last_updated=0.0,
         )
 
     def _get_or_create_stats_actor(
@@ -923,7 +919,9 @@ class _StatsManager:
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
             self._execution_metrics_state.last_updated = now
 
-    def update_iteration_metrics(self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False):
+    def update_iteration_metrics(
+        self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False
+    ):
         now = time.time()
         if (
             force_update
@@ -955,7 +953,6 @@ class _StatsManager:
         #       stale handle we force looking up the actor with Ray to determine if
         #       we should create a new one.
         stats_actor = self._get_or_create_stats_actor(skip_cache=True)
-
         stats_actor.register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
