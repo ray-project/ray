@@ -563,6 +563,9 @@ def test_stats_merge(
     # Create root stats
     root_stats = stats_class(**init_kwargs, is_root_stats=True)
     for value in root_values:
+        if stats_class == EmaStats:
+            # EmaStats does not allow pushing values and merging at the same time.
+            break
         root_stats.push(value)
 
     # Create first child stats
@@ -580,6 +583,20 @@ def test_stats_merge(
 
     # Check result
     check(root_stats.peek(), expected_result)
+
+
+def test_ema_stats_error_message():
+    """Test that EmaStats raises an error when pushing values and merging at the same time."""
+    incoming_stats = EmaStats(ema_coeff=0.01)
+
+    stats = EmaStats(ema_coeff=0.01)
+    stats.merge([incoming_stats])
+    stats.push(10)
+    with pytest.raises(ValueError, match="We can only merge OR push"):
+        stats.reduce()
+
+    with pytest.raises(ValueError, match="We can only merge OR push"):
+        stats.peek()
 
 
 if __name__ == "__main__":

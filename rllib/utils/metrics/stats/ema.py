@@ -24,15 +24,23 @@ class EmaStats(StatsBase):
     ):
         """Initializes a EmaStats instance.
 
-        Note the follwing limitation: That, when calling `EmaStats.merge()`, we take the
-        mean of the incoming means. This also means that merges replace the current value.
-        If you merge multiple times (for example during a single reduce cycle), the reduce will only reflect the last merge.
+        Note the follwing limitation: Since we calculate the EMA in parallel components and potentially merge them multiple
+        times in one reduce cycle, we need to store the incoming EMA from each merge and calculate the mean of EMAs after the reduce.
+        Note that the resulting mean of EMAs may differ significantly from the true mean, especially if some incoming EMAs are the result of few outliers.
+
+        Example to illustrate this limitation:
+        Using an ema coefficient of 0.01:
+        First incoming ema: [1, 2, 3, 4, 5] -> 1.1
+        Second incoming ema: [15] -> 15
+        Mean of both merged ema values: [1.1, 15] -> 8.05
+        True mean of all values: [1, 2, 3, 4, 5, 15] -> 5
 
         Args:
             ema_coeff: The EMA coefficient to use. Defaults to 0.01.
         """
         super().__init__(*args, **kwargs)
         self._value = np.nan
+        self._values_to_merge = []
         self._ema_coeff = ema_coeff
 
     def __len__(self) -> int:
@@ -52,7 +60,7 @@ class EmaStats(StatsBase):
         if len(all_values) == 0:
             return
 
-        self._value = np.nanmean(all_values)
+        self._values_to_merge.extend(all_values)
 
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
@@ -88,15 +96,31 @@ class EmaStats(StatsBase):
             # First value
             self._value = value
 
+    def _reduce_values_to_merge(self) -> float:
+        """Reduces the internal values to merge."""
+        if not np.isnan(self._value):
+            raise ValueError(
+                "We can only merge OR push at any given EmaStats instance. The most likely reason you are seeing this is because you are using EmaStats to log values in parallel components and also pushing values at the root where they are merged."
+            )
+
+        if torch and isinstance(self._values_to_merge[0], torch.Tensor):
+            stacked = torch.stack(list(self._values_to_merge))
+            return torch.nanmean(stacked)
+        return np.nanmean(self._values_to_merge)
+
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the current EMA value.
 
         If value is a GPU tensor, it's converted to CPU.
         """
-        value = self._value
+        if self._values_to_merge:
+            value = self._reduce_values_to_merge()
+        else:
+            value = self._value
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()
+
         return value if compile else [value]
 
     def reduce(self, compile: bool = True) -> Union[Any, "EmaStats"]:
@@ -104,7 +128,12 @@ class EmaStats(StatsBase):
 
         If value is a GPU tensor, it's converted to CPU.
         """
-        value = self._value
+        if self._values_to_merge:
+            value = self._reduce_values_to_merge()
+            self._values_to_merge = []
+        else:
+            value = self._value
+
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()

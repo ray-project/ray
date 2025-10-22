@@ -144,7 +144,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         all_items = [s.values for s in incoming_stats]
         all_items = list(chain.from_iterable(all_items))
-        all_items = list(self.values) + all_items
+        all_items = list(self.values) + list(all_items)
         self.values = all_items
 
     def peek(self, compile: bool = True) -> Union[Any, List[Any]]:

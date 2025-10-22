@@ -10,7 +10,19 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 class MeanStats(SeriesStats):
-    """A Stats object that tracks the mean of a series of values."""
+    """A Stats object that tracks the mean of a series of values.
+
+    Note the following limitation: When merging multiple MeanStats objects, the resulting mean is not the true mean of all values.
+    Instead, it is the mean of the means of the incoming MeanStats objects.
+    This is because we calculate the mean in parallel components and potentially merge them multiple times in one reduce cycle.
+    The resulting mean of means may differ significantly from the true mean, especially if some incoming means are the result of few outliers.
+
+    Example to illustrate this limitation:
+    First incoming mean: [1, 2, 3, 4, 5] -> 3
+    Second incoming mean: [15] -> 15
+    Mean of both merged means: [3, 15] -> 9
+    True mean of all values: [1, 2, 3, 4, 5, 15] -> 5
+    """
 
     stats_cls_identifier = "mean"
 

@@ -1671,6 +1671,7 @@ class Learner(Checkpointable):
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
                 value=module_batch_size,
+                reduce="mean",
             )
             # Log module steps (for each module).
             self.metrics.log_value(
@@ -1702,6 +1703,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
             batch.env_steps(),
             reduce="sum",
+            with_throughput=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),

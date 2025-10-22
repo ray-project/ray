@@ -116,18 +116,6 @@ def test_ema(root_logger, actors):
     check(root_logger.peek("default_ema"), 2.01)
     check(root_logger.peek("custom_ema"), 2.02)
 
-    # Log a series of values to `custom_ema` key and check if EMA approaches the expected value
-    values = [5.0] * 1000  # Actual mean is 5.0
-    expected = 2.02  # Initial value
-
-    for val in values:
-        root_logger.log_value("custom_ema", val)
-        # EMA formula: new_ema = (1 - ema_coeff) * old_ema + ema_coeff * new_value
-        expected = (1.0 - ema_coeff) * expected + ema_coeff * val
-        check(root_logger.peek("custom_ema"), expected)
-
-    check(expected, 5.0, atol=0.05)
-
 
 def test_windowed_reduction(root_logger, actors):
     """Test window-based reduction with various window sizes."""
@@ -295,8 +283,8 @@ def test_aggregate(root_logger):
     root_logger.aggregate([results1, results2])
 
     # Check merged results
-    # This should ignore the 0.5 value in `logger`
-    check(root_logger.peek("loss"), 0.25)
+    # We expect 0.33 here because we calculate a "mean of means" which results in a bias towards the 0.5 logged at the root.
+    check(root_logger.peek("loss"), 0.33)
 
 
 def test_throughput_tracking(root_logger, actors):
@@ -330,10 +318,10 @@ def test_throughput_tracking(root_logger, actors):
     time.sleep(0.1)
 
     end_time = time.perf_counter()
-    throughput = 26 / (end_time - start_time)
+    throughput = 36 / (end_time - start_time)
 
     root_logger.aggregate(metrics)
-    check(root_logger.peek("value"), 26)
+    check(root_logger.peek("value"), 36)
     check(root_logger.peek("value", throughput=True), throughput, rtol=0.1)
 
 

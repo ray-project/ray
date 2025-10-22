@@ -569,28 +569,6 @@ class MetricsLogger:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized
                     )
-            else:
-                # Clear existing values before merging to replicate replace=True behavior
-                if hasattr(own_stats, "_set_values"):
-                    # SeriesStats and PercentilesStats
-                    own_stats._set_values([])
-                elif hasattr(own_stats, "_value"):
-                    # EmaStats
-                    import numpy as np
-
-                    own_stats._value = np.nan
-                elif hasattr(own_stats, "items"):
-                    # ItemSeriesStats
-                    from collections import deque
-
-                    if own_stats._window:
-                        own_stats.items = deque(maxlen=own_stats._window)
-                    else:
-                        own_stats.items = deque()
-                elif hasattr(own_stats, "_item"):
-                    # ItemStats - no need to clear, merge will replace
-                    pass
-                # LifetimeSumStats doesn't need clearing as it accumulates
 
             own_stats.merge(incoming_stats=incoming_stats)
 
