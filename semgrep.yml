@@ -37,7 +37,6 @@ rules:
         - "python/ray/data/tests/test_arrow_serialization.py"
         - "python/ray/data/tests/test_block.py"
         - "python/ray/data/tests/test_hash_shuffle.py"
-        - "python/ray/data/tests/test_operator_fusion.py"
     languages:
       - python
     message: |
