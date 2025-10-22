@@ -166,7 +166,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Observe fresh queue size for this operator and its downstream.
         current_queue_size_bytes = (
             self._resource_manager.get_op_internal_object_store_usage(op)
-            + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+            + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
+                op
+            )
         )
 
         # Update short history and refresh the adaptive threshold.
