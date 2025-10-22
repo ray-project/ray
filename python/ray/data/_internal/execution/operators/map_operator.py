@@ -4,6 +4,7 @@ import itertools
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
@@ -65,6 +66,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _TaskInput:
+    bundle: RefBundle
+    task_kwargs: Optional[Dict[str, Any]] = None
+
+
 class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
@@ -117,6 +124,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
+        # Optional helper that can turn incoming ref bundles into ready-to-run
+        # task inputs (bundle + per-task kwargs).
+        self._task_input_builder = None
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
 
@@ -152,6 +162,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
+
+    def set_task_input_builder(self, builder: Optional[Any]) -> None:
+        self._task_input_builder = builder
 
     def internal_queue_size(self) -> int:
         return self._block_ref_bundler.num_bundles()
@@ -328,6 +341,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
 
+        if self._task_input_builder is not None:
+            self._metrics.on_input_queued(refs)
+            task_inputs: List[_TaskInput] = self._task_input_builder.add_input(refs)
+            self._metrics.on_input_dequeued(refs)
+            for task_input in task_inputs:
+                self._schedule_task_input(task_input)
+            return
+
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
@@ -380,8 +401,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
 
+    def _schedule_task_input(self, task_input: _TaskInput) -> None:
+        """Submit a ready-to-run task input produced by a task input builder."""
+        self._add_bundled_input(task_input.bundle, task_input.task_kwargs)
+
     @abstractmethod
-    def _add_bundled_input(self, refs: RefBundle):
+    def _add_bundled_input(
+        self, refs: RefBundle, task_kwargs: Optional[Dict[str, Any]] = None
+    ):
         """Add a pre-bundled upstream output to this operator.
 
         Unlike the add_input() arg, this RefBundle has already been further bundled by
@@ -392,6 +419,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
+            task_kwargs: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs through the `TaskContext.kwargs` dictionary.
         """
         raise NotImplementedError
 
@@ -469,6 +498,12 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
+        if self._task_input_builder is not None:
+            for task_input in self._task_input_builder.finish():
+                self._schedule_task_input(task_input)
+            super().all_inputs_done()
+            return
+
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
