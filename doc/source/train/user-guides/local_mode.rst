@@ -15,7 +15,7 @@ When to use local mode
 
 Local mode is particularly useful in the following scenarios:
 
-* **Isolated testing**: Test your training function without the Ray Train framework overhead, making it easier to locate issues in your training logic.
+* **Isolated testing**: Test your training function without the distributed complexity of Ray Train, making it easier to locate issues in your training logic.
 * **Unit testing**: Test your training logic quickly without the overhead of launching a Ray cluster.
 * **Development**: Iterate rapidly on your training function before scaling to distributed training.
 * **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to transfer from other frameworks.
