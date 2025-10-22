@@ -348,9 +348,8 @@ class DataContext:
         large_args_threshold: Size in bytes after which point task arguments are
             considered large. Choose a value so that the data transfer overhead is
             significant in comparison to task scheduling (i.e., low tens of ms).
-        use_polars_sort: Whether to use Polars for tabular dataset sorts, groupbys, and
+        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        use_polars_join: Whether to use Polars for join operations.
         eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
