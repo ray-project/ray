@@ -252,7 +252,7 @@ Using local mode with Ray Data
 -------------------------------
 
 Single-process local mode works seamlessly with Ray Data for data loading and preprocessing.
-The data is processed and provided to your training function without distributed workers.
+Ray Data processes your data and provides it to your training function without distributed workers.
 
 The following example shows how to use Ray Data with single-process local mode:
 
