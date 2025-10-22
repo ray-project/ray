@@ -181,8 +181,6 @@ void Metric::RecordForCython(double value,
   Record(value, std::move(tags_pair_vec));
 }
 
-Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
-
 void Gauge::RegisterOpenTelemetryMetric() {
   // Register the metric in OpenTelemetry.
   OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name_, description_);

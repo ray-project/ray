@@ -21,7 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet/worker.h"
+#include "ray/common/lease/lease.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {

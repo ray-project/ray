@@ -39,7 +39,7 @@ ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
 ci/docker/data9.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
-@ data ml train linux_wheels
+@ data ml train
 ;
 
 python/ray/workflow/
@@ -184,6 +184,7 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+.buildkite/bisect/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml

@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from dataclasses import replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,10 +13,15 @@ from freezegun import freeze_time
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
-from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    PhysicalOperator,
+)
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -25,7 +30,16 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorTaskSelector,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
+)
+from ray.data._internal.execution.streaming_executor_state import (
+    build_streaming_topology,
+    update_operator_states,
+)
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import Block, BlockMetadata
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -665,6 +679,86 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
             compute=ray.data.ActorPoolStrategy(size=5),
             num_gpus=100,
         ).take_all()
+
+
+def make_map_transformer(block_fn: Callable[[Block], Block]):
+    """Create a simple map transformer."""
+
+    def map_fn(block_iter):
+        for block in block_iter:
+            yield block_fn(block)
+
+    return MapTransformer([BlockMapTransformFn(map_fn)])
+
+
+class IdentityOperator(PhysicalOperator):
+    """A fake operator for testing."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._inputs = []
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        self._inputs.append(refs)
+
+    def has_next(self) -> bool:
+        return len(self._inputs) > 0
+
+    def _get_next_inner(self) -> RefBundle:
+        return self._inputs.pop(0)
+
+    def get_stats(self):
+        return {}
+
+
+def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_shared):
+    """Test that ``ActorPoolMapOperator`` reports completion when downstream finishes.
+
+    This is a regression test for a bug where ``ActorPoolMapOperator`` would not
+    mark itself as completed if it had unconsumed inputs in its internal queue,
+    even when its downstream operator had already finished execution. This would
+    cause the streaming executor to run until completion rather than stop early.
+
+    The bug occurred because ``ActorPoolMapOperator`` overrode the default
+    ``completed`` implementation and only considered itself completed if its input
+    queue was empty.
+    """
+    # SETUP: Create a simple topology: Upstream -> ActorPoolMap -> Downstream.
+    data_context = ray.data.DataContext.get_current()
+    upstream_op = IdentityOperator(
+        "Upstream", input_dependencies=[], data_context=data_context
+    )
+    actor_pool_map_op = ActorPoolMapOperator(
+        map_transformer=make_map_transformer(lambda block: block),
+        input_op=upstream_op,
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+    )
+    downstream_op = IdentityOperator(
+        "Downstream", input_dependencies=[actor_pool_map_op], data_context=data_context
+    )
+    topology = build_streaming_topology(downstream_op, ExecutionOptions())
+
+    # SETUP: Add a bundle to the upstream operator's external output queue. This is
+    # necessary to reproduce the bug where the actor pool operator wouldn't complete if
+    # there are inputs in its inqueue, even when its downstream operator completed.
+    block_ref = ray.ObjectRef(b"0" * ID_SIZE)
+    block_metadata = BlockMetadata(
+        num_rows=None, size_bytes=1, exec_stats=None, input_files=None
+    )
+    ref_bundle = RefBundle(
+        blocks=[(block_ref, block_metadata)], schema=None, owns_blocks=True
+    )
+    topology[upstream_op].add_output(ref_bundle)
+
+    # ACT: Mark the downstream operator as completed, and update the topology states.
+    downstream_op.mark_execution_finished()
+    update_operator_states(topology)
+
+    # ASSERT: Since the downstream operator has finished execution, the actor pool
+    # operator should consider itself completed.
+    assert actor_pool_map_op.completed()
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

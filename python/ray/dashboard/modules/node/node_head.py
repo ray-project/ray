@@ -39,6 +39,7 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
@@ -538,7 +539,7 @@ class NodeHead(SubprocessModule):
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await self._loop.run_in_executor(
-                    self._node_executor, json.loads, data
+                    self._node_executor, _parse_node_stats, data
                 )
 
                 node_id = key.split(":")[-1]
@@ -763,3 +764,13 @@ class NodeHead(SubprocessModule):
             task = self._loop.create_task(coro)
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
+
+
+def _parse_node_stats(node_stats_str: str) -> dict:
+    stats_dict = json.loads(node_stats_str)
+    if StatsPayload is not None:
+        # Validate the response by parsing the stats_dict.
+        StatsPayload.parse_obj(stats_dict)
+        return stats_dict
+    else:
+        return stats_dict

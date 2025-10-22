@@ -58,18 +58,18 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         super().__init__(benchmark_config)
 
     def _calculate_rows_per_worker(
-        self, total_rows: Optional[int], num_workers: int
+        self, total_rows: int, num_workers: int
     ) -> Optional[int]:
         """Calculate rows per worker for balanced data distribution.
 
         Args:
-            total_rows: Total rows to process across all workers
+            total_rows: Total rows to process across all workers (-1 for unlimited)
             num_workers: Total workers (Ray workers × Torch workers)
 
         Returns:
             Rows per worker or None if no limit. Each worker gets at least 1 row.
         """
-        if total_rows is None:
+        if total_rows < 0:
             return None
 
         if num_workers == 0:

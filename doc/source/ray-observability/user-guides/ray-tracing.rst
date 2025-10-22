@@ -15,9 +15,9 @@ First, install OpenTelemetry:
 
 .. code-block:: shell
 
-    pip install opentelemetry-api==1.1.0
-    pip install opentelemetry-sdk==1.1.0
-    pip install opentelemetry-exporter-otlp==1.1.0
+    pip install opentelemetry-api==1.34.1
+    pip install opentelemetry-sdk==1.34.1
+    pip install opentelemetry-exporter-otlp==1.34.1
 
 Tracing startup hook
 --------------------

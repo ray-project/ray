@@ -74,7 +74,6 @@ results = {
     "actors_per_second": rate,
     "num_actors": MAX_ACTORS_IN_CLUSTER,
     "time": end_time - start_time,
-    "success": "1",
     "_peak_memory": round(used_gb, 2),
     "_peak_process_memory": usage,
 }

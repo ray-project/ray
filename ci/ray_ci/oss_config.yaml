@@ -7,6 +7,7 @@ release_byod:
   byod_ecr_region: us-west-2
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  azure_cr: rayreleasetest.azurecr.io
   aws2gce_credentials: release/aws2gce_iam.json
 ci_pipeline:
   premerge:

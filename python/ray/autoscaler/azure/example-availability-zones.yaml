@@ -16,8 +16,6 @@ provider:
 
 auth:
   ssh_user: ubuntu
-  ssh_private_key: ~/.ssh/id_rsa
-  ssh_public_key: ~/.ssh/id_rsa.pub
 
 available_node_types:
   ray.head.default:
@@ -26,8 +24,8 @@ available_node_types:
       azure_arm_parameters:
         vmSize: Standard_D2s_v3
         imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-2004
-        imageSku: 2004-gen2
+        imageOffer: ubuntu-2204
+        imageSku: 2204-gen2
         imageVersion: latest
         # Head node: explicitly disable availability zones
         availability_zone: "none"
@@ -39,8 +37,8 @@ available_node_types:
       azure_arm_parameters:
         vmSize: Standard_D2s_v3
         imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-2004
-        imageSku: 2004-gen2
+        imageOffer: ubuntu-2204
+        imageSku: 2204-gen2
         imageVersion: latest
         # Workers will use provider specified availability zones
   ray.worker.specific_zone:
@@ -51,8 +49,8 @@ available_node_types:
       azure_arm_parameters:
         vmSize: Standard_D2s_v3
         imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-2004
-        imageSku: 2004-gen2
+        imageOffer: ubuntu-2204
+        imageSku: 2204-gen2
         imageVersion: latest
         # Workers will use availability zone 2 only (overrides provider setting)
         availability_zone: "2"
@@ -69,8 +67,4 @@ setup_commands:
 file_mounts_sync_continuously: False
 
 file_mounts: {
-    "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
-
-head_setup_commands:
-- pip install azure-core==1.35.0 azure-identity==1.23.1 azure-mgmt-compute==35.0.0 azure-mgmt-network==29.0.0 azure-mgmt-resource==24.0.0 azure-common==1.1.28 msrest==0.7.1 msrestazure==0.6.4.post1

@@ -1,22 +1,22 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Optional, Type
 
 from ray._common.deprecation import Deprecated
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
-
-# For backward compatibility
-from ray.llm._internal.serve.deployments.llm.llm_server import (
-    LLMServer as _LLMServer,
-)
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -161,7 +161,7 @@ def build_llm_deployment(
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+    from ray.llm._internal.serve.core.server.builder import (
         build_llm_deployment,
     )
 
@@ -175,9 +175,7 @@ def build_llm_deployment(
 
 
 @PublicAPI(stability="alpha")
-def build_openai_app(
-    llm_serving_args: Union["LLMServingArgs", Dict[str, Any]]
-) -> "Application":
+def build_openai_app(llm_serving_args: dict) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
@@ -269,17 +267,16 @@ def build_openai_app(
 
 
     Args:
-        llm_serving_args: Either a dict with "llm_configs" key containing a list of
-            LLMConfig objects, or an LLMServingArgs object.
+        llm_serving_args: A dict that conforms to the LLMServingArgs pydantic model.
 
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    from ray.llm._internal.serve.core.ingress.builder import (
         build_openai_app,
     )
 
-    return build_openai_app(llm_serving_args=llm_serving_args)
+    return build_openai_app(builder_config=llm_serving_args)
 
 
 @PublicAPI(stability="alpha")
@@ -360,16 +357,16 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
 
 
     Args:
-        pd_serving_args: The dictionary containing prefill and decode configs.
+        pd_serving_args: The dictionary containing prefill and decode configs. See PDServingArgs for more details.
 
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.prefill_decode_disagg.prefill_decode_disagg import (
-        build_pd_openai_app as _build_pd_openai_app,
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+        build_pd_openai_app,
     )
 
-    return _build_pd_openai_app(pd_serving_args=pd_serving_args)
+    return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
 __all__ = [

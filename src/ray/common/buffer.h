@@ -16,10 +16,9 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <functional>
+#include <cstring>
 #include <memory>
 
-#include "ray/common/status.h"
 #include "ray/thirdparty/aligned_alloc.h"
 #include "ray/util/logging.h"
 
@@ -30,6 +29,8 @@ namespace ray {
 /// The interface that represents a buffer of bytes.
 class Buffer {
  public:
+  Buffer() = default;
+
   /// Pointer to the data.
   virtual uint8_t *Data() const = 0;
 
@@ -41,7 +42,10 @@ class Buffer {
 
   virtual bool IsPlasmaBuffer() const = 0;
 
-  virtual ~Buffer(){};
+  virtual ~Buffer() = default;
+
+  Buffer(const Buffer &) = delete;
+  Buffer &operator=(const Buffer &) = delete;
 
   bool operator==(const Buffer &rhs) const {
     if (this->Size() != rhs.Size()) {
@@ -82,10 +86,11 @@ class LocalMemoryBuffer : public Buffer {
   }
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
-  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));
+  explicit LocalMemoryBuffer(size_t size)
+      : size_(size),
+        has_data_copy_(true),
+        buffer_(reinterpret_cast<uint8_t *>(aligned_malloc(size_, BUFFER_ALIGNMENT))) {
     data_ = buffer_;
-    size_ = size;
   }
 
   uint8_t *Data() const override { return data_; }
@@ -96,19 +101,17 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() {
+  ~LocalMemoryBuffer() override {
     size_ = 0;
-    if (buffer_ != NULL) {
+    if (buffer_ != nullptr) {
       aligned_free(buffer_);
     }
   }
 
- private:
-  /// Disable copy constructor and assignment, as default copy will
-  /// cause invalid data_.
   LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
+ private:
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.
@@ -116,7 +119,7 @@ class LocalMemoryBuffer : public Buffer {
   /// Whether this buffer holds a copy of data.
   bool has_data_copy_ = false;
   /// This is only valid when `should_copy` is true.
-  uint8_t *buffer_ = NULL;
+  uint8_t *buffer_ = nullptr;
 };
 
 /// Represents a byte buffer in shared memory.
@@ -131,15 +134,11 @@ class SharedMemoryBuffer : public Buffer {
   ///
   /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
-  SharedMemoryBuffer(uint8_t *data, size_t size) {
-    data_ = data;
-    size_ = size;
-  }
+  SharedMemoryBuffer(uint8_t *data, size_t size) : data_(data), size_(size) {}
 
   /// Make a slice.
   SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size)
-      : size_(size), parent_(buffer) {
-    data_ = buffer->Data() + offset;
+      : data_(buffer->Data() + offset), size_(size), parent_(buffer) {
     RAY_CHECK(size_ <= parent_->Size());
   }
 
@@ -157,14 +156,12 @@ class SharedMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return true; }
 
-  ~SharedMemoryBuffer() = default;
+  ~SharedMemoryBuffer() override = default;
 
- private:
-  /// Disable copy constructor and assignment, as default copy will
-  /// cause invalid data_.
   SharedMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   SharedMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
+ private:
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.

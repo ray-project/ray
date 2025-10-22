@@ -248,6 +248,8 @@ your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` w
     :start-after: __checkpoint_upload_mode_sync_start__
     :end-before: __checkpoint_upload_mode_sync_end__
 
+.. _train-checkpoint-upload-mode-async:
+
 Asynchronous checkpoint uploading
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -256,11 +258,18 @@ the next training step can start in parallel. If so, you should use
 ``ray.train.CheckpointUploadMode.ASYNC``, which kicks off a new thread
 to upload the checkpoint. This is helpful for larger
 checkpoints that might take longer to upload, but might add unnecessary
-complexity if you want to immediately upload only a small checkpoint.
+complexity (see below) if you want to immediately upload only a small checkpoint.
 
 Each ``report`` blocks until the previous ``report``\'s checkpoint
 upload completes before starting a new checkpoint upload thread. Ray Train does this
 to avoid accumulating too many upload threads and potentially running out of memory.
+
+Because ``report`` returns without waiting for the checkpoint upload to complete,
+you must ensure that the local checkpoint directory stays alive until the checkpoint
+upload completes. This means you can't use a temporary directory that Ray Train may
+delete before the upload finishes, for example from ``tempfile.TemporaryDirectory``.
+``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
+defaults to ``True`` if ``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -278,14 +287,46 @@ Custom checkpoint uploading
 :func:`~ray.train.report` defaults to uploading from disk to the remote ``storage_path``
 with the PyArrow filesystem copying utilities before reporting the checkpoint to Ray Train.
 If you would rather upload the checkpoint manually or with a third-party library
-such as `Torch Distributed Checkpointing <https://docs.pytorch.org/docs/stable/distributed.checkpoint.html>`_, you can first upload the checkpoint to
-the ``storage_path`` and then report a reference to the uploaded checkpoint with
-``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+such as `Torch Distributed Checkpointing <https://docs.pytorch.org/docs/stable/distributed.checkpoint.html>`_,
+you have the following options:
 
-.. literalinclude:: ../doc_code/checkpoints.py
-    :language: python
-    :start-after: __checkpoint_upload_mode_no_upload_start__
-    :end-before: __checkpoint_upload_mode_no_upload_end__
+.. tab-set::
+
+    .. tab-item:: Synchronous
+
+        If you want to upload the checkpoint synchronously, you can first upload the checkpoint
+        to the ``storage_path``and then report a reference to the uploaded checkpoint with
+        ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_mode_no_upload_start__
+            :end-before: __checkpoint_upload_mode_no_upload_end__
+
+    .. tab-item:: Asynchronous
+
+        If you want to upload the checkpoint asynchronously, you can set ``checkpoint_upload_mode``
+        to ``ray.train.CheckpointUploadMode.ASYNC`` and pass a ``checkpoint_upload_fn`` to
+        ``ray.train.report``. This function takes the ``Checkpoint`` and ``checkpoint_dir_name``
+        passed to ``ray.train.report`` and returns the persisted ``Checkpoint``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_function_start__
+            :end-before: __checkpoint_upload_function_end__
+
+        .. warning::
+
+            In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
+            lead to unexpected behavior. You should also avoid collective operations, such as
+            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
+
+        .. note::
+
+            Do not pass a ``checkpoint_upload_fn`` with ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD``
+            because Ray Train will simply ignore ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
+            ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.SYNC``, but this is equivalent to uploading the
+            checkpoint yourself and reporting the checkpoint with ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
 .. _train-dl-configure-checkpoints:
 
@@ -307,7 +348,6 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     If you want to save the top ``num_to_keep`` checkpoints with respect to a metric via
     :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
-
 
 
 Using checkpoints after training

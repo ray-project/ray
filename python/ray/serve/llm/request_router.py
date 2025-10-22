@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.request_router.prefix_aware.prefix_aware_router import (
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter as _PrefixCacheAffinityRouter,
 )
 from ray.util.annotations import PublicAPI

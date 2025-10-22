@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
-from ray._raylet import GcsClient
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JobInfoStorageClient,
@@ -178,7 +178,7 @@ async def get_driver_jobs(
     submission_job_drivers = {}
     for job_table_entry in sorted_job_infos:
         if job_table_entry.config.ray_namespace.startswith(
-            ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+            RAY_INTERNAL_NAMESPACE_PREFIX
         ):
             # Skip jobs in any _ray_internal_ namespace
             continue

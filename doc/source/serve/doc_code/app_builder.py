@@ -1,6 +1,8 @@
 # flake8: noqa
 
 # __begin_untyped_builder__
+# hello.py
+
 from typing import Dict
 
 from ray import serve
@@ -30,6 +32,8 @@ resp = requests.get("http://localhost:8000")
 assert resp.text == "Hello bar"
 
 # __begin_typed_builder__
+# hello.py
+
 from pydantic import BaseModel
 
 from ray import serve

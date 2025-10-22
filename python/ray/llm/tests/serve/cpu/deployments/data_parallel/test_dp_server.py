@@ -3,8 +3,8 @@ from copy import deepcopy
 
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import LLMConfig
-from ray.llm._internal.serve.deployments.data_parallel.dp_server import DPServer
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 
 
 class TestGetDeploymentOptions:

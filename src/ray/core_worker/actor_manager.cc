@@ -119,6 +119,16 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
+    const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actor_handles_.find(actor_id);
+  if (it != actor_handles_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -203,7 +213,7 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+  if (!reference_counter_.AddObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
     RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);

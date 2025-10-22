@@ -72,6 +72,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -98,6 +99,7 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
         """
@@ -113,28 +115,14 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
         )
-        self._ray_actor_task_remote_args = {}
-        actor_task_errors = self.data_context.actor_task_retry_on_errors
-        if actor_task_errors:
-            self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
-        _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-
-        if (
-            "_generator_backpressure_num_objects"
-            not in self._ray_actor_task_remote_args
-            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
-        ):
-            # The `_generator_backpressure_num_objects` parameter should be
-            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
-            # 2 objects for each block: the block and the block metadata.
-            self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
-                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
-            )
 
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
+        )
+        self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
+            ray_actor_task_remote_args, self.data_context
         )
 
         per_actor_resource_usage = ExecutionResources(
@@ -182,19 +170,39 @@ class ActorPoolMapOperator(MapOperator):
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
 
+    @staticmethod
+    def _apply_default_actor_task_remote_args(
+        ray_actor_task_remote_args: Optional[Dict[str, Any]], data_context: DataContext
+    ) -> Dict[str, Any]:
+        """Apply defaults to the actor task remote args."""
+        if ray_actor_task_remote_args is None:
+            ray_actor_task_remote_args = {}
+
+        ray_actor_task_remote_args = ray_actor_task_remote_args.copy()
+
+        actor_task_errors = data_context.actor_task_retry_on_errors
+        if actor_task_errors:
+            ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
+        _add_system_error_to_retry_exceptions(ray_actor_task_remote_args)
+
+        if (
+            "_generator_backpressure_num_objects" not in ray_actor_task_remote_args
+            and data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
+            # The `_generator_backpressure_num_objects` parameter should be
+            # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
+            # 2 objects for each block: the block and the block metadata.
+            ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
+                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+            )
+
+        return ray_actor_task_remote_args
+
     def internal_queue_size(self) -> int:
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
         return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
-
-    def completed(self) -> bool:
-        # TODO separate marking as completed from the check
-        return (
-            self._inputs_complete
-            and self._bundle_queue.is_empty()
-            and super().completed()
-        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -527,7 +535,7 @@ class _MapWorker:
         src_fn_name: str,
         map_transformer: MapTransformer,
         logical_actor_id: str,
-        actor_location_tracker: ActorLocationTracker,
+        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer

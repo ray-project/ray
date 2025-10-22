@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 
 namespace ray {
 

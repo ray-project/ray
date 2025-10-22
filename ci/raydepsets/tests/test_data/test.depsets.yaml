@@ -51,17 +51,12 @@ depsets:
     output: requirements_compiled_expand_general.txt
     build_arg_sets:
       - py311_cpu
-  - name: pre_hook_test_depset
-    operation: compile
+  - name: nested_expand_depset__py311_cpu
+    operation: expand
     requirements:
-      - requirements_test.txt
-    output: requirements_compiled_pre_hook.txt
-    pre_hooks:
-      - pre-hook-test.sh
-  - name: pre_hook_invalid_test_depset
-    operation: compile
-    requirements:
-      - requirements_test.txt
-    output: requirements_compiled_pre_hook.txt
-    pre_hooks:
-      - pre-hook-error-test.sh
+      - requirements_compiled_test_expand.txt
+    depsets:
+      - expand_general_depset__py311_cpu
+    constraints:
+      - requirement_constraints_expand.txt
+    output: requirements_compiled_nested_expand.txt

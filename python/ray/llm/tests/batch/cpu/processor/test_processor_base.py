@@ -198,6 +198,8 @@ class TestBuilderKwargsValidation:
             config: ProcessorConfig,
             preprocess=None,
             postprocess=None,
+            preprocess_map_kwargs=None,
+            postprocess_map_kwargs=None,
             custom_kwarg=None,
             another_kwarg=None,
         ) -> Processor:
@@ -211,7 +213,12 @@ class TestBuilderKwargsValidation:
                 )
             ]
             processor = Processor(
-                config, stages, preprocess=preprocess, postprocess=postprocess
+                config,
+                stages,
+                preprocess=preprocess,
+                postprocess=postprocess,
+                preprocess_map_kwargs=preprocess_map_kwargs,
+                postprocess_map_kwargs=postprocess_map_kwargs,
             )
             return processor
 
@@ -357,6 +364,118 @@ class TestProcessorConfig:
     def test_with_tuple_concurrency(self, pair):
         conf = ProcessorConfig(concurrency=pair)
         assert conf.get_concurrency() == pair
+
+
+class TestMapKwargs:
+    """Tests for preprocess_map_kwargs and postprocess_map_kwargs."""
+
+    def test_map_kwargs_stored_in_processor(self):
+        """Test that map kwargs are correctly stored in Processor."""
+        preprocess_kwargs = {"num_cpus": 0.5}
+        postprocess_kwargs = {"num_cpus": 0.25, "memory": 1024}
+
+        processor = Processor(
+            config=ProcessorConfig(batch_size=64),
+            stages=[],
+            preprocess=lambda row: {"val": row["id"]},
+            postprocess=lambda row: {"result": row["val"]},
+            preprocess_map_kwargs=preprocess_kwargs,
+            postprocess_map_kwargs=postprocess_kwargs,
+        )
+
+        assert processor.preprocess_map_kwargs == preprocess_kwargs
+        assert processor.postprocess_map_kwargs == postprocess_kwargs
+
+    def test_map_kwargs_defaults_to_empty_dict(self):
+        """Test that map kwargs default to empty dict when None."""
+        processor = Processor(
+            config=ProcessorConfig(batch_size=64),
+            stages=[],
+        )
+
+        assert processor.preprocess_map_kwargs == {}
+        assert processor.postprocess_map_kwargs == {}
+
+    def test_map_kwargs_passthrough_via_builder(self):
+        """Test that map kwargs are passed through ProcessorBuilder."""
+
+        def build_processor_simple(
+            config: ProcessorConfig,
+            preprocess=None,
+            postprocess=None,
+            preprocess_map_kwargs=None,
+            postprocess_map_kwargs=None,
+        ) -> Processor:
+            return Processor(
+                config,
+                [],
+                preprocess=preprocess,
+                postprocess=postprocess,
+                preprocess_map_kwargs=preprocess_map_kwargs,
+                postprocess_map_kwargs=postprocess_map_kwargs,
+            )
+
+        ProcessorBuilder.clear_registry()
+        ProcessorBuilder.register(DummyProcessorConfig, build_processor_simple)
+
+        config = DummyProcessorConfig(batch_size=64)
+        # Test through ProcessorBuilder which is called by build_llm_processor
+        processor = ProcessorBuilder.build(
+            config,
+            preprocess=lambda row: {"val": row["id"]},
+            postprocess=lambda row: {"result": row["val"]},
+            preprocess_map_kwargs={"num_cpus": 0.5},
+            postprocess_map_kwargs={"num_cpus": 0.25},
+        )
+
+        assert processor.preprocess_map_kwargs == {"num_cpus": 0.5}
+        assert processor.postprocess_map_kwargs == {"num_cpus": 0.25}
+
+    def test_builder_kwargs_conflict_with_map_kwargs(self):
+        """Test that builder_kwargs validation rejects map kwargs."""
+        # Test the validation that build_llm_processor calls
+        with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
+            ProcessorBuilder.validate_builder_kwargs(
+                {"preprocess_map_kwargs": {"num_cpus": 0.5}}
+            )
+
+        with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
+            ProcessorBuilder.validate_builder_kwargs(
+                {"postprocess_map_kwargs": {"num_cpus": 0.5}}
+            )
+
+    def test_end_to_end_with_map_kwargs(self):
+        """Test end-to-end execution with map kwargs."""
+        processor = Processor(
+            config=ProcessorConfig(batch_size=64),
+            stages=[],
+            preprocess=lambda row: {"val": row["id"] * 2},
+            postprocess=lambda row: {"result": row["val"] + 1, "id": row["id"]},
+            preprocess_map_kwargs={"num_cpus": 0.5},
+            postprocess_map_kwargs={"num_cpus": 0.25},
+        )
+
+        ds = ray.data.range(5)
+        result = processor(ds).take_all()
+
+        for row in result:
+            # Verify the computation: val = id * 2, result = val + 1
+            assert row["result"] == row["id"] * 2 + 1
+
+    def test_backward_compatibility_without_map_kwargs(self):
+        """Test that existing code without map kwargs still works."""
+        processor = Processor(
+            config=ProcessorConfig(batch_size=64),
+            stages=[],
+            preprocess=lambda row: {"val": row["id"]},
+            postprocess=lambda row: {"result": row["val"]},
+        )
+
+        ds = ray.data.range(5)
+        result = processor(ds).take_all()
+
+        for i, row in enumerate(result):
+            assert row["result"] == i
 
 
 if __name__ == "__main__":

@@ -289,7 +289,7 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def fetch_object(
+    def _fetch_object(
         self,
         obj_id: str,
         tensor_transport: TensorTransportEnum = TensorTransportEnum.OBJECT_STORE,
@@ -512,7 +512,7 @@ class GPUObjectManager:
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self.fetch_object(object_id, tensor_transport)
+            self._fetch_object(object_id, tensor_transport)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
@@ -531,9 +531,8 @@ class GPUObjectManager:
 
     def free_object_primary_copy(self, object_id: str):
         """
-        Free the primary copy of the GPU object. Expected to be idempotent when called from
-        free_actor_object_callback because the primary copy holder should always only have one ref
-        in the deque.
+        Free the RDT object on the primary copy holder and free metadata
+        on the owner.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_free__,
@@ -547,6 +546,10 @@ class GPUObjectManager:
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
             )
+            # NOTE: This may have to change if we support lineage reconstruction for RDT
+            # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
+            # the NIXL ray.put / ray.get
+            self.managed_gpu_object_metadata.pop(object_id, None)
         except Exception as e:
             logger.error(
                 "Something went wrong while freeing the RDT object!", exc_info=e

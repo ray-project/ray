@@ -31,6 +31,10 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
                rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                const std::string &scheduling_failure_message),
               (override));
+  MOCK_METHOD(std::vector<std::shared_ptr<internal::Work>>,
+              CancelLeasesWithoutReply,
+              (std::function<bool(const std::shared_ptr<internal::Work> &)> predicate),
+              (override));
   MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,
                                          std::deque<std::shared_ptr<internal::Work>>> &),
               GetLeasesToGrant,

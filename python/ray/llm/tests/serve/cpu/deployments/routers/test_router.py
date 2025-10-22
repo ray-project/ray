@@ -6,15 +6,15 @@ import openai
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
 
@@ -166,50 +166,6 @@ class TestOpenAiIngress:
             role = response.choices[0].message.role
 
         assert text
-
-    def test_ingress_with_num_ingress_replicas_config(self):
-        """Test the ingress with num_ingress_replicas config."""
-        # Test with no num_ingress_replicas config.
-        llm_configs = [
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-            )
-        ]
-
-        ingress_options = OpenAiIngress.get_deployment_options(llm_configs=llm_configs)
-        ingress_deployment = serve.deployment(OpenAiIngress, **ingress_options)
-        autoscaling_config = ingress_deployment._deployment_config.autoscaling_config
-        assert autoscaling_config.min_replicas == 2
-        assert autoscaling_config.initial_replicas == 2
-        assert autoscaling_config.max_replicas == 2
-
-        # Test with num_ingress_replicas config on multiple llm configs.
-        llm_configs = [
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-                experimental_configs={
-                    "num_ingress_replicas": 3,
-                },
-            ),
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-                experimental_configs={
-                    "num_ingress_replicas": 5,
-                },
-            ),
-        ]
-        ingress_options = OpenAiIngress.get_deployment_options(llm_configs=llm_configs)
-        ingress_deployment = serve.deployment(OpenAiIngress, **ingress_options)
-        autoscaling_config = ingress_deployment._deployment_config.autoscaling_config
-        assert autoscaling_config.min_replicas == 5
-        assert autoscaling_config.initial_replicas == 5
-        assert autoscaling_config.max_replicas == 5
 
     @pytest.mark.asyncio
     async def test_check_health(self, llm_config: LLMConfig):

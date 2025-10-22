@@ -2,70 +2,49 @@
 
 # Serving LLMs
 
-Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
+Ray Serve LLM provides a high-performance, scalable framework for deploying Large Language Models (LLMs) in production. It specializes Ray Serve primitives for distributed LLM serving workloads, offering enterprise-grade features with OpenAI API compatibility.
+
+## Why Ray Serve LLM?
+
+Ray Serve LLM excels at highly distributed multi-node inference workloads:
+
+- **Advanced parallelism strategies**: Seamlessly combine pipeline parallelism, tensor parallelism, expert parallelism, and data parallel attention for models of any size.
+- **Prefill-decode disaggregation**: Separates and optimizes prefill and decode phases independently for better resource utilization and cost efficiency.
+- **Custom request routing**: Implements prefix-aware, session-aware, or custom routing logic to maximize cache hits and reduce latency.
+- **Multi-node deployments**: Serves massive models that span multiple nodes with automatic placement and coordination.
+- **Production-ready**: Has built-in autoscaling, monitoring, fault tolerance, and observability.
 
 ## Features
 
 - ⚡️ Automatic scaling and load balancing
 - 🌐 Unified multi-node multi-model deployment
-- 🔌 OpenAI compatible
+- 🔌 OpenAI-compatible API
 - 🔄 Multi-LoRA support with shared base models
-- 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
+- 🚀 Engine-agnostic architecture (vLLM, SGLang, etc.)
+- 📊 Built-in metrics and Grafana dashboards
+- 🎯 Advanced serving patterns (PD disaggregation, data parallel attention)
 
 ## Requirements
 
 ```bash
-pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
-
-# Suggested dependencies when using vllm 0.7.2:
-pip install xgrammar==0.1.11 pynvml==12.0.0
+pip install ray[serve,llm]
 ```
-
-## Key Components
-
-The ray.serve.llm module provides two key deployment types for serving LLMs:
-
-### LLMServer
-
-The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
-
-### OpenAiIngress
-
-This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
-
-- `/v1/chat/completions`: Chat interface (ChatGPT-style)
-- `/v1/completions`: Text completion
-- `/v1/embeddings`: Text embeddings
-- `/v1/score`: Text comparison
-- `/v1/models`: List available models
-- `/v1/models/{model}`: Model information
-
-## Configuration
-
-### LLMConfig
-
-The LLMConfig class specifies model details such as:
-
-- Model loading sources (HuggingFace or cloud storage)
-- Hardware requirements (accelerator type)
-- Engine arguments (e.g. vLLM engine kwargs)
-- LoRA multiplexing configuration
-- Serve auto-scaling parameters
 
 ```{toctree}
 :hidden:
 
 Quickstart <quick-start>
-Prefill/Decode Disaggregation <pd-dissagregation>
-Cache-aware request routing <prefix-aware-request-router>
+Examples <examples>
+User Guides <user-guides/index>
+Architecture <architecture/index>
+Benchmarks <benchmarks>
+Troubleshooting <troubleshooting>
 ```
 
-## Examples
+## Next steps
 
-- {doc}`Deploy a small-sized LLM <../tutorials/deployment-serve-llm/small-size-llm/README>`
-- {doc}`Deploy a medium-sized LLM <../tutorials/deployment-serve-llm/medium-size-llm/README>`
-- {doc}`Deploy a large-sized LLM <../tutorials/deployment-serve-llm/large-size-llm/README>`
-- {doc}`Deploy a vision LLM <../tutorials/deployment-serve-llm/vision-llm/README>`
-- {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
-- {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
-- {doc}`Deploy gpt-oss <../tutorials/deployment-serve-llm/gpt-oss/README>`
+- {doc}`Quickstart <quick-start>` - Deploy your first LLM with Ray Serve
+- {doc}`Examples <examples>` - Production-ready deployment tutorials
+- {doc}`User Guides <user-guides/index>` - Practical guides for advanced features
+- {doc}`Architecture <architecture/index>` - Technical design and implementation details
+- {doc}`Troubleshooting <troubleshooting>` - Common issues and solutions

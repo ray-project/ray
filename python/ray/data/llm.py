@@ -368,6 +368,8 @@ def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     builder_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Build a LLM processor using the given config.
@@ -383,6 +385,12 @@ def build_llm_processor(
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage. Useful for controlling resources (e.g., num_cpus=0.5)
+            and concurrency independently of the main LLM stage.
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage. Useful for controlling resources (e.g., num_cpus=0.25)
+            and concurrency independently of the main LLM stage.
         builder_kwargs: Optional additional kwargs to pass to the processor builder
             function. These will be passed through to the registered builder and
             should match the signature of the specific builder being used.
@@ -435,6 +443,36 @@ def build_llm_processor(
             for row in ds.take_all():
                 print(row)
 
+        Using map_kwargs to control preprocess/postprocess resources:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[{"role": "user", "content": row["prompt"]}],
+                    sampling_params=dict(temperature=0.3, max_tokens=20),
+                ),
+                postprocess=lambda row: dict(resp=row["generated_text"]),
+                preprocess_map_kwargs={"num_cpus": 0.5},
+                postprocess_map_kwargs={"num_cpus": 0.25},
+            )
+
+            ds = ray.data.range(300)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+
         Using builder_kwargs to pass chat_template_kwargs:
 
         .. testcode::
@@ -474,9 +512,12 @@ def build_llm_processor(
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
     ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
+
     build_kwargs = dict(
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
 
     # Pass through any additional builder kwargs

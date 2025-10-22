@@ -10,28 +10,13 @@ set -x
 PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 BAZELISK_VERSION="v1.16.0"
 
-# Check arguments
-if [[ $# -ne 1 ]]; then
-    echo "Missing argument to specify machine architecture." >/dev/stderr
-    echo "Use: x86_64 or arm64" >/dev/stderr
-    exit 1
-fi
-
-MAC_ARCH="$1" # First argument is the architecture of the machine, e.g. x86_64, arm64
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
 # Sets RAY_VERSION and RAY_COMMIT
 source .buildkite/release-automation/set-ray-version.sh
 
 install_bazel() {
-    if [[ "${MAC_ARCH}" == "arm64" ]]; then
-        URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
-    elif [[ "${MAC_ARCH}" == "x86_64" ]]; then
-        URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
-    else
-        echo "Could not find matching bazelisk URL for Mac ${MAC_ARCH}" >/dev/stderr
-        exit 1
-    fi
+    URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
 
     TARGET="$TMP_DIR/bin/bazel"
     curl -sfL -R -o "${TARGET}" "${URL}"
@@ -41,7 +26,7 @@ install_bazel() {
 install_miniforge() {
     # Install miniforge3 based on the architecture used
     mkdir -p "$TMP_DIR/miniforge3"
-    curl -sfL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniforge3/miniforge.sh"
+    curl -sfL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-MacOSX-arm64.sh -o "$TMP_DIR/miniforge3/miniforge.sh"
     bash "$TMP_DIR/miniforge3/miniforge.sh" -b -u -p "$TMP_DIR/miniforge3"
     rm -rf "$TMP_DIR/miniforge3/miniforge.sh"
 

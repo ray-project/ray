@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray._common.usage.usage_lib import TagKey
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LLMEngine,
     LoraConfig,

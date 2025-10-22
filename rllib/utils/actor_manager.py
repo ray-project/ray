@@ -1,9 +1,9 @@
-from collections import defaultdict
 import copy
-from dataclasses import dataclass, field
 import logging
 import sys
 import time
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -11,7 +11,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayError, RayTaskError
 from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -621,7 +620,7 @@ class FaultTolerantActorManager:
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str], Tuple[str]] = (),
+        tags: Union[str, List[str], Tuple[str, ...]] = (),
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -1041,7 +1040,7 @@ class FaultTolerantActorManager:
         return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
-        self, tags: Optional[Union[str, List[str], Tuple[str]]] = None
+        self, tags: Optional[Union[str, List[str], Tuple[str, ...]]] = None
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
         """Return all the in flight requests that match the given tags, if any.
 

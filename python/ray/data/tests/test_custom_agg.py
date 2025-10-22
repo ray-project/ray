@@ -2,7 +2,11 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data.aggregate import MissingValuePercentage, ZeroPercentage
+from ray.data.aggregate import (
+    ApproximateQuantile,
+    MissingValuePercentage,
+    ZeroPercentage,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -274,6 +278,87 @@ class TestZeroPercentage:
         expected = 40.0  # 2 zeros out of 5 total = 40%
 
         assert result["zero_pct(value)"] == expected
+
+
+class TestApproximateQuantile:
+    """Test cases for ApproximateQuantile aggregation."""
+
+    def test_approximate_quantile_basic(self, ray_start_regular_shared_2_cpus):
+        """Test basic approximate quantile calculation."""
+        data = [
+            {
+                "id": 1,
+                "value": 10,
+            },
+            {"id": 2, "value": 0},
+            {"id": 3, "value": 30},
+            {"id": 4, "value": 0},
+            {"id": 5, "value": 50},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(
+            ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9])
+        )
+        expected = [0.0, 10.0, 50.0]
+        assert result["approx_quantile(value)"] == expected
+
+    def test_approximate_quantile_ignores_nulls(self, ray_start_regular_shared_2_cpus):
+        data = [
+            {"id": 1, "value": 5.0},
+            {"id": 2, "value": None},
+            {"id": 3, "value": 15.0},
+            {"id": 4, "value": None},
+            {"id": 5, "value": 25.0},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
+        assert result["approx_quantile(value)"] == [15.0]
+
+    def test_approximate_quantile_custom_alias(self, ray_start_regular_shared_2_cpus):
+        data = [
+            {"id": 1, "value": 1.0},
+            {"id": 2, "value": 3.0},
+            {"id": 3, "value": 5.0},
+            {"id": 4, "value": 7.0},
+            {"id": 5, "value": 9.0},
+        ]
+        ds = ray.data.from_items(data)
+
+        quantiles = [0.0, 1.0]
+        result = ds.aggregate(
+            ApproximateQuantile(
+                on="value", quantiles=quantiles, alias_name="value_range"
+            )
+        )
+
+        assert result["value_range"] == [1.0, 9.0]
+        assert len(result["value_range"]) == len(quantiles)
+
+    def test_approximate_quantile_groupby(self, ray_start_regular_shared_2_cpus):
+        data = [
+            {"group": "A", "value": 1.0},
+            {"group": "A", "value": 2.0},
+            {"group": "A", "value": 3.0},
+            {"group": "B", "value": 10.0},
+            {"group": "B", "value": 20.0},
+            {"group": "B", "value": 30.0},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = (
+            ds.groupby("group")
+            .aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
+            .take_all()
+        )
+
+        result_by_group = {
+            row["group"]: row["approx_quantile(value)"] for row in result
+        }
+
+        assert result_by_group["A"] == [2.0]
+        assert result_by_group["B"] == [20.0]
 
 
 if __name__ == "__main__":

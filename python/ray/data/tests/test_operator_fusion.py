@@ -26,6 +26,7 @@ from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
+from ray.data.expressions import star
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -66,7 +67,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map1 = MapRows(read_op, lambda x: x)
     map2 = MapBatches(map1, lambda x: x)
     map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, lambda x: x)
+    map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -296,7 +297,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), lambda x: False),
+            Filter(InputData([]), fn=lambda x: False),
             False,
         ),
         (
@@ -316,7 +317,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # Fusion
-            Project(InputData([])),
+            Project(InputData([]), exprs=[star()]),
             True,
         ),
     ],
@@ -428,8 +429,16 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.randomize_block_order()
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    assert "ReadRange->MapBatches(fn)" in ds.stats()
+    stats = ds.stats()
+    # Ensure RandomizeBlockOrder and MapBatches are not fused.
+    assert "RandomizeBlockOrder->MapBatches(fn)" not in stats
+    assert "ReadRange" in stats
+    assert "RandomizeBlockOrder" in stats
+    assert "MapBatches(fn)" in stats
+    # Regression tests ensuring RandomizeBlockOrder is never bypassed in the future
+    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
+    assert "ReadRange->MapBatches(fn)" not in stats
+    # Ensure all three operators are also present in usage record
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
@@ -575,7 +584,7 @@ def test_read_map_chain_operator_fusion_e2e(
     ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map_batches(
         lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
@@ -729,3 +738,9 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
         ],
     )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

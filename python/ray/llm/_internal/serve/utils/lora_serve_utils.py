@@ -28,7 +28,10 @@ from ray.llm._internal.common.utils.lora_utils import (
     retry_with_exponential_backoff,
     sync_files_with_lock,
 )
-from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig, LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)

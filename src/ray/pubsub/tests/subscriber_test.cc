@@ -228,7 +228,8 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  ASSERT_FALSE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   subscriber_->Subscribe(GenerateSubMessage(object_id),
                          channel,
@@ -254,7 +255,8 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
     ASSERT_EQ(object_subscribed_[oid], 2);
   }
 
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
@@ -504,7 +506,8 @@ TEST_F(SubscriberTest, TestSubscribeAllEntities) {
   }
 
   // Unsubscribe from the channel.
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
+  subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt);
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, /*key_id=*/""));
 }
 
 TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
@@ -527,7 +530,8 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
                          subscription_callback,
                          failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
@@ -560,7 +564,8 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll) {
                          subscription_callback,
                          failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
+  subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt);
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, /*key_id=*/""));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   const auto object_id = ObjectID::FromRandom();
@@ -614,6 +619,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   auto subscription_callback = [this, owner_addr](const rpc::PubMessage &msg) {
     const auto object_id = ObjectID::FromBinary(msg.key_id());
     subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+    ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
     ASSERT_TRUE(owner_client->ReplyCommandBatch());
     object_subscribed_[object_id]++;
   };
@@ -705,6 +711,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
 
   // Test multiple entries in the batch before new reply is coming.
   subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   subscriber_->Subscribe(GenerateSubMessage(object_id),
                          channel,
                          owner_addr,
@@ -967,7 +974,7 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
 
-  ASSERT_FALSE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
   subscriber_->Subscribe(GenerateSubMessage(object_id),
@@ -979,7 +986,7 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
                          failure_callback);
   ASSERT_TRUE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 }
 

@@ -1,13 +1,14 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 import tree  # pip install dm_tree
 
-from ray.rllib.utils import force_tuple, deep_update
-from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray._common.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils import deep_update, force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray.util import log_once
+from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()

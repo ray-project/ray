@@ -194,7 +194,9 @@ class GcsRpcClient {
         /*check_channel_status_interval_milliseconds=*/
         ::RayConfig::instance()
             .grpc_client_check_connection_status_interval_milliseconds(),
-        /*server_unavailable_timeout_seconds=*/
+        /*server_reconnect_timeout_base_seconds=*/
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        /*server_reconnect_timeout_max_seconds=*/
         ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
         /*server_unavailable_timeout_callback=*/
         []() {
@@ -358,6 +360,11 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Get node address and liveness information of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             GetAllNodeAddressAndLiveness,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
   /// Check GCS is alive.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              CheckAlive,

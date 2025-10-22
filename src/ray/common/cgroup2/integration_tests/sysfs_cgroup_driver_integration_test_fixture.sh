@@ -87,7 +87,7 @@ update_controllers "${TEST_CGROUP}/cgroup.subtree_control" "+cpu +memory"
 
 if ! id -u "${UNPRIV_USER}" >/dev/null 2>&1; then
   sudo useradd -m -s /usr/sbin/nologin "${UNPRIV_USER}"
-  echo "Created unprivilged user ${UNPRIV_USER}."
+  echo "Created unprivileged user ${UNPRIV_USER}."
 fi
 
 sudo chown -R "${UNPRIV_USER}":"${UNPRIV_USER}" "${BASE_CGROUP}"

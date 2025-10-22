@@ -297,31 +297,23 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
   explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
+
   /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
-  /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                              const StatusCallback &callback);
+  virtual void RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
+                            const StatusCallback &callback);
 
   /// Unregister local node to GCS asynchronously.
   ///
+  /// \param node_id The ID of the node to unregister from GCS.
   /// \param node_death_info The death information regarding why to unregister from GCS.
   /// \param unregister_done_callback Callback that will be called when unregistration is
   /// done.
-  virtual void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+  virtual void UnregisterSelf(const NodeID &node_id,
+                              const rpc::NodeDeathInfo &node_death_info,
                               std::function<void()> unregister_done_callback);
-
-  /// Get id of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return NodeID
-  virtual const NodeID &GetSelfId() const;
-
-  /// Get information of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return GcsNodeInfo
-  virtual const rpc::GcsNodeInfo &GetSelfInfo() const;
 
   /// Register a node to GCS asynchronously.
   ///
@@ -329,13 +321,6 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called when registration is complete.
   virtual void AsyncRegister(const rpc::GcsNodeInfo &node_info,
                              const StatusCallback &callback);
-
-  /// Send a check alive request to GCS for the liveness of this node.
-  ///
-  /// \param callback The callback function once the request is finished.
-  /// \param timeout_ms The timeout for this request.
-  virtual void AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
-                                   int64_t timeout_ms);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -354,6 +339,11 @@ class NodeInfoAccessor {
   virtual void AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                            int64_t timeout_ms,
                            const std::vector<NodeID> &node_ids = {});
+
+  virtual void AsyncGetAllNodeAddressAndLiveness(
+      const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+      int64_t timeout_ms,
+      const std::vector<NodeID> &node_ids = {});
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -377,6 +367,11 @@ class NodeInfoAccessor {
       const rpc::GcsNodeInfo *
       Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
 
+  virtual  /// dead, this optional object is empty.
+      const rpc::GcsNodeAddressAndLiveness *
+      GetNodeAddressAndLiveness(const NodeID &node_id,
+                                bool filter_dead_nodes = true) const;
+
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
   /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
@@ -384,6 +379,8 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
+      &GetAllNodeAddressAndLiveness() const;
 
   /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
@@ -393,6 +390,18 @@ class NodeInfoAccessor {
       std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
       std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
           std::nullopt);
+
+  /// Subscribe to only critical node information changes. This method works similarly to
+  /// AsyncSubscribeToNodeChange but will only transmit address and liveness information
+  /// for each node and will exclude other information.
+  ///
+  /// \param subscribe Callback that will be called if a node is
+  /// added or a node is removed. The callback needs to be idempotent because it will also
+  /// be called for existing nodes.
+  /// \param done Callback that will be called when subscription is complete.
+  virtual void AsyncSubscribeToNodeAddressAndLivenessChange(
+      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+      StatusCallback done);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -438,25 +447,36 @@ class NodeInfoAccessor {
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
+  /// Add rpc::GcsNodeAddressAndLiveness information to accessor cache.
+  virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info);
+
   virtual bool IsSubscribedToNodeChange() const {
-    return node_change_callback_ != nullptr;
+    return node_change_callback_ != nullptr ||
+           node_change_callback_address_and_liveness_ != nullptr;
   }
 
  private:
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
+  /// Save the fetch data operations in these functions, so we can call them again when
+  /// GCS server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
+  FetchDataOperation fetch_node_address_and_liveness_data_operation_;
 
   GcsClient *client_impl_;
-
-  rpc::GcsNodeInfo local_node_info_;
-  NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
   std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
+
+  /// The callback to call when a new node is added or a node is removed when leveraging
+  /// the GcsNodeAddressAndLiveness version of the node api
+  std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
+      node_change_callback_address_and_liveness_ = nullptr;
+
+  /// A cache for information about all nodes when using the address and liveness api
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
+      node_cache_address_and_liveness_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
@@ -928,6 +948,7 @@ class AutoscalerStateAccessor {
   virtual Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::unordered_map<std::string, std::string>> &label_selectors,
       const std::vector<int64_t> &count_array);
 
   virtual Status GetClusterResourceState(int64_t timeout_ms,

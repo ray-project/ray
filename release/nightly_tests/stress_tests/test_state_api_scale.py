@@ -417,7 +417,6 @@ def test(
     state_perf_result = aggregate_perf_results()
     results = {
         "time": end_time - start_time,
-        "success": "1",
         "_peak_memory": round(used_gb, 2),
         "_peak_process_memory": usage,
     }

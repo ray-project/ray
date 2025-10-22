@@ -11,13 +11,13 @@ import yaml
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
     EmbeddingCompletionRequest,
     ScoreRequest,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.serve.llm import (

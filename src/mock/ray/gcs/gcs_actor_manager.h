@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 
 #include "ray/gcs/gcs_actor_manager.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 
 namespace ray {
@@ -38,7 +39,9 @@ class MockGcsActorManager : public GcsActorManager {
             [](const ActorID &) {},
             worker_client_pool,
             /*ray_event_recorder=*/fake_ray_event_recorder_,
-            /*session_name=*/"") {}
+            /*session_name=*/"",
+            /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
+            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_) {}
 
   MOCK_METHOD(void,
               HandleRegisterActor,
@@ -85,6 +88,8 @@ class MockGcsActorManager : public GcsActorManager {
 
   instrumented_io_context mock_io_context_do_not_use_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  observability::FakeGauge fake_actor_by_state_gauge_;
+  observability::FakeGauge fake_gcs_actor_by_state_gauge_;
 };
 
 }  // namespace gcs

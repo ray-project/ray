@@ -62,7 +62,7 @@ class TestMultiConsumerEventBuffer:
         events = []
         event_types = [
             RayEvent.EventType.TASK_DEFINITION_EVENT,
-            RayEvent.EventType.TASK_EXECUTION_EVENT,
+            RayEvent.EventType.TASK_LIFECYCLE_EVENT,
             RayEvent.EventType.ACTOR_TASK_DEFINITION_EVENT,
         ]
         for i in range(3):

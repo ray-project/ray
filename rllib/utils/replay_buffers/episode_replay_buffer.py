@@ -1,6 +1,6 @@
-from collections import deque
 import copy
 import hashlib
+from collections import deque
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -11,24 +11,23 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.metrics import (
     ACTUAL_N_STEP,
     AGENT_ACTUAL_N_STEP,
     AGENT_STEP_UTILIZATION,
     ENV_STEP_UTILIZATION,
-    MODULE_STEP_UTILIZATION,
     MODULE_ACTUAL_N_STEP,
-    NUM_AGENT_EPISODES_STORED,
+    MODULE_STEP_UTILIZATION,
     NUM_AGENT_EPISODES_ADDED,
     NUM_AGENT_EPISODES_ADDED_LIFETIME,
     NUM_AGENT_EPISODES_EVICTED,
     NUM_AGENT_EPISODES_EVICTED_LIFETIME,
     NUM_AGENT_EPISODES_PER_SAMPLE,
+    NUM_AGENT_EPISODES_STORED,
     NUM_AGENT_RESAMPLES,
-    NUM_AGENT_STEPS_STORED,
     NUM_AGENT_STEPS_ADDED,
     NUM_AGENT_STEPS_ADDED_LIFETIME,
     NUM_AGENT_STEPS_EVICTED,
@@ -37,7 +36,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_STORED,
+    NUM_AGENT_STEPS_STORED,
     NUM_ENV_STEPS_ADDED,
     NUM_ENV_STEPS_ADDED_LIFETIME,
     NUM_ENV_STEPS_EVICTED,
@@ -46,18 +45,19 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_PER_SAMPLE_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_EPISODES_STORED,
+    NUM_ENV_STEPS_STORED,
     NUM_EPISODES_ADDED,
     NUM_EPISODES_ADDED_LIFETIME,
     NUM_EPISODES_EVICTED,
     NUM_EPISODES_EVICTED_LIFETIME,
     NUM_EPISODES_PER_SAMPLE,
-    NUM_MODULE_EPISODES_STORED,
+    NUM_EPISODES_STORED,
     NUM_MODULE_EPISODES_ADDED,
     NUM_MODULE_EPISODES_ADDED_LIFETIME,
     NUM_MODULE_EPISODES_EVICTED,
     NUM_MODULE_EPISODES_EVICTED_LIFETIME,
     NUM_MODULE_EPISODES_PER_SAMPLE,
+    NUM_MODULE_EPISODES_STORED,
     NUM_MODULE_RESAMPLES,
     NUM_MODULE_STEPS_ADDED,
     NUM_MODULE_STEPS_ADDED_LIFETIME,
@@ -71,7 +71,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
-from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType, ResultDict
+from ray.rllib.utils.typing import AgentID, ModuleID, ResultDict, SampleBatchType
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):

@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest as _ChatCompletionRequest,
     ChatCompletionResponse as _ChatCompletionResponse,
     ChatCompletionStreamResponse as _ChatCompletionStreamResponse,

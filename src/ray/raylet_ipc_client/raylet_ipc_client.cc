@@ -193,7 +193,7 @@ Status RayletIpcClient::ActorCreationTaskDone() {
   return WriteMessage(MessageType::ActorCreationTaskDone);
 }
 
-Status RayletIpcClient::AsyncGetObjects(
+StatusOr<ScopedResponse> RayletIpcClient::AsyncGetObjects(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
@@ -202,12 +202,23 @@ Status RayletIpcClient::AsyncGetObjects(
   auto message = protocol::CreateAsyncGetObjectsRequest(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
-  return WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
+  std::vector<uint8_t> reply;
+  // TODO(57923): This should be FATAL. Local sockets are reliable. If a worker is unable
+  // to communicate with the raylet, there's no way to recover.
+  RAY_RETURN_NOT_OK(AtomicRequestReply(MessageType::AsyncGetObjectsRequest,
+                                       MessageType::AsyncGetObjectsReply,
+                                       &reply,
+                                       &fbb));
+  auto reply_message = flatbuffers::GetRoot<protocol::AsyncGetObjectsReply>(reply.data());
+  int64_t request_id = reply_message->request_id();
+  return ScopedResponse([this, request_id_to_cleanup = request_id]() {
+    return CancelGetRequest(request_id_to_cleanup);
+  });
 }
 
-Status RayletIpcClient::CancelGetRequest() {
+Status RayletIpcClient::CancelGetRequest(int64_t request_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateCancelGetRequest(fbb);
+  auto message = protocol::CreateCancelGetRequest(fbb, request_id);
   fbb.Finish(message);
   return WriteMessage(MessageType::CancelGetRequest, &fbb);
 }

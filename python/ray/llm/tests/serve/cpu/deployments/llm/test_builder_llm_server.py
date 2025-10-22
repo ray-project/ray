@@ -3,10 +3,10 @@ import sys
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
-from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
 

@@ -30,6 +30,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -38,6 +39,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Timeout for getting metadata from Ray object references (in seconds)
+METADATA_GET_TIMEOUT_S = 1.0
+
+# Timeout for waiting for metadata object to become available (in seconds)
+METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -93,8 +99,14 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
+        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        block_ready_callback: Callable[
+            [ray.ObjectRef[Block]], None
+        ] = lambda block_ref: None,
+        metadata_ready_callback: Callable[
+            [ray.ObjectRef[BlockMetadata]], None
+        ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """Create a DataOpTask
@@ -104,6 +116,10 @@ class DataOpTask(OpTask):
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            block_ready_callback: A callback that's invoked when a new block reference
+                is ready. This is exposed as a seam for testing.
+            metadata_ready_callback: A callback that's invoked when a new block metadata
+                reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
         """
         super().__init__(task_index, task_resource_bundle)
@@ -114,6 +130,17 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._block_ready_callback = block_ready_callback
+        self._metadata_ready_callback = metadata_ready_callback
+
+        # If the generator hasn't produced block metadata yet, or if the block metadata
+        # object isn't available after we get a reference, we need store the pending
+        # references and wait until Ray (re)constructs the block metadata. Either case
+        # can happen if a node dies after producing a block.
+        self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
+        self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
+
+        self._has_finished = False
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -128,45 +155,94 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
-            try:
-                block_ref = self._streaming_gen._next_sync(0)
-                if block_ref.is_nil():
+            if self._pending_block_ref.is_nil():
+                assert self._pending_meta_ref.is_nil(), (
+                    "This method expects streaming generators to yield blocks then "
+                    "metadata. So, if we have a reference to metadata but not the "
+                    "block, it means there's an error in the implementation."
+                )
+
+                try:
+                    self._pending_block_ref = self._streaming_gen._next_sync(
+                        timeout_s=0
+                    )
+                except StopIteration:
+                    self._task_done_callback(None)
+                    self._has_finished = True
+                    break
+
+                if self._pending_block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break
-            except StopIteration:
-                self._task_done_callback(None)
-                break
+
+                self._block_ready_callback(self._pending_block_ref)
+
+            if self._pending_meta_ref.is_nil():
+                try:
+                    self._pending_meta_ref = self._streaming_gen._next_sync(
+                        timeout_s=METADATA_WAIT_TIMEOUT_S
+                    )
+                except StopIteration:
+                    # The generator should always yield 2 values (block and metadata)
+                    # each time. If we get a StopIteration here, it means an error
+                    # happened in the task.
+                    # And in this case, the block_ref is the exception object.
+                    # TODO(hchen): Ray Core should have a better interface for
+                    # detecting and obtaining the exception.
+                    try:
+                        ray.get(self._pending_block_ref)
+                        assert False, "Above ray.get should raise an exception."
+                    except Exception as ex:
+                        self._task_done_callback(ex)
+                        self._has_finished = True
+                        raise ex from None
+
+                if self._pending_meta_ref.is_nil():
+                    # We have a reference to the block but the metadata isn't ready
+                    # yet.
+                    break
+
+                self._metadata_ready_callback(self._pending_meta_ref)
 
             try:
+                # The timeout for `ray.get` includes the time required to ship the
+                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
+                # will timeout and possible cancel the download. To avoid this issue,
+                # we set the timeout to a small non-zero value.
                 meta_with_schema: "BlockMetadataWithSchema" = ray.get(
-                    next(self._streaming_gen)
+                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
-            except StopIteration:
-                # The generator should always yield 2 values (block and metadata)
-                # each time. If we get a StopIteration here, it means an error
-                # happened in the task.
-                # And in this case, the block_ref is the exception object.
-                # TODO(hchen): Ray Core should have a better interface for
-                # detecting and obtaining the exception.
-                try:
-                    ray.get(block_ref)
-                    assert False, "Above ray.get should raise an exception."
-                except Exception as ex:
-                    self._task_done_callback(ex)
-                    raise ex from None
+            except ray.exceptions.GetTimeoutError:
+                # We have a reference to the block and its metadata, but the metadata
+                # object isn't available. This can happen if the node dies.
+                logger.warning(
+                    f"Metadata object not ready for "
+                    f"ref={self._pending_meta_ref.hex()} "
+                    f"(operator={self.__class__.__name__}). "
+                    f"Metadata may still be computing or worker may have failed and "
+                    f"object is being reconstructed. Will retry in next iteration."
+                )
+                break
 
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [(block_ref, meta)],
+                    [(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),
             )
+            self._pending_block_ref = ray.ObjectRef.nil()
+            self._pending_meta_ref = ray.ObjectRef.nil()
+
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    @property
+    def has_finished(self) -> bool:
+        return self._has_finished
 
 
 class MetadataOpTask(OpTask):
