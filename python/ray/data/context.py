@@ -239,6 +239,11 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 )
 
 
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
+
 @DeveloperAPI
 @dataclass
 class AutoscalingConfig:
@@ -343,8 +348,9 @@ class DataContext:
         large_args_threshold: Size in bytes after which point task arguments are
             considered large. Choose a value so that the data transfer overhead is
             significant in comparison to task scheduling (i.e., low tens of ms).
-        use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
+        use_polars_sort: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
+        use_polars_join: Whether to use Polars for join operations.
         eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
@@ -453,6 +459,8 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -590,6 +598,10 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
