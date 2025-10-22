@@ -9,10 +9,15 @@ import pyarrow
 import ray
 from ray.air.result import Result as ResultV1
 from ray.train import Checkpoint, CheckpointConfig
+from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
+from ray.train.v2._internal.execution.storage import (
+    StorageContext,
+    _exists_at_fs_path,
+    get_fs_and_path,
+)
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -47,6 +52,11 @@ class Result(ResultV1):
             Result object with restored checkpoints and metrics
         """
         fs, fs_path = get_fs_and_path(str(path), storage_filesystem)
+
+        # Validate that the experiment directory exists
+        if not _exists_at_fs_path(fs, fs_path):
+            raise RuntimeError(f"Experiment folder {fs_path} doesn't exist!")
+
         storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
             fs_path
         )
@@ -56,6 +66,17 @@ class Result(ResultV1):
             experiment_dir_name=experiment_dir_name,
             storage_filesystem=fs,
         )
+
+        # Validate that the checkpoint manager snapshot file exists
+        if not _exists_at_fs_path(
+            storage_context.storage_filesystem,
+            storage_context.checkpoint_manager_snapshot_path,
+        ):
+            raise RuntimeError(
+                f"Failed to restore the Result object: "
+                f"{CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the "
+                f"experiment folder!"
+            )
 
         checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
