@@ -58,6 +58,11 @@ class OptimizedRayFossaPreprocessor:
         self.packages = {}  # package_id -> package_info
         self.failed_resolutions = []
         
+        # Get Bazel output base once during initialization
+        self.bazel_output_base = self.get_bazel_output_base()
+        if not self.bazel_output_base:
+            raise RuntimeError("Could not determine Bazel output base. Make sure you're in a valid Bazel workspace.")
+        
         # Create fossa folder if it doesn't exist
         self.fossa_folder.mkdir(parents=True, exist_ok=True)
         
@@ -395,14 +400,8 @@ class OptimizedRayFossaPreprocessor:
         """Copy entire package directory to Fossa folder using package ID and Bazel output base"""
         print(f"    Copying package directory for {package_id}...")
         
-        # Get Bazel output base
-        output_base = self.get_bazel_output_base()
-        if not output_base:
-            print(f"      Could not determine Bazel output base for {package_id}")
-            return
-        
         # Construct external package path: output_base/external/package_id
-        package_root = output_base / "external" / package_id
+        package_root = self.bazel_output_base / "external" / package_id
         
         if not package_root.exists():
             print(f"      External package directory not found: {package_root}")
