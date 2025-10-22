@@ -3394,7 +3394,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                         << "ms, force killing with SIGKILL.";
           DestroyWorker(current_worker,
                         rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                        "Actor killed by GCS",
+                        "Force-killed by ray.cancel(force=True)",
                         /*force=*/true);
         }
         reply->set_attempt_succeeded(true);
@@ -3409,18 +3409,16 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       [task_id = request.intended_task_id(), timer, reply, send_reply_callback](
           const ray::Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
         if (!status.ok()) {
-          std::ostringstream stream;
-          stream << "CancelTask RPC failed for task " << task_id << ": "
-                 << status.ToString();
-          const auto &msg = stream.str();
-          RAY_LOG(DEBUG) << msg;
+          RAY_LOG(DEBUG) << "CancelTask RPC failed for task " << task_id << ": "
+                         << status.ToString();
           // NOTE: We'll escalate the graceful shutdown to SIGKILL which is done by the
           // timer above
-        } else {
-          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
-          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+          return;
         }
+        reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+        reply->set_requested_task_running(cancel_task_reply.requested_task_running());
         send_reply_callback(Status::OK(), nullptr, nullptr);
+        timer->cancel();
       });
 }
 
