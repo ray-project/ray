@@ -27,7 +27,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
-    kLabelKeyAcceleratorMemoryPerAccelerator
+    kLabelKeyAcceleratorMemoryPerAccelerator,
     kRayInternalNamespacePrefix,
 )
 
