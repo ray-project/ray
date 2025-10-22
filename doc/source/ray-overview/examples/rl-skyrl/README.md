@@ -3,11 +3,11 @@
 **⏱️ Time to complete**: ~40 minutes, including the time to train the models
 
 
-This template walks through running [Group Relative Policy Optimization](https://arxiv.org/pdf/2402.03300), or GRPO, on Anyscale using the [SkyRL](https://github.com/NovaSky-AI/SkyRL) framework. 
+This template walks through running [Group Relative Policy Optimization](https://arxiv.org/pdf/2402.03300) on Anyscale using the [SkyRL](https://github.com/NovaSky-AI/SkyRL) framework. 
 SkyRL is a modular full-stack RL library for LLMs developed at the Berkeley Sky Computing Lab in collaboration with Anyscale, providing a flexible framework 
-for training LLMs on tool-use tasks and multi-turn agent workflows using popular RL algorithms such as PPO, GRPO, and Direct Alignment from Preference Optimization, or DAPO. SkyRL uses [Ray](https://github.com/ray-project/ray) extensively for managing training and generation workers, and for orchestration of the RL training loop, allowing it to easily scale to multiple GPUs and nodes within a Ray cluster.
+for training LLMs on tool-use tasks and multi-turn agent workflows using popular RL algorithms such as PPO, Group Relative Policy Optimization, and Direct Alignment from Preference Optimization. SkyRL uses [Ray](https://github.com/ray-project/ray) extensively for managing training and generation workers, and for orchestration of the RL training loop, allowing it to easily scale to multiple GPUs and nodes within a Ray cluster.
 
-This template first shows a basic example of training a model to solve math word problems from the GSM8K dataset using GRPO. Next, the template
+This template first shows a basic example of training a model to solve math word problems from the GSM8K dataset using Group Relative Policy Optimization. Next, the template
 shows how you can create your own new environment to train on your specific task using the SkyRL-Gym.
 
 
@@ -82,7 +82,7 @@ SKYRL_RAY_PG_TIMEOUT_IN_S=90 bash examples/multiply/run_multiply.sh \
 ## Next steps
 
 After completing this template, you can:
-- Explore more advanced algorithms, such as [PPO](https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train/examples/ppo) or [Direct Alignment from Preference Optimization](https://skyrl.readthedocs.io/en/latest/algorithms/dapo.html), also known as DAPO
-- Explore more advanced tasks such as the [Software Engineering Benchmark](https://skyrl.readthedocs.io/en/latest/examples/mini_swe_agent.html), also known as SWE-Bench, or [agent search with Search-R1](https://skyrl.readthedocs.io/en/latest/examples/search.html)
+- Explore more advanced algorithms, such as [PPO](https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-train/examples/ppo) or [Direct Alignment from Preference Optimization](https://skyrl.readthedocs.io/en/latest/algorithms/dapo.html)
+- Explore more advanced tasks such as the [Software Engineering Benchmark](https://skyrl.readthedocs.io/en/latest/examples/mini_swe_agent.html) or [agent search with Search-R1](https://skyrl.readthedocs.io/en/latest/examples/search.html)
 - Optimize your training pipeline using [async training](https://skyrl.readthedocs.io/en/latest/tutorials/async.html)
 - Deploy your trained LLM using [Ray Serve LLM on Anyscale](https://console.anyscale.com/template-preview/deployment-serve-llm?utm_source=anyscale_docs&utm_medium=docs&utm_campaign=examples_page&utm_content=deployment-serve-llm?utm_source=anyscale&utm_medium=docs&utm_campaign=examples_page&utm_content=deployment-serve-llm)
