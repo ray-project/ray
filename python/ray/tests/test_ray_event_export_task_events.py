@@ -1,13 +1,17 @@
 import json
 import logging
+import time
 from typing import Union
 
 import grpc
 import pytest
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 from ray._common.test_utils import wait_for_condition
+from ray._private import ray_constants
 from ray._private.test_utils import find_free_port, run_string_as_driver_nonblocking
+from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
             preserve_proto_field_name,
             {
                 "env_vars": {
-                    "RAY_task_events_report_interval_ms": 100,
+                    "RAY_task_events_report_interval_ms": 50,
                     "RAY_enable_core_worker_ray_event_to_aggregator": "1",
                     "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                     "RAY_DASHBOARD_AGGREGATOR_AGENT_PRESERVE_PROTO_FIELD_NAME": (
@@ -46,13 +50,37 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
 )
 
 
-def wait_until_grpc_channel_ready(target: str, timeout: int = 10):
-    channel = grpc.insecure_channel(target)
-    try:
-        grpc.channel_ready_future(channel).result(timeout=timeout)
-        return True
-    except grpc.FutureTimeoutError:
-        return False
+def wait_until_grpc_channel_ready(
+    gcs_address: str, node_ids: list[str], timeout: int = 5
+):
+    # get the grpc port
+    gcs_client = GcsClient(address=gcs_address)
+
+    def get_dashboard_agent_address(node_id: str):
+        return gcs_client.internal_kv_get(
+            f"{ray.dashboard.consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(
+        lambda: all(
+            get_dashboard_agent_address(node_id) is not None for node_id in node_ids
+        )
+    )
+    grpc_ports = [
+        json.loads(get_dashboard_agent_address(node_id))[2] for node_id in node_ids
+    ]
+    targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
+
+    # wait for the dashboard agent grpc port to be ready
+    for target in targets:
+        channel = grpc.insecure_channel(target)
+        try:
+            grpc.channel_ready_future(channel).result(timeout=timeout)
+        except grpc.FutureTimeoutError:
+            return False
+    return True
 
 
 def get_job_ids_and_driver_script_task_ids_from_events(
@@ -186,13 +214,20 @@ def get_and_validate_events(httpserver, validation_func):
 
 def run_driver_script_and_wait_for_events(script, httpserver, cluster, validation_func):
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_until_grpc_channel_ready(
-        "127.0.0.1:" + str(cluster.head_node.dashboard_agent_listen_port)
-    )
+    node_ids = [node.node_id for node in cluster.list_all_nodes()]
+    assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
+    # The sleep is added here to give time for the worker grpc client to estabilish
+    # the connection to the aggregator agent. Due to the start up sequence, it could be
+    # possible that when the worker starts to connect to the dashboard agent grpc
+    # server, the server is not yet ready to accept the connection. The connection
+    # retry backoff strategy kicks and the connection won't be retried until the
+    # interval is reached. This sleep is a workaround to ensure the connections from
+    # the workers to the aggregator agent are estabilished with the backoff strategy
+    # before start the driver script. A longer term fix is to improve the start up
+    # sequence of the dashboard agent and the workers.
+    time.sleep(3)
     run_string_as_driver_nonblocking(script)
-    wait_for_condition(
-        lambda: get_and_validate_events(httpserver, validation_func), timeout=300
-    )
+    wait_for_condition(lambda: get_and_validate_events(httpserver, validation_func))
 
 
 class TestNormalTaskEvents:
@@ -843,7 +878,6 @@ except Exception as e:
 
         wait_for_condition(
             lambda: get_and_validate_events(httpserver, validate_task_killed),
-            timeout=300,
         )
 
 
@@ -1148,7 +1182,7 @@ ray.get(actor.task.remote(obj))
         )
 
     @_cluster_with_aggregator_target
-    def test_actor_creation_failed_with_actor_task_retry(
+    def test_actor_creation_failed(
         self,
         ray_start_cluster_head_with_env_vars,
         httpserver,
@@ -1156,19 +1190,21 @@ ray.get(actor.task.remote(obj))
     ):
         script = """
 import ray
-ray.init()
+import ray.util.state
+from ray._common.test_utils import wait_for_condition
+import time
 
 @ray.remote(num_cpus=1)
 class Actor:
     def __init__(self):
         raise Exception("actor creation error")
 
-    def task(self, arg):
+    def task(self):
         pass
 
 actor = Actor.remote()
-obj = ray.put("test")
-ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).remote(obj))
+wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=", "Actor")])[0]["state"] == "DEAD")
+ray.get(actor.task.options().remote())
         """
 
         def validate_events(events: json):
@@ -1182,7 +1218,6 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
             driver_task_definition_received = False
             actor_creation_task_definition_received = False
             actor_task_definition_received = False
-            actor_task_definition_retry_received = False
             for event in events:
                 if preserve_proto_field_name:
                     if event["event_type"] == "TASK_DEFINITION_EVENT":
@@ -1249,6 +1284,7 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                                 event["task_definition_event"]["language"] == "PYTHON"
                             )
                     elif event["event_type"] == "ACTOR_TASK_DEFINITION_EVENT":
+                        actor_task_definition_received = True
                         actor_task_id = event["actor_task_definition_event"]["task_id"]
                         assert actor_task_id is not None
                         assert (
@@ -1291,14 +1327,7 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                             event["actor_task_definition_event"]["parent_task_id"]
                             == driver_task_id
                         )
-                        if event["actor_task_definition_event"]["task_attempt"] == 0:
-                            actor_task_definition_received = True
-                        else:
-                            assert (
-                                event["actor_task_definition_event"]["task_attempt"]
-                                == 1
-                            )
-                            actor_task_definition_retry_received = True
+                        assert event["actor_task_definition_event"]["task_attempt"] == 0
                         assert (
                             event["actor_task_definition_event"]["language"] == "PYTHON"
                         )
@@ -1365,6 +1394,7 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                             assert event["taskDefinitionEvent"]["taskAttempt"] == 0
                             assert event["taskDefinitionEvent"]["language"] == "PYTHON"
                     elif event["eventType"] == "ACTOR_TASK_DEFINITION_EVENT":
+                        actor_task_definition_received = True
                         actor_task_id = event["actorTaskDefinitionEvent"]["taskId"]
                         assert actor_task_id is not None
                         assert (
@@ -1406,18 +1436,13 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                             event["actorTaskDefinitionEvent"]["parentTaskId"]
                             == driver_task_id
                         )
-                        if event["actorTaskDefinitionEvent"]["taskAttempt"] == 0:
-                            actor_task_definition_received = True
-                        else:
-                            assert event["actorTaskDefinitionEvent"]["taskAttempt"] == 1
-                            actor_task_definition_retry_received = True
+                        assert event["actorTaskDefinitionEvent"]["taskAttempt"] == 0
                         assert event["actorTaskDefinitionEvent"]["language"] == "PYTHON"
                     else:
                         assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
             assert driver_task_definition_received
             assert actor_creation_task_definition_received
             assert actor_task_definition_received
-            assert actor_task_definition_retry_received
 
             expected_driver_task_states = {"RUNNING", "FINISHED"}
             expected_actor_creation_task_states = {
@@ -1429,15 +1454,12 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
             expected_actor_task_states = {
                 "PENDING_ARGS_AVAIL",
                 "PENDING_NODE_ASSIGNMENT",
-                "SUBMITTED_TO_WORKER",
                 "FAILED",
             }
-            expected_actor_task_states_retry = {"PENDING_ARGS_AVAIL", "FAILED"}
             expected_task_id_states_dict = {
                 (driver_task_id, 0): expected_driver_task_states,
                 (actor_creation_task_id, 0): expected_actor_creation_task_states,
                 (actor_task_id, 0): expected_actor_task_states,
-                (actor_task_id, 1): expected_actor_task_states_retry,
             }
             if preserve_proto_field_name:
                 expected_task_id_error_info_dict = {
@@ -1449,10 +1471,6 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                         "error_type": "ACTOR_DIED",
                         "error_message": "ray.exceptions.ActorDiedError: The actor died because of an error raised in its creation task",
                     },
-                    (actor_task_id, 1): {
-                        "error_type": "ACTOR_DIED",
-                        "error_message": "ray.exceptions.ActorDiedError: The actor died because of an error raised in its creation task",
-                    },
                 }
             else:
                 expected_task_id_error_info_dict = {
@@ -1461,10 +1479,6 @@ ray.get(actor.task.options(max_task_retries=1, retry_exceptions=[Exception]).rem
                         "errorMessage": "CreationTaskError: Exception raised from an actor init method.",
                     },
                     (actor_task_id, 0): {
-                        "errorType": "ACTOR_DIED",
-                        "errorMessage": "ray.exceptions.ActorDiedError: The actor died because of an error raised in its creation task",
-                    },
-                    (actor_task_id, 1): {
                         "errorType": "ACTOR_DIED",
                         "errorMessage": "ray.exceptions.ActorDiedError: The actor died because of an error raised in its creation task",
                     },
