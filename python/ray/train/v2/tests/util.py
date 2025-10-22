@@ -45,6 +45,7 @@ from ray.train.v2.api.exceptions import TrainingFailedError
 class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
+    _poll_failure = None
 
     # TODO: Clean this up and use Mocks instead.
     def __init__(
@@ -58,6 +59,8 @@ class DummyWorkerGroup(WorkerGroup):
         self._worker_statuses = {}
 
     def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
+        if self._poll_failure:
+            raise self._poll_failure
         return WorkerGroupPollStatus(
             worker_statuses=self._worker_statuses,
         )
@@ -96,6 +99,10 @@ class DummyWorkerGroup(WorkerGroup):
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure
+
+    @classmethod
+    def set_poll_failure(cls, poll_failure):
+        cls._poll_failure = poll_failure
 
 
 class MockScalingPolicy(ScalingPolicy):
