@@ -3,6 +3,7 @@ Reinforcement learning example using GPU-to-GPU Ray Direct Transport (RDT) and G
 """
 import argparse
 import copy
+import time
 from typing import Any
 
 import ray
@@ -42,6 +43,12 @@ ACTION_DIRECTIONS = torch.tensor(
     dtype=torch.float32,
 )
 
+# TrajectorySlice holds one state's sampled actions and associated metadata:
+# - state: The 2D input vector fed to the generator model.
+# - actions: The generator model's predictions for this state.
+# - policy_version: Version of the generator model when these actions were generated.
+# - rewards: The per-action rewards computed by the scorer for this state.
+# - old_logps: The log-probabilities of the sampled actions under the policy that generated them.
 TrajectorySlice = dict[str, torch.Tensor | int]
 
 
@@ -117,7 +124,7 @@ class Scorer:
         self.action_dirs = ACTION_DIRECTIONS.to("cuda")  # [ACTION_DIM, STATE_DIM]
 
     def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
-        """Score a batched trajectory slice synchronously."""
+        """Score a batch of trajectory slices."""
         states = batched_slices["state"]
         actions = batched_slices["actions"]
         old_logps = batched_slices["old_logps"]
