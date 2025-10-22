@@ -31,6 +31,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -329,6 +330,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
+  ray::stats::Gauge object_store_memory_gauge = ray::GetObjectStoreMemoryGaugeMetric();
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
       placement_group_resource_manager;
@@ -797,7 +799,8 @@ int main(int argc, char *argv[]) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
         },
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
-        object_directory.get());
+        object_directory.get(),
+        object_store_memory_gauge);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
