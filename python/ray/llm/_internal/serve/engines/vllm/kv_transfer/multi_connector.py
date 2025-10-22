@@ -1,3 +1,4 @@
+import copy
 from typing import TYPE_CHECKING
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
@@ -27,8 +28,17 @@ class MultiConnectorBackend(BaseConnectorBackend):
             if connector_backend_str is None:
                 raise ValueError("kv_connector is not set in the connector")
 
+            if connector_backend_str == "MultiConnector":
+                raise ValueError(
+                    "Nesting MultiConnector within MultiConnector is not supported."
+                )
+
+            # Create a new LLMConfig for the sub-connector with its specific config.
+            sub_llm_config = copy.deepcopy(self.llm_config)
+            sub_llm_config.engine_kwargs["kv_transfer_config"] = connector
+
             # Use factory to get backend class lazily
             connector_backend = KVConnectorBackendFactory.create_backend(
-                connector_backend_str, self.llm_config
+                connector_backend_str, sub_llm_config
             )
             connector_backend.setup()

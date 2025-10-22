@@ -102,6 +102,73 @@ class TestMultiConnectorBackend:
         with pytest.raises(ValueError, match="Unsupported connector backend"):
             backend.setup()
 
+    def test_setup_with_nested_multi_connector_raises_error(self):
+        """Test that nesting MultiConnector raises a ValueError."""
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test-model"),
+            engine_kwargs=dict(
+                kv_transfer_config=dict(
+                    kv_connector="MultiConnector",
+                    kv_connector_extra_config=dict(
+                        connectors=[
+                            {"kv_connector": "MultiConnector"},
+                        ]
+                    ),
+                )
+            ),
+        )
+        backend = MultiConnectorBackend(llm_config)
+        with pytest.raises(ValueError, match="Nesting MultiConnector"):
+            backend.setup()
+
+    def test_setup_passes_isolated_config_to_sub_connectors(self):
+        """Test that each sub-connector receives its own isolated configuration."""
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test-model"),
+            engine_kwargs=dict(
+                kv_transfer_config=dict(
+                    kv_connector="MultiConnector",
+                    kv_connector_extra_config=dict(
+                        connectors=[
+                            {
+                                "kv_connector": "LMCacheConnectorV1",
+                                "custom_param": "value1",
+                            },
+                            {"kv_connector": "NixlConnector", "custom_param": "value2"},
+                        ]
+                    ),
+                )
+            ),
+        )
+        backend = MultiConnectorBackend(llm_config)
+
+        captured_configs = []
+
+        def capture_create_backend(name, config):
+            captured_configs.append((name, config.engine_kwargs["kv_transfer_config"]))
+            mock = MagicMock(spec=BaseConnectorBackend)
+            return mock
+
+        with patch.object(
+            KVConnectorBackendFactory,
+            "create_backend",
+            side_effect=capture_create_backend,
+        ):
+            backend.setup()
+
+        # Verify each sub-connector received its specific config, not the parent MultiConnector config
+        assert len(captured_configs) == 2
+
+        # First connector should have its specific config
+        assert captured_configs[0][0] == "LMCacheConnectorV1"
+        assert captured_configs[0][1]["kv_connector"] == "LMCacheConnectorV1"
+        assert captured_configs[0][1]["custom_param"] == "value1"
+
+        # Second connector should have its specific config
+        assert captured_configs[1][0] == "NixlConnector"
+        assert captured_configs[1][1]["kv_connector"] == "NixlConnector"
+        assert captured_configs[1][1]["custom_param"] == "value2"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
