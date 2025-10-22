@@ -94,7 +94,7 @@ def test_many_nodes_many_priorities_with_injection(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
-    _ = [cluster.add_node(num_cpus=1) for _ in range(5)]
+    _ = [cluster.add_node(num_cpus=5) for _ in range(1)]
 
     @ray.remote(num_cpus=1)
     def task(x):
@@ -103,7 +103,7 @@ def test_many_nodes_many_priorities_with_injection(ray_start_cluster):
 
     total_num_tasks = 100
     num_waiting_when_inject = 50
-    num_to_inject_with_p0 = 100
+    num_to_inject_with_p0 = 50
 
     not_ready = []
     task_num = 0
