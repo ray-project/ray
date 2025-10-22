@@ -4141,7 +4141,8 @@
 
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57222
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4313,7 +4314,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_audio
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57220
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4360,7 +4362,8 @@
     - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57219
+  frequency: manual
   python: "3.12"
   group: ray-examples
   team: ml
@@ -4385,7 +4388,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: object_detection  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57228
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4410,7 +4414,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_rag  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57224
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
