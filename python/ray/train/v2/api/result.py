@@ -12,7 +12,7 @@ from ray.train import Checkpoint, CheckpointConfig
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -46,13 +46,15 @@ class Result(ResultV1):
         Returns:
             Result object with restored checkpoints and metrics
         """
-        # Normalize the path to handle trailing slashes and other edge cases
-        normalized_path = os.path.normpath(str(path))
+        fs, fs_path = get_fs_and_path(str(path), storage_filesystem)
+        storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
+            fs_path
+        )
 
         storage_context = StorageContext(
-            storage_path=os.path.dirname(normalized_path),
-            experiment_dir_name=os.path.basename(normalized_path),
-            storage_filesystem=storage_filesystem,
+            storage_path=storage_path,
+            experiment_dir_name=experiment_dir_name,
+            storage_filesystem=fs,
         )
 
         checkpoint_manager = CheckpointManager(
