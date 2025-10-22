@@ -424,7 +424,6 @@ class OpResourceAllocator(ABC):
     def __init__(self, topology: "Topology"):
         self._topology = topology
         self._idle_detector = self.IdleDetector()
-        self._ticker = 0
 
     @abstractmethod
     def update_budgets(
@@ -518,7 +517,8 @@ class OpResourceAllocator(ABC):
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
     ) -> bool:
-        # TODO elaborate (outputs of the last operator should not be throttled)
+        # NOTE: If this operator is a terminal one, extracting outputs from it
+        #       should not be throttled
         if not op.output_dependencies:
             return True
 
@@ -783,8 +783,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         internal_object_store_usage: Dict[PhysicalOperator, int],
         outputs_object_store_usage: Dict[PhysicalOperator, int],
     ):
-        self._ticker += 1
-
         op_to_exclude_from_reservation = self._get_ineligible_ops_with_usage()
         for completed_op in op_to_exclude_from_reservation:
             limits = limits.subtract(task_resources_usage[completed_op])
