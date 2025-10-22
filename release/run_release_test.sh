@@ -101,6 +101,9 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     export AWS_REGION="us-west-2"
   fi
 
+  bash release/azure_docker_login.sh
+  az acr login --name rayreleasetest
+
   trap _term SIGINT SIGTERM
   ${RAY_TEST_SCRIPT} "$@" &
   proc=$!
