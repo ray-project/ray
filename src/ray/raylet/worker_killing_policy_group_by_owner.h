@@ -24,7 +24,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/memory_monitor.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {

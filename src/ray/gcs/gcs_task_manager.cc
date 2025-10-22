@@ -34,8 +34,6 @@
 namespace ray {
 namespace gcs {
 
-using std::literals::operator""sv;
-
 GcsTaskManager::GcsTaskManager(
     instrumented_io_context &io_service,
     ray::observability::MetricInterface &task_events_reported_gauge,
@@ -703,9 +701,9 @@ void GcsTaskManager::RecordMetrics() {
   task_events_reported_gauge_.Record(counters[kTotalNumTaskEventsReported]);
 
   task_events_dropped_gauge_.Record(counters[kTotalNumTaskAttemptsDropped],
-                                    {{"Type"sv, "STATUS_EVENT"}});
+                                    {{"Type", "STATUS_EVENT"}});
   task_events_dropped_gauge_.Record(counters[kTotalNumProfileTaskEventsDropped],
-                                    {{"Type"sv, "PROFILE_EVENT"}});
+                                    {{"Type", "PROFILE_EVENT"}});
 
   task_events_stored_gauge_.Record(counters[kNumTaskEventsStored]);
 
