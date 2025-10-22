@@ -44,7 +44,7 @@ ACTION_DIRECTIONS = torch.tensor(
     dtype=torch.float32,
 )
 
-TrajectorySlice = dict[str, torch.Tensor]
+TrajectorySlice = dict[str, torch.Tensor | int]
 
 
 class MLP(torch.nn.Sequential):  # Sized to ~50 MB of parameters.
@@ -87,7 +87,7 @@ class ReplayBuffer:
         self.total = 0
 
     def put(self, slice: TrajectorySlice) -> None:
-        self.storage.append((slice["policy_version"]), slice)
+        self.storage.append((slice["policy_version"], slice))
         self.total += slice["policy_version"]
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
@@ -96,7 +96,8 @@ class ReplayBuffer:
         # The probability of sampling a slice is proportional to its policy version.
         probs = [version / self.total for version, _ in self.storage]
         indices = list(range(len(self.storage)))
-        n = min(n, len(self.storage))  # Sample with replacement without exceeding the buffer's size.
+        # Sample with replacement without exceeding the buffer's size.
+        n = min(n, len(self.storage))  
         chosen = np.random.choice(indices, size=n, p=probs, replace=True)
         return [self.storage[i][1] for i in chosen]
 
@@ -125,7 +126,6 @@ class Scorer:
         policy_version = batched_slices["policy_version"]
 
         for i in range(states.shape[0]):
-
             # Compute rewards on the GPU: rewards = dot(state, unit_dir).
             dirs = self.action_dirs[actions[i]]  # [GROUP_SIZE, STATE_DIM]
             rewards = torch.mv(dirs, states[i])
@@ -334,17 +334,17 @@ class Generator:
             # This creates a distribution for each state (batch_size distributions over ACTION_DIM actions each).
             dist = Categorical(logits=logits)
             # Sample GROUP_SIZE actions from each state's distribution.
-            acts = dist.sample((GROUP_SIZE,))  # [GROUP_SIZE, batch_size]
-            logps = dist.log_prob(acts)  # [GROUP_SIZE, batch_size]
+            actions = dist.sample((GROUP_SIZE,))  # [GROUP_SIZE, batch_size]
+            logps = dist.log_prob(actions)  # [GROUP_SIZE, batch_size]
             # Transpose actions and logprobs for compatibility with the state tensor.
-            acts = acts.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
+            actions = actions.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
             logps = logps.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
 
         # Create trajectory slices and enqueue them for scoring.
         slice_batch = {
             "policy_version": self.policy_version,
-            "state": states,
-            "actions": acts,
+            "state": states_cuda,
+            "actions": actions,
             "old_logps": logps,
         }
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
@@ -376,14 +376,12 @@ def run_once(total_steps: int) -> None:
     # Initialize the generator with current learner weights.
     ray.get(
         generator.update_weights.remote(
-            learner.get_weights_ref.remote(), learner.get_version.remote()
+            learner.get_weights.remote(), learner.get_version.remote()
         )
     )
 
     # Pre-fill the ReplayBuffer before starting PPO.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
-
-    
 
     for i in trange(total_steps, desc="Training", unit="step"):
         states = sample_unit_vector(
