@@ -1101,10 +1101,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             # NOTE: Don't over subscribe the memory, because the total available resources
             # can fluctuate between when this method is called, and when the actor is
             # actually created and scheduled on a node.
-            modest_max_memory_per_aggregator = (max_memory_per_aggregator / 2)
+            modest_memory_per_aggregator = (max_memory_per_aggregator / 2)
 
             estimated_aggregator_memory_required = min(
-                modest_max_memory_per_aggregator,
+                modest_memory_per_aggregator,
                 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
             )
 
