@@ -199,6 +199,7 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
+include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
 
 import ray
