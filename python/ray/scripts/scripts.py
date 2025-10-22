@@ -1117,6 +1117,8 @@ def start(
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
+        logs_dir = node.get_logs_dir_path()
+        process_exit_log_path = os.path.join(logs_dir, "ray_process_exit.log")
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
@@ -1164,6 +1166,9 @@ def start(
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                with open(process_exit_log_path, "a") as log_file:
+                    for process_type, process in unexpected_deceased:
+                        log_file.write(f"{process_type}: exit code {process.returncode}\n")
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
