@@ -47,7 +47,7 @@ class ResourceManager:
     # store memory limit for the streaming executor,
     # when `ReservationOpResourceAllocator` is enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
-        "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.75
+        "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
     )
 
     # The fraction of the object store capacity that will be used as the default object
