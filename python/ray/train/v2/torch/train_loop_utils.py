@@ -112,7 +112,7 @@ def get_device() -> torch.device:
 @PublicAPI(stability="beta")
 @requires_train_worker()
 def get_devices() -> List[torch.device]:
-    """Gets the correct torch device list configured for the current worker.
+    """Gets the list of torch devices configured for the current worker.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
