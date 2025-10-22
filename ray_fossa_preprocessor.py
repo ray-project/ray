@@ -76,36 +76,53 @@ class RayFossaPreprocessor:
             print(f"Error running bazel query for {target}: {e}")
             return []
     
-    def filter_c_cpp_dependencies(self, all_deps: List[str]) -> tuple[List[str], List[Dict[str, str]]]:
-        """Filter for C/C++ related dependencies - handles both //external/ and @repo// patterns"""
-        c_cpp_deps = []
-        excluded_deps = []
+    def get_target_type(self, target: str) -> str:
+        """Get the Bazel target type for a dependency"""
+        try:
+            cmd = ["bazel", "query", f"kind(rule, {target})", "--output=label"]
+            result = subprocess.run(cmd, cwd=self.ray_root, 
+                                  capture_output=True, text=True, check=True)
+            return result.stdout.strip()
+        except subprocess.CalledProcessError:
+            return "unknown"
+    
+    def is_c_cpp_target(self, target: str) -> bool:
+        """Determine if a target is C/C++ related using multiple heuristics"""
+        # C/C++ related Bazel rule types
+        c_cpp_rules = {
+            'cc_library', 'cc_binary', 'cc_test', 'cc_import', 'cc_proto_library',
+            'objc_library', 'objc_binary', 'objc_test',
+            'cc_grpc_library', 'cc_proto_library', 'cc_embed_data',
+            'fdo_profile', 'fdo_prefetch_hints', 'propeller_optimize'
+        }
         
-        # External targets (//external/...) - though none found in Ray
-        external_deps = [dep for dep in all_deps if dep.startswith('//external/')]
+        # Get the target type
+        target_type = self.get_target_type(target)
         
-        # Repository targets (@repo//...) - this is where most external deps are
-        repo_deps = [dep for dep in all_deps if dep.startswith('@') and not dep.startswith('@bazel_tools//')]
+        # Check if it's a known C/C++ rule type
+        if target_type in c_cpp_rules:
+            return True
         
-        # Known C/C++ library patterns for external targets
-        external_c_cpp_patterns = [
-            'protobuf', 'grpc', 'zlib', 'openssl', 'boringssl', 'cares', 're2', 
-            'absl', 'boost', 'gtest', 'gflags', 'spdlog', 'hiredis', 'redis',
-            'msgpack', 'flatbuffers', 'rapidjson', 'nlohmann', 'jemalloc',
-            'opencensus', 'opentelemetry', 'prometheus', 'arrow', 'thrift',
-            'snappy', 'lz4', 'zstd', 'brotli', 'curl', 'libevent', 'libuv'
+        # Check for C/C++ file extensions in the target name
+        c_cpp_extensions = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.h', '.hpp', '.hxx']
+        if any(target.endswith(ext) for ext in c_cpp_extensions):
+            return True
+        
+        # Check for common C/C++ library indicators in target name
+        c_cpp_indicators = [
+            'lib', 'static', 'shared', 'archive', 'object',
+            'protobuf', 'grpc', 'absl', 'boost', 'gtest', 'gflags',
+            'zlib', 'openssl', 'boringssl', 'cares', 're2'
         ]
         
-        # Known C/C++ repository patterns
-        repo_c_cpp_patterns = [
-            'com_github_', 'com_google_', 'io_opencensus', 'io_opentelemetry',
-            'boringssl', 'openssl', 'zlib', 'protobuf', 'grpc', 'absl',
-            'boost', 'gtest', 'gflags', 'spdlog', 'hiredis', 'redis',
-            'msgpack', 'flatbuffers', 'rapidjson', 'nlohmann', 'jemalloc',
-            'prometheus', 'opencensus', 'opentelemetry', 'arrow', 'thrift',
-            'snappy', 'lz4', 'zstd', 'brotli', 'curl', 'libevent', 'libuv'
-        ]
+        target_lower = target.lower()
+        if any(indicator in target_lower for indicator in c_cpp_indicators):
+            return True
         
+        return False
+    
+    def is_excluded_target(self, target: str) -> bool:
+        """Check if target should be explicitly excluded"""
         # Patterns to explicitly exclude (Python, JS, etc.)
         exclude_patterns = [
             'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
@@ -118,44 +135,58 @@ class RayFossaPreprocessor:
         if not self.include_test_deps:
             exclude_patterns.extend(['test_', '_test', 'testing', 'mock', 'fixture'])
         
-        # Check external targets
-        for dep in external_deps:
-            if any(pattern in dep for pattern in external_c_cpp_patterns):
-                c_cpp_deps.append(dep)
-            elif any(pattern in dep for pattern in exclude_patterns):
-                excluded_deps.append({
-                    'dependency': dep,
-                    'reason': 'non-C/C++',
-                    'category': 'external'
-                })
-            else:
-                excluded_deps.append({
-                    'dependency': dep,
-                    'reason': 'unknown',
-                    'category': 'external'
-                })
+        target_lower = target.lower()
+        return any(pattern in target_lower for pattern in exclude_patterns)
+    
+    def filter_c_cpp_dependencies(self, all_deps: List[str]) -> tuple[List[str], List[Dict[str, str]]]:
+        """Filter for C/C++ related dependencies using Bazel target analysis"""
+        c_cpp_deps = []
+        excluded_deps = []
         
-        # Check repository targets
-        for dep in repo_deps:
-            if any(pattern in dep for pattern in repo_c_cpp_patterns):
-                c_cpp_deps.append(dep)
-            elif any(pattern in dep for pattern in exclude_patterns):
+        print(f"  - Analyzing {len(all_deps)} dependencies for C/C++ content...")
+        
+        for dep in all_deps:
+            # Skip Bazel tools and internal targets
+            if dep.startswith('@bazel_tools//') or dep.startswith('@local_config_'):
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'bazel_internal',
+                    'category': 'system'
+                })
+                continue
+            
+            # Check if explicitly excluded
+            if self.is_excluded_target(dep):
                 excluded_deps.append({
                     'dependency': dep,
                     'reason': 'non-C/C++',
-                    'category': 'repository'
+                    'category': 'excluded'
                 })
+                continue
+            
+            # Check if it's a C/C++ target
+            if self.is_c_cpp_target(dep):
+                c_cpp_deps.append(dep)
             else:
                 excluded_deps.append({
                     'dependency': dep,
-                    'reason': 'unknown',
-                    'category': 'repository'
+                    'reason': 'unknown_type',
+                    'category': 'unknown'
                 })
         
         # Print debugging information
         print(f"  - Total dependencies analyzed: {len(all_deps)}")
         print(f"  - C/C++ dependencies found: {len(c_cpp_deps)}")
         print(f"  - Excluded dependencies: {len(excluded_deps)}")
+        
+        # Show breakdown by exclusion reason
+        exclusion_reasons = {}
+        for dep in excluded_deps:
+            reason = dep['reason']
+            exclusion_reasons[reason] = exclusion_reasons.get(reason, 0) + 1
+        
+        if exclusion_reasons:
+            print(f"  - Exclusion breakdown: {exclusion_reasons}")
         
         if excluded_deps and len(excluded_deps) <= 10:  # Show first 10 excluded deps
             sample_excluded = [f"{dep['dependency']} ({dep['reason']})" for dep in excluded_deps[:5]]
