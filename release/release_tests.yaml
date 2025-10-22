@@ -95,19 +95,26 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
+    - __suffix__: azure
+      env: azure
+      cluster:
+        cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
       cluster:
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod
   team: reef
-  group: hello_world_custom_byod
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
   cluster:
     byod:
-      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
@@ -118,13 +125,17 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: released
       cluster:
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
   team: reef
-  group: hello_world_custom_byod_depset
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
@@ -1884,7 +1895,9 @@
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
-  frequency: nightly
+  # Ray Train V2 doesn't support colocation.
+  # TODO: Decide whether to remove this test or re-enable it if we add support again.
+  frequency: manual
   team: ml
 
   cluster:
@@ -1944,6 +1957,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
