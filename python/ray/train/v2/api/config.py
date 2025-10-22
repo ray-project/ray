@@ -221,12 +221,12 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path where all results and checkpoints are persisted.
+        storage_path: Path where all results and checkpoints are persisted.
             Can be a local directory or a destination on cloud storage.
             For multi-node training/tuning runs, this must be set to a
             shared storage location (e.g., S3, NFS).
             This defaults to the local ``~/ray_results`` directory.
-        storage_filesystem: [Beta] A custom filesystem to use for storage.
+        storage_filesystem: A custom filesystem to use for storage.
             If this is provided, `storage_path` should be a path with its
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
