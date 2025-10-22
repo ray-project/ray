@@ -357,7 +357,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             |          |          |          | (immediate reduction to        |                  |
             |          |          |          |  prevent overload)             |                  |
             +----------+----------+----------+--------------------------------+------------------+
-            | >= +1.0  | > 0.0    | 0        | Wait and see                   | +1.5, +0.5 -> 0  |
+            | >= +1.0  | >= 0.0   | 0        | Wait and see                   | +1.5, +0.5 -> 0  |
             |          |          |          | (let current level stabilize)  |                  |
             +----------+----------+----------+--------------------------------+------------------+
             | <= -1.0  | <= -1.0  | +1       | Conservative growth            | -1.5, -1.0 -> +1 |
