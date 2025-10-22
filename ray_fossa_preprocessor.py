@@ -53,6 +53,7 @@ class RayFossaPreprocessor:
         self.build_deps = {}
         self.runtime_deps = {}
         self.test_deps = {}
+        self.excluded_deps = {}
         self.custom_c_code = {}
         
     def run_bazel_query(self, target: str, depth: Optional[int] = None) -> List[str]:
@@ -75,7 +76,7 @@ class RayFossaPreprocessor:
             print(f"Error running bazel query for {target}: {e}")
             return []
     
-    def filter_c_cpp_dependencies(self, all_deps: List[str]) -> List[str]:
+    def filter_c_cpp_dependencies(self, all_deps: List[str]) -> tuple[List[str], List[Dict[str, str]]]:
         """Filter for C/C++ related dependencies - handles both //external/ and @repo// patterns"""
         c_cpp_deps = []
         excluded_deps = []
@@ -122,18 +123,34 @@ class RayFossaPreprocessor:
             if any(pattern in dep for pattern in external_c_cpp_patterns):
                 c_cpp_deps.append(dep)
             elif any(pattern in dep for pattern in exclude_patterns):
-                excluded_deps.append(f"{dep} (excluded: non-C/C++)")
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'non-C/C++',
+                    'category': 'external'
+                })
             else:
-                excluded_deps.append(f"{dep} (excluded: unknown)")
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'unknown',
+                    'category': 'external'
+                })
         
         # Check repository targets
         for dep in repo_deps:
             if any(pattern in dep for pattern in repo_c_cpp_patterns):
                 c_cpp_deps.append(dep)
             elif any(pattern in dep for pattern in exclude_patterns):
-                excluded_deps.append(f"{dep} (excluded: non-C/C++)")
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'non-C/C++',
+                    'category': 'repository'
+                })
             else:
-                excluded_deps.append(f"{dep} (excluded: unknown)")
+                excluded_deps.append({
+                    'dependency': dep,
+                    'reason': 'unknown',
+                    'category': 'repository'
+                })
         
         # Print debugging information
         print(f"  - Total dependencies analyzed: {len(all_deps)}")
@@ -141,9 +158,10 @@ class RayFossaPreprocessor:
         print(f"  - Excluded dependencies: {len(excluded_deps)}")
         
         if excluded_deps and len(excluded_deps) <= 10:  # Show first 10 excluded deps
-            print(f"  - Sample excluded deps: {excluded_deps[:5]}")
+            sample_excluded = [f"{dep['dependency']} ({dep['reason']})" for dep in excluded_deps[:5]]
+            print(f"  - Sample excluded deps: {sample_excluded}")
         
-        return c_cpp_deps
+        return c_cpp_deps, excluded_deps
     
     def get_timestamp(self) -> str:
         """Get current timestamp in YYYYMMDD_HHMMSS format"""
@@ -206,8 +224,9 @@ class RayFossaPreprocessor:
                 deps = self.run_bazel_query(target, self.transitive_depth)
             
             # Filter for C/C++ dependencies
-            c_cpp_deps = self.filter_c_cpp_dependencies(deps)
+            c_cpp_deps, excluded_deps = self.filter_c_cpp_dependencies(deps)
             all_dependencies[target] = c_cpp_deps
+            self.excluded_deps[target] = excluded_deps
             
             print(f"Found {len(c_cpp_deps)} C/C++ dependencies for {target}")
             
@@ -272,6 +291,7 @@ class RayFossaPreprocessor:
                 'runtime_dependencies': 0,
                 'build_only_dependencies': 0,
                 'test_dependencies': 0,
+                'excluded_dependencies': 0,
                 'compliance_required': 0
             },
             'custom_c_code': self.custom_c_code
@@ -294,8 +314,12 @@ class RayFossaPreprocessor:
                 else:
                     all_test_dep_names.add(str(dep))
         
+        # Count excluded dependencies
+        total_excluded = sum(len(deps) for deps in self.excluded_deps.values())
+        
         report['summary']['runtime_dependencies'] = len(all_runtime_dep_names)
         report['summary']['test_dependencies'] = len(all_test_dep_names)
+        report['summary']['excluded_dependencies'] = total_excluded
         report['summary']['total_dependencies'] = len(all_runtime_dep_names) + len(all_test_dep_names)
         report['summary']['compliance_required'] = len(all_runtime_dep_names)  # Only runtime deps need compliance
         
@@ -344,6 +368,9 @@ class RayFossaPreprocessor:
         with open(self.ray_root / 'test_dependencies.json', 'w') as f:
             json.dump(self.test_deps, f, indent=2)
         
+        with open(self.ray_root / 'excluded_dependencies.json', 'w') as f:
+            json.dump(self.excluded_deps, f, indent=2)
+        
         with open(self.ray_root / 'custom_c_analysis.json', 'w') as f:
             json.dump(self.custom_c_code, f, indent=2)
         
@@ -361,6 +388,7 @@ class RayFossaPreprocessor:
         print("  - build_dependencies.json")
         if self.include_test_deps:
             print("  - test_dependencies.json")
+        print("  - excluded_dependencies.json")
         print("  - custom_c_analysis.json")
         print("  - compliance_report.json")
         print("  - compliance_report.md")
@@ -374,6 +402,7 @@ class RayFossaPreprocessor:
 - **Total Dependencies**: {report['summary']['total_dependencies']}
 - **Runtime Dependencies**: {report['summary']['runtime_dependencies']}
 - **Test Dependencies**: {report['summary']['test_dependencies']}
+- **Excluded Dependencies**: {report['summary']['excluded_dependencies']}
 - **Compliance Required**: {report['summary']['compliance_required']}
 
 ## Analysis Configuration
@@ -402,6 +431,7 @@ class RayFossaPreprocessor:
 
 - `dependencies.json` - Complete dependency data
 - `runtime_dependencies.json` - Runtime dependencies only
+- `excluded_dependencies.json` - Excluded dependencies with reasons
 - `custom_c_analysis.json` - Custom C code analysis
 - `compliance_report.json` - Machine-readable report
 - `compliance_report.md` - Human-readable report
