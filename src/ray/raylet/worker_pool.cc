@@ -33,7 +33,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
@@ -668,8 +670,17 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(
-      argv.data(), io_service_, ec, /*decouple=*/false, env, false, add_to_cgroup_hook_);
+  // Workers should be placed into their own process groups (if enabled) to enable
+  // per-worker cleanup via killpg on worker death.
+  const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
+  Process child(argv.data(),
+                io_service_,
+                ec,
+                /*decouple=*/false,
+                env,
+                /*pipe_to_stdin=*/false,
+                add_to_cgroup_hook_,
+                new_process_group);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -794,6 +805,20 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
+#if !defined(_WIN32)
+  // Save the worker's actual PGID at registration for safe cleanup later.
+  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
+  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  pid_t pgid = -1;
+  errno = 0;
+  pgid = getpgid(pid);
+  if (pgid != -1) {
+    worker->SetSavedProcessGroupId(pgid);
+  } else {
+    RAY_LOG(WARNING) << "getpgid(" << pid
+                     << ") failed at registration: " << strerror(errno);
+  }
+#endif
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.
@@ -1632,8 +1657,12 @@ bool WorkerPool::IsWorkerAvailableForScheduling() const {
   return false;
 }
 
+bool IsInternalNamespace(const std::string &ray_namespace) {
+  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
+}
+
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
-    bool filter_dead_drivers) const {
+    bool filter_dead_drivers, bool filter_system_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1645,6 +1674,14 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDriver
       if (filter_dead_drivers && driver->IsDead()) {
         continue;
       }
+
+      if (filter_system_drivers) {
+        auto job_config = GetJobConfig(driver->GetAssignedJobId());
+        if (job_config.has_value() && IsInternalNamespace(job_config->ray_namespace())) {
+          continue;
+        }
+      }
+
       drivers.push_back(driver);
     }
   }

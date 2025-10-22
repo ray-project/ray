@@ -1,7 +1,7 @@
-import numpy as np
 from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2

@@ -22,6 +22,7 @@
 
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/time.h"
 
 namespace {
 
@@ -41,20 +42,12 @@ EventStats to_event_stats_view(std::shared_ptr<GuardedEventStats> stats) {
   return EventStats(stats->stats);
 }
 
-/// A helper for converting a duration into a human readable string, such as "5.346 ms".
-std::string to_human_readable(double duration) {
-  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
-  size_t idx = std::min(to_unit.size() - 1,
-                        static_cast<size_t>(std::log(duration) / std::log(1000)));
-  double new_duration = duration / std::pow(1000, idx);
+/// Convert the duration in nanoseconds to a string of the format: X.YZms.
+std::string to_ms_str(double duration_ns) {
+  double duration_ms = duration_ns / std::pow(1000, 2);
   std::stringstream result;
-  result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
+  result << std::fixed << std::setprecision(2) << duration_ms << "ms";
   return result.str();
-}
-
-/// A helper for converting a duration into a human readable string, such as "5.346 ms".
-std::string to_human_readable(int64_t duration) {
-  return to_human_readable(static_cast<double>(duration));
 }
 
 }  // namespace
@@ -80,7 +73,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
 
   return std::make_shared<StatsHandle>(
       std::move(name),
-      absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
+      ray::current_time_ns() + expected_queueing_delay_ns,
       std::move(stats),
       global_stats_,
       emit_metrics,
@@ -91,7 +84,7 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   absl::MutexLock lock(&(handle->handler_stats->mutex));
   const auto curr_count = --handle->handler_stats->stats.curr_count;
-  const auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
+  const auto execution_time_ns = ray::current_time_ns() - handle->start_time;
   handle->handler_stats->stats.cum_execution_time += execution_time_ns;
 
   if (handle->emit_stats) {
@@ -108,7 +101,7 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 void EventTracker::RecordExecution(const std::function<void()> &fn,
                                    std::shared_ptr<StatsHandle> handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
-  int64_t start_execution = absl::GetCurrentTimeNanos();
+  int64_t start_execution = ray::current_time_ns();
   // Update running count
   {
     auto &stats = handle->handler_stats;
@@ -117,7 +110,7 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   }
   // Execute actual function.
   fn();
-  int64_t end_execution = absl::GetCurrentTimeNanos();
+  int64_t end_execution = ray::current_time_ns();
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   int64_t curr_count;
@@ -246,31 +239,34 @@ std::string EventTracker::StatsString() const {
     if (entry.second.running_count > 0) {
       event_stats_stream << ", " << entry.second.running_count << " running";
     }
-    event_stats_stream << "), Execution time: mean = "
-                       << to_human_readable(entry.second.cum_execution_time /
-                                            static_cast<double>(entry.second.cum_count))
-                       << ", total = "
-                       << to_human_readable(entry.second.cum_execution_time)
-                       << ", Queueing time: mean = "
-                       << to_human_readable(entry.second.cum_queue_time /
-                                            static_cast<double>(entry.second.cum_count))
-                       << ", max = " << to_human_readable(entry.second.max_queue_time)
-                       << ", min = " << to_human_readable(entry.second.min_queue_time)
-                       << ", total = " << to_human_readable(entry.second.cum_queue_time);
+    double cum_execution_time_d = static_cast<double>(entry.second.cum_execution_time);
+    double cum_count_d = static_cast<double>(entry.second.cum_count);
+    double cum_queue_time_d = static_cast<double>(entry.second.cum_queue_time);
+    event_stats_stream
+        << "), Execution time: mean = " << to_ms_str(cum_execution_time_d / cum_count_d)
+        << ", total = " << to_ms_str(cum_execution_time_d)
+        << ", Queueing time: mean = " << to_ms_str(cum_queue_time_d / cum_count_d)
+        << ", max = " << to_ms_str(static_cast<double>(entry.second.max_queue_time))
+        << ", min = " << to_ms_str(static_cast<double>(entry.second.min_queue_time))
+        << ", total = " << to_ms_str(cum_queue_time_d);
   }
   const auto global_stats = get_global_stats();
   std::stringstream stats_stream;
   stats_stream << "\nGlobal stats: " << cum_count << " total (" << curr_count
                << " active)";
   stats_stream << "\nQueueing time: mean = "
-               << to_human_readable(global_stats.cum_queue_time /
-                                    static_cast<double>(cum_count))
-               << ", max = " << to_human_readable(global_stats.max_queue_time)
-               << ", min = " << to_human_readable(global_stats.min_queue_time)
-               << ", total = " << to_human_readable(global_stats.cum_queue_time);
+               << to_ms_str(static_cast<double>(global_stats.cum_queue_time) /
+                            static_cast<double>(cum_count))
+               << ", max = "
+               << to_ms_str(static_cast<double>(global_stats.max_queue_time))
+               << ", min = "
+               << to_ms_str(static_cast<double>(global_stats.min_queue_time))
+               << ", total = "
+               << to_ms_str(static_cast<double>(global_stats.cum_queue_time));
   stats_stream << "\nExecution time:  mean = "
-               << to_human_readable(cum_execution_time / static_cast<double>(cum_count))
-               << ", total = " << to_human_readable(cum_execution_time);
+               << to_ms_str(static_cast<double>(cum_execution_time) /
+                            static_cast<double>(cum_count))
+               << ", total = " << to_ms_str(static_cast<double>(cum_execution_time));
   stats_stream << "\nEvent stats:";
   stats_stream << event_stats_stream.rdbuf();
   return stats_stream.str();

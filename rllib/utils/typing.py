@@ -13,14 +13,14 @@ from typing import (
     Union,
 )
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -46,7 +46,7 @@ TensorType = Union[np.ndarray, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
 TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
-TensorShape = Union[Tuple[int], List[int]]
+TensorShape = Union[Tuple[int, ...], List[int]]
 
 # A neural network.
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
