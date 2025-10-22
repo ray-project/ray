@@ -3,8 +3,6 @@ Reinforcement learning example using GPU-to-GPU Ray Direct Transport (RDT) and G
 """
 import argparse
 import copy
-import threading
-from contextlib import contextmanager
 from typing import Any
 
 import ray
@@ -274,57 +272,17 @@ class Learner:
         return self.policy_version
 
 
-@ray.remote(num_cpus=0)
-class SignalActor:
-    """Gate to pause sampling during weight updates."""
-
-    def __init__(self) -> None:
-        self.generation_allowed = threading.Event()
-        self.generation_allowed.set()
-
-    def disable_generation(self) -> bool:
-        was_allowed = self.generation_allowed.is_set()
-        self.generation_allowed.clear()
-        return was_allowed
-
-    def allow_generation(self) -> bool:
-        was_allowed = self.generation_allowed.is_set()
-        self.generation_allowed.set()
-        return was_allowed
-
-    def is_generation_allowed(self) -> bool:
-        is_allowed = self.generation_allowed.is_set()
-        return is_allowed
-
-    def wait_for_generation(self, timeout: float | None = None) -> bool:
-        """Block until generation is allowed or timeout expires."""
-        return self.generation_allowed.wait(timeout)
-
-
 @ray.remote(num_gpus=1)
 class Generator:
     """Generates actions using the current policy and sends them to scoring."""
 
-    def __init__(self, scorer, generation_signal) -> None:
+    def __init__(self, scorer) -> None:
         self.model = MLP().to("cuda").eval()
         self.scorer = scorer
-        self._generation_signal = generation_signal
         self.policy_version = 1
-
-    @contextmanager
-    def _pause_generation(self):
-        """Temporarily block new generation requests while we swap weights."""
-        # SignalActor uses a threading.Event, so this round-trip keeps the pause scoped.
-        ray.get(self._generation_signal.disable_generation.remote())
-        try:
-            yield
-        finally:
-            # Always re-enable to avoid deadlocking the driver on failures.
-            ray.get(self._generation_signal.allow_generation.remote())
 
     @ray.method(tensor_transport="nixl")
     def generate(self, states: torch.Tensor):
-        ray.get(self._generation_signal.wait_for_generation.remote())
         with torch.no_grad():
             states = states.to("cuda")
             logits = self.model(states)  # [batch_size, ACTION_DIM]
@@ -350,17 +308,16 @@ class Generator:
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
 
     def update_weights(self, cuda_weights, version: int) -> bool:
-        """Apply GPU-to-GPU policy weight updates while pausing sampling."""
-        # Disable sampling while the GPU object transfer and weight load are in-flight.
-        with self._pause_generation():
-            first_tensor = next(iter(cuda_weights.values()))
-            if first_tensor.device.type != "cuda":
-                raise RuntimeError(
-                    "Expected CUDA tensors after GPU-to-GPU direct transfer"
-                )
-            self.model.load_state_dict(cuda_weights)
-            self.model.eval()
-            self.policy_version = version
+        """Apply GPU-to-GPU policy weight updates."""
+        # The actor is single-threaded, so weight loads do not overlap with generation.
+        first_tensor = next(iter(cuda_weights.values()))
+        if first_tensor.device.type != "cuda":
+            raise RuntimeError(
+                "Expected CUDA tensors after GPU-to-GPU direct transfer"
+            )
+        self.model.load_state_dict(cuda_weights)
+        self.model.eval()
+        self.policy_version = version
         return True
 
 
@@ -370,8 +327,7 @@ def run_once(total_steps: int) -> None:
     replay_buf = ReplayBuffer.remote()
     learner = Learner.remote(replay_buf)
     scorer = Scorer.remote(replay_buf)
-    signal = SignalActor.remote()
-    generator = Generator.remote(scorer, signal)
+    generator = Generator.remote(scorer)
 
     # Initialize the generator with current learner weights.
     ray.get(
