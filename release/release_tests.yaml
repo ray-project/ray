@@ -405,7 +405,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
