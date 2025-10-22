@@ -262,15 +262,9 @@ class vLLMEngineWrapper:
             tokenized_prompt = None
 
         # Extract image data from preprocessing output
+        # Note: Field name is 'image' (singular) not 'images' (plural).
         if "image" in row:
             image = row.pop("image")
-        elif "images" in row:
-            raise ValueError(
-                "Field name 'images' (plural) is not supported. "
-                "Use 'image' (singular) instead. "
-                "When using custom preprocessing with has_image=False, "
-                "return dict(image=..., ...) not dict(images=..., ...)"
-            )
         else:
             image = []
 
