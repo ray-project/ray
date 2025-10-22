@@ -27,6 +27,7 @@ steps:
           - "3.12"
         cuda:
           - "12.3.2-cudnn9"
+          - "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -62,6 +63,7 @@ steps:
           - "3.10"
         cuda:
           - "12.1.1-cudnn8"
+          - "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -96,6 +98,7 @@ steps:
           - "3.12"
         platform:
           - cu12.3.2-cudnn9
+          - cu12.8.1-cudnn
           - cpu
 
   - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
@@ -122,7 +125,7 @@ steps:
       - oss
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8 --image-type ray-ml --upload
+        --platform cu12.1.1-cudnn8 --platform cu12.8.1-cudnn --image-type ray-ml --upload
     depends_on:
       - manylinux
       - forge

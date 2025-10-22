@@ -20,9 +20,10 @@ PLATFORMS_RAY = [
 PLATFORMS_RAY_ML = [
     "cpu",
     "cu12.1.1-cudnn8",
+    "cu12.8.1-cudnn",
 ]
 PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn"]
-GPU_PLATFORM = "cu12.1.1-cudnn8"
+GPU_PLATFORM = ["cu12.1.1-cudnn8", "cu12.8.1-cudnn"]
 
 PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11", "3.12"]
 PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10", "3.11"]
@@ -168,7 +169,7 @@ class DockerContainer(LinuxContainer):
         ]:
             # no tag is alias to cpu for ray image
             platforms.append("")
-        elif self.platform == GPU_PLATFORM:
+        elif self.platform in GPU_PLATFORM:
             # gpu is alias to cu118 for ray image
             platforms.append("-gpu")
             if self.image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:

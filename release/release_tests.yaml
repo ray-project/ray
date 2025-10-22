@@ -4114,7 +4114,7 @@
 #######################
 
 
-- name: e2e_xgboost  # do not use dashes (regex sensitive)
+- name: ctest_e2e_xgboost  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
   group: ray-examples
@@ -4123,7 +4123,7 @@
 
   cluster:
     byod:
-      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
+      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4337,7 +4337,7 @@
       cluster:
         cluster_compute: ci/gce.yaml  # Relative to working_dir.
 
-- name: e2e_timeseries
+- name: ctest_e2e_timeseries
   frequency: weekly
   python: "3.11"
   group: ray-examples
@@ -4346,7 +4346,7 @@
 
   cluster:
     byod:
-      type: cu123
+      type: cu128
       post_build_script: byod_e2e_timeseries.sh
     cluster_compute: ci/aws.yaml
 
@@ -4359,7 +4359,7 @@
   variations:
     - __suffix__: aws
 
-- name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
+- name: ctest_e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.12"
   group: ray-examples
@@ -4368,7 +4368,7 @@
 
   cluster:
     byod:
-      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: cu128  # anyscale/ray:<PR_RAY_VERSION>-py312-cu128
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

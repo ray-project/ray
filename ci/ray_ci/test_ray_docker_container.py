@@ -265,7 +265,7 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cpu", "ray", "aarch64")
         assert container._get_canonical_tag() == f"{sha}-{pv}-cpu-aarch64"
 
-        container = RayDockerContainer(v, GPU_PLATFORM, "ray-ml")
+        container = RayDockerContainer(v, GPU_PLATFORM[0], "ray-ml")
         assert container._get_canonical_tag() == f"{sha}-{pv}-cu121"
 
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
