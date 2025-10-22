@@ -39,13 +39,9 @@ namespace ray {
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
   GcsClientTest() : no_redis_(GetParam()) {
-    // core_worker_rpc_server_reconnect_timeout_s is needed for
-    // TestEvictExpiredDestroyedActors since the actors get stuck until the unavailable
-    // callback fires and don't get cleaned up
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
-  "core_worker_rpc_server_reconnect_timeout_s": 0,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_storage": $0
@@ -379,9 +375,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
-    return status.ok();
+  void RegisterSelf(rpc::GcsNodeInfo local_node_info) {
+    gcs_client_->Nodes().RegisterSelf(std::move(local_node_info), nullptr);
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
@@ -391,9 +386,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+  void UnregisterSelf(const NodeID &node_id,
+                      const rpc::NodeDeathInfo &node_death_info,
                       std::function<void()> unregister_done_callback) {
-    gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+    gcs_client_->Nodes().UnregisterSelf(
+        node_id, node_death_info, unregister_done_callback);
   }
 
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
@@ -620,11 +617,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
   // Register local node to GCS.
-  ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
+  RegisterSelf(*gcs_node1_info);
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info->node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());
 
   // Register a node to GCS.
   auto gcs_node2_info = GenNodeInfo();
@@ -646,11 +640,8 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
   NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
 
   // Register local node to GCS.
-  ASSERT_TRUE(RegisterSelf(*gcs_node_info));
+  RegisterSelf(*gcs_node_info);
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node_info->node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node_info->state());
 
   // Unregister local node from GCS.
   rpc::NodeDeathInfo node_death_info;
@@ -659,7 +650,7 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
   node_death_info.set_reason_message(reason_message);
 
   std::promise<bool> promise;
-  UnregisterSelf(node_death_info, [&promise]() { promise.set_value(true); });
+  UnregisterSelf(node_id, node_death_info, [&promise]() { promise.set_value(true); });
   WaitReady(promise.get_future(), timeout_ms_);
 
   auto node_list = GetNodeInfoList();
