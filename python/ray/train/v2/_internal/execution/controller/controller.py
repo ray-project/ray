@@ -408,7 +408,16 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            try:
+                worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except Exception as e:
+                training_failed_error = ControllerError(e)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=training_failed_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision, training_failed_error=training_failed_error
+                )
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
