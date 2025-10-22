@@ -7,11 +7,11 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 
-ENV NVSHMEM_HOME="/usr/local/nvshmem"
-ENV LD_LIBRARY_PATH="/usr/local/nvshmem/lib:${LD_LIBRARY_PATH}"
-ENV PATH="/usr/local/nvshmem/bin:${PATH}"
+ENV NVSHMEM_HOME=/usr/local/nvshmem
+ENV LD_LIBRARY_PATH=/usr/local/nvshmem/lib:${LD_LIBRARY_PATH}
+ENV PATH=/usr/local/nvshmem/bin:${PATH}
 ENV RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:$LD_PRELOAD
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:${LD_PRELOAD}
 ENV CUDA_HOME=/usr/local/cuda
 
 RUN <<EOF
@@ -39,7 +39,7 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
 # The following roughly matches vllm/tools/ep_kernels/install_python_libraries.sh
-# with the addition of eep_nvshmem.patch
+# with the addition of DeepGEMM and updated NVSHMEM version
 
 # Install DeepEP kernels
 ROOT_DIR="/home/ray"
