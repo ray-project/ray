@@ -38,6 +38,7 @@ pre_commit() {
     cpplint
     buildifier
     buildifier-lint
+    eslint
   )
 
   for HOOK in "${HOOKS[@]}"; do
@@ -60,18 +61,19 @@ code_format() {
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
 }
 
-untested_code_snippet() {
-  pip install -c python/requirements_compiled.txt semgrep
-  semgrep ci --config semgrep.yml
+semgrep_lint() {
+  pip install -c python/requirements_compiled.txt semgrep pre-commit
+  pre-commit run semgrep --all-files --show-diff-on-failure
 }
 
 banned_words() {
   ./ci/lint/check-banned-words.sh
 }
 
+# Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
-  pip install -c python/requirements_compiled.txt docutils
-  cd python && python setup.py check --restructuredtext --strict --metadata
+  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
+  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
 }
 
 dashboard_format() {
@@ -102,17 +104,35 @@ test_coverage() {
   python ci/pipeline/check-test-run.py
 }
 
+_install_ray_no_deps() {
+  if [[ -d /opt/ray-build ]]; then
+    unzip -o -q /opt/ray-build/ray_pkg.zip -d python
+    unzip -o -q /opt/ray-build/ray_py_proto.zip -d python
+    mkdir -p python/ray/dashboard/client/build
+    tar -xzf /opt/ray-build/dashboard.tar.gz -C python/ray/dashboard/client/build
+    SKIP_BAZEL_BUILD=1 pip install -e "python[all]" --no-deps
+  else
+    RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]" --no-deps
+  fi
+}
+
 api_annotations() {
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  echo "--- Install Ray"
+  _install_ray_no_deps
+
+  echo "--- Check API annotations"
   ./ci/lint/check_api_annotations.py
 }
 
 api_policy_check() {
   # install ray and compile doc to generate API files
+  echo "--- Build doc pages"
   make -C doc/ html
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
 
-  # validate the API files
+  echo "--- Install Ray"
+  _install_ray_no_deps
+
+  echo "--- Check API/doc consistency"
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }
 
