@@ -34,7 +34,7 @@ class OptimizedRayFossaPreprocessor:
     
     # Deliverable binaries that need compliance analysis
     DELIVERABLE_TARGETS = [
-        "//:gen_ray_pkg",
+        "//:gen_ray_pkg"
     ]
     
     # Build tools that can be optionally included
@@ -376,24 +376,48 @@ class OptimizedRayFossaPreprocessor:
             
             print(f"  Creating folder for package: {package_id} -> {safe_package_id}")
             
-            # Copy entire package directory using the first target
-            self.copy_package_directory(package_id, package_info['targets'], package_folder)
+            # Copy entire package directory using package ID and Bazel output base
+            self.copy_package_directory(package_id, package_folder)
     
-    def copy_package_directory(self, package_id: str, targets: List[str], package_folder: Path) -> None:
-        """Copy entire package directory to Fossa folder using the first target"""
+    def get_bazel_output_base(self) -> Optional[Path]:
+        """Get Bazel output base directory"""
+        try:
+            cmd = ["bazel", "info", "output_base"]
+            result = subprocess.run(cmd, cwd=self.ray_root, 
+                                  capture_output=True, text=True, check=True)
+            output_base = result.stdout.strip()
+            return Path(output_base)
+        except subprocess.CalledProcessError as e:
+            print(f"      Failed to get Bazel output base: {e}")
+            return None
+
+    def copy_package_directory(self, package_id: str, package_folder: Path) -> None:
+        """Copy entire package directory to Fossa folder using package ID and Bazel output base"""
         print(f"    Copying package directory for {package_id}...")
         
-        if not targets:
-            print(f"      No targets found for {package_id}")
+        # Get Bazel output base
+        output_base = self.get_bazel_output_base()
+        if not output_base:
+            print(f"      Could not determine Bazel output base for {package_id}")
             return
         
-        # Use the first target to find the package root directory
-        first_target = targets[0]
-        package_root = self.find_package_root(first_target)
+        # Construct external package path: output_base/external/package_id
+        package_root = output_base / "external" / package_id
         
-        if not package_root or not package_root.exists():
-            print(f"      Could not find package root for {package_id}")
+        if not package_root.exists():
+            print(f"      External package directory not found: {package_root}")
             return
+        
+        # Safety check: ensure we're not copying too large a directory
+        try:
+            # Count files in the directory to prevent copying massive directories
+            file_count = sum(1 for _ in package_root.rglob('*') if _.is_file())
+            if file_count > 10000:  # Arbitrary limit to prevent copying huge directories
+                print(f"      Warning: Package directory too large ({file_count} files), skipping copy")
+                return
+        except (PermissionError, OSError):
+            # If we can't count files, proceed with caution
+            pass
         
         try:
             # Copy the entire package directory
@@ -419,42 +443,6 @@ class OptimizedRayFossaPreprocessor:
             except OSError as e2:
                 print(f"      Warning: Could not create symlink for {package_root}: {e2}")
     
-    def find_package_root(self, target: str) -> Optional[Path]:
-        """Find the package root directory from a Bazel target"""
-        try:
-            # Get file location for this target
-            cmd = ["bazel", "query", "--output=location", target]
-            result = subprocess.run(cmd, cwd=self.ray_root, 
-                                  capture_output=True, text=True, check=True)
-            print(result)
-            exit()
-            for line in result.stdout.strip().split('\n'):
-                if ':' in line:
-                    file_path = line.split(':')[0]
-                    if file_path and Path(file_path).exists():
-                        file_path = Path(file_path)
-                        
-                        # For external packages, find the package root
-                        if target.startswith('@') or target.startswith('//external:'):
-                            # Look for the package root by going up the directory tree
-                            current = file_path.parent
-                            while current and current != Path('/'):
-                                # Check if this looks like a package root
-                                if (current.name in ['src', 'include', 'lib', 'include'] or 
-                                    any((current / f).exists() for f in ['BUILD', 'BUILD.bazel', 'CMakeLists.txt', 'Makefile', 'LICENSE', 'README.md'])):
-                                    return current
-                                current = current.parent
-                            
-                            # If we can't find a clear package root, use the file's directory
-                            return file_path.parent
-                        else:
-                            # For internal targets, use the file's directory
-                            return file_path.parent
-                            
-        except subprocess.CalledProcessError as e:
-            print(f"      Failed to get location for {target}: {e}")
-            
-        return None
     
     def generate_outputs(self) -> None:
         """Generate consolidated output files"""
