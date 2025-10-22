@@ -152,12 +152,26 @@ class CoreWorkerPlasmaStoreProvider {
   /// argument to Get to retrieve the object data.
   Status Release(const ObjectID &object_id);
 
+  /// Fetches data from the local plasma store. If an object is not available in the
+  /// local plasma store, then the raylet will trigger a pull request to copy an object
+  /// into the local plasma store from another node.
+  ///
+  /// \param[in] object_ids objects to fetch if they are not already in local plasma.
+  /// \param[in] owner_addresses owner addresses of the objects.
+  /// \param[in] timeout_ms if the timeout elapses, the request will be canceled.
+  /// \param[out] results objects fetched from plasma. This is only valid if the function
+  ///
+  /// \return Status::IOError if there's an error communicating with the raylet.
+  /// \return Status::TimedOut if timeout_ms was reached before all object_ids could be
+  /// fetched.
+  /// \return Status::Interrupted if a SIGINT signal was received.
+  /// \return Status::IntentionalSystemExit if a SIGTERM signal was was received.
+  /// \return Status::UnexpectedSystemExit if any other signal was received.
+  /// \return Status::OK otherwise.
   Status Get(const std::vector<ObjectID> &object_ids,
              const std::vector<rpc::Address> &owner_addresses,
              int64_t timeout_ms,
-             const WorkerContext &ctx,
-             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -205,23 +219,25 @@ class CoreWorkerPlasmaStoreProvider {
   std::shared_ptr<plasma::PlasmaClientInterface> &store_client() { return store_client_; }
 
  private:
-  /// Ask the raylet to pull a set of objects and then attempt to get them
-  /// from the local plasma store. Successfully fetched objects will be removed
-  /// from the input set of remaining IDs and added to the results map.
+  /// Ask the plasma store to return object objects within the timeout.
+  /// Successfully fetched objects will be removed from the input set of remaining IDs and
+  /// added to the results map.
   ///
-  /// \param[in/out] remaining IDs of the remaining objects to get.
+  /// \param[in/out] Map of object IDs to their indices left to get.
   /// \param[in] batch_ids IDs of the objects to get.
+  /// \param[in] batch_owner_addresses owner addresses of the objects.
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
   /// map.
   /// \param[out] got_exception Set to true if any of the fetched objects contained an
   /// exception.
-  /// \return Status.
-  Status PullObjectsAndGetFromPlasmaStore(
+  /// \return Status::IOError if there is an error in communicating with the raylet or the
+  /// plasma store.
+  /// \return Status::OK if successful.
+  Status GetObjectsFromPlasmaStore(
       absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx,
-      const std::vector<ObjectID> &batch_ids,
-      const std::vector<rpc::Address> &batch_owner_addresses,
+      const std::vector<ObjectID> &ids,
       int64_t timeout_ms,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);

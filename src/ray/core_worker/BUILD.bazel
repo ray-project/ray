@@ -32,6 +32,7 @@ ray_cc_library(
         ":reference_counter",
         ":shutdown_coordinator",
         ":task_event_buffer",
+        "//src/ray/common:metrics",
         "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
@@ -243,10 +244,6 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
-    copts = select({
-        "//conditions:default": ["-Wno-error=deprecated-declarations"],
-        "@platforms//os:windows": [],
-    }),
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:asio",
