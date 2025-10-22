@@ -442,10 +442,10 @@ class TestApproximateTopK:
         # Should only return 2 items since that's all we have
         assert len(result["approx_topk(id)"]) == 2
 
-    def test_approximate_topk_different_lg_capacity(
+    def test_approximate_topk_different_log_capacity(
         self, ray_start_regular_shared_2_cpus
     ):
-        """Test that different lg_capacity values still produce correct top k."""
+        """Test that different log_capacity values still produce correct top k."""
         data = [
             *[{"id": "frequent"} for _ in range(100)],
             *[{"id": "common"} for _ in range(50)],
@@ -453,13 +453,13 @@ class TestApproximateTopK:
         ]
         ds = ray.data.from_items(data)
 
-        # Test with smaller lg_capacity
+        # Test with smaller log_capacity
         result_small = ds.aggregate(
-            ApproximateTopK(on="id", top_k_items=2, lg_capacity=10)
+            ApproximateTopK(on="id", top_k_items=2, log_capacity=10)
         )
-        # Test with larger lg_capacity
+        # Test with larger log_capacity
         result_large = ds.aggregate(
-            ApproximateTopK(on="id", top_k_items=2, lg_capacity=15)
+            ApproximateTopK(on="id", top_k_items=2, log_capacity=15)
         )
 
         # Both should correctly identify the top 2

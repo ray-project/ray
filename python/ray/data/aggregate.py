@@ -1387,7 +1387,7 @@ class ApproximateTopK(AggregateFnV2):
         self,
         on: str,
         top_k_items: int,
-        lg_capacity: int = 15,
+        log_capacity: int = 15,
         alias_name: Optional[str] = None,
     ):
         """
@@ -1395,11 +1395,11 @@ class ApproximateTopK(AggregateFnV2):
         https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
 
         Guarantees:
-            - Any item with true frequency > N / (2^lg_capacity) is guaranteed to appear in the results
-            - Reported counts may have an error of at most ± N / (2^lg_capacity).
+            - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
+            - Reported counts may have an error of at most ± N / (2^log_capacity).
 
 
-        If lg_capacity is too small for your data:
+        If log_capacity is too small for your data:
             - Low-frequency items may be evicted from the sketch, potentially causing the top-k
               results to miss items that should appear in the output.
             - The error bounds increase, reducing the accuracy of the reported counts.
@@ -1422,36 +1422,36 @@ class ApproximateTopK(AggregateFnV2):
         Args:
             on: The name of the column to aggregate.
             top_k_items: The number of top items to return.
-            lg_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+            log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
                 Higher values increase accuracy but use more memory. Defaults to 15.
             alias_name: The name of the aggregate. Defaults to None.
         """
 
         self.top_k_items = top_k_items
-        self._lg_capacity = lg_capacity
+        self._log_capacity = log_capacity
         self._frequent_strings_sketch = self._require_datasketches()
         super().__init__(
             alias_name if alias_name else f"approx_topk({str(on)})",
             on=on,
             ignore_nulls=True,
-            zero_factory=lambda: self.zero(lg_capacity).serialize(),
+            zero_factory=lambda: self.zero(log_capacity).serialize(),
         )
 
-    def zero(self, lg_capacity: int):
-        return self._frequent_strings_sketch(lg_max_k=lg_capacity)
+    def zero(self, log_capacity: int):
+        return self._frequent_strings_sketch(lg_max_k=log_capacity)
 
     def aggregate_block(self, block: Block) -> bytes:
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
-        sketch = self.zero(self._lg_capacity)
+        sketch = self.zero(self._log_capacity)
         for value in column:
             if value.as_py() is not None:
                 sketch.update(str(value.as_py()))
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
-        combined = self.zero(self._lg_capacity)
+        combined = self.zero(self._log_capacity)
         combined.merge(self._frequent_strings_sketch.deserialize(current_accumulator))
         combined.merge(self._frequent_strings_sketch.deserialize(new))
         return combined.serialize()
