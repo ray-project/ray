@@ -155,7 +155,7 @@ class ResourceManager:
         mem_op_internal += op.metrics.obj_store_mem_internal_outqueue
 
         # Op's external output buffer.
-        mem_op_outputs = state.outqueue_memory_usage()
+        mem_op_outputs = state.output_queue_bytes()
         # Input buffers of the downstream operators.
         for next_op in op.output_dependencies:
             mem_op_outputs += (
