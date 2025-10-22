@@ -4,7 +4,7 @@ from typing import List, Tuple, Union
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray, batch
 from ray.util.annotations import DeveloperAPI
 
 
