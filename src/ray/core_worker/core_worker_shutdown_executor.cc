@@ -108,7 +108,6 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     // event loop each time.
     core_worker_->task_execution_service_.post(
         [this, exit_type, detail, creation_task_exception_pb_bytes]() {
-          rpc::DrainServerCallExecutor();
           KillChildProcessesImmediately();
           DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
           ExecuteGracefulShutdown(
@@ -127,10 +126,27 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
         [this, shutdown_callback]() {
           RAY_LOG(INFO) << "Wait for currently executing tasks in the underlying thread "
                            "pools to finish.";
+          bool not_actor_task = false;
+          ActorID actor_id;
+          {
+            absl::MutexLock lock(&core_worker_->mutex_);
+            actor_id = core_worker_->actor_id_;
+            not_actor_task = core_worker_->actor_id_.IsNil();
+          }
           // Wait for currently executing tasks in the underlying thread pools to
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
-          core_worker_->task_receiver_->Stop();
+          if (not_actor_task) {
+            core_worker_->task_receiver_->Stop();
+          } else {
+            RAY_LOG(DEBUG).WithField(actor_id)
+                << "Skipping task_receiver_->Stop() for actor to allow fibers/threads to "
+                   "send task replies. "
+                << "Waiting for 100ms for fibers to complete execution";
+            // Since we can't join fiber threads, add a small delay
+            // to allow inflight fibers to finish sending task replies
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
 
           // Release resources only after tasks have stopped executing.
           auto status = core_worker_->raylet_ipc_client_->NotifyWorkerBlocked();
@@ -140,11 +156,11 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
                 << "the connection was lost.";
           }
 
-          bool not_actor_task = false;
-          {
-            absl::MutexLock lock(&core_worker_->mutex_);
-            not_actor_task = core_worker_->actor_id_.IsNil();
-          }
+          // Drain RPC server to ensure all task replies are sent
+          RAY_LOG(DEBUG) << "Draining RPC server to ensure task replies are sent";
+          rpc::DrainServerCallExecutor();
+          RAY_LOG(DEBUG) << "RPC server drained";
+
           if (not_actor_task) {
             // Normal tasks should not hold any object references in the heap after
             // executing, but they could in the case that one was stored as a glob
