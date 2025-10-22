@@ -448,7 +448,7 @@ GPU = "GPU"
 TPU = "TPU"
 NPU = "NPU"
 HPU = "HPU"
-
+MBLT = "MBLT"
 
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
