@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Ray FOSSA Preprocessor
+Ray C/C++ Dependency Analyzer
 
-This script analyzes Ray's C/C++ dependencies and prepares data for FOSSA compliance scanning.
+This script analyzes Ray's C/C++ dependencies and generates dependency reports.
 It handles Bazel's complex dependency structure, including external dependencies, patches,
-custom C code, and platform-specific variations.
+and custom C code.
 
 Usage:
     python ray_fossa_preprocessor.py --ray-root /path/to/ray [options]
@@ -17,13 +17,12 @@ import argparse
 import json
 import subprocess
 import sys
-import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 class RayFossaPreprocessor:
-    """Main class for Ray FOSSA preprocessing"""
+    """Main class for Ray C/C++ dependency analysis"""
     
     # Deliverable binaries that need compliance analysis
     DELIVERABLE_TARGETS = [
@@ -53,6 +52,7 @@ class RayFossaPreprocessor:
         self.transitive_deps = {}
         self.build_deps = {}
         self.runtime_deps = {}
+        self.test_deps = {}
         self.patches = {}
         self.custom_c_code = {}
         
@@ -111,9 +111,12 @@ class RayFossaPreprocessor:
             'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
             'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
             'java', 'maven', 'gradle', 'scala', 'kotlin',
-            'go_', 'rust_', 'cargo', 'crate',
-            'test_', '_test', 'testing', 'mock', 'fixture'
+            'go_', 'rust_', 'cargo', 'crate'
         ]
+        
+        # Add test-related patterns only if not including test dependencies
+        if not self.include_test_deps:
+            exclude_patterns.extend(['test_', '_test', 'testing', 'mock', 'fixture'])
         
         # Check external targets
         for dep in external_deps:
@@ -149,10 +152,11 @@ class RayFossaPreprocessor:
     
     
     def classify_dependency_types(self, deps: List[str]) -> Dict[str, Any]:
-        """Classify dependencies as runtime or build-only"""
+        """Classify dependencies as runtime, build-only, or test-only"""
         classified = {
             'runtime': [],
-            'build_only': []
+            'build_only': [],
+            'test_only': []
         }
         
         for dep in deps:
@@ -169,6 +173,15 @@ class RayFossaPreprocessor:
                     classified['build_only'].append(dep_info)
                 else:
                     # Skip build tools if not including them
+                    continue
+            # Check if it's a test dependency
+            elif any(pattern in dep.lower() for pattern in ['test_', '_test', 'testing', 'mock', 'fixture', 'gtest', 'googletest']):
+                if self.include_test_deps:
+                    dep_info['type'] = 'test'
+                    dep_info['compliance_required'] = False  # Test deps typically don't need compliance
+                    classified['test_only'].append(dep_info)
+                else:
+                    # Skip test dependencies if not including them
                     continue
             else:
                 # All other C/C++ deps are runtime
@@ -283,86 +296,6 @@ class RayFossaPreprocessor:
         return custom_code
     
     
-    def generate_fossa_config(self) -> str:
-        """Generate .fossa.yml configuration file"""
-        config = {
-            'version': 3,
-            'project': {
-                'name': 'rajesh-test',
-                'branch': f'fossa-c-cpp-analysis-{self.get_timestamp()}'
-            },
-            'analyze': {
-                'modules': [],
-                'exclude': [
-                    'python/**',
-                    '**/requirements.txt',
-                    '**/setup.py', 
-                    '**/pyproject.toml',
-                    '**/package.json',
-                    '**/package-lock.json',
-                    '**/yarn.lock',
-                    '**/node_modules/**',
-                    '**/__pycache__/**',
-                    '**/*.py',
-                    '**/*.js',
-                    '**/*.ts',
-                    '**/*.jsx',
-                    '**/*.tsx',
-                    '**/test/**',
-                    '**/tests/**',
-                    '**/examples/**',
-                    '**/docs/**',
-                    '**/doc/**',
-                    '**/*.md',
-                    '**/*.rst',
-                    '**/*.txt',
-                    'bazel-ray/**',
-                    'bazel-bin/**',
-                    'bazel-out/**',
-                    'bazel-testlogs/**',
-                    'bazel/**',
-                    '**/external/**',
-                    '**/Cargo.toml',
-                    '**/Gemfile',
-                    '**/Gemfile.lock',
-                    '**/Cargo.lock',
-                    '**/rust/**',
-                    '**/ruby/**',
-                    '**/go.mod',
-                    '**/go.sum',
-                    '**/pom.xml',
-                    '**/build.gradle'
-                ]
-            }
-        }
-        
-        # Add modules for different dependency types
-        config['analyze']['modules'].extend([
-            {
-                'name': 'ray-runtime-deps',
-                'type': 'custom',
-                'dependencies': 'runtime_dependencies.json'
-            },
-            {
-                'name': 'ray-custom-c',
-                'type': 'custom', 
-                'dependencies': 'custom_c_analysis.json'
-            },
-            {
-                'name': 'ray-patched-deps',
-                'type': 'custom',
-                'dependencies': 'patches_analysis.json'
-            }
-        ])
-        
-        if self.include_build_tools:
-            config['analyze']['modules'].append({
-                'name': 'ray-build-tools',
-                'type': 'custom',
-                'dependencies': 'build_dependencies.json'
-            })
-        
-        return config
     
     def create_compliance_report(self) -> Dict[str, Any]:
         """Create comprehensive compliance report"""
@@ -371,31 +304,40 @@ class RayFossaPreprocessor:
                 'total_dependencies': 0,
                 'runtime_dependencies': 0,
                 'build_only_dependencies': 0,
+                'test_dependencies': 0,
                 'compliance_required': 0
             },
             'patches_analysis': self.patches,
             'custom_c_code': self.custom_c_code
         }
         
-        # Calculate summary statistics - fix the unhashable type error
+        # Calculate summary statistics
         all_runtime_dep_names = set()
         for target_deps in self.runtime_deps.values():
-            # Extract just the dependency names, not the full dict objects
             for dep in target_deps:
                 if isinstance(dep, dict):
                     all_runtime_dep_names.add(dep.get('name', str(dep)))
                 else:
                     all_runtime_dep_names.add(str(dep))
         
-        report['summary']['total_dependencies'] = len(all_runtime_dep_names)
+        all_test_dep_names = set()
+        for target_deps in self.test_deps.values():
+            for dep in target_deps:
+                if isinstance(dep, dict):
+                    all_test_dep_names.add(dep.get('name', str(dep)))
+                else:
+                    all_test_dep_names.add(str(dep))
+        
         report['summary']['runtime_dependencies'] = len(all_runtime_dep_names)
-        report['summary']['compliance_required'] = len(all_runtime_dep_names)
+        report['summary']['test_dependencies'] = len(all_test_dep_names)
+        report['summary']['total_dependencies'] = len(all_runtime_dep_names) + len(all_test_dep_names)
+        report['summary']['compliance_required'] = len(all_runtime_dep_names)  # Only runtime deps need compliance
         
         return report
     
     def run_full_analysis(self):
         """Run the complete analysis pipeline"""
-        print("Starting Ray FOSSA Preprocessing Analysis")
+        print("Starting Ray C/C++ Dependency Analysis")
         print("=" * 60)
         
         # Step 1: Analyze transitive dependencies
@@ -406,9 +348,10 @@ class RayFossaPreprocessor:
         print("\n2. Classifying dependency types...")
         for target, deps in self.transitive_deps.items():
             classified = self.classify_dependency_types(deps)
-            # Store just the dependency names for runtime deps, not the full objects
+            # Store just the dependency names for different dep types, not the full objects
             self.runtime_deps[target] = [dep['name'] for dep in classified['runtime']]
             self.build_deps[target] = [dep['name'] for dep in classified['build_only']]
+            self.test_deps[target] = [dep['name'] for dep in classified['test_only']]
         
         # Step 3: Analyze patches
         print("\n3. Analyzing patches...")
@@ -426,12 +369,6 @@ class RayFossaPreprocessor:
     
     def generate_outputs(self):
         """Generate all output files"""
-        # Generate .fossa.yml
-        fossa_config = self.generate_fossa_config()
-        with open(self.ray_root / '.fossa.yml', 'w') as f:
-            import yaml
-            yaml.dump(fossa_config, f, default_flow_style=False, sort_keys=False)
-        
         # Generate dependency manifests
         with open(self.ray_root / 'dependencies.json', 'w') as f:
             json.dump(self.transitive_deps, f, indent=2)
@@ -441,6 +378,9 @@ class RayFossaPreprocessor:
         
         with open(self.ray_root / 'build_dependencies.json', 'w') as f:
             json.dump(self.build_deps, f, indent=2)
+        
+        with open(self.ray_root / 'test_dependencies.json', 'w') as f:
+            json.dump(self.test_deps, f, indent=2)
         
         with open(self.ray_root / 'patches_analysis.json', 'w') as f:
             json.dump(self.patches, f, indent=2)
@@ -457,10 +397,11 @@ class RayFossaPreprocessor:
         self.generate_markdown_report(compliance_report)
         
         print("Generated files:")
-        print("  - .fossa.yml")
         print("  - dependencies.json")
         print("  - runtime_dependencies.json")
         print("  - build_dependencies.json")
+        if self.include_test_deps:
+            print("  - test_dependencies.json")
         print("  - patches_analysis.json")
         print("  - custom_c_analysis.json")
         print("  - compliance_report.json")
@@ -474,12 +415,14 @@ class RayFossaPreprocessor:
 
 - **Total Dependencies**: {report['summary']['total_dependencies']}
 - **Runtime Dependencies**: {report['summary']['runtime_dependencies']}
+- **Test Dependencies**: {report['summary']['test_dependencies']}
 - **Compliance Required**: {report['summary']['compliance_required']}
 
 ## Analysis Configuration
 
 - **Transitive Depth**: {'All' if self.transitive_depth == -1 else self.transitive_depth}
 - **Include Build Tools**: {self.include_build_tools}
+- **Include Test Dependencies**: {self.include_test_deps}
 
 ## Dependencies by Target
 
@@ -493,14 +436,12 @@ class RayFossaPreprocessor:
         
         md_content += """## Next Steps
 
-1. Review the generated `.fossa.yml` configuration
-2. Run `fossa analyze` to perform license scanning
-3. Run `fossa report` to generate compliance reports
-4. Review any flagged dependencies for compliance issues
+1. Review the generated dependency analysis files
+2. Use the dependency data for compliance analysis with your preferred tools
+3. Review any flagged dependencies for compliance issues
 
 ## Files Generated
 
-- `.fossa.yml` - FOSSA configuration
 - `dependencies.json` - Complete dependency data
 - `runtime_dependencies.json` - Runtime dependencies only
 - `patches_analysis.json` - Patch impact analysis
@@ -513,7 +454,7 @@ class RayFossaPreprocessor:
             f.write(md_content)
 
 def main():
-    parser = argparse.ArgumentParser(description='Ray FOSSA Preprocessor')
+    parser = argparse.ArgumentParser(description='Ray C/C++ Dependency Analyzer')
     parser.add_argument('--ray-root', required=True, help='Path to Ray repository')
     parser.add_argument('--transitive-depth', type=int, default=-1, 
                        help='Transitive dependency depth (-1=all, 0=direct only)')
