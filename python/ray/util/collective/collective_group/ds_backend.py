@@ -6,10 +6,13 @@ from typing import TYPE_CHECKING, List
 import ray
 from ray.util.collective.types import Backend
 
-from datasystem.DsTensorClient
-
 if TYPE_CHECKING:
     import torch
+
+try:
+    from datasystem.DsTensorClient import DsTensorClient
+except ImportError as e:
+    print(f"Import error: {e}")
 
 
 class DSBackend:
