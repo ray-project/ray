@@ -15,18 +15,23 @@ from torch.distributions import Categorical, kl_divergence
 from tqdm.auto import trange
 
 
+# Environment configuration
 STATE_DIM = 2  # The contextual bandit operates in 2D.
-# Eight compass directions: [W, NW, N, NE, E, SE, S, SW].
-ACTION_DIM = 8
+ACTION_DIM = 8  # Eight compass directions: [W, NW, N, NE, E, SE, S, SW].
+
+# Training hyperparameters
 GROUP_SIZE = 8
+BATCH_SIZE = 16
 BASE_LR = 5e-6
 ADAM_EPS = 1e-8
+GRAD_CLIP_NORM = 1.0
+
+# GRPO algorithm parameters
 EMA_DECAY = 0.999
 PPO_CLIP_EPS = 0.5
 KL_COEFF = 0.1
-BATCH_SIZE = 16
-GRAD_CLIP_NORM = 1.0
 
+# Action space definition
 # Unit direction vectors for the eight compass actions (W, NW, N, NE, E, SE, S, SW).
 diag = 2**0.5 / 2.0
 ACTION_DIRECTIONS = torch.tensor(
