@@ -230,16 +230,11 @@ class BatchIterator:
             with self.yield_batch_context(batch):
                 yield batch.data
 
-        self.after_epoch_end()
-
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
 
     def before_epoch_start(self):
         self._yielded_first_batch = False
-
-    def after_epoch_end(self):
-        pass
 
     @contextmanager
     def get_next_batch_context(self):

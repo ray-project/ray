@@ -819,7 +819,11 @@ class _StatsManager:
 
     @dataclass
     class _MetricState:
+
+        # How frequently to update metrics.
         update_interval_s: float = 5.0
+
+        # Last time stats were updated.
         last_updated: float = 0.0
 
     def __init__(self):
@@ -827,10 +831,6 @@ class _StatsManager:
         self._stats_actor_handle: Optional[ActorHandle] = None
         self._stats_actor_cluster_id = None
 
-        # Lock for updating stats snapshots
-        self._stats_lock: threading.Lock = threading.Lock()
-
-        # Interval for sending stats to _StatsActor
         self._execution_metrics_state = self._MetricState(
             update_interval_s=_StatsManager.UPDATE_EXECUTION_METRICS_INTERVAL_S,
             last_updated=0.0,
