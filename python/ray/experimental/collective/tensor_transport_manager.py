@@ -34,7 +34,9 @@ class TensorTransportManager(ABC):
     @abstractmethod
     @abstractmethod
     def can_abort_transport(self) -> bool:
-        """Whether the backend can abort the transport.
+        """
+        Whether the backend can abort the transport.
+        If this returns False, then Ray will kill involved actors upon system errors to avoid hanging.
 
         Returns:
             bool: True if the backend can abort the transport.
