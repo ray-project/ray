@@ -291,20 +291,19 @@ For collective-based tensor transports (Gloo and NCCL):
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
 
-System-level Error-Handling
+Error handling
 ===========================
+
+* Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
 
 * If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed to prevent any hanging.
 
 * If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the dependent task or on the ray.get on the NIXL ref.
-  
-* Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
 
 * System-level errors include:
-
    * Errors internal to the third-party transport, e.g., NCCL network errors
-   * Actor and node failure
-   * Tensors returned by the user that are located on an unsupported device, e.g., a CPU tensor when using NCCL
+   * Actor or node failures
+   * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
    * Ray object fetch timeouts (can be overridden by setting the ``RAY_fetch_fail_timeout_milliseconds`` environment variable)
    * Any unexpected system bugs
 
