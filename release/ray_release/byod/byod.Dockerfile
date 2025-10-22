@@ -33,10 +33,10 @@ sudo apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 sudo apt-get autoclean
 sudo rm -rf /etc/apt/sources.list.d/*
 
-mkdir -p /etc/apt/keyrings
+sudo mkdir -p /etc/apt/keyrings
 curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
   gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null
-chmod go+r /etc/apt/keyrings/microsoft.gpg
+sudo chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 AZ_VER=2.72.0
 AZ_DIST="$(lsb_release -cs)"
