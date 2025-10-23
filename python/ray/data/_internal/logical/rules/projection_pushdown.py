@@ -325,18 +325,18 @@ class ProjectionPushdown(Rule):
             and input_op.supports_projection_pushdown()
         ):
             if current_project.has_star_expr():
-                # If project has a star, than no projection is feasible
+                # If project has a star, then projection is not feasible
                 required_columns = None
             else:
-                # Otherwise, collect required column for projection
+                # Otherwise, collect required columns to push projection down
+                # into the reader
                 required_columns = _collect_referenced_columns(current_project.exprs)
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole
             is_projection = all(
                 _is_col_expr(expr)
-                for expr in current_project.exprs
-                if not isinstance(expr, StarExpr)
+                for expr in _filter_out_star(current_project.exprs)
             )
 
             if is_projection:

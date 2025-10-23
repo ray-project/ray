@@ -93,13 +93,6 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         """
         self.visit(expr.expr)
 
-    def visit_star(self, expr: StarExpr) -> None:
-        """Since ``StarExpr`` holds deferred renaming mapping, we add
-        source column refs into the list of target refs"""
-
-        for col_ref in expr.get_column_rename_map().keys():
-            self._col_refs[col_ref] = None
-
 
 class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
