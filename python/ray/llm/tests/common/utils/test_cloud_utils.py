@@ -704,7 +704,7 @@ class TestLoraMirrorConfig:
 
 
 class TestCloudFileSystemFilterFiles:
-    """Tests for the _filter_files_for_download method."""
+    """Tests for the _filter_files method."""
 
     def test_filter_files_no_filters(self):
         """Test filtering files with no inclusion or exclusion filters."""
@@ -727,7 +727,7 @@ class TestCloudFileSystemFilterFiles:
         mock_fs.get_file_info.return_value = [file_info1, file_info2, dir_info]
 
         # Test filtering with no filters
-        result = CloudFileSystem._filter_files_for_download(
+        result = CloudFileSystem._filter_files(
             fs=mock_fs, source_path="bucket/model", destination_path="/local/dest"
         )
 
@@ -765,7 +765,7 @@ class TestCloudFileSystemFilterFiles:
         mock_fs.get_file_info.return_value = [file_info1, file_info2, file_info3]
 
         # Test filtering with inclusion substrings
-        result = CloudFileSystem._filter_files_for_download(
+        result = CloudFileSystem._filter_files(
             fs=mock_fs,
             source_path="bucket/model",
             destination_path="/local/dest",
@@ -809,7 +809,7 @@ class TestCloudFileSystemFilterFiles:
         ]
 
         # Test filtering with exclusion suffixes
-        result = CloudFileSystem._filter_files_for_download(
+        result = CloudFileSystem._filter_files(
             fs=mock_fs,
             source_path="bucket/model",
             destination_path="/local/dest",
@@ -853,7 +853,7 @@ class TestCloudFileSystemFilterFiles:
         ]
 
         # Test filtering with both inclusion and exclusion
-        result = CloudFileSystem._filter_files_for_download(
+        result = CloudFileSystem._filter_files(
             fs=mock_fs,
             source_path="bucket/model",
             destination_path="/local/dest",

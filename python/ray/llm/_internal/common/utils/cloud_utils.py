@@ -347,49 +347,7 @@ class CloudFileSystem:
             return []
 
     @staticmethod
-    def download_files(
-        path: str,
-        bucket_uri: str,
-        substrings_to_include: Optional[List[str]] = None,
-        suffixes_to_exclude: Optional[List[str]] = None,
-    ) -> None:
-        """Download files from cloud storage to a local directory.
-
-        Args:
-            path: Local directory where files will be downloaded
-            bucket_uri: URI of cloud directory
-            substrings_to_include: Only include files containing these substrings
-            suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
-        """
-        try:
-            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-
-            # Ensure the destination directory exists
-            os.makedirs(path, exist_ok=True)
-
-            # Get filtered files to download
-            files_to_download = CloudFileSystem._filter_files_for_download(
-                fs, source_path, path, substrings_to_include, suffixes_to_exclude
-            )
-
-            # Download each file
-            for source_file_path, dest_file_path in files_to_download:
-                # Create destination directory if needed
-                dest_dir = os.path.dirname(dest_file_path)
-                if dest_dir:
-                    os.makedirs(dest_dir, exist_ok=True)
-
-                # Download the file
-                with fs.open_input_file(source_file_path) as source_file:
-                    with open(dest_file_path, "wb") as dest_file:
-                        dest_file.write(source_file.read())
-
-        except Exception as e:
-            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
-            raise
-
-    @staticmethod
-    def _filter_files_for_download(
+    def _filter_files(
         fs: pa_fs.FileSystem,
         source_path: str,
         destination_path: str,
@@ -411,7 +369,7 @@ class CloudFileSystem:
         file_selector = pa_fs.FileSelector(source_path, recursive=True)
         file_infos = fs.get_file_info(file_selector)
 
-        files_to_copy = []
+        path_pairs = []
         for file_info in file_infos:
             if file_info.type != pa_fs.FileType.File:
                 continue
@@ -429,11 +387,53 @@ class CloudFileSystem:
                 if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
                     continue
 
-            files_to_copy.append(
+            path_pairs.append(
                 (file_info.path, os.path.join(destination_path, rel_path))
             )
 
-        return files_to_copy
+        return path_pairs
+
+    @staticmethod
+    def download_files(
+        path: str,
+        bucket_uri: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+    ) -> None:
+        """Download files from cloud storage to a local directory.
+
+        Args:
+            path: Local directory where files will be downloaded
+            bucket_uri: URI of cloud directory
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
+        """
+        try:
+            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+
+            # Ensure the destination directory exists
+            os.makedirs(path, exist_ok=True)
+
+            # Get filtered files to download
+            files_to_download = CloudFileSystem._filter_files(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
+
+            # Download each file
+            for source_file_path, dest_file_path in files_to_download:
+                # Create destination directory if needed
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
+                    os.makedirs(dest_dir, exist_ok=True)
+
+                # Download the file
+                with fs.open_input_file(source_file_path) as source_file:
+                    with open(dest_file_path, "wb") as dest_file:
+                        dest_file.write(source_file.read())
+
+        except Exception as e:
+            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
+            raise
 
     @staticmethod
     def download_files_parallel(
@@ -444,7 +444,7 @@ class CloudFileSystem:
         max_concurrency: int = 10,
         chunk_size: int = 64 * 1024 * 1024,
     ) -> None:
-        """Optimized download using PyArrow's built-in copy_files function.
+        """Multi-threaded download of files from cloud storage.
 
         Args:
             path: Local directory where files will be downloaded
@@ -473,15 +473,15 @@ class CloudFileSystem:
                 return
 
             # List and filter files
-            files_to_copy = CloudFileSystem._filter_files_for_download(
+            files_to_download = CloudFileSystem._filter_files(
                 fs, source_path, path, substrings_to_include, suffixes_to_exclude
             )
 
-            if not files_to_copy:
+            if not files_to_download:
                 logger.info("Filters do not match any of the files, skipping download")
                 return
 
-            def copy_single_file(file_paths):
+            def download_single_file(file_paths):
                 source_file_path, dest_file_path = file_paths
                 # Create destination directory if needed
                 dest_dir = os.path.dirname(dest_file_path)
@@ -499,18 +499,18 @@ class CloudFileSystem:
                 )
                 return dest_file_path
 
-            max_workers = min(max_concurrency, len(files_to_copy))
+            max_workers = min(max_concurrency, len(files_to_download))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
-                    executor.submit(copy_single_file, file_paths)
-                    for file_paths in files_to_copy
+                    executor.submit(download_single_file, file_paths)
+                    for file_paths in files_to_download
                 ]
 
                 for future in futures:
                     try:
                         future.result()
                     except Exception as e:
-                        logger.error(f"Failed to copy file: {e}")
+                        logger.error(f"Failed to download file: {e}")
                         raise
 
         except Exception as e:
