@@ -64,6 +64,9 @@ class AuthenticationTokenLoader {
   /// Default token file path (~/.ray/auth_token or %USERPROFILE%\.ray\auth_token).
   std::string GetDefaultTokenPath();
 
+  /// Trim whitespace from the beginning and end of the string.
+  std::string TrimWhitespace(const std::string &str);
+
   std::mutex token_mutex_;
   std::optional<std::optional<AuthenticationToken>> cached_token_;
 };

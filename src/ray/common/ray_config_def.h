@@ -36,6 +36,9 @@ RAY_CONFIG(bool, emit_main_service_metrics, true)
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// Whether to enable token-based authentication for RPC calls.
+/// will be converted to AuthenticationMode enum defined in
+/// rpc/authentication/authentication_mode.h
+/// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, auth_mode, "disabled")
 
 /// The interval of periodic event loop stats print.

@@ -21,7 +21,7 @@ namespace rpc {
 
 enum class AuthenticationMode {
   DISABLED,
-  RAY_TOKEN,
+  TOKEN,
 };
 
 /// Get the authentication mode from the RayConfig.

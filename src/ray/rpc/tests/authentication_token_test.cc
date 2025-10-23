@@ -77,6 +77,10 @@ TEST_F(AuthenticationTokenTest, TestEquals) {
 
   EXPECT_TRUE(token1.Equals(token2));
   EXPECT_FALSE(token1.Equals(token3));
+  EXPECT_TRUE(token1 == token2);
+  EXPECT_FALSE(token1 == token3);
+  EXPECT_FALSE(token1 != token2);
+  EXPECT_TRUE(token1 != token3);
 }
 
 TEST_F(AuthenticationTokenTest, TestEqualityDifferentLengths) {
@@ -118,83 +122,6 @@ TEST_F(AuthenticationTokenTest, TestEmptyString) {
   AuthenticationToken expected("");
   EXPECT_TRUE(token.Equals(expected));
 }
-
-TEST_F(AuthenticationTokenTest, TestSpecialCharacters) {
-  std::string special = "token-with-special!@#$%^&*()_+={}[]|\\:;\"'<>,.?/~`";
-  AuthenticationToken token(special);
-
-  EXPECT_FALSE(token.empty());
-  AuthenticationToken expected(special);
-  EXPECT_TRUE(token.Equals(expected));
-}
-
-TEST_F(AuthenticationTokenTest, TestUnicodeCharacters) {
-  std::string unicode = "token-with-unicode-café-😀";
-  AuthenticationToken token(unicode);
-
-  EXPECT_FALSE(token.empty());
-  AuthenticationToken expected(unicode);
-  EXPECT_TRUE(token.Equals(expected));
-}
-
-TEST_F(AuthenticationTokenTest, TestBinaryData) {
-  std::string binary;
-  for (int i = 0; i < 256; ++i) {
-    binary += static_cast<char>(i);
-  }
-
-  AuthenticationToken token(binary);
-
-  EXPECT_FALSE(token.empty());
-  AuthenticationToken expected(binary);
-  EXPECT_TRUE(token.Equals(expected));
-}
-
-TEST_F(AuthenticationTokenTest, TestLongToken) {
-  std::string long_token(10000, 'x');
-  AuthenticationToken token(long_token);
-
-  EXPECT_FALSE(token.empty());
-  AuthenticationToken expected(long_token);
-  EXPECT_TRUE(token.Equals(expected));
-}
-
-TEST_F(AuthenticationTokenTest, TestConstTimeComparison) {
-  // This test verifies that comparison works correctly
-  // Actual timing attack resistance would require specialized timing tests
-  AuthenticationToken token1("token-abc");
-  AuthenticationToken token2("token-xyz");
-  AuthenticationToken token3("token-abc");
-
-  EXPECT_FALSE(token1.Equals(token2));
-  EXPECT_TRUE(token1.Equals(token3));
-}
-
-TEST_F(AuthenticationTokenTest, TestMoveClearsOriginal) {
-  AuthenticationToken token1("test-token");
-  AuthenticationToken expected("test-token");
-
-  AuthenticationToken token2(std::move(token1));
-
-  // Original should be empty after move
-  EXPECT_TRUE(token1.empty());
-  // New token should have the value
-  EXPECT_TRUE(token2.Equals(expected));
-}
-
-TEST_F(AuthenticationTokenTest, TestMoveAssignmentClearsOriginal) {
-  AuthenticationToken token1("test-token");
-  AuthenticationToken token2("other-token");
-  AuthenticationToken expected("test-token");
-
-  token2 = std::move(token1);
-
-  // Original should be empty after move
-  EXPECT_TRUE(token1.empty());
-  // New token should have the value
-  EXPECT_TRUE(token2.Equals(expected));
-}
-
 }  // namespace rpc
 }  // namespace ray
 

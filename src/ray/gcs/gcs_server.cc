@@ -39,7 +39,6 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
-#include "ray/rpc/auth_token_loader.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 

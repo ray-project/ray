@@ -38,7 +38,6 @@ class AuthenticationToken {
   AuthenticationToken() = default;
   explicit AuthenticationToken(std::string value) : secret_(value.begin(), value.end()) {}
 
-  // Copy operations - allowed for caching, but use sparingly
   AuthenticationToken(const AuthenticationToken &other) : secret_(other.secret_) {}
   AuthenticationToken &operator=(const AuthenticationToken &other) {
     if (this != &other) {
@@ -66,6 +65,16 @@ class AuthenticationToken {
   /// Constant-time equality comparison
   bool Equals(const AuthenticationToken &other) const noexcept {
     return ConstTimeEqual(secret_, other.secret_);
+  }
+
+  /// Equality operator (constant-time)
+  bool operator==(const AuthenticationToken &other) const noexcept {
+    return Equals(other);
+  }
+
+  /// Inequality operator
+  bool operator!=(const AuthenticationToken &other) const noexcept {
+    return !(*this == other);
   }
 
   /// Set authentication metadata on a gRPC client context
@@ -113,6 +122,7 @@ class AuthenticationToken {
     return diff == 0;
   }
 
+  // replace the characters in the memory with 0
   static void ExplicitBurn(void *p, size_t n) noexcept {
 #if defined(_MSC_VER)
     SecureZeroMemory(p, n);
@@ -131,11 +141,11 @@ class AuthenticationToken {
     if (!secret_.empty()) {
       ExplicitBurn(secret_.data(), secret_.size());
       secret_.clear();
-      secret_.shrink_to_fit();
     }
   }
 
   void MoveFrom(AuthenticationToken &&other) noexcept {
+    SecureClear();
     secret_ = std::move(other.secret_);
     // Clear the moved-from object explicitly for security
     // Note: 'other' is already an rvalue reference, no need to move again

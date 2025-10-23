@@ -52,8 +52,8 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
     return *cached_token_;
   }
 
-  // If token auth is disabled, return std::nullopt
-  if (GetAuthenticationMode() == AuthenticationMode::DISABLED) {
+  // If token auth is not enabled, return std::nullopt
+  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
     cached_token_ = std::nullopt;
     return std::nullopt;
   }
@@ -80,8 +80,8 @@ bool AuthenticationTokenLoader::HasToken() {
     return cached_token_->has_value();
   }
 
-  // If token auth is disabled, no token needed
-  if (GetAuthenticationMode() == AuthenticationMode::DISABLED) {
+  // If token auth is not enabled, no token needed
+  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
     return false;
   }
 
@@ -101,12 +101,6 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
   std::string token;
   std::getline(token_file, token);
   token_file.close();
-
-  // Trim whitespace
-  std::string whitespace = " \t\n\r\f\v";
-  token.erase(0, token.find_first_not_of(whitespace));
-  token.erase(token.find_last_not_of(whitespace) + 1);
-
   return token;
 }
 
@@ -116,13 +110,13 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   if (env_token != nullptr && std::string(env_token).length() > 0) {
     RAY_LOG(DEBUG) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
                       "variable";
-    return AuthenticationToken(std::string(env_token));
+    return AuthenticationToken(TrimWhitespace(std::string(env_token)));
   }
 
   // Precedence 2: RAY_AUTH_TOKEN_PATH environment variable
   const char *env_token_path = std::getenv("RAY_AUTH_TOKEN_PATH");
   if (env_token_path != nullptr && std::string(env_token_path).length() > 0) {
-    std::string token_str = ReadTokenFromFile(env_token_path);
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(env_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG) << "Loaded authentication token from file: " << env_token_path;
       return AuthenticationToken(token_str);
@@ -134,7 +128,7 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
 
   // Precedence 3: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
-  std::string token_str = ReadTokenFromFile(default_path);
+  std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
     RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
     return AuthenticationToken(token_str);
@@ -177,6 +171,14 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
   }
 
   return home_dir + token_subpath;
+}
+
+std::string AuthenticationTokenLoader::TrimWhitespace(const std::string &str) {
+  std::string whitespace = " \t\n\r\f\v";
+  std::string trimmed_str = str;
+  trimmed_str.erase(0, trimmed_str.find_first_not_of(whitespace));
+  trimmed_str.erase(trimmed_str.find_last_not_of(whitespace) + 1);
+  return trimmed_str;
 }
 
 }  // namespace rpc
