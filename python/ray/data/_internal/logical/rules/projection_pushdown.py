@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
-    _RefRebindingVisitor,
+    _ColumnRefRebindingVisitor,
 )
 from ray.data.expressions import (
     AliasExpr,
@@ -145,7 +145,7 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
-def _try_fuse_consecutive_projects(
+def _try_fuse(
     upstream_project: Project, downstream_project: Project
 ) -> Project:
     """
@@ -177,6 +177,18 @@ def _try_fuse_consecutive_projects(
             f"Available columns: {sorted(upstream_output_columns) if not upstream_has_star else 'all columns (has star)'}"
         )
 
+    # NOTE: Downstream exprs have to be rebind-ed into the upstream's output
+    #       column definitions to properly handle renaming cases (ie when column
+    #       is renamed in upstream output).
+    #
+    #       For specific examples consider both of the cases below
+    v = _ColumnRefRebindingVisitor(upstream_column_defs)
+
+    downstream_exprs = [
+        v.visit(e)
+        for e in _filter_out_star(downstream_project.exprs)
+    ]
+
     if downstream_project.has_star_expr():
         # Composition case: downstream has star(), and we need to merge both upstream
         # and downstream expressions.
@@ -185,11 +197,12 @@ def _try_fuse_consecutive_projects(
         #   Upstream: [star(), col("a").alias("b")],
         #   Downstream: [star(), col("b").alias("c")]
         #
-        #   Result: [star(), col("a").alias("b"), col("b").alias("c")]
-        new_exprs = [
-            StarExpr(),
+        #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
+        new_exprs = (
+            [StarExpr()] if upstream_project.has_star_expr() else []
+        ) + [
             *_filter_out_star(upstream_project.exprs),
-            *_filter_out_star(downstream_project.exprs),
+            *downstream_exprs,
         ]
     else:
         # Intersection case: This is when downstream is a selection (no star), and
@@ -201,8 +214,9 @@ def _try_fuse_consecutive_projects(
         #   Downstream: [col("b").alias("c")]
         #
         #   Result: [col("a").alias("c")]
-        v = _RefRebindingVisitor(upstream_column_defs)
-        new_exprs = [v.visit(e) for e in downstream_project.exprs]
+
+        new_exprs = downstream_exprs
+
 
     return Project(
         upstream_project.input_dependency,
@@ -213,6 +227,10 @@ def _try_fuse_consecutive_projects(
 
 def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
     return [e for e in exprs if not isinstance(e, StarExpr)]
+
+
+def _unalias(expr: Expr) -> Expr:
+    return expr.expr if isinstance(expr, AliasExpr) else expr
 
 
 class ProjectionPushdown(Rule):
@@ -251,7 +269,12 @@ class ProjectionPushdown(Rule):
             return op
 
         upstream_project: Project = current_project.input_dependency  # type: ignore[assignment]
-        return _try_fuse_consecutive_projects(upstream_project, current_project)
+
+        fused = _try_fuse(upstream_project, current_project)
+
+        print(f">>> [DBG] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
+
+        return fused
 
     @classmethod
     def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
@@ -273,6 +296,8 @@ class ProjectionPushdown(Rule):
             else:
                 # Otherwise, collect required column for projection
                 required_columns = _collect_referenced_columns(current_project.exprs)
+
+            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}")
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole

@@ -94,7 +94,7 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
-class _RefRebindingVisitor(_ExprVisitor[Expr]):
+class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
     This visitor traverses given ``Expression`` trees and substitutes column references
