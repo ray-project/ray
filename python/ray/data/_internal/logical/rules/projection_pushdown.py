@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
-    _ColumnRewriter,
+    _RefRebindingVisitor,
 )
 from ray.data.expressions import (
     AliasExpr,
@@ -158,7 +158,7 @@ def _try_fuse_consecutive_projects(
     # Analyze upstream
     (
         upstream_output_columns,
-        upstream_column_definitions,
+        upstream_column_defs,
         removed_by_renames,
     ) = _analyze_upstream_project(upstream_project)
 
@@ -177,26 +177,32 @@ def _try_fuse_consecutive_projects(
             f"Available columns: {sorted(upstream_output_columns) if not upstream_has_star else 'all columns (has star)'}"
         )
 
-    new_exprs: List[Expr] = []
     if downstream_project.has_star_expr():
-        # Composition case: downstream has star(), and we need to merge both upstream and downstream expressions.
-        # Example:
-        # Upstream: [star(), col("a").alias("b")],
-        # Downstream: [star(), col("b").alias("c")]
+        # Composition case: downstream has star(), and we need to merge both upstream
+        # and downstream expressions.
         #
-        # Result: [star(), col("a").alias("b"), col("b").alias("c")]
+        # Example:
+        #   Upstream: [star(), col("a").alias("b")],
+        #   Downstream: [star(), col("b").alias("c")]
+        #
+        #   Result: [star(), col("a").alias("b"), col("b").alias("c")]
         new_exprs = [
             StarExpr(),
             *_filter_out_star(upstream_project.exprs),
             *_filter_out_star(downstream_project.exprs),
         ]
     else:
-        # Intersection case: This is when downstream is a selection (no star), and we need to recursively rewrite the downstream expressions into the upstream column definitions.
-        # Example: Upstream: [col("a").alias("b")], Downstream: [col("b").alias("c")] → Rewritten: [col("a").alias("c")]
-        for expr in downstream_project.exprs:
-            rewritten = _ColumnRewriter(upstream_column_definitions).visit(
-                expr)
-            new_exprs.append(rewritten)
+        # Intersection case: This is when downstream is a selection (no star), and
+        # we need to recursively rebind upstream column definitions inside the downstream
+        # expressions.
+        #
+        # Example:
+        #   Upstream: [col("a").alias("b")],
+        #   Downstream: [col("b").alias("c")]
+        #
+        #   Result: [col("a").alias("c")]
+        v = _RefRebindingVisitor(upstream_column_defs)
+        new_exprs = [v.visit(e) for e in downstream_project.exprs]
 
     return Project(
         upstream_project.input_dependency,
