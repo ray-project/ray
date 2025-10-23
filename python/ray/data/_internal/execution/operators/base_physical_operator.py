@@ -15,7 +15,6 @@ from ray.data.context import DataContext
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, ABC):
-
     @abstractmethod
     def internal_queue_num_blocks(self) -> int:
         """Returns Operator's internal queue size (in blocks)"""
