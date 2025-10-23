@@ -45,17 +45,20 @@ def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
     """
     Check if an expression is a simple column rename.
 
-    Returns (source_name, dest_name) if the expression is of form:
+    Returns (source_name, target_name) if the expression is of form:
         col("source").alias("dest")
-    where source != dest.
 
     Returns None for other expression types.
     """
-    if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
-        dest_name = expr.name
+    if (
+        isinstance(expr, AliasExpr) and
+        isinstance(expr.expr, ColumnExpr) and
+        expr._is_rename
+    ):
+        target_name = expr.name
         source_name = expr.expr.name
-        if source_name != dest_name:
-            return source_name, dest_name
+        return source_name, target_name
+
     return None
 
 
@@ -142,41 +145,6 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
-def _compose_projects(
-    upstream_project: Project,
-    downstream_project: Project,
-    upstream_has_star: bool,
-) -> List[Expr]:
-    """
-    Compose two Projects when the downstream has star().
-
-    Strategy:
-    - Emit a single star() only if the upstream had star() as well.
-    - Evaluate upstream non-star expressions first, then downstream non-star expressions.
-      With sequential projection evaluation, downstream expressions can reference
-      upstream outputs without explicit rewriting.
-    - Rename-of-computed columns will be dropped from final output by the evaluator
-      when there's no later explicit mention of the source name.
-    """
-    fused_exprs: List[Expr] = []
-
-    # Include star only if upstream had star; otherwise, don't reintroduce dropped cols.
-    if upstream_has_star:
-        fused_exprs.append(StarExpr())
-
-    # Then upstream non-star expressions in order.
-    for expr in upstream_project.exprs:
-        if not isinstance(expr, StarExpr):
-            fused_exprs.append(expr)
-
-    # Then downstream non-star expressions in order.
-    for expr in downstream_project.exprs:
-        if not isinstance(expr, StarExpr):
-            fused_exprs.append(expr)
-
-    return fused_exprs
-
-
 def _try_fuse_consecutive_projects(
     upstream_project: Project, downstream_project: Project
 ) -> Project:
@@ -186,7 +154,6 @@ def _try_fuse_consecutive_projects(
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
     upstream_has_star: bool = upstream_project.has_star_expr()
-    downstream_has_star: bool = downstream_project.has_star_expr()
 
     # Analyze upstream
     (
@@ -210,28 +177,36 @@ def _try_fuse_consecutive_projects(
             f"Available columns: {sorted(upstream_output_columns) if not upstream_has_star else 'all columns (has star)'}"
         )
 
-    rewritten_exprs: List[Expr] = []
-    # Intersection case: This is when downstream is a selection (no star), and we need to recursively rewrite the downstream expressions into the upstream column definitions.
-    # Example: Upstream: [col("a").alias("b")], Downstream: [col("b").alias("c")] → Rewritten: [col("a").alias("c")]
-    if not downstream_has_star:
-        for expr in downstream_project.exprs:
-            rewritten = _ColumnRewriter(upstream_column_definitions).visit(expr)
-            rewritten_exprs.append(rewritten)
-    else:
+    new_exprs: List[Expr] = []
+    if downstream_project.has_star_expr():
         # Composition case: downstream has star(), and we need to merge both upstream and downstream expressions.
         # Example:
-        # Upstream: [star(), col("a").alias("b")], Downstream: [star(), col("b").alias("c")] → Rewritten: [star(), col("a").alias("b"), col("b").alias("c")]
-        rewritten_exprs = _compose_projects(
-            upstream_project,
-            downstream_project,
-            upstream_has_star,
-        )
+        # Upstream: [star(), col("a").alias("b")],
+        # Downstream: [star(), col("b").alias("c")]
+        #
+        # Result: [star(), col("a").alias("b"), col("b").alias("c")]
+        new_exprs = [
+            StarExpr(),
+            *_filter_out_star(upstream_project.exprs),
+            *_filter_out_star(downstream_project.exprs),
+        ]
+    else:
+        # Intersection case: This is when downstream is a selection (no star), and we need to recursively rewrite the downstream expressions into the upstream column definitions.
+        # Example: Upstream: [col("a").alias("b")], Downstream: [col("b").alias("c")] → Rewritten: [col("a").alias("c")]
+        for expr in downstream_project.exprs:
+            rewritten = _ColumnRewriter(upstream_column_definitions).visit(
+                expr)
+            new_exprs.append(rewritten)
 
     return Project(
         upstream_project.input_dependency,
-        exprs=rewritten_exprs,
+        exprs=new_exprs,
         ray_remote_args=downstream_project._ray_remote_args,
     )
+
+
+def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
+    return [e for e in exprs if not isinstance(e, StarExpr)]
 
 
 class ProjectionPushdown(Rule):
