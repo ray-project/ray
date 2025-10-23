@@ -886,6 +886,7 @@ def test_per_func_name_stats(shutdown_only):
                 components.add(sample.labels["Component"])
         print(components)
         assert {
+            sys.executable,  # driver process
             "raylet",
             "agent",
             "ray::Actor",
