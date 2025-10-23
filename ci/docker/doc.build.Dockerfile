@@ -1,4 +1,4 @@
-ARG DOCKER_IMAGE_RAY_CORE=cr.ray.io/rayproject/ray-core-py3.9
+ARG DOCKER_IMAGE_RAY_CORE=cr.ray.io/rayproject/ray-core-py3.10
 ARG DOCKER_IMAGE_RAY_DASHBOARD=cr.ray.io/rayproject/ray-dashboard
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 
