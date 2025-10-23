@@ -87,9 +87,6 @@ def _plan_hash_shuffle_distinct(
 
     Returns:
         A HashDistinctOperator configured for the distinct operation.
-
-    Raises:
-        ValueError: If schema inference returns None or empty schema.
     """
     from ray.data._internal.execution.operators.distinct_aggregation import (
         HashDistinctOperator,
@@ -100,18 +97,15 @@ def _plan_hash_shuffle_distinct(
     assert len(logical_op._input_dependencies) == 1
     schema = logical_op._input_dependencies[0].infer_schema()
 
-    # Handle schema inference failure.
-    if schema is None:
-        raise ValueError(
-            "Cannot perform distinct operation: unable to infer schema from input. "
-            "Schema inference returned None. This may occur if the schema cannot be "
-            "determined at planning time."
-        )
-
     # Determine key columns - use all columns if none specified.
-    # Empty datasets with valid schemas are allowed and will return empty results.
+    # For empty datasets, schema may be None, in which case we use the provided keys
+    # or an empty tuple if no keys are specified.
     if logical_op._key is None:
-        key_columns = tuple(schema.names) if schema.names else ()
+        if schema is not None:
+            key_columns = tuple(schema.names) if schema.names else ()
+        else:
+            # Empty dataset with no schema - use empty key columns
+            key_columns = ()
     else:
         key_columns = tuple(logical_op._key)
 
