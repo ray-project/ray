@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Dict, List, TypeVar
 
 from ray.data.expressions import (
@@ -183,9 +184,19 @@ class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
         Returns:
             A new alias expression with rewritten inner expression and preserved name.
         """
-        visited = self.visit(expr.expr)
-
-        return AliasExpr(visited.data_type, visited, expr.name, _is_rename=expr._is_rename)
+        # We unalias returned expression to avoid nested aliasing
+        visited = self.visit(expr.expr)._unalias()
+        # NOTE: We're carrying over all of the other aspects of the alias
+        #       only replacing inner expre
+        return replace(
+            expr,
+            expr=visited,
+            # Alias expression will remain a renaming one (ie replacing source column)
+            # so long as it's referencing another column (and not otherwise)
+            #
+            # TODO replace w/ standalone rename expr
+            _is_rename=expr._is_rename and _is_col_expr(visited)
+        )
 
     def visit_download(self, expr: "Expr") -> Expr:
         """Visit a download expression (no rewriting needed).
@@ -208,3 +219,9 @@ class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
             The original star expression.
         """
         return expr
+
+
+def _is_col_expr(expr: Expr) -> bool:
+    return isinstance(expr, ColumnExpr) or (
+        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    )

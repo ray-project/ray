@@ -10,6 +10,7 @@ from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnRefRebindingVisitor,
+    _is_col_expr,
 )
 from ray.data.expressions import (
     AliasExpr,
@@ -360,12 +361,6 @@ class ProjectionPushdown(Rule):
                 )
 
         return current_project
-
-
-def _is_col_expr(expr: Expr) -> bool:
-    return isinstance(expr, ColumnExpr) or (
-        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
-    )
 
 
 def _extract_input_columns_renaming_mapping(

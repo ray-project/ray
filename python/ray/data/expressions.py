@@ -382,6 +382,9 @@ class Expr(ABC):
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
 
+    def _unalias(self) -> "Expr":
+        return self
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
@@ -703,11 +706,15 @@ class AliasExpr(Expr):
             self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
         )
 
+    def _unalias(self) -> "Expr":
+        return self.expr
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
+            and self._is_rename == self._is_rename
         )
 
 
