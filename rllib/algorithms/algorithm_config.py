@@ -2354,7 +2354,10 @@ class AlgorithmConfig(_Config):
         # Moved to `learners()` method.
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+            Callable[
+                [gym.spaces.Space, gym.spaces.Space],
+                Union["ConnectorV2", List["ConnectorV2"]],
+            ]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,

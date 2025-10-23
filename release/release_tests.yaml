@@ -95,19 +95,26 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
+    - __suffix__: azure
+      env: azure
+      cluster:
+        cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
       cluster:
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod
   team: reef
-  group: hello_world_custom_byod
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
   cluster:
     byod:
-      type: gpu
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
     cluster_compute: hello_world_compute_config.yaml
@@ -118,13 +125,17 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: released
       cluster:
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
   team: reef
-  group: hello_world_custom_byod_depset
+  group: hello_world
   frequency: nightly
   working_dir: hello_world_tests
 
@@ -278,7 +289,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -394,7 +405,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
@@ -1884,7 +1895,9 @@
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
-  frequency: nightly
+  # Ray Train V2 doesn't support colocation.
+  # TODO: Decide whether to remove this test or re-enable it if we add support again.
+  frequency: manual
   team: ml
 
   cluster:
@@ -1944,6 +1957,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2929,6 +2943,7 @@
 #########################
 
 - name: single_node
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2937,7 +2952,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
@@ -2956,6 +2970,7 @@
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2964,7 +2979,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store.yaml
@@ -2984,6 +2998,7 @@
         cluster_compute: object_store_gce.yaml
 
 - name: small_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2992,7 +3007,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/small_objects.yaml
@@ -3007,6 +3021,7 @@
     - __suffix__: aws
 
 - name: large_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3015,7 +3030,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/large_objects.yaml
@@ -3030,6 +3044,7 @@
     - __suffix__: aws
 
 - name: many_actors
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3038,7 +3053,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3058,6 +3072,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3065,7 +3080,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3078,6 +3092,7 @@
 
 
 - name: many_tasks
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3086,7 +3101,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3106,6 +3120,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3114,7 +3129,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3135,6 +3149,7 @@
 
 
 - name: many_pgs_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3142,7 +3157,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3155,6 +3169,7 @@
 
 
 - name: many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3163,7 +3178,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: many_nodes.yaml
@@ -3183,6 +3197,7 @@
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3190,7 +3205,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
@@ -4127,7 +4141,8 @@
 
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57222
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4275,8 +4290,32 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
-- name: e2e_audio
+- name: pytorch_profiling  # do not use dashes (regex sensitive)
   frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/pytorch-profiling
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: e2e_audio
+  # https://github.com/ray-project/ray/issues/57220
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4323,7 +4362,8 @@
     - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57219
+  frequency: manual
   python: "3.12"
   group: ray-examples
   team: ml
@@ -4348,7 +4388,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: object_detection  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57228
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4373,7 +4414,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_rag  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57224
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
