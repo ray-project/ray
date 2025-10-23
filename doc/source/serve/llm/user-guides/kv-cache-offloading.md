@@ -1,13 +1,12 @@
 (kv-cache-offloading-guide)=
 # KV cache offloading
 
-Extend KV cache capacity by offloading to CPU or local storage for larger batch sizes and reduced GPU memory pressure.
+Extend KV cache capacity by offloading to CPU memory or local disk for larger batch sizes and reduced GPU memory pressure.
 
 :::{note}
 Ray Serve doesn't provide KV cache offloading out of the box, but integrates seamlessly with vLLM solutions. This guide demonstrates one such integration: LMCache.
 :::
 
-KV cache offloading moves key-value caches from GPU memory to alternative storage such as CPU RAM or local disk. This approach reduces GPU memory pressure and enables you to serve larger batches or longer contexts without running out of GPU memory.
 
 Benefits of KV cache offloading:
 
@@ -15,7 +14,7 @@ Benefits of KV cache offloading:
 - **Cache reuse across requests**: Save and reuse previously computed KV caches for repeated or similar prompts, reducing prefill computation
 - **Flexible storage backends**: Choose from multiple storage options including local CPU, disk, or distributed systems
 
-Consider KV cache offloading when your application has repeated prompts or multi-turn conversations where you can reuse cached prefills.
+Consider KV cache offloading when your application has repeated prompts or multi-turn conversations where you can reuse cached prefills. If consecutive conversation queries aren't sent immediately, the GPU evicts these caches to make room for other concurrent requests, causing cache misses. Offloading KV caches to CPU memory or other storage backends, which has much larger capacity, preserves them for longer periods.  
 
 ## Deploy with LMCache
 
@@ -102,13 +101,8 @@ You can combine multiple KV transfer backends using `MultiConnector`. This is us
 
 ### When to use MultiConnector
 
-Use `MultiConnector` to combine multiple backends when:
+Use `MultiConnector` to combine multiple backends when you're using prefill/decode disaggregation and want both cross-instance transfer (NIXL) and local offloading.
 
-- You're using prefill/decode disaggregation and want both cross-instance transfer (NIXL) and local offloading (LMCache)
-- You need different KV transfer strategies for different layers of your architecture
-- You want to maximize cache capacity while maintaining efficient cross-instance communication
-
-### Deploy with MultiConnector
 
 The following example shows how to combine NIXL (for cross-instance transfer) with LMCache (for local offloading) in a prefill/decode deployment:
 
@@ -246,7 +240,7 @@ serve run config.yaml
 ### LMCache environment variables
 
 - `LMCACHE_LOCAL_CPU`: Set to `"True"` to enable local CPU offloading
-- `LMCACHE_CHUNK_SIZE`: Size of KV cache chunks (default: 256)
+- `LMCACHE_CHUNK_SIZE`: Size of KV cache chunks, in terms of tokens (default: 256)
 - `LMCACHE_MAX_LOCAL_CPU_SIZE`: Maximum CPU storage size in GB
 - `LMCACHE_PD_BUFFER_DEVICE`: Buffer device for prefill/decode scenarios (default: "cpu")
 
@@ -260,9 +254,9 @@ For the full list of LMCache configuration options, see the [LMCache configurati
 
 ## Performance considerations
 
-KV cache offloading trades GPU memory for latency. Consider these factors:
+Extending KV cache beyond local GPU memory introduces overhead for managing and looking up caches across different memory hierarchies. This creates a tradeoff: you gain larger cache capacity but may experience increased latency. Consider these factors:
 
-**Overhead in cache-miss scenarios**: When there are no cache hits, offloading adds modest overhead (~10-15%) compared to pure GPU caching. This overhead comes from the additional hashing, data movement, and management operations.
+**Overhead in cache-miss scenarios**: When there are no cache hits, offloading adds modest overhead (~10-15%) compared to pure GPU caching, based on our internal experiments. This overhead comes from the additional hashing, data movement, and management operations.
 
 **Benefits with cache hits**: When caches can be reused, offloading significantly reduces prefill computation. For example, in multi-turn conversations where users return after minutes of inactivity, LMCache retrieves the conversation history from CPU rather than recomputing it, significantly reducing time to first token for follow-up requests.
 
