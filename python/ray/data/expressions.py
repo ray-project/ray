@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
 
 import pyarrow
 
+from ray.data._internal.collections import collapse_transitive_map
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -407,9 +408,6 @@ class ColumnExpr(Expr):
         """Get the column name."""
         return self._name
 
-    def rename(self, new_name: str) -> Expr:
-        return AliasExpr(data_type=self.data_type, expr=self, _name=new_name, _is_rename=True)
-
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
 
@@ -689,8 +687,6 @@ class AliasExpr(Expr):
     expr: Expr
     _name: str
 
-    _is_rename: bool = False
-
     @property
     def name(self) -> str:
         """Get the alias name."""
@@ -725,8 +721,15 @@ class StarExpr(Expr):
         This means: keep all existing columns, then add/overwrite "new_col"
     """
 
+    # TODO elaborate on the semantic (that rebinding happens in the output)
+    _col_rename_map: Dict[str, str] = field(default_factory=lambda: dict())
+
     # TODO: Add UnresolvedExpr. Both StarExpr and UnresolvedExpr won't have a defined data_type.
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def get_column_rename_map(self):
+        # TODO memoize
+        return collapse_transitive_map(self._col_rename_map)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)
@@ -794,7 +797,8 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
-@PublicAPI(stability="beta")
+# TODO remove
+@DeveloperAPI(stability="alpha")
 def star() -> StarExpr:
     """
     References all input columns from the input.
@@ -809,7 +813,7 @@ def star() -> StarExpr:
     return StarExpr()
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
