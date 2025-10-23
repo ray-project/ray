@@ -195,7 +195,7 @@ class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
             # so long as it's referencing another column (and not otherwise)
             #
             # TODO replace w/ standalone rename expr
-            _is_rename=expr._is_rename and _is_col_expr(visited)
+            _is_rename=expr._is_rename and _is_col_expr(visited),
         )
 
     def visit_download(self, expr: "Expr") -> Expr:
