@@ -2,6 +2,7 @@ import abc
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Generic,
     List,
@@ -185,6 +186,31 @@ class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
             The collated data in the format expected by the model.
         """
         ...
+
+
+class RayDataCollate:
+    def __init__(self, arrow_batch_collate_fn: ArrowBatchCollateFn):
+        self.arrow_batch_collate_fn = arrow_batch_collate_fn
+
+    def _to_arrow_batch(self, batch: "CollatedData") -> "pyarrow.Table":
+        ...
+
+    def get_map_fn(self) -> Callable[["pyarrow.Table"], "pyarrow.Table"]:
+        def map_fn(batch: "pyarrow.Table") -> "pyarrow.Table":
+            batch = self._to_arrow_batch(batch)
+            return batch
+
+        return map_fn
+
+    def get_iterator_collate_fn(self) -> ArrowBatchCollateFn:
+        ...
+
+    def get_iterator_batch_size(self) -> int:
+        ...
+
+
+class DefaultRayDataCollate(RayDataCollate):
+    ...
 
 
 @DeveloperAPI

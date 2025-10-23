@@ -21,6 +21,9 @@ class DataIteratorImpl(DataIterator):
     def __repr__(self) -> str:
         return f"DataIterator({self._base_dataset})"
 
+    def _update_dataset(self, new_dataset: Dataset) -> None:
+        self._base_dataset = new_dataset
+
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:

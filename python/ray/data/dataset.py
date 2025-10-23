@@ -108,6 +108,7 @@ from ray.data.block import (
     UserDefinedFunction,
     _apply_batch_format,
 )
+from ray.data.collate_fn import RayDataCollate
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
@@ -5169,7 +5170,10 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
+        _collate_fn: Optional[
+            Union[Callable[[DataBatch], CollatedData], RayDataCollate]
+        ] = None,
+        disable_ray_data_collate: bool = False,
     ) -> Iterable[DataBatch]:
         """Return an iterable over batches of data.
 
@@ -5988,6 +5992,12 @@ class Dataset:
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
+
+    def batcher(self, batch_size: int) -> "Dataset":
+        raise NotImplementedError("to be implemented")
+
+    def collate_fn(self) -> "Dataset":
+        raise NotImplementedError("to be implemented")
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     @PublicAPI(api_group=E_API_GROUP)

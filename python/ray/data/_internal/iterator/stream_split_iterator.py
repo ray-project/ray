@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -70,6 +71,9 @@ class StreamSplitDataIterator(DataIterator):
         self._output_split_idx = output_split_idx
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
+
+    def _update_dataset(self, new_dataset: Dataset) -> None:
+        raise NotImplementedError("to be implemented")
 
     def _to_ref_bundle_iterator(
         self,
@@ -163,18 +167,15 @@ class SplitCoordinator:
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
-        def gen_epochs():
-            while True:
-                self._executor = self._base_dataset._plan.create_executor()
-                output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan
-                )
-                yield output_iterator
-
-        self._next_epoch = gen_epochs()
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+    def _gen_epochs(self) -> OutputIterator:
+        self._executor = self._base_dataset._plan.create_executor()
+        return execute_to_legacy_bundle_iterator(
+            self._executor, self._base_dataset._plan
+        )
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
@@ -242,6 +243,9 @@ class SplitCoordinator:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
+    def _update_dataset(self, new_dataset: Dataset) -> "Dataset":
+        raise NotImplementedError("to be implemented")
+
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 
@@ -272,7 +276,7 @@ class SplitCoordinator:
                 self._cur_epoch += 1
                 self._unfinished_clients_in_epoch = self._n
                 try:
-                    self._output_iterator = next(self._next_epoch)
+                    self._output_iterator = self._gen_epochs()
                 except Exception as e:
                     self._gen_epoch_error = e
 

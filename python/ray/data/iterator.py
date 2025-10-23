@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset import (
         CollatedData,
+        Dataset,
         MaterializedDataset,
         Schema,
         TensorFlowTensorBatchType,
@@ -100,6 +101,11 @@ class DataIterator(abc.ABC):
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
+        ...
+
+    @abc.abstractmethod
+    def _update_dataset(self, new_dataset: Dataset) -> None:
+        """Update the base dataset. This new dataset should be used for the future iterations"""
         ...
 
     @PublicAPI
