@@ -14,12 +14,12 @@ cp -r /home/ubuntu/ray-project/ray/python/ray/autoscaler/ "$TEMP_DIR"
 cd "$TEMP_DIR"
 zip -r "$ARCHIVE_NAME" autoscaler/
 
-# Upload to Azure blob storage using azcopy
-# Note: Assumes azcopy is installed and Azure credentials are configured
-azcopy copy "$ARCHIVE_NAME" "https://rayreleasetests.dfs.core.windows.net/working-dirs/working_dirs/azure_cluster_launcher.v2/$ARCHIVE_NAME"
+# Upload to S3
+# Note: Assumes AWS credentials are configured
+aws s3 cp "$ARCHIVE_NAME" "s3://ray-release-automation-results/working_dirs/azure_cluster_launcher.v2/$ARCHIVE_NAME"
 
 # Clean up
 cd -
 rm -rf "$TEMP_DIR"
 
-echo "Successfully uploaded $ARCHIVE_NAME to Azure storage"
+echo "Successfully uploaded $ARCHIVE_NAME to S3"

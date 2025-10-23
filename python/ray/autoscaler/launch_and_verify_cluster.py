@@ -143,6 +143,57 @@ def override_docker_image(config_yaml, docker_image):
     config_yaml["docker"] = docker_config
 
 
+def azure_authenticate():
+    """Get Azure service principal credentials from AWS Secrets Manager and authenticate."""
+    print("======================================")
+    print("Getting Azure credentials from AWS Secrets Manager...")
+
+    # Initialize AWS Secrets Manager client
+    secrets_client = boto3.client("secretsmanager", region_name="us-west-2")
+
+    # Get service principal credentials
+    secret_response = secrets_client.get_secret_value(
+        SecretId="azure-service-principal-oss-release"
+    )
+    secret = secret_response["SecretString"]
+    print(f"Secret: {secret}")
+
+    # Extract credentials
+    import json
+
+    client_id = json.loads(secret)["client_id"]
+    tenant_id = json.loads(secret)["tenant_id"]
+
+    # Get certificate
+    cert_response = secrets_client.get_secret_value(
+        SecretId="azure-service-principal-certificate"
+    )
+    cert = cert_response["SecretString"]
+    print(f"Cert: {cert}")
+
+    # Write certificate to temp file
+    tmp_dir = tempfile.mkdtemp()
+    cert_path = os.path.join(tmp_dir, "azure_cert.pem")
+    with open(cert_path, "w") as f:
+        f.write(cert)
+
+    # Login to Azure
+    result = subprocess.check_call(
+        [
+            "az",
+            "login",
+            "--service-principal",
+            "--username",
+            client_id,
+            "--certificate",
+            cert_path,
+            "--tenant",
+            tenant_id,
+        ]
+    )
+    print(f"Login result: {result}")
+
+
 def download_ssh_key_aws():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
@@ -208,10 +259,13 @@ def cleanup_cluster(config_yaml, cluster_config):
     num_tries = 3
     for i in range(num_tries):
         try:
+            env = os.environ.copy()
+            env.pop("PYTHONPATH", None)
             subprocess.run(
                 ["ray", "down", "-v", "-y", str(cluster_config)],
                 check=True,
                 capture_output=True,
+                env=env,
             )
             cleanup_security_groups(config_yaml)
             # Final success
@@ -326,7 +380,6 @@ def run_ray_commands(
     retries,
     no_config_cache,
     num_expected_nodes=1,
-    dir=None,
 ):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
@@ -337,51 +390,22 @@ def run_ray_commands(
         retries: The number of retries for the verification step.
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
-        dir: The directory to run the commands in.
     """
-
+    provider_type = config_yaml.get("provider", {}).get("type")
+    if provider_type == "azure":
+        azure_authenticate()
     print("======================================")
     print("Starting new cluster...")
-    print("Running from: ", dir)
-    print("PYTHONPATH: ", os.environ.get("PYTHONPATH"))
-
-    cmd1 = ["which", "python"]
-    cmd2 = [
-        "python",
-        "-I",
-        "-c",
-        "import os; print(os.environ.get('PYTHONPATH')); import sys; print(sys.path); import azure.common; print(azure.common.__file__)",
-    ]
-    # cmd3 = ["ls", "-l", "/home/ray/anaconda3/lib/python3.9/site-packages"]
-    # cmd2 = ["python", "-c", "from azure.common.credentials import get_cli_profile"]
     cmd = ["ray", "up", "-v", "-y"]
     if no_config_cache:
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
-
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
     try:
-
-        env = os.environ.copy()
-        env.pop("PYTHONPATH", None)
-        tmp_dir = tempfile.mkdtemp()
-        print("Created temporary directory: ", tmp_dir)
-        result1 = subprocess.run(
-            cmd1, check=True, capture_output=True, cwd=tmp_dir, env=env
-        )
-        print(f"cmd1 stdout:\n{result1.stdout.decode('utf-8')}")
-        print(f"cmd1 stderr:\n{result1.stderr.decode('utf-8')}")
-
-        result2 = subprocess.run(
-            cmd2, check=True, capture_output=True, cwd=tmp_dir, env=env
-        )
-        print(f"cmd2 stdout:\n{result2.stdout.decode('utf-8')}")
-        print(f"cmd2 stderr:\n{result2.stderr.decode('utf-8')}")
-
-        result3 = subprocess.run(
-            cmd, check=True, capture_output=True, cwd=tmp_dir, env=env
-        )
-        print(f"cmd3 stdout:\n{result3.stdout.decode('utf-8')}")
-        print(f"cmd3 stderr:\n{result3.stderr.decode('utf-8')}")
+        result = subprocess.run(cmd, check=True, capture_output=True, env=env)
+        print(f"cmd stdout:\n{result.stdout.decode('utf-8')}")
+        print(f"cmd stderr:\n{result.stderr.decode('utf-8')}")
     except subprocess.CalledProcessError as e:
         print(e.output)
         # print stdout and stderr
@@ -403,12 +427,13 @@ def run_ray_commands(
                 str(cluster_config),
                 (
                     'python -c \'import ray; ray.init("localhost:6379");'
+                    + 'print("Num nodes: ", len(ray.nodes()));'
                     + f" assert len(ray.nodes()) >= {num_expected_nodes}'"
                 ),
             ]
             if no_config_cache:
                 cmd.append("--no-config-cache")
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, env=env)
             success = True
             break
         except subprocess.CalledProcessError:
@@ -513,15 +538,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Create a new temporary file and dump the updated configuration into it
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_file = os.path.join(temp_dir, "cluster_config.yaml")
-        with open(temp_file, "w") as f:
-            yaml.dump(config_yaml, f)
+    with tempfile.NamedTemporaryFile(suffix=".yaml") as temp:
+        temp.write(yaml.dump(config_yaml).encode("utf-8"))
+        temp.flush()
+        cluster_config = Path(temp.name)
         run_ray_commands(
-            config_yaml,
-            temp_file,
-            retries,
-            no_config_cache,
-            num_expected_nodes,
-            temp_dir,
+            config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes
         )
