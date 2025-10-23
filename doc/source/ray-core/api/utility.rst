@@ -15,6 +15,8 @@ Utility
    ray.util.accelerators.tpu.get_current_pod_worker_count
    ray.util.accelerators.tpu.get_current_pod_name
    ray.util.accelerators.tpu.get_num_tpu_chips_on_node
+   ray.util.accelerators.tpu.SlicePlacementGroup
+   ray.util.accelerators.tpu.slice_placement_group
 
    ray.nodes
    ray.cluster_resources
