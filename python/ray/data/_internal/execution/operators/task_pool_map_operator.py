@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,

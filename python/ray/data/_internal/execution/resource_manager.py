@@ -4,8 +4,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Any, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -181,8 +180,6 @@ class ResourceManager:
         self._op_pending_usages.clear()
 
         # Iterate from last to first operator.
-        num_ops_so_far = 0
-        num_ops_total = len(self._topology)
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.

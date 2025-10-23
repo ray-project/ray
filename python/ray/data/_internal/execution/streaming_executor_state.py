@@ -41,7 +41,6 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
-    GiB,
 )
 from ray.data.context import DataContext
 

@@ -1,13 +1,12 @@
 import math
 import time
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
 import ray
-from ray.data import ActorPoolStrategy
-from ray.data._internal.compute import TaskPoolStrategy, ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
@@ -468,12 +467,22 @@ class TestReservationOpResourceAllocator:
         # Test can_submit_new_task and max_task_output_bytes_to_read.
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
-        assert allocator.max_task_output_bytes_to_read(
-            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 500
-        assert allocator.max_task_output_bytes_to_read(
-            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 500
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 500
+        )
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 500
+        )
 
         # Test when each operator uses some resources.
         op_usages[o2] = ExecutionResources(6, 0, 500)
@@ -509,13 +518,23 @@ class TestReservationOpResourceAllocator:
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert allocator.max_task_output_bytes_to_read(
-            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 138
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 138
+        )
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert allocator.max_task_output_bytes_to_read(
-            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 257
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 257
+        )
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -552,13 +571,23 @@ class TestReservationOpResourceAllocator:
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert allocator.max_task_output_bytes_to_read(
-            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 50
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o2,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 50
+        )
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert allocator.max_task_output_bytes_to_read(
-            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
-        ) == 145
+        assert (
+            allocator.max_task_output_bytes_to_read(
+                o3,
+                task_resource_usage=op_usages,
+                output_object_store_usage=op_outputs_usages,
+            )
+            == 145
+        )
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
@@ -578,7 +607,10 @@ class TestReservationOpResourceAllocator:
         # Set min_max_resource_requirements to use incremental_resource_usage as minimum
         for op in [o2, o3, o4, o5]:
             op.min_max_resource_requirements = MagicMock(
-                return_value=(incremental_usage, ExecutionResources(cpu=100, gpu=0, object_store_memory=10000))
+                return_value=(
+                    incremental_usage,
+                    ExecutionResources(cpu=100, gpu=0, object_store_memory=10000),
+                )
             )
 
         topo = build_streaming_topology(o5, ExecutionOptions())
