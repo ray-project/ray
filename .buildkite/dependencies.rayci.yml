@@ -25,4 +25,5 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build --all-configs --check
+    job_env: manylinux
     depends_on: manylinux
