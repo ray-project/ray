@@ -37,6 +37,7 @@ steps:
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/req_compiled.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/summit25_templates.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux
 
