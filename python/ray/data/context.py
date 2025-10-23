@@ -239,6 +239,11 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 )
 
 
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
+
 @DeveloperAPI
 @dataclass
 class AutoscalingConfig:
@@ -453,6 +458,8 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -590,6 +597,10 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
