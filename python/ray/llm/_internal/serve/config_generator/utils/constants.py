@@ -1,6 +1,6 @@
 import os
 
-from ray.llm._internal.serve.configs.constants import RAYLLM_HOME_DIR
+from ray.llm._internal.serve.constants import RAYLLM_HOME_DIR
 
 TEMPLATE_DIR = os.path.normpath(
     os.path.join(

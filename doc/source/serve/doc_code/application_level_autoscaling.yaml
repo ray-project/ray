@@ -1,0 +1,14 @@
+applications:
+  - name: MyApp
+    import_path: application_level_autoscaling:app
+    autoscaling_policy:
+      policy_function: autoscaling_policy:coordinated_scaling_policy
+    deployments:
+      - name: Preprocessor
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 10
+      - name: Model
+        autoscaling_config:
+          min_replicas: 2
+          max_replicas: 20
