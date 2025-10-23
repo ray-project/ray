@@ -259,7 +259,8 @@ def test_read_with_map_batches_fused_successfully(
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    ds = ray.data.read_parquet(temp_dir)
+    n = 10
+    ds = ray.data.range(n)
 
     mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
@@ -273,7 +274,7 @@ def test_read_with_map_batches_fused_successfully(
     # All Map ops are fused with Read
     assert (
         "InputDataBuffer[Input] -> "
-        "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)->MapBatches(<lambda>)]"
         == actual_plan_str
     )
 
@@ -376,7 +377,8 @@ def test_map_batches_with_batch_size_specified_fusion(
 ):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    ds = ray.data.read_parquet(temp_dir)
+    n = 10
+    ds = ray.data.range(n)
 
     mapped_ds = ds.map_batches(
         lambda x: x,
@@ -397,14 +399,14 @@ def test_map_batches_with_batch_size_specified_fusion(
         expected_min_rows_per_bundle = None
         expected_plan_str = (
             "InputDataBuffer[Input] -> "
-            "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)->MapBatches(<lambda>)]"
         )
     else:
         expected_min_rows_per_bundle = max(
             upstream_batch_size or 0, downstream_batch_size or 0
         )
         expected_plan_str = (
-            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange] -> "
             "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
         )
 

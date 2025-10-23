@@ -1,4 +1,4 @@
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -19,7 +19,7 @@ from ray.data.expressions import (
 )
 
 
-def _collect_referenced_columns(exprs: List[Expr]) -> Optional[Set[str]]:
+def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
     """
     Extract all column names referenced by the given expressions.
 
@@ -37,7 +37,8 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[Set[str]]:
     collector = _ColumnReferenceCollector()
     for expr in exprs or []:
         collector.visit(expr)
-    return collector.referenced_columns
+
+    return collector.get_column_refs()
 
 
 def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
@@ -118,9 +119,11 @@ def _validate_fusion(
         if isinstance(expr, StarExpr):
             continue
 
-        referenced_columns = _collect_referenced_columns([expr]) or set()
-        columns_from_original = referenced_columns - (
-            referenced_columns & upstream_output_columns
+        column_refs = _collect_referenced_columns([expr])
+        column_refs_set = set(column_refs or [])
+
+        columns_from_original = column_refs_set - (
+            column_refs_set & upstream_output_columns
         )
 
         # Validate accessibility
@@ -280,27 +283,65 @@ class ProjectionPushdown(Rule):
         # Step 2: Push projection into the data source if supported
         input_op = current_project.input_dependency
         if (
-            not current_project.has_star_expr()  # Must be a selection, not additive
-            and isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
+            isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
             and input_op.supports_projection_pushdown()
         ):
-            required_columns = _collect_referenced_columns(list(current_project.exprs))
-            if required_columns is not None:  # None means star() was present
-                optimized_source = input_op.apply_projection(list(required_columns))
+            if current_project.has_star_expr():
+                # If project has a star, than no projection is feasible
+                required_columns = None
+            else:
+                # Otherwise, collect required column for projection
+                required_columns = _collect_referenced_columns(current_project.exprs)
 
-                is_simple_selection = all(
-                    isinstance(expr, ColumnExpr) for expr in current_project.exprs
+            # Check if it's a simple projection that could be pushed into
+            # read as a whole
+            is_simple_projection = all(
+                _is_col_expr(expr)
+                for expr in current_project.exprs
+                if not isinstance(expr, StarExpr)
+            )
+
+            if is_simple_projection:
+                # NOTE: We only can rename output columns when it's a simple
+                #       projection and Project operator is discarded (otherwise
+                #       it might be holding expression referencing attributes
+                #       by original their names prior to renaming)
+                #
+                # TODO fix by instead rewriting exprs
+                output_column_rename_map = _collect_output_column_rename_map(
+                    current_project.exprs
                 )
 
-                if is_simple_selection:
-                    # Simple column selection: Read handles everything
-                    return optimized_source
-                else:
-                    # Has transformations: Keep Project on top of optimized Read
-                    return Project(
-                        optimized_source,
-                        exprs=current_project.exprs,
-                        ray_remote_args=current_project._ray_remote_args,
-                    )
+                # Apply projection of columns to the read op
+                return input_op.apply_projection(
+                    required_columns, output_column_rename_map
+                )
+            else:
+                # Otherwise just apply projection without renaming
+                projected_input_op = input_op.apply_projection(required_columns, None)
+
+                # Has transformations: Keep Project on top of optimized Read
+                return Project(
+                    projected_input_op,
+                    exprs=current_project.exprs,
+                    ray_remote_args=current_project._ray_remote_args,
+                )
 
         return current_project
+
+
+def _is_col_expr(expr: Expr) -> bool:
+    return isinstance(expr, ColumnExpr) or (
+        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    )
+
+
+def _collect_output_column_rename_map(exprs: List[Expr]) -> Dict[str, str]:
+    # First, extract all potential rename pairs
+    rename_map = {
+        expr.expr.name: expr.name
+        for expr in exprs
+        if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    }
+
+    return rename_map
