@@ -419,14 +419,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
 
-            if self._metrics.num_tasks_finished == 0:
-                self._estimated_num_output_bundles = (
-                    self._metrics.num_task_outputs_generated
-                )
-                self._estimated_output_num_rows = (
-                    self._metrics.rows_task_outputs_generated
-                )
-
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
             self._metrics.on_output_queued(output)
