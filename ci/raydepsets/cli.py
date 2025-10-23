@@ -139,7 +139,7 @@ class DependencySetManager:
         diffs = self.get_diffs()
         if len(diffs) > 0:
             raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                f"Lock files are not up to date for config: {self.config_name}. Please update lock files and push the changes.\n"
                 + "".join(diffs)
             )
         click.echo("Lock files are up to date.")
