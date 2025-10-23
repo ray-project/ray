@@ -84,6 +84,9 @@ class Result(ResultV1):
 
         checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
+            # NOTE: Pass a dummy checkpoint config since the checkpoint
+            # manager is only used for loading the checkpoint info, and
+            # we will not save further checkpoints.
             checkpoint_config=CheckpointConfig(),
         )
 
