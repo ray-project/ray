@@ -240,12 +240,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
             dist_travelled,
             # For future reductions (e.g. over n different episodes and all the
             # data coming from other env runners), reduce by max.
-            reduce="item_series",
-            # Always keep the last 100 values and max over this window.
-            # Note that this means that over time, if the values drop to lower
-            # numbers again, the reported `pacman_max_dist_travelled` might also
-            # decrease again (meaning `window=100` makes this not a "lifetime max").
-            window=100,
+            reduce="percentiles",
             # Some percentiles to compute
             percentiles=[75, 95, 99],
         )
@@ -263,8 +258,8 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         metrics_logger.log_value(
             "pacman_lifes",
             episode.get_infos(-1)["lives"],
-            reduce="mean",  # <- default (must be "mean" for EMA smothing)
-            ema_coeff=0.01,  # <- default EMA coefficient (`window` must be None)
+            reduce="ema",
+            ema_coeff=0.05,
         )
 
     def on_train_result(self, *, result: dict, **kwargs) -> None:
