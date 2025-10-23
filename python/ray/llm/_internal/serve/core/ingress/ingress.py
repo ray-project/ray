@@ -607,6 +607,8 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
+    # Annotated[..., Form()] is wrapper that is used to handle multiple form data, which is how audio is sent in transcription requests.
+    # vLLM implementation for handling transcription requests: https://github.com/vllm-project/vllm/blob/0825197bee8dea547f2ab25f48afd8aea0cd2578/vllm/entrypoints/openai/api_server.py#L839.
     async def transcriptions(
         self, body: Annotated[TranscriptionRequest, Form()]
     ) -> Response:

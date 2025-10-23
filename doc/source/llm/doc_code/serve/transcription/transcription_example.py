@@ -40,31 +40,15 @@ llm.build_openai_app = _testing_build_openai_app
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 
-whisper_llm_config = LLMConfig(
+transcription_config = LLMConfig(
     model_loading_config={
-        "model_id": "whisper-large",
-        "model_source": "openai/whisper-large-v3",
+        "model_id": "voxtral-small",
+        "model_source": "mistralai/Voxtral-Small-24B-2507",
     },
     deployment_config={
         "autoscaling_config": {
             "min_replicas": 1,
-            "max_replicas": 2,
-        }
-    },
-    # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-    accelerator_type="A10G",
-    log_engine_metrics=True,
-)
-
-voxtral_llm_config = LLMConfig(
-    model_loading_config={
-        "model_id": "voxtral-mini",
-        "model_source": "mistralai/Voxtral-Mini-3B-2507",
-    },
-    deployment_config={
-        "autoscaling_config": {
-            "min_replicas": 1,
-            "max_replicas": 2,
+            "max_replicas": 4,
         }
     },
     accelerator_type="A10G",
@@ -77,7 +61,7 @@ voxtral_llm_config = LLMConfig(
     log_engine_metrics=True,
 )
 
-app = build_openai_app({"llm_configs": [whisper_llm_config, voxtral_llm_config]})
+app = build_openai_app({"llm_configs": [transcription_config]})
 serve.run(app, blocking=True)
 # __transcription_example_end__
 
@@ -109,7 +93,7 @@ client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 with open("audio.wav", "rb") as f:
     try:
         response = client.audio.transcriptions.create(
-            model="whisper-large",
+            model="voxtral-small",
             file=f,
             temperature=0.0,
             language="en",
