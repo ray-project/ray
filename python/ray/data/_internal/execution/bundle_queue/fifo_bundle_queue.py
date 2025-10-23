@@ -110,13 +110,14 @@ class FIFOBundleQueue(BundleQueue):
             node.prev.next = node.next
             node.next.prev = node.prev
 
+        self._num_bundles -= 1
+        self._num_blocks -= len(bundle)
         self._nbytes -= bundle.size_bytes()
+
         assert self._nbytes >= 0, (
             "Expected the total size of objects in the queue to be non-negative, but "
             f"got {self._nbytes} bytes instead."
         )
-
-        self._num_bundles -= 1
 
         return node.value
 
@@ -124,8 +125,9 @@ class FIFOBundleQueue(BundleQueue):
         self._head = None
         self._tail = None
         self._bundle_to_nodes.clear()
-        self._nbytes = 0
         self._num_bundles = 0
+        self._num_blocks = 0
+        self._nbytes = 0
 
     def estimate_size_bytes(self) -> int:
         return self._nbytes
