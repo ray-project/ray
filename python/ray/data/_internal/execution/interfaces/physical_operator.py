@@ -827,8 +827,9 @@ def estimate_total_num_of_blocks(
 
     if (
         upstream_op_num_outputs > 0
-        and metrics.num_inputs_received > 0
-        and metrics.num_tasks_finished > 0
+        and metrics.average_num_inputs_per_task
+        and metrics.average_num_outputs_per_task
+        and metrics.average_rows_outputs_per_task
     ):
         estimated_num_tasks = total_num_tasks
         if estimated_num_tasks is None:
