@@ -167,7 +167,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvVariable) {
   ASSERT_TRUE(token_opt.has_value());
   AuthenticationToken expected("test-token-from-env");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.HasToken());
+  EXPECT_TRUE(loader.GetToken().has_value());
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
@@ -184,7 +184,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
   ASSERT_TRUE(token_opt.has_value());
   AuthenticationToken expected("test-token-from-file");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.HasToken());
+  EXPECT_TRUE(loader.GetToken().has_value());
 
   // Clean up
   remove(temp_token_path.c_str());
@@ -201,7 +201,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromDefaultPath) {
   ASSERT_TRUE(token_opt.has_value());
   AuthenticationToken expected("test-token-from-default");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.HasToken());
+  EXPECT_TRUE(loader.GetToken().has_value());
 }
 
 // Parametrized test for token loading precedence: env var > user-specified file > default
@@ -287,7 +287,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   auto token_opt = loader.GetToken();
 
   EXPECT_FALSE(token_opt.has_value());
-  EXPECT_FALSE(loader.HasToken());
+  EXPECT_FALSE(loader.GetToken().has_value());
 
   // Re-enable for other tests
   RayConfig::instance().initialize(R"({"auth_mode": "token"})");

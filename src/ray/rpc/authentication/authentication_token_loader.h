@@ -40,9 +40,6 @@ class AuthenticationTokenLoader {
   /// \return The authentication token, or std::nullopt if auth is disabled.
   std::optional<AuthenticationToken> GetToken();
 
-  /// Check if an authentication token exists.
-  bool HasToken();
-
   void ResetCache() {
     std::lock_guard<std::mutex> lock(token_mutex_);
     cached_token_.reset();
