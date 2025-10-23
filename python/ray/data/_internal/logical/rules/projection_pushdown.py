@@ -90,7 +90,7 @@ def _analyze_upstream_project(
         source_column_rename_map = {}
 
     rename_column_defs = {
-        new: ColumnExpr(source)
+        new: ColumnExpr(source).alias(new)
         for source, new in source_column_rename_map.items()
     }
 
@@ -189,11 +189,29 @@ def _try_fuse(
             f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
         )
 
-    # NOTE: Downstream exprs have to be rebind-ed into the upstream's output
-    #       column definitions to properly handle renaming cases (ie when column
-    #       is renamed in upstream output).
+    # Following invariants are upheld for each ``Project`` logical op:
     #
-    #       For specific examples consider both of the cases below
+    #   1. ``Project``s list of expressions are bound to op's input columns **only**
+    #   (ie there could be no inter-dependency b/w expressions themselves)
+    #
+    #   2. `Each of expressions on the `Project``s list constitutes an output
+    #   column definition, where column's name is derived from ``expr.name`` and
+    #   column itself is derived by executing that expression against the op's
+    #   input block.
+    #
+    # Therefore to abide by and satisfy aforementioned invariants, when fusing
+    # 2 ``Project`` operators, following scenarios are considered:
+    #
+    #   1. Composition: downstream including (and potentially renaming) upstream
+    #      output columns (this is the case when downstream holds ``StarExpr``).
+    #
+    #   2. Projection: downstream projecting upstream output columns (by for ex,
+    #      only selecting & transforming some of the upstream output columns).
+    #
+
+    # Upstream output column refs inside downstream expressions need to be bound
+    # to upstream output column definitions to satisfy invariant #1 (common for both
+    # composition/projection cases)
     v = _ColumnRefRebindingVisitor(upstream_column_defs)
 
     rebound_downstream_exprs = [
@@ -201,9 +219,19 @@ def _try_fuse(
         for e in _filter_out_star(downstream_project.exprs)
     ]
 
-    if downstream_project.has_star_expr():
-        # Composition case: downstream has star(), and we need to merge both upstream
-        # and downstream expressions.
+    if not downstream_project.has_star_expr():
+        # Projection case: this is when downstream is a *selection* (ie, not including
+        # the upstream columns with ``StarExpr``)
+        #
+        # Example:
+        #   Upstream: Project([col("a").alias("b")])
+        #   Downstream: Project([col("b").alias("c")])
+        #
+        #   Result: Project([col("a").alias("c")])
+        new_exprs = rebound_downstream_exprs
+    else:
+        # Composition case: downstream has ``StarExpr`` (entailing that downstream
+        # output will be including all of the upstream output columns)
         #
         # Example 1:
         #   Upstream: [star(), col("a").alias("b")],
@@ -212,16 +240,17 @@ def _try_fuse(
         #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
         #
         # Example 2:
-        #   Upstream: [star(), col("a").alias("b")],
-        #   Downstream: [star(), col("b").rename("c")]
+        #   Input (columns): ["a", "b"]
+        #   Upstream: [star({"b": "z"}), col("a").alias("x")],
+        #   Downstream: [star({"x": "y"}), col("z")]
         #
-        #   Result: [star(), col("a").alias("c")]
+        #   Result: [star(), col("a").alias("y"), col("b").alias("z")]
         downstream_star_expr = downstream_project.get_star_expr()
-
         downstream_star_column_rename_map = downstream_star_expr.get_column_rename_map()
 
         projected_upstream_output_col_exprs = []
 
+        # When fusing 2 projections
         for e in upstream_project.exprs:
             if isinstance(e, StarExpr):
                 upstream_star_expr = e
@@ -242,20 +271,6 @@ def _try_fuse(
             projected_upstream_output_col_exprs.append(target_expr)
 
         new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
-    else:
-        # Intersection case: This is when downstream is a selection (no star), and
-        # we need to recursively rebind upstream column definitions inside the downstream
-        # expressions.
-        #
-        # Example:
-        #   Upstream: [col("a").alias("b")],
-        #   Downstream: [col("b").alias("c")]
-        #
-        #   Result: [col("a").alias("c")]
-        print(f">>> [DBG] rebinding: {upstream_column_defs=}")
-
-        new_exprs = rebound_downstream_exprs
-
 
     return Project(
         upstream_project.input_dependency,
@@ -307,8 +322,6 @@ class ProjectionPushdown(Rule):
 
         fused = _try_fuse(upstream_project, current_project)
 
-        print(f">>> [DBG] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
-
         return fused
 
     @classmethod
@@ -339,8 +352,6 @@ class ProjectionPushdown(Rule):
                 for expr in current_project.exprs
                 if not isinstance(expr, StarExpr)
             )
-
-            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}, {is_projection=}")
 
             if is_projection:
                 # NOTE: We only can rename output columns when it's a simple
