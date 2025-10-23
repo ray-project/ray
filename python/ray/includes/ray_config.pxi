@@ -144,7 +144,3 @@ cdef class Config:
     @staticmethod
     def start_python_gc_manager_thread():
         return RayConfig.instance().start_python_gc_manager_thread()
-
-    @staticmethod
-    def enable_token_auth():
-        return RayConfig.instance().enable_token_auth()

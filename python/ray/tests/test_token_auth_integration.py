@@ -7,8 +7,12 @@ from pathlib import Path
 import pytest
 
 import ray
-from ray._private.auth_token_loader import reset_token_cache
+from ray._raylet import AuthenticationTokenLoader
 from ray.cluster_utils import Cluster
+
+
+def reset_token_cache():
+    AuthenticationTokenLoader.instance().reset_cache()
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +22,7 @@ def clean_token_sources():
     env_vars_to_clean = [
         "RAY_AUTH_TOKEN",
         "RAY_AUTH_TOKEN_PATH",
-        "RAY_enable_token_auth",
+        "RAY_auth_mode",
     ]
     original_values = {}
     for var in env_vars_to_clean:
@@ -55,13 +59,13 @@ def clean_token_sources():
 
 
 def test_local_cluster_generates_token():
-    """Test ray.init() generates token for local cluster when enable_token_auth is set."""
+    """Test ray.init() generates token for local cluster when auth_mode=token is set."""
     # Ensure no token exists
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
 
     # Enable token auth via environment variable
-    os.environ["RAY_enable_token_auth"] = "1"
+    os.environ["RAY_auth_mode"] = "token"
 
     # Initialize Ray with token auth
     ray.init()
@@ -81,34 +85,26 @@ def test_local_cluster_generates_token():
 
 
 def test_connect_without_token_raises_error():
-    """Test ray.init(address=...) without token fails when enable_token_auth config is set."""
+    """Test ray.init(address=...) without token fails when auth_mode=token is set."""
     # Test the token validation logic directly
-    # Clear the cached token to ensure we start fresh
-    import ray._private.auth_token_loader as auth_module
-    from ray._private.auth_token_loader import load_auth_token
-
-    auth_module._cached_token = None
-
     # Ensure no token exists
-    token = load_auth_token(generate_if_not_found=False)
-    assert token == ""
+    token_loader = AuthenticationTokenLoader.instance()
+    assert not token_loader.has_token()
 
     # Test the exact error message that would be raised
     with pytest.raises(RuntimeError, match="no authentication token was found"):
-        if not token:
-            raise RuntimeError(
-                "Token-based authentication is enabled on the cluster you're connecting to, "
-                "but no authentication token was found. Please provide a token using one of:\n"
-                "  1. RAY_AUTH_TOKEN environment variable\n"
-                "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
-                "  3. Default token file: ~/.ray/auth_token"
-            )
+        raise RuntimeError(
+            "Token authentication is enabled but no authentication token was found. Please provide a token using one of:\n"
+            "  1. RAY_AUTH_TOKEN environment variable\n"
+            "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
+            "  3. Default token file: ~/.ray/auth_token"
+        )
 
 
 def test_token_path_nonexistent_file_fails():
     """Test that setting RAY_AUTH_TOKEN_PATH to nonexistent file fails gracefully."""
     # Enable token auth and set token path to nonexistent file
-    os.environ["RAY_enable_token_auth"] = "1"
+    os.environ["RAY_auth_mode"] = "token"
     os.environ["RAY_AUTH_TOKEN_PATH"] = "/nonexistent/path/to/token"
 
     # Initialize Ray with token auth should fail
@@ -122,7 +118,7 @@ def test_cluster_token_authentication(tokens_match):
     # Set up cluster token first
     cluster_token = "a" * 32
     os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_enable_token_auth"] = "1"
+    os.environ["RAY_auth_mode"] = "token"
 
     # Create cluster with token auth enabled - node will read current env token
     cluster = Cluster()
@@ -173,12 +169,6 @@ def test_cluster_token_authentication(tokens_match):
         # Ensure cleanup
         ray.shutdown()
         cluster.shutdown()
-
-
-def test_system_config_auth_raises_error():
-    """Test that using _system_config for enabling token auth raises helpful error."""
-    with pytest.raises(ValueError, match="environment variable"):
-        ray.init(_system_config={"enable_token_auth": True})
 
 
 if __name__ == "__main__":

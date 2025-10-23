@@ -805,8 +805,16 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuPodType
     cdef const char[] kRayInternalNamespacePrefix
 
-cdef extern from "ray/rpc/auth_token_loader.h" namespace "ray::rpc" nogil:
-    cdef cppclass CRayAuthTokenLoader "ray::rpc::RayAuthTokenLoader":
+cdef extern from "ray/rpc/authentication/authentication_mode.h" namespace "ray::rpc" nogil:
+    cdef enum CAuthenticationMode "ray::rpc::AuthenticationMode":
+        DISABLED "ray::rpc::AuthenticationMode::DISABLED"
+        TOKEN "ray::rpc::AuthenticationMode::TOKEN"
+
+    CAuthenticationMode GetAuthenticationMode()
+
+cdef extern from "ray/rpc/authentication/authentication_token_loader.h" namespace "ray::rpc" nogil:
+    cdef cppclass CAuthenticationTokenLoader "ray::rpc::AuthenticationTokenLoader":
         @staticmethod
-        CRayAuthTokenLoader& instance()
+        CAuthenticationTokenLoader& instance()
+        c_bool HasToken()
         void ResetCache()

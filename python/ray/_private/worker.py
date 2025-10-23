@@ -62,7 +62,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
-from ray._private.auth_token_loader import setup_and_verify_auth
+from ray._private.authentication_token_setup import setup_and_verify_auth
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager

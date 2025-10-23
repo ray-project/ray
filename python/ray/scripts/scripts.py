@@ -674,14 +674,6 @@ Windows powershell users need additional escaping:
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if --enable-resource-isolation is set.",
 )
-@click.option(
-    "--enable-token-auth",
-    is_flag=True,
-    default=False,
-    help="Enable token-based authentication. Requires an existing token from "
-    "environment variables (RAY_AUTH_TOKEN or RAY_AUTH_TOKEN_PATH) or ~/.ray/auth_token. "
-    "Use ray.init(enable_token_auth=True) to auto-generate a token.",
-)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -730,7 +722,6 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
-    enable_token_auth,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -792,24 +783,6 @@ def start(
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
     )
-
-    # Handle token-based authentication
-    if enable_token_auth:
-        from ray._private.auth_token_loader import load_auth_token
-
-        # Try to load token (don't generate in CLI)
-        token = load_auth_token(generate_if_not_found=False)
-        if not token:
-            cli_logger.abort(
-                "Token authentication is enabled but no token found. "
-                "Please set RAY_AUTH_TOKEN environment variable, "
-                "RAY_AUTH_TOKEN_PATH, or create ~/.ray/auth_token. "
-                "Alternatively, use ray.init(enable_token_auth=True) to auto-generate a token."
-            )
-        # Only pass the flag, not the token
-        if system_config is None:
-            system_config = {}
-        system_config["enable_token_auth"] = "true"
 
     redirect_output = None if not no_redirect_output else True
 
