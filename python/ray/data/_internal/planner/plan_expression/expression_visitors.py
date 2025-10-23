@@ -1,4 +1,4 @@
-from typing import Set, TypeVar
+from typing import Dict, List, Set, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -42,40 +42,6 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         for value in expr.kwargs.values():
             super().visit(value)
 
-
-class _ColumnReferenceCollector(_ExprVisitorBase):
-    """Visitor that collects all column references from expression trees.
-
-    This visitor traverses expression trees and accumulates column names
-    referenced in ColumnExpr nodes.
-    """
-
-    def __init__(self):
-        """Initialize with an empty set of referenced columns."""
-        self.referenced_columns: Set[str] = set()
-
-    def visit_column(self, expr: ColumnExpr) -> None:
-        """Visit a column expression and collect its name.
-
-        Args:
-            expr: The column expression.
-
-        Returns:
-            None (only collects columns as a side effect).
-        """
-        self.referenced_columns.add(expr.name)
-
-    def visit_alias(self, expr: AliasExpr) -> None:
-        """Visit an alias expression and collect from its inner expression.
-
-        Args:
-            expr: The alias expression.
-
-        Returns:
-            None (only collects columns as a side effect).
-        """
-        self.visit(expr.expr)
-
     def visit_literal(self, expr: LiteralExpr) -> None:
         """Visit a literal expression (no columns to collect)."""
         pass
@@ -87,6 +53,45 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
     def visit_download(self, expr: "Expr") -> None:
         """Visit a download expression (no columns to collect)."""
         pass
+
+
+class _ColumnReferenceCollector(_ExprVisitorBase):
+    """Visitor that collects all column references from expression trees.
+
+    This visitor traverses expression trees and accumulates column names
+    referenced in ColumnExpr nodes.
+    """
+
+    def __init__(self):
+        """Initialize with an empty set of referenced columns."""
+
+        # NOTE: We're using dict to maintain insertion ordering
+        self._col_refs: Dict[str, None] = dict()
+
+    def get_column_refs(self) -> List[str]:
+        return list(self._col_refs.keys())
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        """Visit a column expression and collect its name.
+
+        Args:
+            expr: The column expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self._col_refs[expr.name] = None
+
+    def visit_alias(self, expr: AliasExpr) -> None:
+        """Visit an alias expression and collect from its inner expression.
+
+        Args:
+            expr: The alias expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.visit(expr.expr)
 
 
 class _ColumnRewriter(_ExprVisitor[Expr]):
