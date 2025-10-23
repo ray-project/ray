@@ -27,8 +27,7 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
-from ray.data._internal.table_block import TableBlockAccessor, \
-    TableBlockBuilder
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.block import (
     Block,
     BlockAccessor,

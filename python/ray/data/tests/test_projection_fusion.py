@@ -759,7 +759,9 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_operations_comprehensive(self, ray_start_regular_shared, operations, expected):
+    def test_projection_operations_comprehensive(
+        self, ray_start_regular_shared, operations, expected
+    ):
         """Comprehensive test for projection operations combinations."""
         from ray.data.expressions import col, lit
 
@@ -863,7 +865,9 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_fusion_with_count_and_filter(self, ray_start_regular_shared, operations, expected):
+    def test_projection_fusion_with_count_and_filter(
+        self, ray_start_regular_shared, operations, expected
+    ):
         """Test projection fusion with count operations including filters."""
         from ray.data.expressions import lit
 
@@ -995,7 +999,11 @@ class TestProjectionFusion:
         ],
     )
     def test_projection_operations_invalid_order(
-        self, ray_start_regular_shared, invalid_operations, error_type, error_message_contains
+        self,
+        ray_start_regular_shared,
+        invalid_operations,
+        error_type,
+        error_message_contains,
     ):
         """Test that operations fail gracefully when referencing non-existent columns."""
         import ray

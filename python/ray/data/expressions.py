@@ -378,7 +378,9 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(data_type=self.data_type, expr=self, _name=name, _is_rename=False)
+        return AliasExpr(
+            data_type=self.data_type, expr=self, _name=name, _is_rename=False
+        )
 
 
 @DeveloperAPI(stability="alpha")
@@ -697,7 +699,9 @@ class AliasExpr(Expr):
 
     def alias(self, name: str) -> "Expr":
         # Always unalias before creating new one
-        return AliasExpr(self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename)
+        return AliasExpr(
+            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
+        )
 
     def structurally_equals(self, other: Any) -> bool:
         return (

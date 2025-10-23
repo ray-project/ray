@@ -49,8 +49,7 @@ from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
-from ray.data._internal.datasource.webdataset_datasink import \
-    WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -58,8 +57,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
-from ray.data._internal.iterator.stream_split_iterator import \
-    StreamSplitDataIterator
+from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
@@ -83,17 +81,14 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Zip,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.streaming_split_operator import \
-    StreamingSplit
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.pandas_block import PandasBlockBuilder, \
-    PandasBlockSchema
+from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, \
-    StatsManager
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -114,10 +109,8 @@ from ray.data.block import (
     _apply_batch_format,
 )
 from ray.data.context import DataContext
-from ray.data.datasource import Connection, Datasink, FilenameProvider, \
-    SaveMode
-from ray.data.datasource.datasink import WriteResult, \
-    _gen_datasink_write_result
+from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -143,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import StarExpr, Expr, col
+from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -1162,8 +1155,6 @@ class Dataset:
                 :func:`ray.remote` for details.
         """  # noqa: E501
 
-        col_rename_map = []
-
         if isinstance(names, dict):
             if not names:
                 raise ValueError("rename_columns received 'names' with no entries.")
@@ -1181,10 +1172,7 @@ class Dataset:
                     "to be strings."
                 )
 
-            exprs = [
-                col(prev)._rename(new)
-                for prev, new in names.items()
-            ]
+            exprs = [col(prev)._rename(new) for prev, new in names.items()]
 
         elif isinstance(names, list):
             if not names:
@@ -1209,10 +1197,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            exprs = [
-                col(prev)._rename(new)
-                for prev, new in zip(current_names, names)
-            ]
+            exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "

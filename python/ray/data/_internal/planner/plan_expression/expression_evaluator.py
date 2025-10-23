@@ -11,8 +11,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-from ray.data._internal.logical.rules.projection_pushdown import \
-    _extract_input_columns_renaming_mapping
+from ray.data._internal.logical.rules.projection_pushdown import (
+    _extract_input_columns_renaming_mapping,
+)
 from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
@@ -25,7 +26,8 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
-    _ExprVisitor, col,
+    _ExprVisitor,
+    col,
 )
 
 logger = logging.getLogger(__name__)
@@ -731,8 +733,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         # Cherry-pick input block's columns that aren't explicitly removed via
         # renaming
         input_column_ref_exprs = [
-            col(c) for c in input_column_names
-            if c not in input_column_rename_map
+            col(c) for c in input_column_names if c not in input_column_rename_map
         ]
 
         projection_exprs = input_column_ref_exprs + projection_exprs[1:]

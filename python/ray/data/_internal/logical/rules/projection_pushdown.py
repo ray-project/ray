@@ -51,9 +51,9 @@ def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
     Returns None for other expression types.
     """
     if (
-        isinstance(expr, AliasExpr) and
-        isinstance(expr.expr, ColumnExpr) and
-        expr._is_rename
+        isinstance(expr, AliasExpr)
+        and isinstance(expr.expr, ColumnExpr)
+        and expr._is_rename
     ):
         target_name = expr.name
         source_name = expr.expr.name
@@ -78,15 +78,20 @@ def _analyze_upstream_project(
     #   - Target column name
     #   - Target expression
     output_column_defs = {
-        expr.name: expr
-        for expr in _filter_out_star(upstream_project.exprs)
+        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
     }
 
     # Identify upstream input columns removed by renaming (ie not propagated into
     # its output)
-    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(upstream_project.exprs)
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(
+        upstream_project.exprs
+    )
 
-    return output_column_names, output_column_defs, set(upstream_column_renaming_map.keys())
+    return (
+        output_column_names,
+        output_column_defs,
+        set(upstream_column_renaming_map.keys()),
+    )
 
 
 def _validate_fusion(
@@ -141,9 +146,7 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
-def _try_fuse(
-    upstream_project: Project, downstream_project: Project
-) -> Project:
+def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
     """
     Attempt to merge two consecutive Project operations into one.
 
@@ -202,8 +205,7 @@ def _try_fuse(
     v = _ColumnRefRebindingVisitor(upstream_column_defs)
 
     rebound_downstream_exprs = [
-        v.visit(e)
-        for e in _filter_out_star(downstream_project.exprs)
+        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
     ]
 
     if not downstream_project.has_star_expr():
@@ -235,7 +237,9 @@ def _try_fuse(
 
         # Extract downstream's input column rename map (downstream inputs are
         # upstream's outputs)
-        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(downstream_project.exprs)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(
+            downstream_project.exprs
+        )
         # Collect upstream output column expression "projected" to become
         # downstream expressions
         projected_upstream_output_col_exprs = []
@@ -335,8 +339,7 @@ class ProjectionPushdown(Rule):
             # Check if it's a simple projection that could be pushed into
             # read as a whole
             is_projection = all(
-                _is_col_expr(expr)
-                for expr in _filter_out_star(current_project.exprs)
+                _is_col_expr(expr) for expr in _filter_out_star(current_project.exprs)
             )
 
             if is_projection:
@@ -374,16 +377,20 @@ def _is_col_expr(expr: Expr) -> bool:
     )
 
 
-def _extract_input_columns_renaming_mapping(projection_exprs: List[Expr]) -> Dict[str, str]:
+def _extract_input_columns_renaming_mapping(
+    projection_exprs: List[Expr],
+) -> Dict[str, str]:
     """Fetches renaming mapping of all input columns names being renamed (replaced).
     Format is source column name -> new column name.
     """
 
-    return dict([
-        _get_renaming_mapping(expr)
-        for expr in _filter_out_star(projection_exprs)
-        if _is_renaming_expr(expr)
-    ])
+    return dict(
+        [
+            _get_renaming_mapping(expr)
+            for expr in _filter_out_star(projection_exprs)
+            if _is_renaming_expr(expr)
+        ]
+    )
 
 
 def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
@@ -393,11 +400,12 @@ def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
 
     return alias.expr.name, alias.name
 
+
 def _is_renaming_expr(expr: Expr) -> bool:
     is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
 
-    assert not is_renaming or isinstance(expr.expr, ColumnExpr), (
-        f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
-    )
+    assert not is_renaming or isinstance(
+        expr.expr, ColumnExpr
+    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
 
     return is_renaming
