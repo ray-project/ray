@@ -13,7 +13,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def generate_and_save_token() -> str:
+def generate_and_save_token() -> None:
     """Generate a new random token and save it in the default token path.
 
     Returns:
@@ -37,8 +37,6 @@ def generate_and_save_token() -> str:
     except Exception as e:
         logger.warning(f"Failed to save generated token to {token_path}: {e}. ")
         raise
-
-    return token
 
 
 def _get_default_token_path() -> Path:
@@ -86,7 +84,7 @@ def setup_and_verify_auth(system_config=None, is_new_cluster: bool = True) -> No
     if not token_loader.has_token():
         if is_new_cluster:
             # Generate token for new local cluster
-            token = generate_and_save_token()
+            generate_and_save_token()
 
             # Reload cache so that subsequent calls to token_loader read the new token
             token_loader.reset_cache()
