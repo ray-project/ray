@@ -74,7 +74,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             ].total_enqueued_num_blocks()
 
             avg_inputs_per_task = (
-                output_dependency.metrics.num_task_inputs_processed
+                output_dependency.metrics.blocks_task_inputs_processed
                 / max(output_dependency.metrics.num_tasks_finished, 1)
             )
             outstanding_tasks = total_enqueued_input_bundles / max(

@@ -1246,7 +1246,7 @@ def test_operator_metrics():
             inputs[k].size_bytes() for k in range(i + 1)
         ), i
         assert (
-            metrics.num_task_inputs_processed
+            metrics.blocks_task_inputs_processed
             == num_tasks_submitted * MIN_ROWS_PER_BUNDLE
         ), i
         assert metrics.bytes_task_inputs_processed == sum(
