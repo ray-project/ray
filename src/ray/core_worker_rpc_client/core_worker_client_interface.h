@@ -76,9 +76,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void CancelTask(const CancelTaskRequest &request,
                           const ClientCallback<CancelTaskReply> &callback) = 0;
 
-  virtual void RemoteCancelTask(
-      const RemoteCancelTaskRequest &request,
-      const ClientCallback<RemoteCancelTaskReply> &callback) = 0;
+  virtual void CancelRemoteTask(
+      CancelRemoteTaskRequest &&request,
+      const ClientCallback<CancelRemoteTaskReply> &callback) = 0;
 
   virtual void RegisterMutableObjectReader(
       const RegisterMutableObjectReaderRequest &request,
