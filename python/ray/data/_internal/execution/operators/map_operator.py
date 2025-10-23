@@ -153,10 +153,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_queue_size(self) -> int:
+    def internal_queue_num_blocks(self) -> int:
         return self._block_ref_bundler.num_blocks()
 
-    def internal_queue_size_bytes(self) -> int:
+    def internal_queue_num_bytes(self) -> int:
         return self._block_ref_bundler.size_bytes()
 
     @property
