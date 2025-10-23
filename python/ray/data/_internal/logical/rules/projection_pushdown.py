@@ -334,24 +334,22 @@ class ProjectionPushdown(Rule):
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole
-            is_simple_projection = all(
+            is_projection = all(
                 _is_col_expr(expr)
                 for expr in current_project.exprs
                 if not isinstance(expr, StarExpr)
             )
 
-            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}, {is_simple_projection=}")
+            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}, {is_projection=}")
 
-            if is_simple_projection:
+            if is_projection:
                 # NOTE: We only can rename output columns when it's a simple
                 #       projection and Project operator is discarded (otherwise
                 #       it might be holding expression referencing attributes
                 #       by original their names prior to renaming)
                 #
                 # TODO fix by instead rewriting exprs
-                output_column_rename_map = _collect_output_column_rename_map(
-                    current_project.exprs
-                )
+                output_column_rename_map = _collect_output_column_rename_map(current_project)
 
                 # Apply projection of columns to the read op
                 return input_op.apply_projection(
@@ -377,12 +375,16 @@ def _is_col_expr(expr: Expr) -> bool:
     )
 
 
-def _collect_output_column_rename_map(exprs: List[Expr]) -> Dict[str, str]:
-    # First, extract all potential rename pairs
+def _collect_output_column_rename_map(p: Project) -> Dict[str, str]:
+    # First, get column rename map from ``StarExpr``
+    star_expr = p.get_star_expr()
+    star_column_rename_map = star_expr.get_column_rename_map() if star_expr else {}
+
+    # Second, extract all potential rename pairs from output colum expressions
     rename_map = {
         expr.expr.name: expr.name
-        for expr in exprs
+        for expr in p.exprs
         if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
     }
 
-    return rename_map
+    return star_column_rename_map | rename_map
