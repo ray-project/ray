@@ -183,7 +183,9 @@ class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
         Returns:
             A new alias expression with rewritten inner expression and preserved name.
         """
-        return self.visit(expr.expr).alias(expr.name)
+        visited = self.visit(expr.expr)
+
+        return AliasExpr(visited.data_type, visited, expr.name, _is_rename=expr._is_rename)
 
     def visit_download(self, expr: "Expr") -> Expr:
         """Visit a download expression (no rewriting needed).
