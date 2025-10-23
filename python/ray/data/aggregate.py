@@ -8,6 +8,8 @@ from typing import (
     Generic,
     List,
     Optional,
+    Protocol,
+    Set,
     TypeVar,
     Union,
 )
@@ -27,7 +29,25 @@ from ray.util.annotations import Deprecated, PublicAPI
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
 
+
+class _SupportsRichComparison(Protocol):
+    def __lt__(self, other: Any) -> bool:
+        ...
+
+    def __le__(self, other: Any) -> bool:
+        ...
+
+    def __gt__(self, other: Any) -> bool:
+        ...
+
+    def __ge__(self, other: Any) -> bool:
+        ...
+
+
 AccumulatorType = TypeVar("AccumulatorType")
+SupportsRichComparisonType = TypeVar(
+    "SupportsRichComparisonType", bound=_SupportsRichComparison
+)
 AggOutputType = TypeVar("AggOutputType")
 
 
@@ -385,7 +405,7 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
 
 
 @PublicAPI
-class Min(AggregateFnV2[Union[int, float], Union[int, float]]):
+class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines min aggregation.
 
     Example:
@@ -420,27 +440,30 @@ class Min(AggregateFnV2[Union[int, float], Union[int, float]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("+inf"),
     ):
         super().__init__(
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("+inf"),
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
+    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
         return BlockAccessor.for_block(block).min(
             self._target_col_name, self._ignore_nulls
         )
 
     def combine(
-        self, current_accumulator: Union[int, float], new: Union[int, float]
-    ) -> Union[int, float]:
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return min(current_accumulator, new)
 
 
 @PublicAPI
-class Max(AggregateFnV2[Union[int, float], Union[int, float]]):
+class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines max aggregation.
 
     Example:
@@ -475,22 +498,25 @@ class Max(AggregateFnV2[Union[int, float], Union[int, float]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("-inf"),
     ):
         super().__init__(
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("-inf"),
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
+    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
         return BlockAccessor.for_block(block).max(
             self._target_col_name, self._ignore_nulls
         )
 
     def combine(
-        self, current_accumulator: Union[int, float], new: Union[int, float]
-    ) -> Union[int, float]:
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
 
@@ -681,7 +707,7 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
 
 @PublicAPI
-class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
+class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines absolute max aggregation.
 
     Example:
@@ -713,6 +739,7 @@ class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: 0,
     ):
         if on is None or not isinstance(on, str):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
@@ -721,10 +748,10 @@ class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
             alias_name if alias_name else f"abs_max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: 0,
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> Optional[Union[int, float]]:
+    def aggregate_block(self, block: Block) -> Optional[SupportsRichComparisonType]:
         block_accessor = BlockAccessor.for_block(block)
 
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
@@ -733,14 +760,13 @@ class AbsMax(AggregateFnV2[Union[int, float], Union[int, float]]):
         if is_null(max_) or is_null(min_):
             return None
 
-        return max(
-            abs(max_),
-            abs(min_),
-        )
+        return max(abs(max_), abs(min_))
 
     def combine(
-        self, current_accumulator: Union[int, float], new: Union[int, float]
-    ) -> Union[int, float]:
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
 
@@ -856,7 +882,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
 
 
 @PublicAPI
-class Unique(AggregateFnV2[set, set]):
+class Unique(AggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
 
     Example:
@@ -895,10 +921,10 @@ class Unique(AggregateFnV2[set, set]):
             zero_factory=set,
         )
 
-    def combine(self, current_accumulator: set, new: set) -> set:
+    def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> set:
+    def aggregate_block(self, block: Block) -> List[Any]:
         import pyarrow.compute as pac
 
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
