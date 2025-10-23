@@ -246,19 +246,10 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
         # When fusing 2 projections
         for e in upstream_project.exprs:
-            if isinstance(e, StarExpr):
-                target_expr = e
-            else:
-                # When downstream is renaming its input column, we project
-                # upstream's output column expression to just be aliased with
-                # that new name
-                if e.name in downstream_input_column_rename_map:
-                    new_name = downstream_input_column_rename_map[e.name]
-                    target_expr = e.alias(new_name)
-                else:
-                    target_expr = e
-
-            projected_upstream_output_col_exprs.append(target_expr)
+            # NOTE: We have to filter out upstream output columns that are
+            #       being *renamed* by downstream expression
+            if e.name not in downstream_input_column_rename_map:
+                projected_upstream_output_col_exprs.append(e)
 
         new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
 
