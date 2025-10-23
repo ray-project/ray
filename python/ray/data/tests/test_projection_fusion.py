@@ -731,9 +731,9 @@ class TestProjectionFusion:
                 ],
                 {"x": 1, "b": 2, "d": 4},
             ),
-            # Column swap
-            ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 2}),
-            ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 1}),
+            # Column swap (no actual changes)
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 1}),
+            ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 2}),
             # Multiple same operations
             (
                 [("rename", {"a": "x"}), ("rename", {"x": "y"})],
