@@ -90,17 +90,17 @@ class StreamingRepartitionTaskBuilder:
         while self._total_pending_rows >= self._target_num_rows or (
             flush_remaining and self._total_pending_rows > 0
         ):
-            # If the first pending block alone has at least one full chunk,
+            # If the first pending block alone has at least one full block,
             # issue a single task for as many full target-sized outputs as it contains.
             if (
                 self._pending_blocks
                 and self._pending_blocks[0].remaining_rows >= self._target_num_rows
             ):
                 first = self._pending_blocks[0]
-                full_chunks = first.remaining_rows // self._target_num_rows
-                if full_chunks > 0:
+                full_blocks = first.remaining_rows // self._target_num_rows
+                if full_blocks > 0:
                     task_inputs.append(
-                        self._build_task_from_single_block_full_chunks(full_chunks)
+                        self._build_task_from_single_block_full_blocks(full_blocks)
                     )
                     continue
 
@@ -192,20 +192,20 @@ class StreamingRepartitionTaskBuilder:
             task_kwargs={STREAMING_REPARTITION_SPEC_KEY: spec},
         )
 
-    def _build_task_from_single_block_full_chunks(self, full_chunks: int) -> _TaskInput:
-        """Build a task input that consumes as many full target-sized chunks
+    def _build_task_from_single_block_full_blocks(self, full_blocks: int) -> _TaskInput:
+        """Build a task input that consumes as many full target-sized blocks
         as possible from the first pending block and emits multiple outputs
         in a single Ray task.
         """
         assert self._pending_blocks
         block = self._pending_blocks[0]
         target = self._target_num_rows
-        use_rows = full_chunks * target
+        use_rows = full_blocks * target
 
         # Build outputs specs, each contributed solely by this one block.
         outputs: List[StreamingRepartitionOutputSpec] = []
         start = block.start_offset
-        for _ in range(full_chunks):
+        for _ in range(full_blocks):
             end = start + target
             outputs.append(
                 StreamingRepartitionOutputSpec(
