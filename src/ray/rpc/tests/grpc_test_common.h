@@ -16,7 +16,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <thread>
+#include <vector>
 
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
