@@ -30,12 +30,13 @@ steps:
     job_env: manylinux
     depends_on: manylinux
 
-  - label: ":tapioca: build: raydepsets: compile ray img dependencies"
+  - label: ":tapioca: build: raydepsets: compile ray & requirements compiled dependencies"
     key: raydepsets_compile_rayimg_dependencies
     tags: always
     instance_type: medium
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/req_compiled.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux
 
