@@ -80,17 +80,25 @@ def _analyze_upstream_project(
     }
 
     # Identify columns removed by renames (source not in output)
-    removed_by_renames: Set[str] = set()
+    removed_by_renames = _get_col_refs_removed_by_renaming(upstream_project)
+
+    return output_columns, column_definitions, removed_by_renames
+
+
+def _get_col_refs_removed_by_renaming(upstream_project: Project) -> Set[str]:
+    removed_by_renaming: Set[str] = set()
+
     for expr in upstream_project.exprs:
         if isinstance(expr, StarExpr):
             continue
         rename_pair = _extract_simple_rename(expr)
+
         if rename_pair is not None:
             source_name, _ = rename_pair
-            if source_name not in output_columns:
-                removed_by_renames.add(source_name)
+            # TODO assert not removed twice
+            removed_by_renaming.add(source_name)
 
-    return output_columns, column_definitions, removed_by_renames
+    return removed_by_renaming
 
 
 def _validate_fusion(
@@ -157,24 +165,24 @@ def _try_fuse(
 
     # Analyze upstream
     (
-        upstream_output_columns,
+        upstream_output_cols,
         upstream_column_defs,
-        removed_by_renames,
+        upstream_output_cols_removed,
     ) = _analyze_upstream_project(upstream_project)
 
     # Validate fusion possibility
     is_valid, missing_columns = _validate_fusion(
         downstream_project,
         upstream_has_star,
-        upstream_output_columns,
-        removed_by_renames,
+        upstream_output_cols,
+        upstream_output_cols_removed,
     )
 
     if not is_valid:
         # Raise KeyError to match expected error type in tests
         raise KeyError(
             f"Column(s) {sorted(missing_columns)} not found. "
-            f"Available columns: {sorted(upstream_output_columns) if not upstream_has_star else 'all columns (has star)'}"
+            f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
         )
 
     # NOTE: Downstream exprs have to be rebind-ed into the upstream's output
@@ -193,17 +201,28 @@ def _try_fuse(
         # Composition case: downstream has star(), and we need to merge both upstream
         # and downstream expressions.
         #
-        # Example:
+        # Example 1:
         #   Upstream: [star(), col("a").alias("b")],
         #   Downstream: [star(), col("b").alias("c")]
         #
         #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
-        new_exprs = (
-            [StarExpr()] if upstream_project.has_star_expr() else []
-        ) + [
-            *_filter_out_star(upstream_project.exprs),
-            *downstream_exprs,
+        #
+        # Example 2:
+        #   Upstream: [star(), col("a").alias("b")],
+        #   Downstream: [star(), col("b").rename("c")]
+        #
+        #   Result: [star(), col("a").alias("c")]
+
+        # Project out upstream's output column expressions corresponding
+        # to the columns being renamed
+        downstream_output_cols_removed = _get_col_refs_removed_by_renaming(downstream_project)
+
+        projected_upstream_out_col_exprs = [
+            e for e in upstream_project.exprs
+            if e.name not in downstream_output_cols_removed
         ]
+
+        new_exprs = projected_upstream_out_col_exprs + downstream_exprs
     else:
         # Intersection case: This is when downstream is a selection (no star), and
         # we need to recursively rebind upstream column definitions inside the downstream
@@ -214,7 +233,6 @@ def _try_fuse(
         #   Downstream: [col("b").alias("c")]
         #
         #   Result: [col("a").alias("c")]
-
         new_exprs = downstream_exprs
 
 
@@ -227,10 +245,6 @@ def _try_fuse(
 
 def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
     return [e for e in exprs if not isinstance(e, StarExpr)]
-
-
-def _unalias(expr: Expr) -> Expr:
-    return expr.expr if isinstance(expr, AliasExpr) else expr
 
 
 class ProjectionPushdown(Rule):
@@ -272,8 +286,6 @@ class ProjectionPushdown(Rule):
 
         fused = _try_fuse(upstream_project, current_project)
 
-        print(f">>> [DBG] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
-
         return fused
 
     @classmethod
@@ -296,8 +308,6 @@ class ProjectionPushdown(Rule):
             else:
                 # Otherwise, collect required column for projection
                 required_columns = _collect_referenced_columns(current_project.exprs)
-
-            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}")
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole
