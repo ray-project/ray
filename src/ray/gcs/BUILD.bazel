@@ -353,6 +353,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -526,7 +527,6 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_rpc_client:raylet_client_lib",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
-        "//src/ray/rpc:auth_token_loader",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:counter_map",

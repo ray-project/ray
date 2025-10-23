@@ -24,6 +24,8 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
@@ -93,13 +95,20 @@ class GrpcServer {
              const uint32_t port,
              bool listen_to_localhost_only,
              int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
+             int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
+             std::optional<AuthenticationToken> auth_token = std::nullopt)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
+    // Initialize auth token: use provided value or load from AuthenticationTokenLoader
+    if (auth_token.has_value()) {
+      auth_token_ = std::move(auth_token.value());
+    } else {
+      auth_token_ = AuthenticationTokenLoader::instance().GetToken();
+    }
     Init();
   }
 
@@ -142,13 +151,6 @@ class GrpcServer {
     cluster_id_ = cluster_id;
   }
 
-  /// Set an override token for testing. This takes precedence over RayAuthTokenLoader.
-  /// This is primarily for testing purposes.
-  /// \param override_token The override token to use for this server.
-  void SetAuthTokenOverride(const std::string &override_token) {
-    auth_token_override_ = override_token;
-  }
-
  protected:
   /// Initialize this server.
   void Init();
@@ -167,8 +169,8 @@ class GrpcServer {
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
-  /// Override token for testing. If set, this takes precedence over RayAuthTokenLoader.
-  std::string auth_token_override_;
+  /// Authentication token for token-based authentication.
+  std::optional<AuthenticationToken> auth_token_;
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
@@ -226,7 +228,7 @@ class GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::string &auth_token) = 0;
+      const std::optional<AuthenticationToken> &auth_token) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

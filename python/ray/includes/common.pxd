@@ -764,6 +764,12 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
+    cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
+        CRayletClientWithIoContext(const c_string &ip_address, int port)
+        CRayStatus GetWorkerPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
+                                 int64_t timeout_ms)
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -797,6 +803,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+    cdef const char[] kRayInternalNamespacePrefix
 
 cdef extern from "ray/rpc/auth_token_loader.h" namespace "ray::rpc" nogil:
     cdef cppclass CRayAuthTokenLoader "ray::rpc::RayAuthTokenLoader":
