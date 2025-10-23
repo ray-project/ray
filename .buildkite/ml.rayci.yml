@@ -238,7 +238,7 @@ steps:
       - python ./ci/env/check_minimal_install.py
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 2
-        --build-name minbuild-ml-py3.10
+        --build-name minbuild-ml-py3.9
         --only-tags minimal
     depends_on: [ "minbuild-ml", "forge" ]
 
