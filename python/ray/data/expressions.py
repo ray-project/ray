@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
 
 import pyarrow
 
-from ray.data._internal.collections import collapse_transitive_map
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -379,7 +378,7 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
+        return AliasExpr(data_type=self.data_type, expr=self, _name=name, _is_rename=False)
 
 
 @DeveloperAPI(stability="alpha")
@@ -407,6 +406,9 @@ class ColumnExpr(Expr):
     def name(self) -> str:
         """Get the column name."""
         return self._name
+
+    def _rename(self, name: str):
+        return AliasExpr(self.data_type, self, name, _is_rename=True)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -686,6 +688,7 @@ class AliasExpr(Expr):
 
     expr: Expr
     _name: str
+    _is_rename: bool
 
     @property
     def name(self) -> str:
@@ -721,15 +724,8 @@ class StarExpr(Expr):
         This means: keep all existing columns, then add/overwrite "new_col"
     """
 
-    # TODO elaborate on the semantic (that rebinding happens in the output)
-    _col_rename_map: Dict[str, str] = field(default_factory=lambda: dict())
-
     # TODO: Add UnresolvedExpr. Both StarExpr and UnresolvedExpr won't have a defined data_type.
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
-
-    def get_column_rename_map(self):
-        # TODO memoize
-        return collapse_transitive_map(self._col_rename_map)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)

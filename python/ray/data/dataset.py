@@ -1181,7 +1181,10 @@ class Dataset:
                     "to be strings."
                 )
 
-            col_rename_map = dict(names)
+            exprs = [
+                col(prev)._rename(new)
+                for prev, new in names.items()
+            ]
 
         elif isinstance(names, list):
             if not names:
@@ -1206,7 +1209,10 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            col_rename_map = dict(zip(current_names, names))
+            exprs = [
+                col(prev)._rename(new)
+                for prev, new in zip(current_names, names)
+            ]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1227,7 +1233,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=[StarExpr(col_rename_map)],
+            exprs=[StarExpr(), exprs],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
