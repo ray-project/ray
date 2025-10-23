@@ -537,7 +537,10 @@ class GroupedData:
 
 
 def _apply_udf_to_groups(
-    udf: Callable[[DataBatch, ...], DataBatch],
+    udf: Union[
+        Callable[[DataBatch, ...], DataBatch],
+        Callable[[DataBatch, ...], Iterator[DataBatch]],
+    ],
     block: Block,
     keys: List[str],
     batch_format: Optional[str],
