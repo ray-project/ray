@@ -298,6 +298,10 @@ For collective-based tensor transports (Gloo and NCCL):
    * Any unexpected system bugs
 
 
+For NIXL:
+
+* Due to an issue with our implementation of memory deregistration, we currently do not support repeated transfers of tensors that share the same memory space but belong to different objects. We will fix this problem soon.
+
 Advanced: RDT Internals
 =======================
 
