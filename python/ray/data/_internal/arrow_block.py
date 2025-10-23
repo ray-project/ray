@@ -27,7 +27,8 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
-from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.table_block import TableBlockAccessor, \
+    TableBlockBuilder
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -360,6 +361,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         extension arrays.
         """
         return transform_pyarrow.take_table(self._table, indices)
+
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns)
 
     def select(self, columns: List[str]) -> "pyarrow.Table":
         if not all(isinstance(col, str) for col in columns):

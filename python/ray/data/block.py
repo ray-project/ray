@@ -342,6 +342,10 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
+    def drop(self, columns: List[str]) -> Block:
+        """Return a new block with the list of provided columns dropped"""
+        raise NotImplementedError
+
     def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
