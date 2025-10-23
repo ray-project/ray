@@ -11,8 +11,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-from ray.data._internal.logical.rules.projection_pushdown import \
-    _get_col_refs_removed_by_renaming
 from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
@@ -724,16 +722,17 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
 
     existing_cols = list(block_accessor.column_names())
 
-    # Derive columns that will be removed by renaming
-    removed_source_cols = _get_col_refs_removed_by_renaming(exprs)
-
     # Expand star expr (if any)
     if isinstance(exprs[0], StarExpr):
+        col_rename_map = exprs[0].get_column_rename_map()
         # Cherry-pick source block's columns that aren't removed upon renaming
-        source_col_ref_exprs = [
-            ColumnExpr(c) for c in existing_cols
-            if c not in removed_source_cols
-        ]
+        source_col_ref_exprs = []
+
+        for c in existing_cols:
+            target_col_name = col_rename_map.get(c, c)
+            source_col_ref_exprs.append(
+                ColumnExpr(c).alias(target_col_name)
+            )
 
         exprs = source_col_ref_exprs + exprs[1:]
 
