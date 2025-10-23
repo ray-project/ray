@@ -50,7 +50,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=map_op_no_concurrency,
-            concurrency=concurrency,
+            max_concurrency=concurrency,
         )
         map_op.metrics.num_tasks_running = 0
         map_op.metrics.num_tasks_finished = 0
