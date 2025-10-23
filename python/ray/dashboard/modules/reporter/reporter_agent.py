@@ -1313,7 +1313,7 @@ class ReporterAgent(
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
             # collect both worker and driver stats
-            if cmdline and len(cmdline) > 0:
+            if cmdline:
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
 
