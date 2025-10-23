@@ -176,8 +176,15 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
     stats_counter_.Increment(kTaskTypeToCounterType.at(task_events.task_info().type()));
   }
 
-  // Update the task event.
-  existing_task.MergeFrom(task_events);
+  // Update the task event. Make sure that the worker id is immutable.
+  if (existing_task.has_state_updates() &&
+      existing_task.state_updates().has_worker_id()) {
+    auto worker_id = existing_task.state_updates().worker_id();
+    existing_task.MergeFrom(task_events);
+    existing_task.mutable_state_updates()->set_worker_id(worker_id);
+  } else {
+    existing_task.MergeFrom(task_events);
+  }
 
   // Truncate the profile events if needed.
   auto max_num_profile_events_per_task =
