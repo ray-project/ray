@@ -696,6 +696,10 @@ class AliasExpr(Expr):
         """Get the alias name."""
         return self._name
 
+    def alias(self, name: str) -> "Expr":
+        # Always unalias before creating new one
+        return AliasExpr(self.expr.data_type, self.expr, _name=name)
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, AliasExpr)
