@@ -777,11 +777,17 @@ void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                            bool force_kill,
                                            bool recursive) {
   auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-  auto request = rpc::RemoteCancelTaskRequest();
+  auto request = rpc::CancelRemoteTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
-  client->RemoteCancelTask(request, nullptr);
+  client->CancelRemoteTask(
+      std::move(request),
+      [](const Status &status, const rpc::CancelRemoteTaskReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to cancel remote task: " << status.ToString();
+        }
+      });
 }
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
@@ -804,7 +810,7 @@ size_t ClusterSizeBasedLeaseRequestRateLimiter::
 }
 
 void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
-    const rpc::GcsNodeInfo &data) {
+    const rpc::GcsNodeAddressAndLiveness &data) {
   if (data.state() == rpc::GcsNodeInfo::DEAD) {
     if (num_alive_nodes_ != 0) {
       num_alive_nodes_--;

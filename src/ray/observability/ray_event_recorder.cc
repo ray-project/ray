@@ -21,8 +21,6 @@
 namespace ray {
 namespace observability {
 
-using std::literals::operator""sv;
-
 RayEventRecorder::RayEventRecorder(
     rpc::EventAggregatorClient &event_aggregator_client,
     instrumented_io_context &io_service,
@@ -38,6 +36,10 @@ RayEventRecorder::RayEventRecorder(
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);
+  if (!RayConfig::instance().enable_ray_event()) {
+    RAY_LOG(INFO) << "Ray event recording is disabled. Skipping start exporting events.";
+    return;
+  }
   RAY_CHECK(!exporting_started_)
       << "RayEventRecorder::StartExportingEvents() should be called only once.";
   exporting_started_ = true;
@@ -76,12 +78,15 @@ void RayEventRecorder::ExportEvents() {
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
+  if (!RayConfig::instance().enable_ray_event()) {
+    return;
+  }
   if (data_list.size() + buffer_.size() > max_buffer_size_) {
     size_t events_to_remove = data_list.size() + buffer_.size() - max_buffer_size_;
     // Record dropped events from the buffer
     RAY_LOG(ERROR) << "Dropping " << events_to_remove << " events from the buffer.";
     dropped_events_counter_.Record(events_to_remove,
-                                   {{"Source"sv, std::string(metric_source_)}});
+                                   {{"Source", std::string(metric_source_)}});
   }
   for (auto &event : data_list) {
     buffer_.push_back(std::move(event));

@@ -349,8 +349,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // raylet side, we never proactively close the plasma store connection even
   // during shutdown. So any error from the raylet side should be a sign of raylet
   // death.
-  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
-      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
+  auto plasma_client =
+      std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -359,7 +359,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
-      /*store_client=*/plasma_client,
+      /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
@@ -397,7 +397,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 #if defined(__APPLE__) || defined(__linux__)
   auto raylet_channel_client_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
-    auto node_info = core_worker->gcs_client_->Nodes().Get(node_id);
+    auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
     RAY_CHECK(node_info) << "No GCS info for node " << node_id;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node_info->node_manager_address(), node_info->node_manager_port());
@@ -406,7 +406,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   experimental_mutable_object_provider =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider->store_client(),
+          plasma_store_provider->store_client(),
           raylet_channel_client_factory,
           options.check_signals);
 #endif
@@ -513,7 +513,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
     std::optional<rpc::Address> address_opt;
-    if (auto node_info = core_worker->gcs_client_->Nodes().Get(node_id)) {
+    if (auto node_info =
+            core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id)) {
       auto &address = address_opt.emplace();
       address.set_node_id(node_info->node_id());
       address.set_ip_address(node_info->node_manager_address());
@@ -584,8 +585,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info =
-            core_worker->gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+            node_id, /*filter_dead_nodes=*/false);
         if (node_info == nullptr) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
@@ -609,9 +610,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       callback(object_id, std::move(locations));
       return;
     }
-    core_worker->gcs_client_->Nodes().AsyncGetAll(
+    core_worker->gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
         [callback, object_id, locations = std::move(locations)](
-            const Status &, const std::vector<rpc::GcsNodeInfo> &node_infos) mutable {
+            const Status &,
+            const std::vector<rpc::GcsNodeAddressAndLiveness> &node_infos) mutable {
           for (const auto &node_info : node_infos) {
             if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
               rpc::Address addr;
@@ -817,7 +819,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         io_service_,
         *write_locked.Get()->client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-      stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
+      if (server_status.ok()) {
+        stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
+      } else {
+        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
+                          "Metrics will not be exported. "
+                       << "Exporter agent status: " << server_status.ToString();
+      }
     });
   }
 }
