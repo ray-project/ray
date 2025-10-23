@@ -10,6 +10,7 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
@@ -1340,6 +1341,45 @@ class TestProjectionFusion:
 
         result_df = ds.take_all()
         assert result_df == expected_output
+
+
+@pytest.mark.parametrize("flavor", ["project_before", "project_after"])
+def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
+    """
+    Test that valid select and renaming merges correctly.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+
+    if flavor == "project_before":
+        ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'petal.width' to 'width'
+    ds = ds.rename_columns({"petal.width": "width"})
+
+    if flavor == "project_after":
+        ds = ds.select_columns(["length", "width"])
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    # Check that both "sepal.length" and "petal.width" are present in the columns,
+    # regardless of their order.
+    assert select_op.exprs == [
+        # TODO fix (renaming doesn't remove prev columns)
+        col("sepal.length").alias("length"),
+        col("petal.width").alias("width"),
+    ]
 
 
 if __name__ == "__main__":
