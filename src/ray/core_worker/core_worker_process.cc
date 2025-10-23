@@ -538,6 +538,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
+      gcs_client,
       std::move(lease_policy),
       memory_store,
       *task_manager,

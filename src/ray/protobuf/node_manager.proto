@@ -415,8 +415,8 @@ message CancelLocalTaskRequest {
   bool recursive = 3;
   // The worker ID of the caller.
   bytes caller_worker_id = 4;
-  // The worker address of the executor.
-  bytes executor_worker_address = 5;
+  // The worker ID of the executor.
+  bytes executor_worker_id = 5;
 }
 
 message CancelLocalTaskReply {

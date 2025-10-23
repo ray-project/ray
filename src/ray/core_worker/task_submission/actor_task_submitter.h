@@ -306,8 +306,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     bool preempted_ = false;
     /// The RPC client address of the actor.
     std::optional<rpc::Address> client_address_;
-    /// The local raylet address of the actor.
-    std::optional<rpc::Address> raylet_address_;
     /// The intended worker ID of the actor.
     std::string worker_id_;
     /// The actor is out of scope but the death info is not published

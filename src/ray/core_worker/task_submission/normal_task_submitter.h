@@ -34,6 +34,11 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
+
+namespace gcs {
+class GcsClient;
+}  // namespace gcs
+
 namespace core {
 
 // The task queues are keyed on resource shape & function descriptor
@@ -85,6 +90,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
@@ -99,6 +105,7 @@ class NormalTaskSubmitter {
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
+        gcs_client_(std::move(gcs_client)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -242,6 +249,9 @@ class NormalTaskSubmitter {
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
+  /// GCS client for checking node liveness.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).
   std::unique_ptr<LeasePolicyInterface> lease_policy_;
@@ -348,10 +358,7 @@ class NormalTaskSubmitter {
   absl::flat_hash_set<TaskID> cancelled_tasks_ ABSL_GUARDED_BY(mu_);
 
   // Keeps track of where currently executing tasks are being run.
-  // The first address is the executor, the second address is the local raylet of the
-  // executor.
-  absl::flat_hash_map<TaskID, std::pair<rpc::Address, rpc::Address>> executing_tasks_
-      ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
 
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);

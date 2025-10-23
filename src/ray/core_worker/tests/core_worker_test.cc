@@ -212,6 +212,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        /*gcs_client=*/nullptr,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,

@@ -3342,15 +3342,9 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
 void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                                         rpc::CancelLocalTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  rpc::Address executor_address;
-  if (!executor_address.ParseFromString(request.executor_worker_address())) {
-    send_reply_callback(
-        Status::Invalid("Failed to parse executor worker address"), nullptr, nullptr);
-    return;
-  }
+  auto executor_worker_id = WorkerID::FromBinary(request.executor_worker_id());
 
-  auto worker = worker_pool_.GetRegisteredWorker(
-      WorkerID::FromBinary(executor_address.worker_id()));
+  auto worker = worker_pool_.GetRegisteredWorker(executor_worker_id);
   // If the worker is not registered, then it must have already been killed
   if (!worker || worker->IsDead()) {
     reply->set_attempt_succeeded(true);
@@ -3371,14 +3365,9 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
         cancel_task_request,
         [reply, send_reply_callback](const Status &status,
                                      const rpc::CancelTaskReply &cancel_task_reply) {
-          if (!status.ok()) {
-            send_reply_callback(
-                Status::Invalid("Failed to cancel task"), nullptr, nullptr);
-          } else {
-            reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
-            reply->set_requested_task_running(cancel_task_reply.requested_task_running());
-            send_reply_callback(Status::OK(), nullptr, nullptr);
-          }
+          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+          send_reply_callback(Status::OK(), nullptr, nullptr);
         });
     return;
   }

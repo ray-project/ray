@@ -484,6 +484,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client,
         client_pool,
         raylet_client_pool,
+        /*gcs_client=*/nullptr,
         std::move(lease_policy),
         store,
         *task_manager,

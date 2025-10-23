@@ -179,8 +179,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
-      executing_tasks_.emplace(task_spec.TaskId(),
-                               std::make_pair(addr, lease_entry.addr));
+      executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
           addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
@@ -666,7 +665,6 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                task_spec.GetDependencyIds(),
                                task_spec.GetRuntimeEnvHash());
-  std::shared_ptr<RayletClientInterface> raylet_client = nullptr;
   rpc::Address executor_worker_address;
   {
     absl::MutexLock lock(&mu_);
@@ -723,56 +721,92 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       }
       return;
     }
-    // Looks for an RPC handle for the worker executing the task.
-    raylet_client =
-        raylet_client_pool_->GetOrConnectByAddress(rpc_client_address->second.second);
-    executor_worker_address = rpc_client_address->second.first;
+    executor_worker_address = rpc_client_address->second;
   }
 
-  auto request = rpc::CancelLocalTaskRequest();
-  request.set_intended_task_id(task_spec.TaskIdBinary());
-  request.set_force_kill(force_kill);
-  request.set_recursive(recursive);
-  request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
-  request.set_executor_worker_address(executor_worker_address.SerializeAsString());
-  raylet_client->CancelLocalTask(
-      request,
-      [this,
-       task_spec = std::move(task_spec),
-       scheduling_key = std::move(scheduling_key),
-       force_kill,
-       recursive](const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
-        absl::MutexLock lock(&mu_);
-        RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
-                       << " with status " << status.ToString();
-        cancelled_tasks_.erase(task_spec.TaskId());
+  const auto node_id = NodeID::FromBinary(executor_worker_address.node_id());
+  const auto executor_worker_id =
+      WorkerID::FromBinary(executor_worker_address.worker_id());
 
-        // Retry is not attempted if !status.ok() because force-kill may kill the worker
-        // before the reply is sent.
-        if (!status.ok()) {
-          RAY_LOG(DEBUG) << "Failed to cancel a task due to " << status.ToString();
-          return;
-        }
+  auto do_cancel_local_task = [this,
+                               task_spec = std::move(task_spec),
+                               scheduling_key = std::move(scheduling_key),
+                               executor_worker_address,
+                               executor_worker_id,
+                               force_kill,
+                               recursive](const rpc::GcsNodeInfo &node_info) mutable {
+    rpc::Address raylet_address;
+    raylet_address.set_node_id(node_info.node_id());
+    raylet_address.set_ip_address(node_info.node_manager_address());
+    raylet_address.set_port(node_info.node_manager_port());
 
-        if (!reply.attempt_succeeded()) {
-          if (reply.requested_task_running()) {
-            // Retry cancel request if failed.
-            if (cancel_retry_timer_.expiry().time_since_epoch() <=
-                std::chrono::high_resolution_clock::now().time_since_epoch()) {
-              cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
-                  RayConfig::instance().cancellation_retry_ms()));
+    rpc::CancelLocalTaskRequest request;
+    request.set_intended_task_id(task_spec.TaskIdBinary());
+    request.set_force_kill(force_kill);
+    request.set_recursive(recursive);
+    request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
+    request.set_executor_worker_id(executor_worker_id.Binary());
+
+    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+    raylet_client->CancelLocalTask(
+        request,
+        [this,
+         task_spec = std::move(task_spec),
+         scheduling_key = std::move(scheduling_key),
+         force_kill,
+         recursive](const Status &status,
+                    const rpc::CancelLocalTaskReply &reply) mutable {
+          absl::MutexLock lock(&mu_);
+          RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
+                         << " with status " << status.ToString();
+          cancelled_tasks_.erase(task_spec.TaskId());
+
+          if (!reply.attempt_succeeded()) {
+            if (reply.requested_task_running()) {
+              if (cancel_retry_timer_.expiry().time_since_epoch() <=
+                  std::chrono::high_resolution_clock::now().time_since_epoch()) {
+                cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
+                    RayConfig::instance().cancellation_retry_ms()));
+              }
+              cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
+                                                         this,
+                                                         std::move(task_spec),
+                                                         force_kill,
+                                                         recursive));
+            } else {
+              RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
+                             << " in a worker that doesn't have this task.";
             }
-            cancel_retry_timer_.async_wait(boost::bind(&NormalTaskSubmitter::CancelTask,
-                                                       this,
-                                                       std::move(task_spec),
-                                                       force_kill,
-                                                       recursive));
-          } else {
-            RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
-                           << " in a worker that doesn't have this task.";
           }
-        }
-      });
+        });
+  };
+
+  auto *node_info = gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+  if (node_info == nullptr) {
+    gcs_client_->Nodes().AsyncGetAll(
+        [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
+            const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) mutable {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to get node info from GCS";
+            return;
+          }
+          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+            RAY_LOG(INFO).WithField(node_id)
+                << "Not sending CancelLocalTask because node is dead";
+            return;
+          }
+          do_cancel_local_task(nodes[0]);
+        },
+        -1,
+        {node_id});
+    return;
+  }
+  if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+    RAY_LOG(INFO).WithField(node_id)
+        << "Not sending CancelLocalTask because node is dead";
+    return;
+  }
+  do_cancel_local_task(*node_info);
 }
 
 void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
