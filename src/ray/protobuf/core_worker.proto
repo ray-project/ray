@@ -530,8 +530,8 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
   // Request from local raylet to executor worker to cancel a task.
-  // Failure: Idempotent, does not retry for network failures. However requests
-  // should only be sent via CancelLocalTask from the raylet which does implement retries
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // CancelLocalTask from the raylet which does implement retries
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.

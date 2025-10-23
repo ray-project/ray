@@ -336,6 +336,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     // So new RPCs go out with the right intended worker id to the right address.
     queue->second.worker_id_ = address.worker_id();
     queue->second.client_address_ = address;
+
     SendPendingTasks(actor_id);
   }
 
