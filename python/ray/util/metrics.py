@@ -198,7 +198,7 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if os.environ.get("RAY_enable_open_telemetry") == "true":
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.
