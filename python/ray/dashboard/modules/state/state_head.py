@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
@@ -47,6 +48,9 @@ logger = logging.getLogger(__name__)
 RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS", 1
 )
+
+# For filtering ANSI escape codes; the byte string used in the regex is equivalent to r'\x1b\[[\d;]+m'.
+ANSI_ESC_PATTERN = re.compile(b"\x1b\\x5b[(\x30-\x39)\x3b]+\x6d")
 
 
 class StateHead(SubprocessModule, RateLimitedModule):
@@ -226,7 +230,13 @@ class StateHead(SubprocessModule, RateLimitedModule):
             attempt_number=req.query.get("attempt_number", 0),
         )
 
+        filtering_ansi_code = req.query.get("filter_ansi_code", False)
+
+        if isinstance(filtering_ansi_code, str):
+            filtering_ansi_code = filtering_ansi_code.lower() == "true"
+
         logger.info(f"Streaming logs with options: {options}")
+        logger.info(f"Filtering ANSI escape codes: {filtering_ansi_code}")
 
         async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
             actor_info_dict = await self.gcs_client.async_get_all_actor_info(
@@ -249,6 +259,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
         # Handle the first chunk separately and returns 500 if an error occurs.
         try:
             first_chunk = await logs_gen.__anext__()
+            # Filter ANSI escape codes
+            if filtering_ansi_code:
+                first_chunk = ANSI_ESC_PATTERN.sub(b"", first_chunk)
             await response.prepare(req)
             await response.write(first_chunk)
         except StopAsyncIteration:
@@ -264,6 +277,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
         try:
             async for logs in logs_gen:
+                # Filter ANSI escape codes
+                if filtering_ansi_code:
+                    logs = ANSI_ESC_PATTERN.sub(b"", logs)
                 await response.write(logs)
         except Exception:
             logger.exception("Error while streaming logs")
