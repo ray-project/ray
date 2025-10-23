@@ -80,17 +80,19 @@ def _analyze_upstream_project(
     }
 
     # Identify columns removed by renames (source not in output)
-    removed_by_renames = _get_col_refs_removed_by_renaming(upstream_project)
+    removed_by_renames = _get_col_refs_removed_by_renaming(upstream_project.exprs)
 
     return output_columns, column_definitions, removed_by_renames
 
 
-def _get_col_refs_removed_by_renaming(upstream_project: Project) -> Set[str]:
+# TODO move to utils
+def _get_col_refs_removed_by_renaming(exprs: List[Expr]) -> Set[str]:
     removed_by_renaming: Set[str] = set()
 
-    for expr in upstream_project.exprs:
+    for expr in exprs:
         if isinstance(expr, StarExpr):
             continue
+
         rename_pair = _extract_simple_rename(expr)
 
         if rename_pair is not None:
@@ -215,7 +217,7 @@ def _try_fuse(
 
         # Project out upstream's output column expressions corresponding
         # to the columns being renamed
-        downstream_output_cols_removed = _get_col_refs_removed_by_renaming(downstream_project)
+        downstream_output_cols_removed = _get_col_refs_removed_by_renaming(downstream_project.exprs)
 
         projected_upstream_out_col_exprs = [
             e for e in upstream_project.exprs
@@ -233,6 +235,8 @@ def _try_fuse(
         #   Downstream: [col("b").alias("c")]
         #
         #   Result: [col("a").alias("c")]
+        print(f">>> [DBG] rebinding: {upstream_column_defs=}")
+
         new_exprs = downstream_exprs
 
 
@@ -286,6 +290,8 @@ class ProjectionPushdown(Rule):
 
         fused = _try_fuse(upstream_project, current_project)
 
+        print(f">>> [] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
+
         return fused
 
     @classmethod
@@ -316,6 +322,8 @@ class ProjectionPushdown(Rule):
                 for expr in current_project.exprs
                 if not isinstance(expr, StarExpr)
             )
+
+            print(f">>> [DBG] _push_projection_into_read_op: {current_project.exprs=} {required_columns=}, {is_simple_projection=}")
 
             if is_simple_projection:
                 # NOTE: We only can rename output columns when it's a simple
