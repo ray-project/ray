@@ -49,7 +49,7 @@ class Result(ResultV1):
             storage_filesystem: Optional filesystem to use for accessing the path
 
         Returns:
-            Result object with restored checkpoints and metrics
+            Result object with the checkpoints and their attached metrics of a Ray Train run
         """
         fs, fs_path = get_fs_and_path(str(path), storage_filesystem)
 
