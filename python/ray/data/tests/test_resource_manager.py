@@ -437,7 +437,7 @@ class TestReservationOpResourceAllocator:
         global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
@@ -486,7 +486,7 @@ class TestReservationOpResourceAllocator:
 
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
@@ -509,13 +509,22 @@ class TestReservationOpResourceAllocator:
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert allocator.max_task_output_bytes_to_read(o2) == 138
+        assert allocator.max_task_output_bytes_to_read(
+            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
-        assert allocator.max_task_output_bytes_to_read(o3) == 257
+        assert allocator.max_task_output_bytes_to_read(
+            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 257
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        remaining = allocator._update_reservation()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         # +-----+------------------+------------------+--------------+
         # |     | _op_reserved     | _reserved_for    | used shared  |
         # |     | (used/remaining) | _op_outputs      | resources    |
@@ -543,9 +552,13 @@ class TestReservationOpResourceAllocator:
         assert can_submit_new_task(allocator, o2)
         assert can_submit_new_task(allocator, o3)
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
-        assert allocator.max_task_output_bytes_to_read(o2) == 50
+        assert allocator.max_task_output_bytes_to_read(
+            o2, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
-        assert allocator.max_task_output_bytes_to_read(o3) == 145
+        assert allocator.max_task_output_bytes_to_read(
+            o3, task_resource_usage=op_usages, output_object_store_usage=op_outputs_usages
+        ) == 145
 
     def test_reserve_incremental_resource_usage(self, restore_data_context):
         """Test that we'll reserve at least incremental_resource_usage()
@@ -561,6 +574,13 @@ class TestReservationOpResourceAllocator:
         o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
         o4 = mock_map_op(o3, incremental_resource_usage=incremental_usage)
         o5 = mock_map_op(o4, incremental_resource_usage=incremental_usage)
+
+        # Set min_max_resource_requirements to use incremental_resource_usage as minimum
+        for op in [o2, o3, o4, o5]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(incremental_usage, ExecutionResources(cpu=100, gpu=0, object_store_memory=10000))
+            )
+
         topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
@@ -574,7 +594,15 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_budgets()
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4, o5]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         # incremental_usage should be reserved for o2.
         assert allocator._op_reserved[o2] == incremental_usage
         # Remaining resources are CPU = 7 - 3 = 4, object_store_memory = 800 - 500 = 300.
@@ -628,7 +656,15 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_budgets()
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2]}
+        op_internal_usage = dict.fromkeys([o1, o2], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2], 0)
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
 
         assert allocator._op_reserved[o2].object_store_memory == 800
 
@@ -658,7 +694,16 @@ class TestReservationOpResourceAllocator:
         )
         allocator = resource_manager._op_resource_allocator
 
-        allocator.update_budgets()
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2]}
+        op_internal_usage = dict.fromkeys([o1, o2], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2], 0)
+        global_limits = resource_manager.get_global_limits()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
 
         # The operator's max resource usage is 1 CPU and 1 byte object store memory, so
         # we'll reserve that despite the large global limits.
@@ -690,13 +735,27 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        allocator.update_budgets()
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3], 0)
+        global_limits = resource_manager.get_global_limits()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         assert o1 not in allocator._op_budgets
         assert o2 in allocator._op_budgets
         assert o3 not in allocator._op_budgets
 
         o2.mark_execution_finished()
-        allocator.update_budgets()
+        allocator.update_budgets(
+            limits=global_limits,
+            task_resource_usage=op_usages,
+            internal_object_store_usage=op_internal_usage,
+            outputs_object_store_usage=op_outputs_usages,
+        )
         assert o2 not in allocator._op_budgets
 
     def test_gpu_allocation(self, restore_data_context):
@@ -738,7 +797,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=resource_manager._mem_op_internal,
             outputs_object_store_usage=resource_manager._mem_op_outputs,
         )
@@ -785,7 +844,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=resource_manager._mem_op_internal,
             outputs_object_store_usage=resource_manager._mem_op_outputs,
         )
@@ -825,7 +884,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=resource_manager._mem_op_internal,
             outputs_object_store_usage=resource_manager._mem_op_outputs,
         )
@@ -951,7 +1010,7 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
@@ -1055,7 +1114,7 @@ class TestReservationOpResourceAllocator:
         global_limits = ExecutionResources(cpu=20, object_store_memory=2000)
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
@@ -1111,7 +1170,7 @@ class TestReservationOpResourceAllocator:
         """
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
@@ -1126,7 +1185,7 @@ class TestReservationOpResourceAllocator:
         op_usages[o5] = ExecutionResources.zero()
         allocator.update_budgets(
             limits=global_limits,
-            task_resources_usage=op_usages,
+            task_resource_usage=op_usages,
             internal_object_store_usage=op_internal_usage,
             outputs_object_store_usage=op_outputs_usages,
         )
