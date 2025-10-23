@@ -119,7 +119,7 @@ class AllToAllOperator(
         return sum(len(bundle.block_refs) for bundle in self._input_buffer)
 
     def internal_queue_num_bytes(self) -> int:
-        return sum([bundle.size_bytes() for bundle in self._input_buffer])
+        return sum(bundle.size_bytes() for bundle in self._input_buffer)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
