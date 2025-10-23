@@ -134,5 +134,14 @@ def test_get_configs_dir():
         assert f"{tmpdir}/test2.depsets.yaml" in configs_dir
 
 
+def test_default_config_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_configs()
+        assert config.depsets is not None
+        assert len(config.depsets) == 10
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

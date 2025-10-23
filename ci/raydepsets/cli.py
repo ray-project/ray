@@ -76,7 +76,7 @@ def build(
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
         check=check,
-        build_all=all_configs,
+        build_all_configs=all_configs,
     )
     manager.execute(name)
     if check:
