@@ -73,34 +73,33 @@ def _analyze_upstream_project(
     output_columns = {
         expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
     }
-    column_definitions = {
+
+    # Compose column definitions in the form of a mapping of
+    #   - Target column name
+    #   - Target expression
+    output_column_expr_defs = {
         expr.name: expr
-        for expr in upstream_project.exprs
-        if not isinstance(expr, StarExpr)
+        for expr in _filter_out_star(upstream_project.exprs)
     }
 
+    # Since star expression carries output column renaming info, we're
+    # composing definitions of the renamed columns from it as well
+    if star_expr := upstream_project.get_star_expr():
+        source_column_rename_map = star_expr.get_column_rename_map()
+    else:
+        source_column_rename_map = {}
+
+    rename_column_defs = {
+        new: ColumnExpr(source)
+        for source, new in source_column_rename_map.items()
+    }
+
+    output_column_defs = output_column_expr_defs | rename_column_defs
+
     # Identify columns removed by renames (source not in output)
-    removed_by_renames = _get_col_refs_removed_by_renaming(upstream_project.exprs)
+    removed_by_renames = source_column_rename_map.keys()
 
-    return output_columns, column_definitions, removed_by_renames
-
-
-# TODO move to utils
-def _get_col_refs_removed_by_renaming(exprs: List[Expr]) -> Set[str]:
-    removed_by_renaming: Set[str] = set()
-
-    for expr in exprs:
-        if isinstance(expr, StarExpr):
-            continue
-
-        rename_pair = _extract_simple_rename(expr)
-
-        if rename_pair is not None:
-            source_name, _ = rename_pair
-            # TODO assert not removed twice
-            removed_by_renaming.add(source_name)
-
-    return removed_by_renaming
+    return output_columns, output_column_defs, removed_by_renames
 
 
 def _validate_fusion(
@@ -165,6 +164,9 @@ def _try_fuse(
     """
     upstream_has_star: bool = upstream_project.has_star_expr()
 
+    # TODO add validations that
+    #   - exprs only depend on input attrs (ie no dep on output of other exprs)
+
     # Analyze upstream
     (
         upstream_output_cols,
@@ -215,13 +217,29 @@ def _try_fuse(
         #
         #   Result: [star(), col("a").alias("c")]
 
+        upstream_star_expr = upstream_project.get_star_expr()
+        downstream_star_expr = downstream_project.get_star_expr()
+
+        downstream_star_column_rename_map = downstream_star_expr.get_column_rename_map()
         # Project out upstream's output column expressions corresponding
         # to the columns being renamed
-        downstream_output_cols_removed = _get_col_refs_removed_by_renaming(downstream_project.exprs)
+        downstream_output_cols_removed = downstream_star_column_rename_map.keys()
+
+        # First, combine the star expressions
+        # NOTE: This operation is commutative
+        combined_rename_map = (
+            downstream_star_column_rename_map |
+            (upstream_star_expr.get_column_rename_map() if upstream_star_expr is not None else {})
+        )
+
+        combined_star = StarExpr(combined_rename_map)
 
         projected_upstream_out_col_exprs = [
-            e for e in upstream_project.exprs
-            if e.name not in downstream_output_cols_removed
+            combined_star,
+            *(
+                e for e in _filter_out_star(upstream_project.exprs)
+                if e.name not in downstream_output_cols_removed
+            )
         ]
 
         new_exprs = projected_upstream_out_col_exprs + downstream_exprs
@@ -290,7 +308,7 @@ class ProjectionPushdown(Rule):
 
         fused = _try_fuse(upstream_project, current_project)
 
-        print(f">>> [] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
+        print(f">>> [DBG] _try_fuse:\n{upstream_project.exprs=},\n{current_project.exprs=},\n{fused.exprs=}")
 
         return fused
 
