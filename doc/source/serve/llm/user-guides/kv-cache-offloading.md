@@ -33,7 +33,8 @@ uv pip install lmcache
 
 The following example shows how to deploy with LMCache for local CPU offloading:
 
-````{tab} Python
+::::{tab-set}
+:::{tab-item} Python
 ```python
 from ray.serve.llm import LLMConfig, build_openai_app
 import ray.serve as serve
@@ -62,9 +63,9 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app)
 ```
-````
+:::
 
-````{tab} YAML
+:::{tab-item} YAML
 ```yaml
 applications:
   - name: llm-with-lmcache
@@ -92,7 +93,8 @@ Deploy with:
 ```bash
 serve run config.yaml
 ```
-````
+:::
+::::
 
 ## Compose multiple KV transfer backends with MultiConnector
 
@@ -114,7 +116,8 @@ The following example shows how to combine NIXL (for cross-instance transfer) wi
 The order of connectors matters. Since you want to prioritize local KV cache lookup through LMCache, it appears first in the list before the NIXL connector.
 :::
 
-````{tab} Python
+::::{tab-set}
+:::{tab-item} Python
 ```python
 from ray.serve.llm import LLMConfig, build_pd_openai_app
 import ray.serve as serve
@@ -182,9 +185,9 @@ pd_config = {
 app = build_pd_openai_app(pd_config)
 serve.run(app)
 ```
-````
+:::
 
-````{tab} YAML
+:::{tab-item} YAML
 ```yaml
 applications:
   - name: pd-multiconnector
@@ -235,7 +238,8 @@ Deploy with:
 ```bash
 serve run config.yaml
 ```
-````
+:::
+::::
 
 ## Configuration parameters
 
