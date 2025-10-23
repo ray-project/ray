@@ -62,7 +62,8 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -186,6 +187,10 @@ class NodeManagerServiceHandler {
   virtual void HandlePushMutableObject(PushMutableObjectRequest request,
                                        PushMutableObjectReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
+                                   GetWorkerPIDsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

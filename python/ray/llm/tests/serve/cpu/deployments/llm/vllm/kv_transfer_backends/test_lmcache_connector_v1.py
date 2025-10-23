@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1 import (
+from ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache import (
     LMCacheConnectorV1Backend,
 )
 from ray.serve.llm import LLMConfig
@@ -14,7 +14,7 @@ class TestLMCacheConnectorV1Backend:
     def mock_lmcache_check(self):
         """Mock the lmcache installation check for all tests."""
         with patch(
-            "ray.llm._internal.serve.deployments.llm.vllm.kv_transfer_backends.lmcache_connector_v1._check_lmcache_installed"
+            "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache._check_lmcache_installed"
         ):
             yield
 
