@@ -725,6 +725,8 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
     if len(exprs) == 1 and isinstance(exprs[0], StarExpr):
         return block
 
+    # TODO drop renames
+
     # Helper function to check if expression is a simple rename of existing column.
     def is_simple_rename(expr: Expr) -> bool:
         return isinstance(expr, AliasExpr) and expr.expr.name in existing_cols
