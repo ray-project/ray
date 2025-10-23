@@ -267,7 +267,7 @@ class TestProjectionFusion:
                 f"Expected {expected_content} to be subset of {actual_levels[i]}"
             )
 
-    def test_pairwise_fusion_behavior(self):
+    def test_pairwise_fusion_behavior(self, ray_start_regular_shared):
         """Test to understand how pairwise fusion works in practice."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -312,7 +312,7 @@ class TestProjectionFusion:
         assert result3 == {"id": 0, "col1": 1, "col2": 0, "col3": -1}
         assert result4 == {"id": 0, "col1": 1, "col2": 0, "col3": -1, "col4": 5}
 
-    def test_optimal_fusion_with_single_chain(self):
+    def test_optimal_fusion_with_single_chain(self, ray_start_regular_shared):
         """Test fusion when all operations are added in a single chain (ideal case)."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -363,7 +363,7 @@ class TestProjectionFusion:
             check_dtype=False,
         )
 
-    def test_basic_fusion_works(self):
+    def test_basic_fusion_works(self, ray_start_regular_shared):
         """Test that basic fusion of two independent operations works."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -439,7 +439,7 @@ class TestProjectionFusion:
                         actual[key] == expected_val
                     ), f"Mismatch for key {key}: expected {expected_val}, got {actual[key]}"
 
-    def test_dependency_prevents_fusion(self):
+    def test_dependency_prevents_fusion(self, ray_start_regular_shared):
         """Test that dependencies are handled in single operator with OrderedDict."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -487,7 +487,7 @@ class TestProjectionFusion:
             check_dtype=False,
         )
 
-    def test_mixed_udf_regular_end_to_end(self):
+    def test_mixed_udf_regular_end_to_end(self, ray_start_regular_shared):
         """Test the exact failing scenario from the original issue."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -543,7 +543,7 @@ class TestProjectionFusion:
             optimized_count == 1
         ), f"Expected 1 operator with all expressions fused, got {optimized_count}"
 
-    def test_optimal_fusion_comparison(self):
+    def test_optimal_fusion_comparison(self, ray_start_regular_shared):
         """Compare optimized with_column approach against manual map_batches."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -590,7 +590,7 @@ class TestProjectionFusion:
             check_dtype=False,
         )
 
-    def test_chained_udf_dependencies(self):
+    def test_chained_udf_dependencies(self, ray_start_regular_shared):
         """Test multiple non-vectorized UDFs in a dependency chain."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -632,7 +632,7 @@ class TestProjectionFusion:
             check_dtype=False,
         )
 
-    def test_performance_impact_of_udf_chains(self):
+    def test_performance_impact_of_udf_chains(self, ray_start_regular_shared):
         """Test performance characteristics of UDF dependency chains vs independent UDFs."""
         input_data = [{"id": i} for i in range(100)]
 
@@ -758,7 +758,7 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_operations_comprehensive(self, operations, expected):
+    def test_projection_operations_comprehensive(self, ray_start_regular_shared, operations, expected):
         """Comprehensive test for projection operations combinations."""
         from ray.data.expressions import col, lit
 
@@ -862,7 +862,7 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_fusion_with_count_and_filter(self, operations, expected):
+    def test_projection_fusion_with_count_and_filter(self, ray_start_regular_shared, operations, expected):
         """Test projection fusion with count operations including filters."""
         from ray.data.expressions import lit
 
@@ -994,7 +994,7 @@ class TestProjectionFusion:
         ],
     )
     def test_projection_operations_invalid_order(
-        self, invalid_operations, error_type, error_message_contains
+        self, ray_start_regular_shared, invalid_operations, error_type, error_message_contains
     ):
         """Test that operations fail gracefully when referencing non-existent columns."""
         import ray
@@ -1306,7 +1306,7 @@ class TestProjectionFusion:
         ],
     )
     def test_projection_pushdown_into_parquet_read(
-        self, tmp_path, operations, expected_output
+        self, ray_start_regular_shared, tmp_path, operations, expected_output
     ):
         """Test that projection operations fuse and push down into parquet reads.
 
