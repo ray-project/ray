@@ -1628,7 +1628,7 @@ class DeploymentRankManager:
         replicas_needing_reconfiguration = []
 
         if current_ranks != expected_ranks:
-            logger.info(
+            logger.debug(
                 f"Deployment at target replica count but ranks are not contiguous. "
                 f"Current: {current_ranks}, Expected: {expected_ranks}. "
                 "Performing minimal reassignment."
@@ -1684,7 +1684,7 @@ class DeploymentRankManager:
             # Store the old rank before updating
             old_rank = self._replica_ranks[replica_id]
 
-            logger.info(
+            logger.debug(
                 f"Reassigning replica {replica_id}: rank {old_rank} -> {new_rank}"
             )
 
@@ -1696,7 +1696,7 @@ class DeploymentRankManager:
             self._released_ranks.add(old_rank)
 
         # Log the reassignment summary
-        logger.info(
+        logger.debug(
             f"Minimal reassignment complete: {len(replicas_keeping_ranks)} replicas kept ranks, "
             f"{len(replicas_needing_ranks)} replicas reassigned"
         )
@@ -2402,7 +2402,7 @@ class DeploymentState:
                     # Assign rank during replica creation (startup process)
                     assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
 
-                    logger.info(
+                    logger.debug(
                         f"Assigned rank {assigned_rank} to new replica {replica_id.unique_id} during startup"
                     )
                     new_deployment_replica = DeploymentReplica(
@@ -2763,7 +2763,7 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._rank_manager.release_rank(replica_id)
-                logger.info(
+                logger.debug(
                     f"Released rank from replica {replica_id} in deployment {self._id}"
                 )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
@@ -2798,7 +2798,7 @@ class DeploymentState:
         if not replicas_to_reconfigure:
             return
 
-        logger.info(
+        logger.debug(
             f"Reconfiguring {len(replicas_to_reconfigure)} replicas with rank changes in deployment {self._id}"
         )
 
@@ -2815,7 +2815,7 @@ class DeploymentState:
             )
             updated_count += 1
 
-        logger.info(
+        logger.debug(
             f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 

@@ -655,7 +655,7 @@ class TestCli(unittest.TestCase):
             with self.assertRaises(RuntimeError) as e:
                 manager.diff_lock_files()
             assert (
-                "Lock files are not up to date. Please update lock files and push the changes."
+                "Lock files are not up to date for config: test.depsets.yaml. Please update lock files and push the changes."
                 in str(e.exception)
             )
             assert "+emoji==2.8.0" in str(e.exception)
