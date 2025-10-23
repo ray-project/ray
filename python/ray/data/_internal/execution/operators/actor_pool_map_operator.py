@@ -205,7 +205,10 @@ class ActorPoolMapOperator(MapOperator):
         return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
 
     def internal_queue_num_bytes(self) -> int:
-        return self._bundle_queue.estimate_size_bytes() + self._block_ref_bundler.size_bytes()
+        return (
+            self._bundle_queue.estimate_size_bytes()
+            + self._block_ref_bundler.size_bytes()
+        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled

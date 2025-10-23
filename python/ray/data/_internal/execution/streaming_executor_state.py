@@ -302,8 +302,8 @@ class OpState:
 
     def total_enqueued_num_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
-            1. Input queue(s) pending dispatching (``OpState.input_queues``)
-            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size = (
             self.op.internal_queue_num_blocks()

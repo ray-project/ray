@@ -77,9 +77,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 output_dependency.metrics.blocks_task_inputs_processed
                 / max(output_dependency.metrics.num_tasks_finished, 1)
             )
-            outstanding_tasks = total_enqueued_blocks / max(
-                avg_inputs_per_task, 1
-            )
+            outstanding_tasks = total_enqueued_blocks / max(avg_inputs_per_task, 1)
             max_allowed_outstanding = (
                 self._max_concurrent_tasks(output_dependency)
                 * self._backpressure_concurrency_ratio
