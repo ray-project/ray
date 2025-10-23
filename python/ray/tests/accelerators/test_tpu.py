@@ -505,7 +505,7 @@ def test_slice_placement_group(ray_tpu_cluster):
 
 def test_multi_slice_placement_group(ray_tpu_cluster):
     """Test that multiple whole TPU slices can be successfully reserved"""
-    multi_slice_placement_group = tpu_util.multi_slice_placement_group(
+    multi_slice_placement_group = tpu_util.slice_placement_group(
         topology="2x2x2",
         accelerator_version="v4",
         num_slices=2,
