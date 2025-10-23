@@ -54,6 +54,8 @@ def main(args):
 
         ctx = ray.data.DataContext.get_current()
         ctx.max_hash_shuffle_aggregators = args.max_aggregators
+        ctx.downstream_capacity_backpressure_max_queued_bundles = 500
+        ctx.downstream_capacity_backpressure_ratio = 0
 
         left_ds = ray.data.read_parquet(args.left_dataset)
         right_ds = ray.data.read_parquet(args.right_dataset)
