@@ -3,49 +3,74 @@ build_arg_sets:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
     PYPI_WHEEL_URL: "https://files.pythonhosted.org/packages/69/ca/94791be5c3b68ed0df85589a8ca558334818a47bf2978000f85533245aed/ray-2.49.2-cp312-cp312-manylinux2014_x86_64.whl"
+    GITHUB_RELEASE_URL: "https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2"
 
 
 depsets:
 
-  # - name: ray_2_49_2_requirements_compiled_depset_${PYTHON_SHORT}
-  #   operation: compile
-  #   requirements:
-  #     - python/deplocks/req_compiled/requirements/requirements.in
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/lint-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/test-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/cloud-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/docker/ray-docker-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/core-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/data-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/data-test-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/dl-cpu-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/rllib-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/rllib-test-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/train-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/train-test-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/tune-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/ml/tune-test-requirements.txt
-  #     - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements/security-requirements.txt
-  #   constraints:
-  #     - python/requirements_compiled.txt
-  #   output: python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
-  #   append_flags:
-  #     - --python-version=${PYTHON_VERSION}
-  #     - --python-platform=linux
-  #     - --unsafe-package ray
-  #     - --unsafe-package pip
-  #     - --no-header
-  #   build_arg_sets:
-  #     - ray_2_49_2_py312
-
-  - name: ai_libs_${PYTHON_SHORT}
+  - name: ray_2_49_2_requirements_compiled_depset_${PYTHON_SHORT}
     operation: compile
     requirements:
-      - python/deplocks/summit25_templates/requirements/ai_libs.in
-      - https://raw.githubusercontent.com/ray-project/ray/refs/tags/ray-2.49.2/python/requirements_compiled.txt
+      - python/deplocks/req_compiled/requirements/requirements.in
+      - ${GITHUB_RELEASE_URL}/python/requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/lint-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/cloud-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/docker/ray-docker-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/core-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/data-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/data-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/dl-cpu-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/rllib-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/rllib-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/train-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/train-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/tune-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/tune-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/security-requirements.txt
     constraints:
-      - python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
+      - ${GITHUB_RELEASE_URL}/python/requirements_compiled.txt
+    output: python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --unsafe-package pip
+      - --no-header
+    build_arg_sets:
+      - ray_2_49_2_py312
+
+  - name: ray_2_49_2_subset_${PYTHON_SHORT}
+    operation: subset
+    source_depset: ray_2_49_2_requirements_compiled_depset_${PYTHON_SHORT}
+    requirements:
+      - python/deplocks/req_compiled/requirements/requirements.in
+      - ${GITHUB_RELEASE_URL}/python/requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/lint-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/cloud-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/docker/ray-docker-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/data-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/rllib-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/rllib-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/train-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/train-test-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/ml/tune-requirements.txt
+      - ${GITHUB_RELEASE_URL}/python/requirements/security-requirements.txt
+    output: python/deplocks/req_compiled/ray_2_49_2_subset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --prerelease=allow
+    build_arg_sets:
+      - ray_2_49_2_py312
+
+  - name: ai_libs_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_2_49_2_subset_${PYTHON_SHORT}
+    requirements:
+      - python/deplocks/summit25_templates/requirements/ai_libs.in
     output: python/deplocks/summit25_templates/ai_libs_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
