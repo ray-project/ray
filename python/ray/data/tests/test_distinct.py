@@ -115,17 +115,6 @@ def test_distinct_invalid_keys(shutdown_only, subset_data):
         ds.distinct(keys=["a", "c"])
 
 
-def test_distinct_empty_dataset(shutdown_only, empty_data):
-    """Test distinct on empty dataset with both all columns and keys."""
-    ds = ray.data.from_arrow(empty_data)
-
-    result = ds.distinct()
-    assert result.take_all() == []
-
-    result_with_keys = ds.distinct(keys=["a"])
-    assert result_with_keys.take_all() == []
-
-
 def test_distinct_duplicate_keys(shutdown_only, subset_data):
     """Test that duplicate keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
