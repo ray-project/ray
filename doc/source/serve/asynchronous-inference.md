@@ -1,6 +1,10 @@
 (serve-asynchronous-inference)=
 
-# Asynchronous inference in Ray Serve
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
+# Asynchronous Inference
 
 This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With asynchronous tasks, your HTTP APIs stay responsive while the system performs work in the background.
 
@@ -41,6 +45,10 @@ processor_config = TaskProcessorConfig(
     failed_task_queue_name="failed_tasks",              # Application errors after retries
 )
 ```
+
+:::{note}
+The filesystem broker is intended for local testing only and has limited functionality. For example, it doesn't support `cancel_tasks`. For production deployments, use a production-ready broker such as Redis or RabbitMQ. See the [Celery broker documentation](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/) for the full list of supported brokers.
+:::
 
 ### `@task_consumer`
 Decorator that turns a Serve deployment into a task consumer using the provided `TaskProcessorConfig`. The following code creates a task consumer:

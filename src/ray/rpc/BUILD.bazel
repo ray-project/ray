@@ -15,6 +15,7 @@ ray_cc_library(
         "//src/ray/core_worker:__pkg__",
     ],
     deps = [
+        ":metrics",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
@@ -46,6 +47,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_client",
+        "//src/ray/util:exponential_backoff",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -97,6 +99,7 @@ ray_cc_library(
     hdrs = ["server_call.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":metrics",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
@@ -172,5 +175,13 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_metric",
     ],
 )
