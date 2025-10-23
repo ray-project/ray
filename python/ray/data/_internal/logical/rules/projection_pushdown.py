@@ -84,30 +84,9 @@ def _analyze_upstream_project(
 
     # Identify upstream input columns removed by renaming (ie not propagated into
     # its output)
-    upstream_column_renaming_map = dict([
-        _get_renaming_mapping(expr)
-        for expr in _filter_out_star(upstream_project.exprs)
-        if _is_renaming_expr(expr)
-    ])
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(upstream_project)
 
     return output_column_names, output_column_defs, set(upstream_column_renaming_map.keys())
-
-
-def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
-    assert _is_renaming_expr(expr)
-
-    alias: AliasExpr = expr
-
-    return alias.expr.name, alias.name
-
-def _is_renaming_expr(expr: Expr) -> bool:
-    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
-
-    assert not is_renaming or isinstance(expr.expr, ColumnExpr), (
-        f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
-    )
-
-    return is_renaming
 
 
 def _validate_fusion(
@@ -253,25 +232,24 @@ def _try_fuse(
         #   Downstream: [star({"x": "y"}), col("z")]
         #
         #   Result: [star(), col("a").alias("y"), col("b").alias("z")]
-        downstream_star_expr = downstream_project.get_star_expr()
-        downstream_star_column_rename_map = downstream_star_expr.get_column_rename_map()
 
+        # Extract downstream's input column rename map (downstream inputs are
+        # upstream's outputs)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(downstream_project)
+        # Collect upstream output column expression "projected" to become
+        # downstream expressions
         projected_upstream_output_col_exprs = []
 
         # When fusing 2 projections
         for e in upstream_project.exprs:
             if isinstance(e, StarExpr):
-                upstream_star_expr = e
-                # First, combine the star expressions
-                # NOTE: This operation is commutative
-                combined_rename_map = (
-                    downstream_star_column_rename_map | upstream_star_expr.get_column_rename_map()
-                )
-
-                target_expr = StarExpr(combined_rename_map)
+                target_expr = e
             else:
-                if e.name in downstream_star_column_rename_map:
-                    new_name = downstream_star_column_rename_map[e.name]
+                # When downstream is renaming its input column, we project
+                # upstream's output column expression to just be aliased with
+                # that new name
+                if e.name in downstream_input_column_rename_map:
+                    new_name = downstream_input_column_rename_map[e.name]
                     target_expr = e.alias(new_name)
                 else:
                     target_expr = e
@@ -368,7 +346,8 @@ class ProjectionPushdown(Rule):
                 #       by original their names prior to renaming)
                 #
                 # TODO fix by instead rewriting exprs
-                output_column_rename_map = _collect_output_column_rename_map(current_project)
+                output_column_rename_map = _extract_input_columns_renaming_mapping(
+                    current_project)
 
                 # Apply projection of columns to the read op
                 return input_op.apply_projection(
@@ -394,16 +373,30 @@ def _is_col_expr(expr: Expr) -> bool:
     )
 
 
-def _collect_output_column_rename_map(p: Project) -> Dict[str, str]:
-    # First, get column rename map from ``StarExpr``
-    star_expr = p.get_star_expr()
-    star_column_rename_map = star_expr.get_column_rename_map() if star_expr else {}
+def _extract_input_columns_renaming_mapping(upstream_project: Project) -> Dict[str, str]:
+    """Fetches renaming mapping of all input columns names being renamed (replaced).
+    Format is source column name -> new column name.
+    """
 
-    # Second, extract all potential rename pairs from output colum expressions
-    rename_map = {
-        expr.expr.name: expr.name
-        for expr in p.exprs
-        if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
-    }
+    return dict([
+        _get_renaming_mapping(expr)
+        for expr in _filter_out_star(upstream_project.exprs)
+        if _is_renaming_expr(expr)
+    ])
 
-    return star_column_rename_map | rename_map
+
+def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
+    assert _is_renaming_expr(expr)
+
+    alias: AliasExpr = expr
+
+    return alias.expr.name, alias.name
+
+def _is_renaming_expr(expr: Expr) -> bool:
+    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
+
+    assert not is_renaming or isinstance(expr.expr, ColumnExpr), (
+        f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
+    )
+
+    return is_renaming
