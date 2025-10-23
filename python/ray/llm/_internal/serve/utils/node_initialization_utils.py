@@ -5,6 +5,8 @@ from typing import Optional
 import ray
 from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
+    NodeModelDownloadable,
+    STREAMING_LOAD_FORMATS
 )
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig, LLMEngine
@@ -21,10 +23,19 @@ def initialize_remote_node(llm_config: LLMConfig) -> Optional[str]:
     callback = llm_config.get_or_create_callback()
     engine_config = llm_config.get_engine_config()
 
+    engine_kwargs = llm_config.engine_kwargs or {}
+
+    streaming = engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS
+
+    if streaming:
+        download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+    else:
+        download_model_mode = callback.ctx.worker_node_download_model
+
     local_path = download_model_files(
         model_id=engine_config.actual_hf_model_id,
         mirror_config=engine_config.mirror_config,
-        download_model=callback.ctx.worker_node_download_model,
+        download_model=download_model_mode,
         download_extra_files=True,
         callback=callback,
     )

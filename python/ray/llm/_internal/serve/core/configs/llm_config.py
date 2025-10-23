@@ -26,7 +26,10 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    STREAMING_LOAD_FORMATS
+)
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
 from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -38,6 +41,7 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
+
 
 transformers = try_import("transformers")
 
@@ -452,6 +456,8 @@ class LLMConfig(BaseModelExtended):
         #  Face to download the model again after it's already downloaded during node
         #  initialization step.
         if self._engine_config:
+            if self._streaming:
+                self._engine_config.hf_model_id = self._remote_model_path # ensure streaming models use remote path
             return self._engine_config
 
         if self.llm_engine == LLMEngine.vLLM:
@@ -460,6 +466,9 @@ class LLMConfig(BaseModelExtended):
             )
 
             self._engine_config = VLLMEngineConfig.from_llm_config(self)
+            self._streaming = self._engine_config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS
+            self._remote_model_path = self.model_loading_config.model_source if self._streaming else None
+
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
