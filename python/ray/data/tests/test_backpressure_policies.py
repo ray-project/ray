@@ -229,8 +229,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         self.assertGreater(policy._q_level_nbytes[mock_op], 150.0)
         self.assertLess(policy._q_level_nbytes[mock_op], 200.0)
 
-    def test_update_queue_threshold_downward_smoothing(self):
-        """Test threshold update with downward smoothing logic."""
+    def test_update_queue_threshold_no_decrease(self):
+        """Test that thresholds are never decreased, only maintained or increased."""
         mock_op = MagicMock()
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -238,37 +238,45 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             MagicMock(),
         )
 
-        # Set up initial state with high threshold and very low level/dev to force downward adjustment
+        # Set up initial state with high threshold
         policy._queue_thresholds[mock_op] = 200
         policy._q_level_nbytes[mock_op] = 10.0  # Very low level
         policy._q_level_dev[mock_op] = 1.0  # Very low deviation
         policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
 
-        # Test downward adjustment (should be smoothed)
-        # threshold = max(10 + 4*1, 150) = 150, which is < 200, so should be smoothed
+        # Test that threshold is maintained when calculated threshold is lower
         threshold = policy._update_queue_threshold(mock_op, 150)
 
-        # Should be smoothed between 200 and 150
-        self.assertLess(threshold, 200)
-        self.assertGreaterEqual(threshold, 150)
+        # Should maintain the existing threshold (no decrease)
+        self.assertEqual(threshold, 200)
+        self.assertEqual(policy._queue_thresholds[mock_op], 200)
 
-        # Test that the method works correctly - just verify it doesn't crash
-        # and returns a reasonable threshold value
-        mock_op2 = MagicMock()
-        policy2 = ConcurrencyCapBackpressurePolicy(
+        # Test with even lower queue size
+        threshold_small = policy._update_queue_threshold(mock_op, 50)
+        self.assertEqual(threshold_small, 200)  # Still maintained
+        self.assertEqual(policy._queue_thresholds[mock_op], 200)
+
+    def test_update_queue_threshold_increase(self):
+        """Test that thresholds are increased when calculated threshold is higher."""
+        mock_op = MagicMock()
+        policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
-            {mock_op2: MagicMock()},
+            {mock_op: MagicMock()},
             MagicMock(),
         )
-        policy2._queue_thresholds[mock_op2] = 200
-        policy2._q_level_nbytes[mock_op2] = 10.0
-        policy2._q_level_dev[mock_op2] = 1.0
-        policy2._queue_history[mock_op2] = deque([10, 11, 12, 13, 14, 15])
 
-        threshold_small = policy2._update_queue_threshold(mock_op2, 50)
+        # Set up initial state with moderate threshold
+        policy._queue_thresholds[mock_op] = 100
+        policy._q_level_nbytes[mock_op] = 50.0
+        policy._q_level_dev[mock_op] = 20.0
+        policy._queue_history[mock_op] = deque([50, 60, 70, 80, 90, 100])
 
-        # Just verify it returns a reasonable threshold (at least as high as input)
-        self.assertGreaterEqual(threshold_small, 50)
+        # Test that threshold is increased when calculated threshold is higher
+        threshold = policy._update_queue_threshold(mock_op, 200)
+
+        # Should increase the threshold
+        self.assertGreaterEqual(threshold, 200)
+        self.assertGreaterEqual(policy._queue_thresholds[mock_op], 200)
 
     def test_effective_cap_calculation_with_trend(self):
         """Test effective cap calculation with different trend scenarios."""
@@ -474,7 +482,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
                 self.assertAlmostEqual(threshold, expected, places=5)
 
     def test_threshold_update_logic_comprehensive(self):
-        """Test comprehensive threshold update logic including bootstrap, upward, and downward cases."""
+        """Test comprehensive threshold update logic including bootstrap, upward, and no-decrease cases."""
         mock_op = MagicMock()
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -489,7 +497,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Bootstrap: threshold = max(level + K_DEV * dev, q_now) = max(100 + 4*0, 100) = 100
         self.assertEqual(threshold1, 100)
 
-        # Test 2: Upward adjustment (threshold >= prev_threshold)
+        # Test 2: Upward adjustment (threshold > prev_threshold)
         policy._queue_thresholds[mock_op] = 100
         policy._q_level_nbytes[mock_op] = 50.0
         policy._q_level_dev[mock_op] = 10.0
@@ -499,17 +507,13 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Just verify it's >= 200 (upward adjustment)
         self.assertGreaterEqual(threshold2, 200)
 
-        # Test 3: Downward adjustment (threshold < prev_threshold)
+        # Test 3: No decrease (threshold < prev_threshold, should maintain existing)
         policy._queue_thresholds[mock_op] = 200
-        policy._q_level_nbytes[
-            mock_op
-        ] = 10.0  # Very low level to force downward adjustment
+        policy._q_level_nbytes[mock_op] = 10.0  # Very low level
         policy._q_level_dev[mock_op] = 1.0  # Very low deviation
         policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
         threshold3 = policy._update_queue_threshold(mock_op, 150)
-        # threshold = max(10 + 4*1, 150) = 150, which is < 200, so should be smoothed
-        self.assertLess(threshold3, 200)
-        self.assertGreaterEqual(threshold3, 150)
+        self.assertEqual(threshold3, 200)
 
         # Test 4: Zero threshold case
         fresh_mock_op = MagicMock()
@@ -521,8 +525,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         fresh_policy._queue_thresholds[fresh_mock_op] = 0
         fresh_policy._queue_history[fresh_mock_op] = deque([0])
         # Fresh policy starts with clean EWMA state
-        threshold5 = fresh_policy._update_queue_threshold(fresh_mock_op, 0)
-        self.assertEqual(threshold5, 1)  # Should round up to 1
+        threshold4 = fresh_policy._update_queue_threshold(fresh_mock_op, 0)
+        self.assertEqual(threshold4, 1)  # Should round up to 1
 
     def test_trend_and_effective_cap_formulas(self):
         """Test trend calculation and effective cap formulas."""
