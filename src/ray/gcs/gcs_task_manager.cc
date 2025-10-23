@@ -109,7 +109,6 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
-  absl::MutexLock lock(&mutex_);
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
     // No tasks by the worker.
@@ -149,7 +148,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
     const JobID &job_id, int64_t job_finish_time_ns) {
-  absl::MutexLock lock(&mutex_);
   auto task_attempts_itr = job_index_.find(job_id);
   if (task_attempts_itr == job_index_.end()) {
     // No tasks in the job.
@@ -185,9 +183,16 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
     for (const auto &[state, timestamp] : new_state_updates.state_ts_ns()) {
       (*existing_state_updates->mutable_state_ts_ns())[state] = timestamp;
     }
-    // existing_state_updates->set_worker_id(new_state_updates.worker_id());
-    // existing_state_updates->set_node_id(new_state_updates.node_id());
-    // existing_state_updates->set_worker_pid(new_state_updates.worker_pid());
+    existing_state_updates->set_node_id(new_state_updates.node_id());
+    existing_state_updates->set_worker_pid(new_state_updates.worker_pid());
+    if (new_state_updates.has_worker_id() && existing_state_updates->has_worker_id()) {
+      RAY_CHECK(new_state_updates.worker_id() == existing_state_updates->worker_id(),
+                "Worker ID is immutable. This should not happen. New worker ID: " +
+                    GetWorkerID(task_events).Hex() +
+                    ", existing worker ID: " + GetWorkerID(existing_task).Hex());
+    } else if (new_state_updates.has_worker_id()) {
+      existing_state_updates->set_worker_id(new_state_updates.worker_id());
+    }
   }
 
   // Truncate the profile events if needed.
@@ -365,7 +370,6 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
 
 void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents &&events_by_task) {
-  absl::MutexLock lock(&mutex_);
   auto job_id = JobID::FromBinary(events_by_task.job_id());
   auto task_id = TaskID::FromBinary(events_by_task.task_id());
 
@@ -638,7 +642,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 
 void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     const rpc::TaskEventData &data) {
-  absl::MutexLock lock(&mutex_);
   for (const auto &dropped_attempt : data.dropped_task_attempts()) {
     const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
     auto attempt_number = dropped_attempt.attempt_number();
