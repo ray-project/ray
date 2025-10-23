@@ -22,6 +22,8 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/fallback_strategy.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -72,9 +74,9 @@ struct TaskOptions {
       std::string serialized_runtime_env_info_p = "{}",
       bool enable_task_events_p = kDefaultTaskEventEnabled,
       std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
+      LabelSelector label_selector_p = {},
       rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
-      std::vector<std::unordered_map<std::string, std::string>> fallback_strategy_p = {})
+      std::vector<FallbackStrategyOptions> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -108,9 +110,9 @@ struct TaskOptions {
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
-  std::unordered_map<std::string, std::string> label_selector;
+  LabelSelector label_selector;
   // A list of label selectors defining fallback scheduling strategies.
-  std::vector<std::unordered_map<std::string, std::string>> fallback_strategy;
+  std::vector<FallbackStrategyOptions> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
 };
@@ -118,27 +120,26 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(
-      int64_t max_restarts_p,
-      int64_t max_task_retries_p,
-      int max_concurrency_p,
-      std::unordered_map<std::string, double> resources_p,
-      std::unordered_map<std::string, double> placement_resources_p,
-      std::vector<std::string> dynamic_worker_options_p,
-      std::optional<bool> is_detached_p,
-      std::string name_p,
-      std::string &ray_namespace_p,
-      bool is_asyncio_p,
-      rpc::SchedulingStrategy scheduling_strategy_p,
-      std::string serialized_runtime_env_info_p = "{}",
-      std::vector<ConcurrencyGroup> concurrency_groups_p = {},
-      bool allow_out_of_order_execution_p = false,
-      int32_t max_pending_calls_p = -1,
-      bool enable_tensor_transport_p = false,
-      bool enable_task_events_p = kDefaultTaskEventEnabled,
-      std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
-      std::vector<std::unordered_map<std::string, std::string>> fallback_strategy_p = {})
+  ActorCreationOptions(int64_t max_restarts_p,
+                       int64_t max_task_retries_p,
+                       int max_concurrency_p,
+                       std::unordered_map<std::string, double> resources_p,
+                       std::unordered_map<std::string, double> placement_resources_p,
+                       std::vector<std::string> dynamic_worker_options_p,
+                       std::optional<bool> is_detached_p,
+                       std::string name_p,
+                       std::string &ray_namespace_p,
+                       bool is_asyncio_p,
+                       rpc::SchedulingStrategy scheduling_strategy_p,
+                       std::string serialized_runtime_env_info_p = "{}",
+                       std::vector<ConcurrencyGroup> concurrency_groups_p = {},
+                       bool allow_out_of_order_execution_p = false,
+                       int32_t max_pending_calls_p = -1,
+                       bool enable_tensor_transport_p = false,
+                       bool enable_task_events_p = kDefaultTaskEventEnabled,
+                       std::unordered_map<std::string, std::string> labels_p = {},
+                       LabelSelector label_selector_p = {},
+                       std::vector<FallbackStrategyOptions> fallback_strategy_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -217,9 +218,9 @@ struct ActorCreationOptions {
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this actor.
-  const std::unordered_map<std::string, std::string> label_selector;
-  // A list of label selectors defining fallback strategies for scheduling.
-  const std::vector<std::unordered_map<std::string, std::string>> fallback_strategy;
+  const LabelSelector label_selector;
+  // A list of scheduling options defining fallback strategies for scheduling.
+  const std::vector<FallbackStrategyOptions> fallback_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

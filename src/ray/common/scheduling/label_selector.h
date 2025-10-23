@@ -45,6 +45,15 @@ class LabelConstraint {
                   absl::flat_hash_set<std::string> values)
       : key_(std::move(key)), op_(op), values_(std::move(values)) {}
 
+  // Constructor to parse LabelConstraint data type from proto message.
+  explicit LabelConstraint(const rpc::LabelSelectorConstraint &proto)
+      : key_(proto.label_key()),
+        op_(static_cast<LabelSelectorOperator>(proto.operator_())) {
+    for (const auto &value : proto.label_values()) {
+      values_.insert(value);
+    }
+  }
+
   const std::string &GetLabelKey() const { return key_; }
 
   LabelSelectorOperator GetOperator() const { return op_; }
@@ -71,6 +80,14 @@ class LabelSelector {
     // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
     for (const auto &[key, value] : label_selector) {
       AddConstraint(key, value);
+    }
+  }
+
+  // Constructor to parse LabelSelector data type from proto message.
+  explicit LabelSelector(const rpc::LabelSelector &proto) {
+    constraints_.reserve(proto.label_constraints_size());
+    for (const auto &proto_constraint : proto.label_constraints()) {
+      constraints_.emplace_back(proto_constraint);
     }
   }
 

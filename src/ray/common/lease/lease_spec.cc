@@ -33,8 +33,7 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
       task_spec.required_placement_resources().begin(),
       task_spec.required_placement_resources().end());
   message_->mutable_scheduling_strategy()->CopyFrom(task_spec.scheduling_strategy());
-  message_->mutable_label_selector()->insert(task_spec.label_selector().begin(),
-                                             task_spec.label_selector().end());
+  message_->mutable_label_selector()->CopyFrom(task_spec.label_selector());
   message_->mutable_fallback_strategy()->CopyFrom(task_spec.fallback_strategy());
   message_->set_depth(task_spec.depth());
   message_->set_parent_task_id(task_spec.parent_task_id());
@@ -274,7 +273,8 @@ const LabelSelector &LeaseSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
-const std::vector<LabelSelector> &LeaseSpecification::GetFallbackStrategy() const {
+const std::vector<FallbackStrategyOptions> &LeaseSpecification::GetFallbackStrategy()
+    const {
   return *fallback_strategy_;
 }
 
@@ -308,10 +308,10 @@ void LeaseSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
-  // Parse FallbackStrategy from proto to list of LabelSelectors if specified.
-  auto strategy_list = std::make_shared<std::vector<LabelSelector>>();
-  for (const auto &proto_selector : message_->fallback_strategy()) {
-    strategy_list->emplace_back(proto_selector.label_selector());
+  // Parse fallback strategy from proto to list of FallbackStrategyOptions if specified.
+  auto strategy_list = std::make_shared<std::vector<FallbackStrategyOptions>>();
+  for (const auto &strategy_proto : message_->fallback_strategy()) {
+    strategy_list->emplace_back(strategy_proto.label_selector());
   }
   fallback_strategy_ = std::move(strategy_list);
 

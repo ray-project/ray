@@ -45,7 +45,7 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
                                         descriptor,
                                         0,
                                         scheduling_strategy,
-                                        std::vector<LabelSelector>());
+                                        std::vector<FallbackStrategy>());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("x");
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   SchedulingClassDescriptor descriptor4(resources,

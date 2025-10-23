@@ -1393,9 +1393,8 @@ class CoreWorker {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {},
-      const std::vector<std::unordered_map<std::string, std::string>> &fallback_strategy =
-          {},
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackStrategyOptions> &fallback_strategy = {},
       const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,

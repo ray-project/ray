@@ -82,10 +82,11 @@ void TaskSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
-  // Parse FallbackStrategy from proto to list of LabelSelectors if specified.
-  auto strategy_list = std::make_shared<std::vector<LabelSelector>>();
-  for (const auto &proto_selector : message_->fallback_strategy()) {
-    strategy_list->emplace_back(proto_selector.label_selector());
+  // Parse fallback strategy from proto to list of fallback options if specified.
+  // FallbackStrategyOptions parse the map of label selectors to the LabelSelector type.
+  auto strategy_list = std::make_shared<std::vector<FallbackStrategyOptions>>();
+  for (const auto &strategy_proto : message_->fallback_strategy()) {
+    strategy_list->emplace_back(strategy_proto.label_selector());
   }
   fallback_strategy_ = std::move(strategy_list);
 
@@ -330,7 +331,8 @@ const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
-const std::vector<LabelSelector> &TaskSpecification::GetFallbackStrategy() const {
+const std::vector<FallbackStrategyOptions> &TaskSpecification::GetFallbackStrategy()
+    const {
   return *fallback_strategy_;
 }
 

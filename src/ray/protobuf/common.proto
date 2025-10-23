@@ -468,7 +468,7 @@ message LeaseSpec {
   map<string, double> required_resources = 9;
   map<string, double> required_placement_resources = 10;
   SchedulingStrategy scheduling_strategy = 11;
-  map<string, string> label_selector = 12;
+  LabelSelector label_selector = 12;
   int64 depth = 13;
   RuntimeEnvInfo runtime_env_info = 14;
   repeated ObjectReference dependencies = 15;
@@ -479,7 +479,7 @@ message LeaseSpec {
   int32 max_retries = 20;
   uint64 attempt_number = 21;
   string task_name = 22;
-  repeated FallbackStrategySelector fallback_strategy = 23;
+  repeated FallbackStrategyOptions fallback_strategy = 23;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -598,11 +598,11 @@ message TaskSpec {
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
   // The key-value label constraints of the node to schedule this task or actor on.
-  map<string, string> label_selector = 43;
+  LabelSelector label_selector = 43;
   // The tensor transport type for this task.
   TensorTransport tensor_transport = 44;
   // A list of label selectors defining the fallback strategy for scheduling.
-  repeated FallbackStrategySelector fallback_strategy = 45;
+  repeated FallbackStrategyOptions fallback_strategy = 45;
 }
 
 message TaskInfoEntry {
@@ -640,7 +640,7 @@ message TaskInfoEntry {
   // format depends on the language. Only populated if the flag is enabled.
   optional string call_site = 27;
   // The key-value label constraints of the node to schedule this task or actor on.
-  map<string, string> label_selector = 28;
+  LabelSelector label_selector = 28;
 }
 
 message TaskAttempt {
@@ -1087,8 +1087,8 @@ message LabelSelector {
   repeated LabelSelectorConstraint label_constraints = 1;
 }
 
-message FallbackStrategySelector {
-  map<string, string> label_selector = 1;
+message FallbackStrategyOptions {
+  LabelSelector label_selector = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

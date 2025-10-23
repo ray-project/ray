@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -32,18 +33,19 @@ bool operator==(const ray::rpc::SchedulingStrategy &lhs,
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(ResourceSet rs,
-                                     LabelSelector ls,
-                                     FunctionDescriptor fd,
-                                     int64_t d,
-                                     rpc::SchedulingStrategy sched_strategy,
-                                     std::vector<LabelSelector> fallback_strategy_p);
+  explicit SchedulingClassDescriptor(
+      ResourceSet rs,
+      LabelSelector ls,
+      FunctionDescriptor fd,
+      int64_t d,
+      rpc::SchedulingStrategy sched_strategy,
+      std::vector<FallbackStrategyOptions> fallback_strategy_p);
   ResourceSet resource_set;
   LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
-  std::vector<LabelSelector> fallback_strategy;
+  std::vector<FallbackStrategyOptions> fallback_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const;
   std::string DebugString() const;

@@ -25,6 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_class_util.h"
@@ -229,11 +230,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The labels that are required for the execution of this task on a node.
   const LabelSelector &GetLabelSelector() const;
 
-  /// Return the list of label selectors for fallback strategy scheduling.
-  /// this task on.
+  /// Return the list of fallback strategies for scheduling.
   ///
-  /// \return Label selectors to fall back on when scheduling a task on a node.
-  const std::vector<LabelSelector> &GetFallbackStrategy() const;
+  /// \return Fallback strategies to fall back on when scheduling a task on a node.
+  const std::vector<FallbackStrategyOptions> &GetFallbackStrategy() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
@@ -389,8 +389,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // in ComputeResources() call.
   std::shared_ptr<LabelSelector> label_selector_;
   // Field storing the fallback scheduling strategy. This is a list of
-  // LabelSelectors to try in-order.
-  std::shared_ptr<std::vector<LabelSelector>> fallback_strategy_;
+  // strategies to try in-order.
+  std::shared_ptr<std::vector<FallbackStrategyOptions>> fallback_strategy_;
 };
 
 }  // namespace ray

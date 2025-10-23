@@ -87,9 +87,11 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
+    CFallbackStrategyOptions,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLabelSelector,
     CLogBatch,
     CTaskArg,
     CTaskArgByReference,
@@ -834,12 +836,13 @@ cdef int prepare_labels(
 
 cdef int prepare_label_selector(
         dict label_selector_dict,
-        unordered_map[c_string, c_string] *label_selector) except -1:
+        CLabelSelector *c_label_selector) except -1:
+
+    c_label_selector[0] = CLabelSelector()
 
     if label_selector_dict is None:
         return 0
 
-    label_selector[0].reserve(len(label_selector_dict))
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label selector key type must be string, but got {type(key)}")
@@ -852,16 +855,17 @@ cdef int prepare_label_selector(
             inner = value[value.index("(")+1:-1].strip()
             if not inner:
                 raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
-        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+        # Add key-value constraint to the LabelSelector object.
+        c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
-        c_vector[unordered_map[c_string, c_string]] *fallback_strategy_vector) except -1:
+        c_vector[CFallbackStrategyOptions] *fallback_strategy_vector) except -1:
 
-    cdef dict label_selector
-    cdef unordered_map[c_string, c_string] c_label_selector_map
+    cdef dict label_selector_dict
+    cdef CLabelSelector c_label_selector
 
     if fallback_strategy is None:
         return 0
@@ -872,14 +876,16 @@ cdef int prepare_fallback_strategy(
                 "Fallback strategy must be a list of dicts, "
                 f"but got list containing {type(strategy_dict)}")
 
-        label_selector = strategy_dict.get("label_selector")
+        label_selector_dict = strategy_dict.get("label_selector")
 
-        if label_selector is not None and not isinstance(label_selector, dict):
+        if label_selector_dict is not None and not isinstance(label_selector_dict, dict):
             raise ValueError("Invalid fallback strategy element: invalid 'label_selector'.")
 
-        c_label_selector_map.clear()
-        prepare_label_selector(label_selector, &c_label_selector_map)
-        fallback_strategy_vector.push_back(c_label_selector_map)
+        prepare_label_selector(label_selector_dict, &c_label_selector)
+
+        fallback_strategy_vector.push_back(
+             CFallbackStrategyOptions(c_label_selector)
+        )
 
     return 0
 
@@ -3674,8 +3680,8 @@ cdef class CoreWorker:
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
-            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
+            CLabelSelector c_label_selector
+            c_vector[CFallbackStrategyOptions] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3785,8 +3791,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
-            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
+            CLabelSelector c_label_selector
+            c_vector[CFallbackStrategyOptions] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3947,10 +3953,10 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
-            c_vector[unordered_map[c_string, c_string]] c_fallback_strategy
+            c_vector[CFallbackStrategyOptions] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,

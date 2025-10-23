@@ -296,9 +296,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // and `fallback_strategy` arguments.
   std::vector<std::reference_wrapper<const LabelSelector>> label_selectors;
   label_selectors.push_back(std::cref(lease_spec.GetLabelSelector()));
-  const auto &fallback_selectors = lease_spec.GetFallbackStrategy();
-  for (const auto &fallback : fallback_selectors) {
-    label_selectors.push_back(std::cref(fallback));
+  const auto &fallback_strategy = lease_spec.GetFallbackStrategy();
+  for (const auto &fallback : fallback_strategy) {
+    label_selectors.push_back(std::cref(fallback.label_selector));
   }
 
   // Try each label selector in order until a node is found.

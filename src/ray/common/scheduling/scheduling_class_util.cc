@@ -31,13 +31,13 @@ SchedulingClassDescriptor::SchedulingClassDescriptor(
     FunctionDescriptor fd,
     int64_t d,
     rpc::SchedulingStrategy sched_strategy,
-    std::vector<LabelSelector> fallback_strategy_p)
+    std::vector<FallbackStrategyOptions> fallback_strat)
     : resource_set(std::move(rs)),
       label_selector(std::move(ls)),
       function_descriptor(std::move(fd)),
       depth(d),
       scheduling_strategy(std::move(sched_strategy)),
-      fallback_strategy(std::move(fallback_strategy_p)) {}
+      fallback_strategy(std::move(fallback_strat)) {}
 
 bool operator==(const ray::rpc::SchedulingStrategy &lhs,
                 const ray::rpc::SchedulingStrategy &rhs) {
@@ -112,21 +112,36 @@ std::string SchedulingClassDescriptor::DebugString() const {
 
   // Add fallback strategy LabelSelectors.
   buffer << "fallback_strategy=[";
-  for (const auto &selector : fallback_strategy) {
+  bool is_first_option = true;
+  for (const auto &fallback_option : fallback_strategy) {
+    if (!is_first_option) {
+      buffer << ", ";
+    }
     buffer << "{";
-    for (const auto &constraint : selector.GetConstraints()) {
+    bool is_first_constraint = true;
+    for (const auto &constraint : fallback_option.label_selector.GetConstraints()) {
+      if (!is_first_constraint) {
+        buffer << ", ";
+      }
       buffer << constraint.GetLabelKey() << " "
              << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
                                                                                   : "!in")
              << " (";
+      bool is_first_value = true;
       for (const auto &val : constraint.GetLabelValues()) {
-        buffer << val << ", ";
+        if (!is_first_value) {
+          buffer << ", ";
+        }
+        buffer << val;
+        is_first_value = false;
       }
-      buffer << "), ";
+      buffer << ")";
+      is_first_constraint = false;
     }
-    buffer << "}, ";
+    buffer << "}";
+    is_first_option = false;
   }
-  buffer << "], ";
+  buffer << "]";
 
   return buffer.str();
 }

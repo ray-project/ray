@@ -150,10 +150,7 @@ class GcsActor {
     if (task_spec_->call_site().size() > 0) {
       actor_table_data_.set_call_site(task_spec_->call_site());
     }
-    if (task_spec_->label_selector().size() > 0) {
-      actor_table_data_.mutable_label_selector()->insert(
-          task_spec_->label_selector().begin(), task_spec_->label_selector().end());
-    }
+    actor_table_data_.mutable_label_selector()->CopyFrom(task_spec_->label_selector());
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }

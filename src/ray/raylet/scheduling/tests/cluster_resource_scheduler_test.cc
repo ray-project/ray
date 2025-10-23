@@ -1989,11 +1989,25 @@ TEST_F(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest) {
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_1, {{"ray.io/accelerator-type", "TPU"}});
 
-  // Define label selector and fallback strategy.
-  std::unordered_map<std::string, std::string> label_selector = {
+  // Define label selector map and convert to C++ type.
+  std::unordered_map<std::string, std::string> label_selector_map = {
       {"ray.io/accelerator-type", "B200"}};
-  std::vector<std::unordered_map<std::string, std::string>> fallback_strategy = {
-      {{"ray.io/accelerator-type", "A100"}}, {{"ray.io/accelerator-type", "TPU"}}};
+  ray::LabelSelector prepared_label_selector(label_selector_map);
+
+  // Define fallback strategy map and convert to C++ type.
+  using FallbackMap =
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+  const std::vector<FallbackMap> fallback_strategy_map = {
+      {{"label_selector", {{"ray.io/accelerator-type", "A100"}}}},
+      {{"label_selector", {{"ray.io/accelerator-type", "TPU"}}}}};
+  std::vector<ray::FallbackStrategyOptions> prepared_fallback_strategy;
+  std::transform(fallback_strategy_map.begin(),
+                 fallback_strategy_map.end(),
+                 std::back_inserter(prepared_fallback_strategy),
+                 [](const FallbackMap &nested_map) {
+                   const auto &inner_map = nested_map.at("label_selector");
+                   return ray::FallbackStrategyOptions(ray::LabelSelector(inner_map));
+                 });
 
   // Create the task spec with the label selectors.
   TaskSpecBuilder spec_builder;
@@ -2024,9 +2038,9 @@ TEST_F(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest) {
                                  "",
                                  true,
                                  {},
-                                 label_selector,
-                                 rpc::TensorTransport::OBJECT_STORE,
-                                 fallback_strategy);
+                                 prepared_label_selector,
+                                 prepared_fallback_strategy,
+                                 rpc::TensorTransport::OBJECT_STORE);
   spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
   LeaseSpecification lease_spec(std::move(spec_builder).ConsumeAndBuild().GetMessage());
 
@@ -2063,11 +2077,25 @@ TEST_F(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest) {
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_TPU, {{"ray.io/accelerator-type", "TPU"}});
 
-  // Scheduling request with infeasible `label_selector` and `fallback_strategy`.
-  std::unordered_map<std::string, std::string> label_selector = {
+  // Define label selector map and convert to C++ type.
+  std::unordered_map<std::string, std::string> label_selector_map = {
       {"ray.io/accelerator-type", "B200"}};
-  std::vector<std::unordered_map<std::string, std::string>> infeasible_fallback = {
-      {{"ray.io/accelerator-type", "A100"}}};
+  ray::LabelSelector infeasible_label_selector(label_selector_map);
+
+  // Define fallback strategy map and convert to C++ type.
+  using FallbackMap =
+      std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
+  const std::vector<FallbackMap> fallback_strategy_map = {
+      {{"label_selector", {{"ray.io/accelerator-type", "A100"}}}},
+  };
+  std::vector<ray::FallbackStrategyOptions> infeasible_fallback_strategy;
+  std::transform(fallback_strategy_map.begin(),
+                 fallback_strategy_map.end(),
+                 std::back_inserter(prepared_fallback_strategy),
+                 [](const FallbackMap &nested_map) {
+                   const auto &inner_map = nested_map.at("label_selector");
+                   return ray::FallbackStrategyOptions(ray::LabelSelector(inner_map));
+                 });
 
   TaskSpecBuilder spec_builder;
   rpc::SchedulingStrategy scheduling_strategy;
@@ -2096,9 +2124,8 @@ TEST_F(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest) {
                                  "",
                                  true,
                                  {},
-                                 label_selector,
-                                 rpc::TensorTransport::OBJECT_STORE,
-                                 infeasible_fallback);
+                                 infeasible_label_selector,
+                                 infeasible_fallback_strategy);
   spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
   LeaseSpecification infeasible_lease_spec(
       std::move(spec_builder).ConsumeAndBuild().GetMessage());

@@ -239,6 +239,17 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLineageReconstructionTask()
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
+    cdef cppclass CLabelSelector "ray::LabelSelector":
+        CLabelSelector() nogil except +
+        void AddConstraint(const c_string& key, const c_string& value) nogil except +
+
+cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
+    cdef cppclass CFallbackStrategyOptions "ray::FallbackStrategyOptions":
+        CLabelSelector label_selector
+
+        CFallbackStrategyOptions() nogil except +
+        CFallbackStrategyOptions(CLabelSelector) nogil except +
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -346,9 +357,9 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
-                     const unordered_map[c_string, c_string] &label_selector,
+                     const CLabelSelector &label_selector,
                      CTensorTransport tensor_transport,
-                     const c_vector[unordered_map[c_string, c_string]] &fallback_strategy)
+                     const c_vector[CFallbackStrategyOptions] &fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -369,8 +380,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
-            const unordered_map[c_string, c_string] &label_selector,
-            const c_vector[unordered_map[c_string, c_string]] &fallback_strategy)
+            const CLabelSelector &label_selector,
+            const c_vector[CFallbackStrategyOptions] &fallback_strategy)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

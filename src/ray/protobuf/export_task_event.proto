@@ -90,7 +90,7 @@ message ExportTaskEventData {
     // The key-value labels for task and actor.
     map<string, string> labels = 10;
     // The key-value label constraints of the node to schedule this task or actor on.
-    map<string, string> label_selector = 11;
+    LabelSelector label_selector = 11;
   }
 
   // Metadata shared by all event types.
