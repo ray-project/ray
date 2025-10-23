@@ -44,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Max number of hash shuffle aggregators",
     )
+    parser.add_argument(
+        "--finalize_batch_size",
+        required=True,
+        type=int,
+        help="Number of concurrent finalization tasks",
+    )
     return parser.parse_args()
 
 
@@ -54,11 +60,12 @@ def main(args):
 
         ctx = ray.data.DataContext.get_current()
         ctx.max_hash_shuffle_aggregators = args.max_aggregators
-        ctx.downstream_capacity_backpressure_max_queued_bundles = 500
+        ctx.max_hash_shuffle_finalization_batch_size = args.finalize_batch_size
+        ctx.downstream_capacity_backpressure_max_queued_bundles = 250
         ctx.downstream_capacity_backpressure_ratio = 0
 
-        left_ds = ray.data.read_parquet(args.left_dataset, memory=1e9)
-        right_ds = ray.data.read_parquet(args.right_dataset, memory=1e9)
+        left_ds = ray.data.read_parquet(args.left_dataset)
+        right_ds = ray.data.read_parquet(args.right_dataset)
         # Check if join keys match; if not, rename right join keys
         if len(args.left_join_keys) != len(args.right_join_keys):
             raise ValueError("Number of left and right join keys must match.")

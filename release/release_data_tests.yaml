@@ -243,6 +243,7 @@
       --join_type {{join_type}}
       --num_partitions 500
       --max_aggregators 100
+      --finalize_batch_size 10
 
 ###############
 # Wide Schema tests
