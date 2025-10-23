@@ -11,6 +11,8 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.logical.rules.projection_pushdown import \
+    _extract_input_columns_renaming_mapping
 from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
@@ -23,7 +25,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
-    _ExprVisitor,
+    _ExprVisitor, col,
 )
 
 logger = logging.getLogger(__name__)
@@ -693,7 +695,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     return evaluator.visit(expr)
 
 
-def eval_projection(exprs: List[Expr], block: Block) -> Block:
+def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
 
@@ -704,7 +706,7 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
     - Column ordering
 
     Args:
-        exprs: List of expressions to evaluate (may include StarExpr)
+        projection_exprs: List of expressions to evaluate (may include StarExpr)
         block: The block to project
 
     Returns:
@@ -717,27 +719,27 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
         return block
 
     # Handle simple cases early.
-    if len(exprs) == 0:
+    if len(projection_exprs) == 0:
         return block_accessor.select([])
 
-    existing_cols = list(block_accessor.column_names())
+    input_column_names = list(block_accessor.column_names())
+    # Collect input column rename map from the projection list
+    input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
     # Expand star expr (if any)
-    if isinstance(exprs[0], StarExpr):
-        col_rename_map = exprs[0].get_column_rename_map()
-        # Cherry-pick source block's columns that aren't removed upon renaming
-        source_col_ref_exprs = []
+    if isinstance(projection_exprs[0], StarExpr):
+        # Cherry-pick input block's columns that aren't explicitly removed via
+        # renaming
+        input_column_ref_exprs = [
+            col(c) for c in input_column_names
+            if c not in input_column_rename_map
+        ]
 
-        for c in existing_cols:
-            target_col_name = col_rename_map.get(c, c)
-            source_col_ref_exprs.append(
-                ColumnExpr(c).alias(target_col_name)
-            )
+        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
 
-        exprs = source_col_ref_exprs + exprs[1:]
+    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
-    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in exprs])
-
+    # TODO clean up
     new_block = pa.table([pa.nulls(len(block))], ["__stub__"])
 
     for name, output_col in zip(names, output_cols):

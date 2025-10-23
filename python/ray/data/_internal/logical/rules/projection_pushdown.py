@@ -84,7 +84,7 @@ def _analyze_upstream_project(
 
     # Identify upstream input columns removed by renaming (ie not propagated into
     # its output)
-    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(upstream_project)
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(upstream_project.exprs)
 
     return output_column_names, output_column_defs, set(upstream_column_renaming_map.keys())
 
@@ -235,7 +235,7 @@ def _try_fuse(
 
         # Extract downstream's input column rename map (downstream inputs are
         # upstream's outputs)
-        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(downstream_project)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(downstream_project.exprs)
         # Collect upstream output column expression "projected" to become
         # downstream expressions
         projected_upstream_output_col_exprs = []
@@ -347,7 +347,8 @@ class ProjectionPushdown(Rule):
                 #
                 # TODO fix by instead rewriting exprs
                 output_column_rename_map = _extract_input_columns_renaming_mapping(
-                    current_project)
+                    current_project.exprs
+                )
 
                 # Apply projection of columns to the read op
                 return input_op.apply_projection(
@@ -373,14 +374,14 @@ def _is_col_expr(expr: Expr) -> bool:
     )
 
 
-def _extract_input_columns_renaming_mapping(upstream_project: Project) -> Dict[str, str]:
+def _extract_input_columns_renaming_mapping(projection_exprs: List[Expr]) -> Dict[str, str]:
     """Fetches renaming mapping of all input columns names being renamed (replaced).
     Format is source column name -> new column name.
     """
 
     return dict([
         _get_renaming_mapping(expr)
-        for expr in _filter_out_star(upstream_project.exprs)
+        for expr in _filter_out_star(projection_exprs)
         if _is_renaming_expr(expr)
     ])
 
