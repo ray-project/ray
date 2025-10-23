@@ -76,7 +76,11 @@ def setup_and_verify_auth(
 
     # Check if you enabled token authentication.
     if get_authentication_mode() != AuthenticationMode.TOKEN:
-        if system_config and system_config.get("auth_mode") != "disabled":
+        if (
+            system_config
+            and "auth_mode" in system_config
+            and system_config["auth_mode"] != "disabled"
+        ):
             raise RuntimeError(
                 "Set authentication mode with the environment, not system_config."
             )
