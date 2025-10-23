@@ -25,7 +25,15 @@ logger = logging.getLogger(__name__)
 class DistinctAggregation(StatefulShuffleAggregation):
     """Stateful aggregation that deduplicates rows within partitions.
 
-    Uses a dictionary to track seen keys for O(1) average-case deduplication.
+    This class implements efficient deduplication using a dictionary to track
+    seen keys for O(1) average-case lookup and insertion. For each partition,
+    it maintains a dictionary mapping key tuples to the first row encountered
+    with that key.
+
+    Args:
+        aggregator_id: Unique identifier for this aggregator.
+        target_partition_ids: List of partition IDs this aggregator handles.
+        key_columns: Tuple of column names to use for identifying duplicates.
     """
 
     def __init__(
@@ -37,12 +45,19 @@ class DistinctAggregation(StatefulShuffleAggregation):
     ):
         super().__init__(aggregator_id)
         self._key_columns = key_columns
-        # Dict per partition: {key_tuple -> first_row_with_that_key}
+        # Dictionary per partition: {key_tuple -> first_row_with_that_key}
         self._partition_data: Dict[int, Dict[Tuple, Dict]] = {
             partition_id: {} for partition_id in target_partition_ids
         }
 
     def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
+        """Accept a block shard and deduplicate rows based on key columns.
+
+        Args:
+            input_seq_id: Input sequence index (must be 0 for distinct).
+            partition_id: ID of the partition this shard belongs to.
+            partition_shard: Block of data to process.
+        """
         assert (
             input_seq_id == 0
         ), f"Distinct is unary aggregation, got sequence index {input_seq_id}"
@@ -51,28 +66,55 @@ class DistinctAggregation(StatefulShuffleAggregation):
         seen = self._partition_data[partition_id]
         accessor = BlockAccessor.for_block(partition_shard)
 
-        # Deduplicate: keep only first occurrence of each key
+        # Deduplicate: keep only the first occurrence of each unique key
         for row in accessor.iter_rows(public_row_format=False):
             key = tuple(row.get(col) for col in self._key_columns)
             if key not in seen:
                 seen[key] = row
 
     def finalize(self, partition_id: int) -> Block:
+        """Build and return the deduplicated block for a partition.
+
+        Args:
+            partition_id: ID of the partition to finalize.
+
+        Returns:
+            A Block containing all unique rows for this partition.
+        """
         builder = ArrowBlockBuilder()
         for row in self._partition_data[partition_id].values():
             builder.add(row)
         return builder.build()
 
     def clear(self, partition_id: int):
+        """Clear data for a partition to free memory.
+
+        Args:
+            partition_id: ID of the partition to clear.
+        """
         self._partition_data.pop(partition_id, None)
 
 
 class HashDistinctOperator(HashShufflingOperatorBase):
     """Physical operator for hash-based distinct (deduplication).
 
-    Extends HashShufflingOperatorBase to perform distributed deduplication using
-    hash partitioning, where rows with identical key values are routed to the same
-    partition for local deduplication.
+    This operator extends HashShufflingOperatorBase to perform distributed
+    deduplication using hash partitioning. Rows with identical key values are
+    routed to the same partition where local deduplication occurs using an
+    efficient dictionary-based approach.
+
+    The operator works in two phases:
+    1. Shuffle phase: Hash partition rows by key columns to route duplicates together
+    2. Reduce phase: Locally deduplicate rows within each partition
+
+    Args:
+        input_op: The input physical operator providing data to deduplicate.
+        data_context: Data context configuration for execution.
+        key_columns: Tuple of column names to use for identifying duplicates.
+        num_partitions: Optional number of output partitions for the shuffle.
+            If None, uses the data context's default parallelism.
+        aggregator_ray_remote_args_override: Optional override for Ray remote args
+            used when creating aggregator actors.
     """
 
     def __init__(
@@ -106,6 +148,7 @@ class HashDistinctOperator(HashShufflingOperatorBase):
         )
 
     def _get_operator_num_cpus_override(self) -> float:
+        """Get the number of CPUs to use for the operator actor."""
         return self.data_context.hash_shuffle_operator_actor_num_cpus_override
 
     @classmethod
@@ -116,6 +159,20 @@ class HashDistinctOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        """Estimate memory requirements for distinct aggregator actors.
+
+        This estimates the memory needed for:
+        1. Shuffle inputs stored in object store
+        2. Single partition output stored in object store
+
+        Args:
+            num_aggregators: Number of aggregator actors to create.
+            num_partitions: Number of output partitions.
+            estimated_dataset_bytes: Estimated total size of the dataset in bytes.
+
+        Returns:
+            Estimated total memory requirement in bytes for each aggregator.
+        """
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
         )

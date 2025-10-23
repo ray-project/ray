@@ -95,12 +95,12 @@ def _plan_hash_shuffle_distinct(
         HashDistinctOperator,
     )
 
-    # Infer the schema from the logical operator's input
-    # This works even when the physical operator is an InputDataBuffer
+    # Infer the schema from the logical operator's input.
+    # This works even when the physical operator is an InputDataBuffer.
     assert len(logical_op._input_dependencies) == 1
     schema = logical_op._input_dependencies[0].infer_schema()
 
-    # Handle schema inference failure
+    # Handle schema inference failure.
     if schema is None:
         raise ValueError(
             "Cannot perform distinct operation: unable to infer schema from input. "
@@ -108,8 +108,8 @@ def _plan_hash_shuffle_distinct(
             "determined at planning time."
         )
 
-    # Empty datasets with valid schemas are allowed - they will return empty results
-    # Determine key columns - use all columns if none specified
+    # Determine key columns - use all columns if none specified.
+    # Empty datasets with valid schemas are allowed and will return empty results.
     if logical_op._key is None:
         key_columns = tuple(schema.names) if schema.names else ()
     else:

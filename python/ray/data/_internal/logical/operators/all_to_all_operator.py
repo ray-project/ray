@@ -8,7 +8,6 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-
     from ray.data.block import Schema
 
 

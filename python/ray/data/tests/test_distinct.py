@@ -25,10 +25,13 @@ def empty_data():
 
 
 def test_distinct_across_blocks(shutdown_only):
-    """Test distinct operation across multiple blocks."""
+    """Test distinct operation across multiple blocks.
+
+    Verifies that distinct correctly deduplicates globally across all blocks,
+    not just within individual blocks.
+    """
     table = pa.table({"a": [1, 2, 2, 3, 1, 3], "b": ["x", "y", "y", "z", "x", "z"]})
     ds = ray.data.from_arrow(table).repartition(3)
-    # Should still dedupe globally
     out = ds.distinct().sort(key=["a", "b"]).take_all()
     assert out == [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}, {"a": 3, "b": "z"}]
 
@@ -41,21 +44,22 @@ def test_distinct_all_unique(shutdown_only):
 
 
 def test_distinct_all_duplicate(shutdown_only):
-    """Test distinct on dataset with all duplicate rows."""
+    """Test distinct on dataset with all duplicate rows.
+
+    Also tests distinct with multiple blocks and with null values.
+    """
     ds = ray.data.from_arrow(
         pa.table({"a": [5, 5, 5, 5], "b": ["foo", "foo", "foo", "foo"]})
     )
     out = ds.distinct().take_all()
     assert out == [{"a": 5, "b": "foo"}]
 
-    # Test with multiple blocks
     ds_multi = ray.data.from_arrow(
         pa.table({"a": [5, 5, 5, 5], "b": ["foo", "foo", "foo", "foo"]})
     ).repartition(2)
     out_multi = ds_multi.distinct().take_all()
     assert out_multi == [{"a": 5, "b": "foo"}]
 
-    # Test with NAs and nulls
     ds_nulls = ray.data.from_arrow(
         pa.table(
             {
@@ -65,7 +69,6 @@ def test_distinct_all_duplicate(shutdown_only):
         )
     )
     out_nulls = ds_nulls.distinct().sort(key=["a", "b"]).take_all()
-    # Should have 2 distinct rows: (None, "x") and (1, None)
     assert len(out_nulls) == 2
     assert {"a": None, "b": "x"} in out_nulls
     assert {"a": 1, "b": None} in out_nulls
@@ -79,14 +82,17 @@ def test_distinct_empty(shutdown_only, empty_data):
 
 
 def test_distinct_subset(shutdown_only, subset_data):
-    """Test distinct on subset of columns."""
+    """Test distinct on subset of columns.
+
+    When using keys parameter, distinct should only consider specified columns
+    for identifying duplicates while keeping all columns in the output.
+    """
     ds = ray.data.from_arrow(subset_data)
-    # Test distinct on subset of columns
     out = ds.distinct(keys=["a"]).sort(key=["a"]).take_all()
-    # Should keep one row for each "a" value
+
     assert len(out) == 4
     assert all(row["a"] in [1, 2, 3, 4] for row in out)
-    # Check that we have exactly one row for each unique "a" value
+
     a_values = [row["a"] for row in out]
     assert set(a_values) == {1, 2, 3, 4}
 
@@ -101,11 +107,10 @@ def test_distinct_empty_keys(shutdown_only, subset_data):
 def test_distinct_invalid_keys(shutdown_only, subset_data):
     """Test that invalid keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
-    # Test that invalid keys raise an error
+
     with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
         ds.distinct(keys=["c", "d"])
 
-    # Test partial invalid keys
     with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
         ds.distinct(keys=["a", "c"])
 
@@ -114,11 +119,9 @@ def test_distinct_empty_dataset(shutdown_only, empty_data):
     """Test distinct on empty dataset with both all columns and keys."""
     ds = ray.data.from_arrow(empty_data)
 
-    # Test that empty dataset with schema works
     result = ds.distinct()
     assert result.take_all() == []
 
-    # Test that empty dataset with keys also works
     result_with_keys = ds.distinct(keys=["a"])
     assert result_with_keys.take_all() == []
 
@@ -127,11 +130,9 @@ def test_distinct_duplicate_keys(shutdown_only, subset_data):
     """Test that duplicate keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
 
-    # Test that duplicate keys raise an error
     with pytest.raises(ValueError, match="Duplicate keys found"):
         ds.distinct(keys=["a", "a"])
 
-    # Test multiple duplicates
     with pytest.raises(ValueError, match="Duplicate keys found"):
         ds.distinct(keys=["a", "b", "a", "b"])
 

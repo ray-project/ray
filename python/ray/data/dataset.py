@@ -1039,37 +1039,35 @@ class Dataset:
         """
         all_cols = self.columns()
 
-        # Handle schema inference failure
+        # Handle schema inference failure.
         if all_cols is None:
             raise ValueError(
                 "Cannot perform distinct operation: unable to determine dataset schema. "
                 "Schema inference failed."
             )
 
-        # Empty datasets with valid schemas are allowed - they will return empty results
-
-        # Validate keys parameter
+        # Validate keys parameter.
         if keys is not None:
             if not keys:
                 raise ValueError(
                     "keys cannot be an empty list. Use None to select all columns."
                 )
 
-            # Check for duplicate keys
+            # Check for duplicate keys.
             if len(keys) != len(set(keys)):
                 duplicates = [key for key in set(keys) if keys.count(key) > 1]
                 raise ValueError(
                     f"Duplicate keys found: {duplicates}. Keys must be unique."
                 )
 
-            # Check that all specified keys exist in the dataset
+            # Check that all specified keys exist in the dataset.
             invalid_keys = set(keys) - set(all_cols)
             if invalid_keys:
                 raise ValueError(
                     f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
                 )
 
-        # Use the dedicated Distinct operator for efficient deduplication
+        # Create the Distinct logical operator.
         plan = self._plan.copy()
         op = Distinct(
             self._logical_plan.dag,
