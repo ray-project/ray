@@ -66,12 +66,14 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         executor: ThreadPoolExecutor,
         events_filter_fn: Callable[[object], bool],
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
+        preserve_proto_field_name: bool = False,
     ) -> None:
         self._endpoint = endpoint
         self._executor = executor
         self._events_filter_fn = events_filter_fn
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
+        self._preserve_proto_field_name = preserve_proto_field_name
 
     async def publish(self, batch: PublishBatch) -> PublishStats:
         events_batch: list[events_base_event_pb2.RayEvent] = batch.events
@@ -89,7 +91,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             self._executor,
             lambda: [
                 json.loads(
-                    message_to_json(e, always_print_fields_with_no_presence=True)
+                    message_to_json(
+                        e,
+                        always_print_fields_with_no_presence=True,
+                        preserving_proto_field_name=self._preserve_proto_field_name,
+                    )
                 )
                 for e in filtered
             ],

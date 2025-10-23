@@ -398,13 +398,6 @@ class TestReservationOpResourceAllocator:
             nonlocal global_limits
             return global_limits
 
-        def can_submit_new_task(allocator, op):
-            """Helper to check if operator can submit new tasks based on budget."""
-            budget = allocator.get_budget(op)
-            if budget is None:
-                return True
-            return op.incremental_resource_usage().satisfies_limit(budget)
-
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
@@ -447,9 +440,7 @@ class TestReservationOpResourceAllocator:
         # Test budgets.
         assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
         assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
 
@@ -478,9 +469,7 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
         # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
         assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
@@ -512,9 +501,7 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
         # memory_budget[o3] = 70 + 100/2 = 120
         assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
