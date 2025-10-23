@@ -315,7 +315,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 def test_report_stats():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
 
@@ -390,7 +391,8 @@ def test_report_stats():
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
     # GPUstats query output example.
@@ -500,7 +502,8 @@ def test_report_stats_gpu():
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
 
     fake_metrics_content = """
     duty_cycle{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 20.0
@@ -557,7 +560,8 @@ def test_get_tpu_usage():
 def test_report_stats_tpu():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
 
     stats = copy.deepcopy(STATS_TEMPLATE)
 
@@ -636,7 +640,8 @@ def test_report_stats_tpu():
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
-    agent = ReporterAgent(dashboard_agent)
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
     agent._is_head_node = True
 
@@ -894,7 +899,8 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             assert root_usage.free == 1
 
 
-def test_reporter_worker_cpu_percent():
+@pytest.mark.asyncio
+async def test_reporter_worker_cpu_percent():
     raylet_dummy_proc_f = psutil.Process
     agent_mock = Process(target=random_work)
     children = [Process(target=random_work) for _ in range(2)]
@@ -911,8 +917,11 @@ def test_reporter_worker_cpu_percent():
         def _generate_worker_key(self, proc):
             return (proc.pid, proc.create_time())
 
-        def _get_worker_processes(self):
-            return ReporterAgent._get_worker_processes(self)
+        async def _async_get_worker_pids_from_raylet(self):
+            return [p.pid for p in children]
+
+        async def _async_get_worker_processes(self):
+            return await ReporterAgent._async_get_worker_processes(self)
 
     obj = ReporterAgentDummy()
 
@@ -921,12 +930,12 @@ def test_reporter_worker_cpu_percent():
         for child_proc in children:
             child_proc.start()
         children_pids = {p.pid for p in children}
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         # In the first run, the percent should be 0.
         assert all([worker["cpu_percent"] == 0.0 for worker in workers])
         for _ in range(10):
             time.sleep(0.1)
-            workers = ReporterAgent._get_workers(obj)
+            workers = await ReporterAgent._async_get_workers(obj)
             workers_pids = {w["pid"] for w in workers}
 
             # Make sure all children are registered.
@@ -942,14 +951,14 @@ def test_reporter_worker_cpu_percent():
         print("killed ", children[0].pid)
         children[0].kill()
         wait_for_condition(lambda: not children[0].is_alive())
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid in workers_pids
 
         children[1].kill()
         wait_for_condition(lambda: not children[1].is_alive())
-        workers = ReporterAgent._get_workers(obj)
+        workers = await ReporterAgent._async_get_workers(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid not in workers_pids
@@ -1203,6 +1212,37 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     assert resp_data["pythonVersion"] == meta["python_version"]
     assert resp_data["rayVersion"] == meta["ray_version"]
     assert resp_data["rayInitCluster"] == meta["ray_init_cluster"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"num_cpus": 1},
+    ],
+    indirect=True,
+)
+async def test_reporter_raylet_agent(ray_start_with_dashboard):
+    @ray.remote
+    class MyActor:
+        def get_pid(self):
+            return os.getpid()
+
+    a = MyActor.remote()
+    worker_pid = ray.get(a.get_pid.remote())
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
+    agent = ReporterAgent(dashboard_agent)
+    pids = await agent._async_get_worker_pids_from_raylet()
+    assert len(pids) == 2
+    # check if worker is reported
+    assert worker_pid in pids
+    # check if driver is reported
+    assert os.getpid() in pids
 
 
 if __name__ == "__main__":

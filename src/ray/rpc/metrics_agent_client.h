@@ -72,12 +72,12 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   MetricsAgentClientImpl(const std::string &address,
                          const int port,
                          instrumented_io_context &io_service,
-                         rpc::ClientCallManager &client_call_manager) {
+                         rpc::ClientCallManager &client_call_manager)
+      : io_service_(io_service) {
     RAY_LOG(DEBUG) << "Initiate the metrics client of address:"
                    << BuildAddress(address, port);
     grpc_client_ =
         std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager);
-    retry_timer_ = std::make_unique<boost::asio::steady_timer>(io_service);
   };
 
   VOID_RPC_CLIENT_METHOD(ReporterService,
@@ -89,7 +89,7 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   VOID_RPC_CLIENT_METHOD(ReporterService,
                          HealthCheck,
                          grpc_client_,
-                         /*method_timeout_ms*/ -1,
+                         /*method_timeout_ms*/ kMetricAgentInitRetryDelayMs,
                          override)
 
   /// Wait for the server to be ready. Invokes the callback with the final readiness
@@ -99,8 +99,8 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
  private:
   /// The RPC client.
   std::unique_ptr<GrpcClient<ReporterService>> grpc_client_;
-  /// Timer for retrying to initialize the OpenTelemetry exporter.
-  std::unique_ptr<boost::asio::steady_timer> retry_timer_;
+  /// The io context to run the retry loop.
+  instrumented_io_context &io_service_;
   /// Whether the exporter is initialized.
   bool exporter_initialized_ = false;
   /// Wait for the server to be ready with a retry count. Invokes the callback
