@@ -296,9 +296,6 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
     )
-    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
-        return_value=True
-    )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
         return get_eligible_operators(topo, [], ensure_liveness=ensure_liveness)
