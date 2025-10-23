@@ -49,7 +49,7 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
 
   // If already loaded, return cached value
   if (cached_token_.has_value()) {
-    return *cached_token_;
+    return cached_token_;
   }
 
   // If token auth is not enabled, return std::nullopt

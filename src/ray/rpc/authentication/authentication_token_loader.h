@@ -68,7 +68,7 @@ class AuthenticationTokenLoader {
   std::string TrimWhitespace(const std::string &str);
 
   std::mutex token_mutex_;
-  std::optional<std::optional<AuthenticationToken>> cached_token_;
+  std::optional<AuthenticationToken> cached_token_;
 };
 
 }  // namespace rpc

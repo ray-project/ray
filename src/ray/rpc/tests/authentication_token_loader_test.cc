@@ -45,7 +45,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication for tests
-    RayConfig::instance().initialize(R"({"auth_mode": "ray_token"})");
+    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
 
     // If HOME is not set (e.g., in Bazel sandbox), set it to a test directory
     // This ensures tests work in environments where HOME isn't provided
@@ -290,7 +290,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   EXPECT_FALSE(loader.HasToken());
 
   // Re-enable for other tests
-  RayConfig::instance().initialize(R"({"auth_mode": "ray_token"})");
+  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
