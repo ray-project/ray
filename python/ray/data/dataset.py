@@ -143,7 +143,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import StarExpr, Expr
+from ray.data.expressions import StarExpr, Expr, col
 
 logger = logging.getLogger(__name__)
 
@@ -1233,7 +1233,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=[StarExpr(), exprs],
+            exprs=[StarExpr(), *exprs],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
