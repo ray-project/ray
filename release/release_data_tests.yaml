@@ -241,7 +241,7 @@
       --left_join_keys column00
       --right_join_keys column0
       --join_type {{join_type}}
-      --num_partitions 200
+      --num_partitions 500
       --max_aggregators 100
 
 ###############
