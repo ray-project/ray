@@ -196,7 +196,7 @@ def _try_fuse(
     #       For specific examples consider both of the cases below
     v = _ColumnRefRebindingVisitor(upstream_column_defs)
 
-    downstream_exprs = [
+    rebound_downstream_exprs = [
         v.visit(e)
         for e in _filter_out_star(downstream_project.exprs)
     ]
@@ -216,33 +216,32 @@ def _try_fuse(
         #   Downstream: [star(), col("b").rename("c")]
         #
         #   Result: [star(), col("a").alias("c")]
-
-        upstream_star_expr = upstream_project.get_star_expr()
         downstream_star_expr = downstream_project.get_star_expr()
 
         downstream_star_column_rename_map = downstream_star_expr.get_column_rename_map()
-        # Project out upstream's output column expressions corresponding
-        # to the columns being renamed
-        downstream_output_cols_removed = downstream_star_column_rename_map.keys()
 
-        # First, combine the star expressions
-        # NOTE: This operation is commutative
-        combined_rename_map = (
-            downstream_star_column_rename_map |
-            (upstream_star_expr.get_column_rename_map() if upstream_star_expr is not None else {})
-        )
+        projected_upstream_output_col_exprs = []
 
-        combined_star = StarExpr(combined_rename_map)
+        for e in upstream_project.exprs:
+            if isinstance(e, StarExpr):
+                upstream_star_expr = e
+                # First, combine the star expressions
+                # NOTE: This operation is commutative
+                combined_rename_map = (
+                    downstream_star_column_rename_map | upstream_star_expr.get_column_rename_map()
+                )
 
-        projected_upstream_out_col_exprs = [
-            combined_star,
-            *(
-                e for e in _filter_out_star(upstream_project.exprs)
-                if e.name not in downstream_output_cols_removed
-            )
-        ]
+                target_expr = StarExpr(combined_rename_map)
+            else:
+                if e.name in downstream_star_column_rename_map:
+                    new_name = downstream_star_column_rename_map[e.name]
+                    target_expr = e.alias(new_name)
+                else:
+                    target_expr = e
 
-        new_exprs = projected_upstream_out_col_exprs + downstream_exprs
+            projected_upstream_output_col_exprs.append(target_expr)
+
+        new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
     else:
         # Intersection case: This is when downstream is a selection (no star), and
         # we need to recursively rebind upstream column definitions inside the downstream
@@ -255,7 +254,7 @@ def _try_fuse(
         #   Result: [col("a").alias("c")]
         print(f">>> [DBG] rebinding: {upstream_column_defs=}")
 
-        new_exprs = downstream_exprs
+        new_exprs = rebound_downstream_exprs
 
 
     return Project(
