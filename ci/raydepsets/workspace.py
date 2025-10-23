@@ -99,15 +99,20 @@ class Workspace:
         if self.dir is None:
             raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
-    def load_configs(self, config_path: str = None) -> Config:
+    def load_configs(
+        self, config_path: str = "ci/raydepsets/configs/ray.depsets.yaml"
+    ) -> Config:
+        print(f"Loading configs from {config_path}")
         merged_configs = self.merge_configs(self.get_all_configs(config_path))
         return merged_configs
 
     def get_all_configs(self, config_path: str = None) -> List[Config]:
+        print(f"Getting all configs from {config_path}")
         return [self.load_config(path) for path in self.get_configs_dir(config_path)]
 
     def get_configs_dir(self, configs_path: str) -> List[str]:
         configs_dir = os.path.dirname(os.path.join(self.dir, configs_path))
+        print(f"Getting configs dir: {configs_dir}")
         return [
             os.path.join(self.dir, configs_dir, path)
             for path in os.listdir(os.path.join(self.dir, configs_dir))
@@ -115,6 +120,7 @@ class Workspace:
         ]
 
     def load_config(self, config_path: str) -> Config:
+        print(f"Loading config from {config_path}")
         with open(os.path.join(self.dir, config_path), "r") as f:
             data = yaml.safe_load(f)
         config_name = os.path.basename(config_path)
