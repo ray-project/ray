@@ -179,30 +179,15 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   }
 
   // Update the task event.
-  if (task_events.has_task_info()) {
-    existing_task.mutable_task_info()->CopyFrom(task_events.task_info());
-  }
-  if (task_events.has_profile_events()) {
-    existing_task.mutable_profile_events()->CopyFrom(task_events.profile_events());
-  }
   if (task_events.has_state_updates()) {
-    auto state_updates = existing_task.mutable_state_updates();
-    for (const auto &[state, timestamp] : task_events.state_updates().state_ts_ns()) {
-      (*state_updates->mutable_state_ts_ns())[state] = timestamp;
+    auto new_state_updates = task_events.state_updates();
+    auto existing_state_updates = existing_task.mutable_state_updates();
+    for (const auto &[state, timestamp] : new_state_updates.state_ts_ns()) {
+      (*existing_state_updates->mutable_state_ts_ns())[state] = timestamp;
     }
-    if (task_events.state_updates().has_error_info()) {
-      state_updates->mutable_error_info()->CopyFrom(
-          task_events.state_updates().error_info());
-    }
-    if (task_events.state_updates().has_worker_id()) {
-      state_updates->set_worker_id(task_events.state_updates().worker_id());
-    }
-    if (task_events.state_updates().has_node_id()) {
-      state_updates->set_node_id(task_events.state_updates().node_id());
-    }
-    if (task_events.state_updates().has_worker_pid()) {
-      state_updates->set_worker_pid(task_events.state_updates().worker_pid());
-    }
+    // existing_state_updates->set_worker_id(new_state_updates.worker_id());
+    // existing_state_updates->set_node_id(new_state_updates.node_id());
+    // existing_state_updates->set_worker_pid(new_state_updates.worker_pid());
   }
 
   // Truncate the profile events if needed.
@@ -328,7 +313,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
     // Merge with an existing entry.
-    // UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
+    UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
     return loc_itr->second;
   }
 
