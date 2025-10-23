@@ -300,10 +300,10 @@ class OpState:
                 # Close all sub progress bars.
                 self.op.close_sub_progress_bars()
 
-    def total_enqueued_input_bundles(self) -> int:
-        """Total number of input bundles currently enqueued among:
-        1. Input queue(s) pending dispatching (``OpState.input_queues``)
-        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+    def total_enqueued_num_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
+            1. Input queue(s) pending dispatching (``OpState.input_queues``)
+            2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size = (
             self.op.internal_queue_num_blocks()
@@ -328,7 +328,7 @@ class OpState:
         self.op_display_metrics.object_store_memory = usage.object_store_memory
 
         self.op_display_metrics.tasks = self.op.num_active_tasks()
-        self.op_display_metrics.queued = self.total_enqueued_input_bundles()
+        self.op_display_metrics.queued = self.total_enqueued_num_blocks()
         self.op_display_metrics.actors = self.op.get_actor_info().running
 
         self.op_display_metrics.task_backpressured = (
@@ -400,7 +400,7 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
+        desc += f"; Queued blocks: {self.total_enqueued_num_blocks()}"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.

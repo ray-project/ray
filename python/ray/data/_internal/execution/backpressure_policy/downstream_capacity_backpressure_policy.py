@@ -71,7 +71,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         for output_dependency in op.output_dependencies:
             total_enqueued_input_bundles = self._topology[
                 output_dependency
-            ].total_enqueued_input_bundles()
+            ].total_enqueued_num_blocks()
 
             avg_inputs_per_task = (
                 output_dependency.metrics.num_task_inputs_processed
