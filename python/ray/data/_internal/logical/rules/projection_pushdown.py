@@ -70,36 +70,44 @@ def _analyze_upstream_project(
 
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
-    output_columns = {
+    output_column_names = {
         expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
     }
 
     # Compose column definitions in the form of a mapping of
     #   - Target column name
     #   - Target expression
-    output_column_expr_defs = {
+    output_column_defs = {
         expr.name: expr
         for expr in _filter_out_star(upstream_project.exprs)
     }
 
-    # Since star expression carries output column renaming info, we're
-    # composing definitions of the renamed columns from it as well
-    if star_expr := upstream_project.get_star_expr():
-        source_column_rename_map = star_expr.get_column_rename_map()
-    else:
-        source_column_rename_map = {}
+    # Identify upstream input columns removed by renaming (ie not propagated into
+    # its output)
+    upstream_column_renaming_map = dict([
+        _get_renaming_mapping(expr)
+        for expr in _filter_out_star(upstream_project.exprs)
+        if _is_renaming_expr(expr)
+    ])
 
-    rename_column_defs = {
-        new: ColumnExpr(source).alias(new)
-        for source, new in source_column_rename_map.items()
-    }
+    return output_column_names, output_column_defs, set(upstream_column_renaming_map.keys())
 
-    output_column_defs = output_column_expr_defs | rename_column_defs
 
-    # Identify columns removed by renames (source not in output)
-    removed_by_renames = source_column_rename_map.keys()
+def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
+    assert _is_renaming_expr(expr)
 
-    return output_columns, output_column_defs, removed_by_renames
+    alias: AliasExpr = expr
+
+    return alias.expr.name, alias.name
+
+def _is_renaming_expr(expr: Expr) -> bool:
+    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
+
+    assert not is_renaming or isinstance(expr.expr, ColumnExpr), (
+        f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
+    )
+
+    return is_renaming
 
 
 def _validate_fusion(
@@ -171,7 +179,7 @@ def _try_fuse(
     (
         upstream_output_cols,
         upstream_column_defs,
-        upstream_output_cols_removed,
+        upstream_input_cols_removed,
     ) = _analyze_upstream_project(upstream_project)
 
     # Validate fusion possibility
@@ -179,7 +187,7 @@ def _try_fuse(
         downstream_project,
         upstream_has_star,
         upstream_output_cols,
-        upstream_output_cols_removed,
+        upstream_input_cols_removed,
     )
 
     if not is_valid:
