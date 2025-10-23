@@ -224,11 +224,11 @@ class OptimizedRayFossaPreprocessor:
         """Classify package as runtime, build, or test"""
         # Check if it's a build tool
         if any(tool in package_id.lower() for tool in self.BUILD_TOOLS):
-            return 'build' if self.include_build_tools else 'excluded'
+            return 'build'
         
         # Check if it's a test dependency
         if any(pattern in package_id.lower() for pattern in ['test_', '_test', 'testing', 'mock', 'fixture', 'gtest', 'googletest']):
-            return 'test' if self.include_test_deps else 'excluded'
+            return 'test'
         
         return 'runtime'
     
@@ -406,17 +406,6 @@ class OptimizedRayFossaPreprocessor:
         if not package_root.exists():
             print(f"      External package directory not found: {package_root}")
             return
-        
-        # Safety check: ensure we're not copying too large a directory
-        try:
-            # Count files in the directory to prevent copying massive directories
-            file_count = sum(1 for _ in package_root.rglob('*') if _.is_file())
-            if file_count > 10000:  # Arbitrary limit to prevent copying huge directories
-                print(f"      Warning: Package directory too large ({file_count} files), skipping copy")
-                return
-        except (PermissionError, OSError):
-            # If we can't count files, proceed with caution
-            pass
         
         try:
             # Copy the entire package directory

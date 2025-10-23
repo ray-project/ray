@@ -381,6 +381,14 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:nlohmann_json.BUILD",
     )
 
+    http_archive(
+        name = "rapidyaml",
+        strip_prefix = "rapidyaml-0.5.0",
+        urls = ["https://github.com/biojppm/rapidyaml/archive/v0.5.0.tar.gz"],
+        sha256 = "8cad74d721ebab6f6e4909a9622ca27491c3b742782f55db4991a0b9de7422f3",
+        build_file = "@io_ray//bazel:rapidyaml.BUILD",
+    )
+
     auto_http_archive(
         name = "rapidjson",
         url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
@@ -408,3 +416,4 @@ def ray_deps_setup():
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
     )
+
