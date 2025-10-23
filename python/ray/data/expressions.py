@@ -407,6 +407,9 @@ class ColumnExpr(Expr):
         """Get the column name."""
         return self._name
 
+    def rename(self, new_name: str) -> Expr:
+        return AliasExpr(data_type=self.data_type, expr=self, _name=new_name, _is_rename=True)
+
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
 
@@ -685,6 +688,8 @@ class AliasExpr(Expr):
 
     expr: Expr
     _name: str
+
+    _is_rename: bool = False
 
     @property
     def name(self) -> str:

@@ -1175,7 +1175,7 @@ class Dataset:
                     "rename_columns requires both keys and values in the 'names' "
                     "to be strings."
                 )
-            exprs = [col(old).alias(new) for old, new in names.items()]
+            exprs = [col(old).rename(new) for old, new in names.items()]
 
         elif isinstance(names, list):
             if not names:
@@ -1201,7 +1201,7 @@ class Dataset:
                 )
 
             exprs = [
-                col(old).alias(new)
+                col(old).rename(new)
                 for old, new in dict(zip(current_names, names)).items()
             ]
         else:
