@@ -511,7 +511,7 @@ class BlockAccessor:
         import pandas
         import pyarrow
 
-        if isinstance(block, pyarrow.Table):
+        if isinstance(block, (pyarrow.Table, pyarrow.RecordBatch)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)

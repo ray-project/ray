@@ -740,8 +740,13 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
-    # TODO clean up
-    new_block = pa.table([pa.nulls(len(block))], ["__stub__"])
+    # This clumsy workaround is necessary to be able to fill in Pyarrow tables
+    # that has to be "seeded" from existing table with N rows, and couldn't be
+    # started from a truly empty table.
+    #
+    # TODO fix
+    new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
+    new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
 
     for name, output_col in zip(names, output_cols):
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
