@@ -51,14 +51,15 @@ def main(args):
     benchmark = Benchmark()
 
     def benchmark_fn():
+
+        ctx = ray.data.DataContext.get_current()
+        ctx.max_hash_shuffle_aggregators = args.max_aggregators
+
         left_ds = ray.data.read_parquet(args.left_dataset)
         right_ds = ray.data.read_parquet(args.right_dataset)
         # Check if join keys match; if not, rename right join keys
         if len(args.left_join_keys) != len(args.right_join_keys):
             raise ValueError("Number of left and right join keys must match.")
-
-        ctx = ray.data.DataContext.get_current()
-        ctx.max_hash_shuffle_aggregators = args.max_aggregators
 
         # Perform join
         joined_ds = left_ds.join(
