@@ -9,11 +9,30 @@ from ray.data._internal.execution.operators.map_operator import _TaskInput
 from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.types import ObjectRef
 
+"""Streaming repartition builds fixed-size outputs from a stream of inputs.
+
+    We construct batches here to produce exactly sized outputs from arbitrary [start, end) slices across input blocks.
+    The task builder submits a map task only after the total number of rows accumulated across pending blocks reaches
+    target num rows (except during the final flush, which may emit a smaller tail block). This allows us to create
+    target-sized batches without materializing entire large blocks on the driver.
+"""
+
+
+# Key used to stash the repartition task spec in the TaskContext kwargs
+# for the downstream execution function to read and act upon.
 STREAMING_REPARTITION_SPEC_KEY = "streaming_repartition_spec"
 
 
 @dataclass
 class StreamingRepartitionContributorSpec:
+    """A single slice contribution to an output block.
+
+    Fields:
+    - block_index: Index of the source block within the current task input bundle.
+    - start_offset/end_offset: Half-open row range [start, end) to take from that
+      source block.
+    """
+
     # Index of the contributing block within the task input bundle.
     block_index: int
     # Slice [start_offset, end_offset) in the contributing block.
@@ -22,11 +41,18 @@ class StreamingRepartitionContributorSpec:
 
     @property
     def slice_rows(self) -> int:
+        """Number of rows contributed by this slice."""
         return self.end_offset - self.start_offset
 
 
 @dataclass
 class StreamingRepartitionOutputSpec:
+    """Specification for a single output block produced by a task.
+
+    - num_rows: Expected number of rows in the output block.
+    - contributors: List of input block and its range that form the output.
+    """
+
     # Number of rows in this output block.
     num_rows: int
     # Contributors used to form this output.
@@ -35,12 +61,19 @@ class StreamingRepartitionOutputSpec:
 
 @dataclass
 class StreamingRepartitionTaskSpec:
-    # A task can emit one or more output blocks in order.
+    """Spec describing the outputs a single Ray task should emit."""
+
     outputs: List[StreamingRepartitionOutputSpec]
 
 
 @dataclass
 class _PendingBlock:
+    """Input block plus consumption state while queued for repartitioning.
+
+    - block_ref/metadata/schema: Upstream block handle and metadata.
+    - start_offset: Number of rows already consumed from this block.
+    """
+
     block_ref: ObjectRef
     metadata: BlockMetadata
     schema: Optional["Schema"]
@@ -48,11 +81,19 @@ class _PendingBlock:
 
     @property
     def remaining_rows(self) -> int:
+        """Number of rows left to consume from this block."""
         assert self.metadata.num_rows is not None
         return self.metadata.num_rows - self.start_offset
 
 
 class StreamingRepartitionTaskBuilder:
+    """Incrementally builds task inputs to produce target-sized outputs.
+
+    Usage:
+    - Call `add_input(ref_bundle)` as upstream blocks arrive. This returns zero
+      or more `_TaskInput` objects ready to schedule immediately.
+    """
+
     def __init__(self, target_num_rows_per_block: int):
         if target_num_rows_per_block <= 0:
             raise ValueError(
@@ -119,49 +160,27 @@ class StreamingRepartitionTaskBuilder:
         bundle_schema = None
         remaining = rows_needed
 
-        # Map from id(_PendingBlock) to its index within current bundle.
-        block_to_index = {}
-
         while remaining > 0 and self._pending_blocks:
             block = self._pending_blocks[0]
             available = block.remaining_rows
             take = min(available, remaining)
 
-            # Lazily add this block to the bundle and assign an index.
-            if id(block) not in block_to_index:
-                block_index = len(bundle_blocks)
-                block_to_index[id(block)] = block_index
-                bundle_schema = bundle_schema or block.schema
-                bundle_blocks.append(
-                    (
-                        block.block_ref,
-                        _slice_block_metadata(block.metadata, take),
-                    )
+            # Add this block slice to the bundle and record the contributor.
+            block_index = len(bundle_blocks)
+            bundle_schema = bundle_schema or block.schema
+            bundle_blocks.append(
+                (
+                    block.block_ref,
+                    _slice_block_metadata(block.metadata, take),
                 )
-            else:
-                # Update the metadata slice for this block in this task to reflect
-                # additional consumption, since we may take from the same block again
-                # within the same task only if remaining > 0 (unlikely here, but safe).
-                block_index = block_to_index[id(block)]
-                prev_ref, prev_meta = bundle_blocks[block_index]
-                new_slice_rows = (
-                    prev_meta.num_rows + take
-                    if prev_meta.num_rows is not None
-                    else None
-                )
-                bundle_blocks[block_index] = (
-                    prev_ref,
-                    _slice_block_metadata(block.metadata, new_slice_rows)
-                    if new_slice_rows is not None
-                    else prev_meta,
-                )
+            )
 
             start_offset = block.start_offset
             end_offset = start_offset + take
 
             contributors.append(
                 StreamingRepartitionContributorSpec(
-                    block_index=block_to_index[id(block)],
+                    block_index=block_index,
                     start_offset=start_offset,
                     end_offset=end_offset,
                 )
@@ -170,7 +189,9 @@ class StreamingRepartitionTaskBuilder:
             remaining -= take
             self._total_pending_rows -= take
 
-            if block.start_offset >= block.metadata.num_rows:
+            assert block.start_offset <= block.metadata.num_rows
+
+            if block.start_offset == block.metadata.num_rows:
                 self._pending_blocks.popleft()
 
         ref_bundle = RefBundle(
@@ -231,7 +252,10 @@ class StreamingRepartitionTaskBuilder:
         # Update builder state to reflect consumption.
         block.start_offset += use_rows
         self._total_pending_rows -= use_rows
-        if block.start_offset >= block.metadata.num_rows:
+        assert (
+            block.start_offset <= block.metadata.num_rows
+        ), "internal error: consumed past end of block"
+        if block.start_offset == block.metadata.num_rows:
             self._pending_blocks.popleft()
 
         spec = StreamingRepartitionTaskSpec(outputs=outputs)
@@ -256,12 +280,10 @@ def streaming_repartition_block_fn(
     for output in spec.outputs:
         builder = DelegatingBlockBuilder()
         for contributor in output.contributors:
-            try:
-                block = blocks_list[contributor.block_index]
-            except IndexError:
-                raise ValueError(
-                    "Repartition spec refers to a block index outside the task input."
-                )
+            assert (
+                0 <= contributor.block_index < len(blocks_list)
+            ), "Repartition spec refers to a block index outside the task input."
+            block = blocks_list[contributor.block_index]
 
             accessor = BlockAccessor.for_block(block)
             start = contributor.start_offset
@@ -271,8 +293,11 @@ def streaming_repartition_block_fn(
                 builder.add_block(block)
             else:
                 builder.add_block(accessor.slice(start, end, copy=False))
-
-        yield builder.build()
+        # Build the output block and verify it matches the expected size.
+        built_block = builder.build()
+        built_rows = BlockAccessor.for_block(built_block).num_rows()
+        assert built_rows == output.num_rows
+        yield built_block
 
 
 def _slice_block_metadata(metadata: BlockMetadata, slice_rows: int) -> BlockMetadata:
