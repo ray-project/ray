@@ -34,7 +34,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/configs/ray.depsets.yaml")
+@click.argument("config_path", default="ci/raydepsets/configs/*.depsets.yaml")
 @click.option(
     "--workspace-dir",
     default=None,
