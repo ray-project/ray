@@ -312,10 +312,6 @@ class ProjectionPushdown(Rule):
                     current_project.exprs
                 )
 
-                print(
-                    f">>> [DBG] Projection: {op=}, {current_project.exprs}, {is_simple_projection=}, {required_columns=}, {output_column_rename_map=}"
-                )
-
                 # Apply projection of columns to the read op
                 return input_op.apply_projection(
                     required_columns, output_column_rename_map
@@ -323,10 +319,6 @@ class ProjectionPushdown(Rule):
             else:
                 # Otherwise just apply projection without renaming
                 projected_input_op = input_op.apply_projection(required_columns, None)
-
-                print(
-                    f">>> [DBG] Projection (NO RENAME): {op=}, {current_project.exprs}, {is_simple_projection=}, {required_columns=}"
-                )
 
                 # Has transformations: Keep Project on top of optimized Read
                 return Project(
