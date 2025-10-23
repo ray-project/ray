@@ -615,12 +615,6 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const StatusPyCallback &callback
         )
 
-    cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
-        void AsyncAddEvents(
-            CAddEventsRequest &&request,
-            const StatusPyCallback &callback,
-            int64_t timeout_ms)
-
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -654,11 +648,30 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
+# RPC request/reply types
 cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc::events" nogil:
     cdef cppclass CAddEventsRequest "ray::rpc::events::AddEventsRequest":
         bint ParseFromString(const c_string &data)
     cdef cppclass CAddEventsReply "ray::rpc::events::AddEventsReply":
         pass
+
+cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc" nogil:
+    cdef cppclass CAddTaskEventDataRequest "ray::rpc::AddTaskEventDataRequest":
+        bint ParseFromString(const c_string &data)
+    cdef cppclass CAddTaskEventDataReply "ray::rpc::AddTaskEventDataReply":
+        pass
+
+# TaskInfoAccessor that uses the above types
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
+    cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
+        void AsyncAddEvents(
+            CAddEventsRequest &&request,
+            const StatusPyCallback &callback,
+            int64_t timeout_ms)
+        void AsyncAddTaskEventData(
+            CAddTaskEventDataRequest &&request,
+            const StatusPyCallback &callback,
+            int64_t timeout_ms)
 
 cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc" nogil:
     cdef cppclass CGcsRpcClient "ray::rpc::GcsRpcClient":

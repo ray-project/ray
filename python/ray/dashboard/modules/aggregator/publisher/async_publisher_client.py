@@ -20,6 +20,9 @@ from ray.dashboard.modules.aggregator.publisher.configs import (
     HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
 )
+from ray.dashboard.modules.aggregator.ray_event_converter import (
+    convert_to_task_event_data_requests,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,27 +225,38 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
             )
 
         try:
-            events_data = self._create_ray_events_data(
-                filtered_events, task_events_metadata
-            )
-            request = events_event_aggregator_service_pb2.AddEventsRequest(
-                events_data=events_data
-            )
-            serialized_request = await get_or_create_event_loop().run_in_executor(
+            # Convert RayEvents to TaskEvents grouped by job_id
+            # This replaces the C++ conversion that was previously done in GCS
+            task_event_requests = await get_or_create_event_loop().run_in_executor(
                 self._executor,
-                lambda: request.SerializeToString(),
-            )
-            status_code = await self._gcs_client.async_add_events(
-                serialized_request, self._timeout_s, self._executor
+                lambda: convert_to_task_event_data_requests(
+                    filtered_events, task_events_metadata
+                ),
             )
 
-            if status_code != dashboard_utils.HTTPStatusCode.OK:
-                logger.error(f"GCS AddEvents failed: {status_code}")
+            # Send each request (one per job_id) to GCS
+            total_success = True
+            for request in task_event_requests:
+                serialized_request = await get_or_create_event_loop().run_in_executor(
+                    self._executor,
+                    lambda req=request: req.SerializeToString(),
+                )
+                status_code = await self._gcs_client.async_add_task_event_data(
+                    serialized_request, self._timeout_s, self._executor
+                )
+
+                if status_code != dashboard_utils.HTTPStatusCode.OK:
+                    logger.error(f"GCS AddTaskEventData failed: {status_code}")
+                    total_success = False
+                    # Continue trying other requests even if one fails
+
+            if not total_success:
                 return PublishStats(
                     is_publish_successful=False,
                     num_events_published=0,
                     num_events_filtered_out=0,
                 )
+
             return PublishStats(
                 is_publish_successful=True,
                 num_events_published=len(filtered_events),
