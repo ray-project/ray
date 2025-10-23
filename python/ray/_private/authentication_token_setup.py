@@ -7,9 +7,9 @@ handled by the C++ AuthenticationTokenLoader.
 
 import logging
 import os
-from typing import Any, Dict, Optional
 import uuid
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,9 @@ def _get_default_token_path() -> Path:
     return Path.home() / ".ray" / "auth_token"
 
 
-def setup_and_verify_auth(system_config: Optional[Dict[str, Any]] = None, is_new_cluster: bool = True) -> None:
+def setup_and_verify_auth(
+    system_config: Optional[Dict[str, Any]] = None, is_new_cluster: bool = True
+) -> None:
     """Check authentication settings and setup necessary resources.
 
     Ray calls this early during ray.init() to do the following for token-based authentication:
