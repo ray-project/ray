@@ -29,6 +29,7 @@
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_class_util.h"
 #include "ray/common/task/task_common.h"
+#include "ray/observability/metric_interface.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -357,7 +358,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
-  void EmitTaskMetrics() const;
+  void EmitTaskMetrics(
+      ray::observability::MetricInterface &scheduler_placement_time_s_histogram) const;
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;

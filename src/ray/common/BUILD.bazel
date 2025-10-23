@@ -234,6 +234,7 @@ ray_cc_library(
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/observability:metric_interface",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -425,6 +426,6 @@ ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [
-        "//src/ray/stats:stats_lib",
+        "//src/ray/stats:stats_metric",
     ],
 )

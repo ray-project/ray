@@ -23,6 +23,7 @@
 
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
+#include "ray/common/metrics.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -206,6 +207,9 @@ class GcsPlacementGroup {
 
   /// The last recorded metric state.
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;
+
+  ray::stats::Histogram scheduler_placement_time_s_histogram_{
+      ray::GetSchedulerPlacementTimeSHistogramMetric()};
 };
 
 }  // namespace gcs
