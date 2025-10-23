@@ -35,7 +35,7 @@ class MBLTAcceleratorManager(AcceleratorManager):
 
         count = 0
         # 보수적 스캔: 0..9
-        for dev_no in range(64):
+        for dev_no in range(9):
             try:
                 acc = Accelerator(dev_no)
                 # 존재 확인: 코어 조회가 성공하면 존재로 간주
