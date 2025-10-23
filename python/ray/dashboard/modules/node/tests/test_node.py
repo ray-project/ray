@@ -283,5 +283,39 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
+def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    class UvActor:
+        def get_pid(self):
+            return os.getpid()
+
+    uv_actor = UvActor.remote()
+    uv_actor_pid = ray.get(uv_actor.get_pid.remote())
+    driver_pid = os.getpid()
+
+    def _check_worker_pids():
+        try:
+            response = requests.get(webui_url + f"/nodes/{node_id}")
+            response.raise_for_status()
+            dump_info = response.json()
+            assert dump_info["result"] is True
+            detail = dump_info["data"]["detail"]
+            pids = [worker["pid"] for worker in detail["workers"]]
+            assert len(pids) >= 2  # might include idle worker
+            assert uv_actor_pid in pids
+            assert driver_pid in pids
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_check_worker_pids, timeout=20)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

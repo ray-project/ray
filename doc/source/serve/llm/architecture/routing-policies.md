@@ -54,8 +54,9 @@ Ray Serve LLM provides multiple request routing policies to optimize for differe
 ### Default routing: Power of Two Choices
 
 The default router uses the Power of Two Choices algorithm to:
-1. Randomly sample two replicas
-2. Route to the replica with fewer ongoing requests
+
+1. Randomly sample two replicas.
+2. Route to the replica with fewer ongoing requests.
 
 This provides good load balancing with minimal coordination overhead.
 
@@ -64,10 +65,11 @@ This provides good load balancing with minimal coordination overhead.
 The `PrefixCacheAffinityRouter` optimizes for workloads with shared prefixes by routing requests with similar prefixes to the same replicas. This improves KV cache hit rates in vLLM's Automatic Prefix Caching (APC).
 
 The routing strategy:
-1. **Check load balance**: If replicas are balanced (queue difference < threshold), use prefix matching
-2. **High match rate (≥10%)**: Route to replicas with highest prefix match
-3. **Low match rate (<10%)**: Route to replicas with lowest cache utilization
-4. **Fallback**: Use Power of Two Choices when load is imbalanced
+
+1. **Check load balance**: If replicas are balanced (queue difference < threshold), use prefix matching.
+2. **High match rate (≥10%)**: Route to replicas with highest prefix match.
+3. **Low match rate (<10%)**: Route to replicas with lowest cache utilization.
+4. **Fallback**: Use Power of Two Choices when load is imbalanced.
 
 For more details, see {ref}`prefix-aware-routing-guide`.
 
@@ -111,13 +113,15 @@ Centralized metric store pattern for custom routing
 ```
 
 **Pros:**
-- Simple implementation - no need to modify deployment logic for recording replica statistics
-- Request metrics are immediately available
-- Strong consistency guarantees
+
+- Simple implementation - no need to modify deployment logic for recording replica statistics.
+- Request metrics are immediately available.
+- Strong consistency guarantees.
 
 **Cons:**
-- A single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s)
-- Requires an additional network hop for every routing decision
+
+- A single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s).
+- Requires an additional network hop for every routing decision.
 
 ### Pattern 2: Metrics broadcasted from Serve controller
 
@@ -156,35 +160,38 @@ Broadcast metrics pattern for custom routing
 ```
 
 **Pros:**
-- Scalable to higher throughput
-- No additional RPC overhead per routing decision
-- Distributed routing decision making
+
+- Scalable to higher throughput.
+- No additional RPC overhead per routing decision.
+- Distributed routing decision making.
 
 **Cons:**
-- Time lag between the request router's view of statistics and the ground truth state of the replicas
-- Eventual consistency - routers may base decisions on slightly stale data
-- More complex implementation requiring coordination with the Serve controller
+
+- Time lag between the request router's view of statistics and the ground truth state of the replicas.
+- Eventual consistency - routers may base decisions on slightly stale data.
+- More complex implementation requiring coordination with the Serve controller.
 
 
-- **Use Pattern 1 (Centralized store)** when you need strong consistency, have moderate throughput requirements, or want simpler implementation
-- **Use Pattern 2 (Broadcast metrics)** when you need very high throughput, can tolerate eventual consistency, or want to minimize per-request overhead
+- **Use Pattern 1 (Centralized store)** when you need strong consistency, have moderate throughput requirements, or want simpler implementation.
+- **Use Pattern 2 (Broadcast metrics)** when you need very high throughput, can tolerate eventual consistency, or want to minimize per-request overhead.
 
 ## Custom routing policies
 
 You can implement custom routing policies by extending Ray Serve's [`RequestRouter`](../../api/doc/ray.serve.request_router.RequestRouter.rst) base class. For detailed examples and step-by-step guides on implementing custom routers, see {ref}`custom-request-router-guide`.
 
 Key methods to implement:
-- [`choose_replicas()`](../../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst): Select which replicas should handle a request
-- [`on_request_routed()`](../../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst): Update the router state after a request is routed
-- [`on_replica_actor_died()`](../../api/doc/ray.serve.request_router.RequestRouter.on_replica_actor_died.rst): Clean up the state when a replica dies
+
+- [`choose_replicas()`](../../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst): Select which replicas should handle a request.
+- [`on_request_routed()`](../../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst): Update the router state after a request is routed.
+- [`on_replica_actor_died()`](../../api/doc/ray.serve.request_router.RequestRouter.on_replica_actor_died.rst): Clean up the state when a replica dies.
 
 ### Utility mixins
 
 Ray Serve provides mixin classes that add common functionality to routers. See the {ref}`custom-request-router-guide` for examples:
 
-- [`LocalityMixin`](../../api/doc/ray.serve.request_router.LocalityMixin.rst): Prefers replicas on the same node to reduce network latency
-- [`MultiplexMixin`](../../api/doc/ray.serve.request_router.MultiplexMixin.rst): Tracks which models are loaded on each replica for LoRA deployments
-- [`FIFOMixin`](../../api/doc/ray.serve.request_router.FIFOMixin.rst): Ensures FIFO ordering of requests
+- [`LocalityMixin`](../../api/doc/ray.serve.request_router.LocalityMixin.rst): Prefers replicas on the same node to reduce network latency.
+- [`MultiplexMixin`](../../api/doc/ray.serve.request_router.MultiplexMixin.rst): Tracks which models are loaded on each replica for LoRA deployments.
+- [`FIFOMixin`](../../api/doc/ray.serve.request_router.FIFOMixin.rst): Ensures FIFO ordering of requests.
 
 
 
@@ -192,15 +199,15 @@ Ray Serve provides mixin classes that add common functionality to routers. See t
 
 The typical lifecycle of request routers includes the following stages:
 
-1. **Initialization**: Router created with list of replicas
-2. **Request routing**: `choose_replicas()` called for each request
-3. **Callback**: `on_request_routed()` called after successful routing
-4. **Replica failure**: `on_replica_actor_died()` called when replica dies
-5. **Cleanup**: Router cleaned up when deployment is deleted
+1. **Initialization**: Router created with list of replicas.
+2. **Request routing**: `choose_replicas()` called for each request.
+3. **Callback**: `on_request_routed()` called after successful routing.
+4. **Replica failure**: `on_replica_actor_died()` called when replica dies.
+5. **Cleanup**: Router cleaned up when deployment is deleted.
 
 #### Async operations
 
-Routers should use async operations for best performance, for example:
+Routers should use async operations for best performance. The following example demonstrates the recommended pattern:
 
 ```python
 # Recommended pattern: Async operation
@@ -216,7 +223,7 @@ async def choose_replicas(self, ...):
 
 #### State management
 
-For routers with state, use appropriate synchronization, for example:
+For routers with state, use appropriate synchronization. The following example shows the recommended pattern:
 
 ```python
 class StatefulRouter(RequestRouter):
