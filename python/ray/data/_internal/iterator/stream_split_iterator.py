@@ -127,6 +127,11 @@ class StreamSplitDataIterator(DataIterator):
     def _get_dataset_tag(self):
         return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
+    def _update_dataset(self, new_dataset: Dataset) -> None:
+        self._base_dataset = ray.get(
+            self._coord_actor.update_dataset.remote(new_dataset)
+        )
+
 
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
@@ -170,6 +175,9 @@ class SplitCoordinator:
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+        self._dataset_update_uncalled_clients = n
+        self._dataset_update_uncalled_clients_lock = threading.RLock()
 
     def _gen_epochs(self) -> OutputIterator:
         self._executor = self._base_dataset._plan.create_executor()
@@ -244,7 +252,18 @@ class SplitCoordinator:
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _update_dataset(self, new_dataset: Dataset) -> "Dataset":
-        raise NotImplementedError("to be implemented")
+        called_client_id = None
+        with self._dataset_update_uncalled_clients_lock:
+            called_client_id = self._dataset_update_uncalled_clients
+            self._dataset_update_uncalled_clients -= 1
+
+        while self._dataset_update_uncalled_clients != 0:
+            time.sleep(0.1)
+
+        # use the last client to update the dataset
+        if called_client_id == 1:
+            self._base_dataset = new_dataset
+        return self._base_dataset
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
