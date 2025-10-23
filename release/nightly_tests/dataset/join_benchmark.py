@@ -57,8 +57,8 @@ def main(args):
         ctx.downstream_capacity_backpressure_max_queued_bundles = 500
         ctx.downstream_capacity_backpressure_ratio = 0
 
-        left_ds = ray.data.read_parquet(args.left_dataset, memory=1E9)
-        right_ds = ray.data.read_parquet(args.right_dataset, memory=1E9)
+        left_ds = ray.data.read_parquet(args.left_dataset, memory=1e9)
+        right_ds = ray.data.read_parquet(args.right_dataset, memory=1e9)
         # Check if join keys match; if not, rename right join keys
         if len(args.left_join_keys) != len(args.right_join_keys):
             raise ValueError("Number of left and right join keys must match.")
