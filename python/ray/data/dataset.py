@@ -5994,10 +5994,29 @@ class Dataset:
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     def batcher(self, batch_size: int) -> "Dataset":
-        raise NotImplementedError("to be implemented")
+        plan = self._plan.copy()
+        op = self._logical_plan.dag
+        # Now op is streamingSplit or the very first operator
+        if not isinstance(op, StreamingSplit):
+            # put the new operator to the end
+            op = StreamingRepartition(
+                self._logical_plan.dag, target_num_rows_per_block=batch_size
+            )
+        else:
+            assert len(op.input_dependencies) == 1
+            input_op = op.input_dependencies[0]
+            repartition_op = StreamingRepartition(
+                input_op, target_num_rows_per_block=batch_size
+            )
+            op = StreamingSplit(
+                repartition_op,
+                n=op._num_outputs,
+                equal=False,
+                locality_hints=op._locality_hints,
+            )
 
-    def collate_fn(self) -> "Dataset":
-        raise NotImplementedError("to be implemented")
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     @PublicAPI(api_group=E_API_GROUP)

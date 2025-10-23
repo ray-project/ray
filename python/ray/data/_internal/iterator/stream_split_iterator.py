@@ -177,7 +177,8 @@ class SplitCoordinator:
         self._gen_epoch_error: Optional[Exception] = None
 
         self._dataset_update_uncalled_clients = n
-        self._dataset_update_uncalled_clients_lock = threading.RLock()
+        self._dataset_update_uncalled_clients_condition = threading.Condition()
+        self._dataset_changed_times = 0
 
     def _gen_epochs(self) -> OutputIterator:
         self._executor = self._base_dataset._plan.create_executor()
@@ -252,18 +253,21 @@ class SplitCoordinator:
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _update_dataset(self, new_dataset: Dataset) -> "Dataset":
-        called_client_id = None
-        with self._dataset_update_uncalled_clients_lock:
-            called_client_id = self._dataset_update_uncalled_clients
+        with self._dataset_update_uncalled_clients_condition:
+            cur_changed_times = self._dataset_changed_times
             self._dataset_update_uncalled_clients -= 1
+            is_last = self._dataset_update_uncalled_clients == 0
+            if not is_last:
+                self._dataset_update_uncalled_clients_condition.wait_for(
+                    lambda: self._dataset_changed_times != cur_changed_times
+                )
+                return self._base_dataset
 
-        while self._dataset_update_uncalled_clients != 0:
-            time.sleep(0.1)
-
-        # use the last client to update the dataset
-        if called_client_id == 1:
             self._base_dataset = new_dataset
-        return self._base_dataset
+            self._dataset_changed_times += 1
+            self._dataset_update_uncalled_clients = self._n
+            self._dataset_update_uncalled_clients_condition.notify_all()
+            return self._base_dataset
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
