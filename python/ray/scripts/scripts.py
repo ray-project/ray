@@ -648,7 +648,7 @@ Windows powershell users need additional escaping:
     "--system-reserved-cpu",
     required=False,
     type=float,
-    help=" The number of cpu cores to reserve for ray system processes. "
+    help="The number of cpu cores to reserve for ray system processes. "
     "Cores can be fractional i.e. 1.5 means one and a half a cpu core. "
     "By default, the value will be atleast 1 core, and at maximum 3 cores. The default value "
     "is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system)) "
