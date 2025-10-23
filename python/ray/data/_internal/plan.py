@@ -1,18 +1,20 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Tuple, Type, Union
 
 import pyarrow
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import SourceOperator
+from ray.data._internal.logical.interfaces import Plan, SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalOptimizer, PhysicalOptimizer
+from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
@@ -113,19 +115,34 @@ class ExecutionPlan:
 
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
-        from ray.data._internal.logical.optimizers import get_execution_plan
 
-        logical_plan = self._logical_plan
-        logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
-        logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
+        convert_fns: List[Callable[[Plan], Plan]] = [
+            lambda x: x,
+            LogicalOptimizer().optimize,
+            create_planner().plan,
+            PhysicalOptimizer().optimize,
+        ]
+        titles: List[str] = [
+            "Logical Plan",
+            "Logical Plan (Optimized)",
+            "Physical Plan",
+            "Physical Plan (Optimized)",
+        ]
 
-        physical_plan = get_execution_plan(self._logical_plan)
-        physical_plan_str, _ = self.generate_plan_string(
-            physical_plan.dag, show_op_repr=True
-        )
-        physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
+        plan = self._logical_plan
 
-        return logical_plan_str + physical_plan_str
+        output_strs = []
+        for title, convert_fn in zip(titles, convert_fns):
+
+            title = f"\n-------- {title} --------\n"
+
+            plan = convert_fn(plan)
+
+            plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
+            combined = f"{title}{plan_str}"
+            output_strs.append(combined)
+
+        return "".join(output_strs)
 
     @staticmethod
     def generate_plan_string(
