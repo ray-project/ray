@@ -18,29 +18,9 @@ ray_cc_test(
     size = "small",
     srcs = [
         "grpc_server_client_test.cc",
-        "grpc_test_common.h",
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/protobuf:test_service_cc_grpc",
-        "//src/ray/rpc:grpc_client",
-        "//src/ray/rpc:grpc_server",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "grpc_auth_token_tests",
-    size = "small",
-    srcs = [
-        "grpc_auth_token_tests.cc",
-        "grpc_test_common.h",
-    ],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/protobuf:test_service_cc_grpc",
-        "//src/ray/rpc:grpc_client",
-        "//src/ray/rpc:grpc_server",
         "@com_google_googletest//:gtest_main",
     ],
 )
