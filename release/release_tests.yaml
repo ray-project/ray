@@ -3482,15 +3482,15 @@
     cluster_compute: azure/tests/azure_compute.yaml
   run:
     timeout: 2400
-    script: bash release/azure_docker_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml
+    script: bash release/azure_docker_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml
+        script: RAY_UP_enable_autoscaler_v2=0 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml
+        script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
