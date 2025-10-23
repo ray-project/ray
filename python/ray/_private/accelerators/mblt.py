@@ -34,7 +34,7 @@ class MBLTAcceleratorManager(AcceleratorManager):
             return 0
 
         count = 0
-        # 보수적 스캔: 0..63
+        # 보수적 스캔: 0..9
         for dev_no in range(64):
             try:
                 acc = Accelerator(dev_no)
