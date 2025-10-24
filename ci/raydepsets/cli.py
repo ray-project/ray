@@ -177,7 +177,9 @@ class DependencySetManager:
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
-                raise ValueError(f"Invalid operation: {depset.operation}")
+                raise ValueError(
+                    f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
+                )
             if depset.pre_hooks:
                 for ind, hook in enumerate(depset.pre_hooks):
                     hook_name = f"{depset.name}_pre_hook_{ind+1}"
@@ -232,24 +234,27 @@ class DependencySetManager:
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
     ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
-        click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
+        click.echo(f"Executing command: {' '.join(cmd)}")
+        status = subprocess.run(
+            cmd, cwd=self.workspace.dir, input=stdin, capture_output=True
+        )
         if status.returncode != 0:
-            raise RuntimeError(f"Failed to execute command: {cmd}")
-        return status.stdout
+            raise RuntimeError(
+                f"Failed to execute command: {' '.join(cmd)} with error: {status.stderr.decode('utf-8')}"
+            )
+        return status.stdout.decode("utf-8")
 
     def execute_pre_hook(self, pre_hook: str):
         status = subprocess.run(
             shlex.split(pre_hook),
             cwd=self.workspace.dir,
             capture_output=True,
-            text=True,
         )
         if status.returncode != 0:
             raise RuntimeError(
-                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr.decode('utf-8')}",
             )
-        click.echo(f"{status.stdout}")
+        click.echo(f"{status.stdout.decode('utf-8')}")
         click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
@@ -379,7 +384,7 @@ class DependencySetManager:
         for req in requirements:
             if req not in source_depset.requirements:
                 raise RuntimeError(
-                    f"Requirement {req} is not a subset of {source_depset.name}"
+                    f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )
 
     def get_expanded_depset_requirements(
