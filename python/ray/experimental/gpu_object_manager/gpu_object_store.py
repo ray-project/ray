@@ -203,6 +203,10 @@ class GPUObjectStore:
         """
         with self._object_present_cv:
             for tensor in gpu_object:
+                if tensor in self._tensor_to_object_ids:
+                    raise ValueError(
+                        f"Tensor {tensor} already exists in the GPU object store. Must wait for the tensor to be freed before adding a new object with the same tensor."
+                    )
                 self._tensor_to_object_ids[tensor].add(obj_id)
             # Append to the queue instead of overwriting
             self._gpu_object_store[obj_id].append(
