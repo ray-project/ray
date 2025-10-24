@@ -1261,9 +1261,6 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
           WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
-        // The object_id might be already in stored_in_objects if the task is
-        // retried due to response loss caused by network failures.
-        // See https://github.com/ray-project/ray/issues/57997
         inner_it->second.mutable_borrow()->stored_in_objects.emplace(object_id,
                                                                      owner_address);
       }
