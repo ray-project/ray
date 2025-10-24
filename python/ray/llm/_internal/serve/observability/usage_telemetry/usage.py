@@ -1,3 +1,5 @@
+import random
+import time
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence
 
@@ -13,7 +15,7 @@ from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
 LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
@@ -203,9 +205,39 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
     return telemetry_agent
 
 
+def _retry_get_telemetry_agent(
+    max_retries: int = 5, base_delay: float = 0.1
+) -> TelemetryAgent:
+    max_retries = 5
+    base_delay = 0.1
+
+    telemetry_agent = None
+    for attempt in range(max_retries):
+        try:
+            telemetry_agent = _get_or_create_telemetry_agent()
+            return telemetry_agent
+        except ValueError as e:
+            # Due to race conditions among multiple replicas, we may get:
+            #   ValueError: Actor with name 'llm_serve_telemetry' already
+            #   exists in the namespace llm_serve_telemetry
+            logger.info(
+                "Attempt %s/%s to get telemetry agent failed", attempt + 1, max_retries
+            )
+            if attempt == max_retries - 1:
+                raise e
+
+            # Exponential backoff with jitter
+            exponential_delay = base_delay * (2**attempt)
+            jitter = random.uniform(0, 0.5)
+            delay = exponential_delay + jitter
+            # Max total wait time is ~3.5 seconds for 5 attempts.
+            time.sleep(delay)
+
+
 def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     """Push telemetry report for a model."""
-    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent = _retry_get_telemetry_agent()
+    assert telemetry_agent is not None
     ray.get(telemetry_agent.record.remote(model))
 
 
@@ -223,7 +255,7 @@ class HardwareUsage:
         ray-compatible accelerator as the GPU type used for the deployment. If not, return
         `UNSPECIFIED` as the default GPU type.
         """
-        from ray.llm._internal.serve.configs.server_models import GPUType
+        from ray.llm._internal.serve.core.configs.llm_config import GPUType
 
         all_accelerator_types = [t.value for t in GPUType]
         gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()

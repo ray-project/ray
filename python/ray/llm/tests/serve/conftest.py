@@ -11,12 +11,13 @@ import yaml
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
     EmbeddingCompletionRequest,
+    ScoreRequest,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.serve.llm import (
@@ -110,6 +111,16 @@ def mock_embedding_request(dimensions):
     if dimensions:
         request.dimensions = dimensions
     return request
+
+
+@pytest.fixture
+def mock_score_request():
+    """Fixture for creating score requests for mock testing."""
+    return ScoreRequest(
+        model=MOCK_MODEL_ID,
+        text_1="What is the capital of France?",
+        text_2="The capital of France is Paris.",
+    )
 
 
 def get_test_model_path(yaml_file: str) -> pathlib.Path:

@@ -3,31 +3,31 @@ import logging
 import os
 import socket
 import sys
+import time
 from typing import List, Optional, Tuple
 
 import pytest
+import torch
+
 import ray
 import ray.cluster_utils
 import ray.experimental.collective as collective
-import torch
-import time
-from ray.dag import InputNode
-from ray.exceptions import RayChannelError, RayTaskError
-from ray.dag.output_node import MultiOutputNode
-from ray.experimental.channel.communicator import (
-    Communicator,
-    TorchTensorAllocator,
-)
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
     get_log_message,
     init_log_pubsub,
 )
-
-from ray.tests.conftest import *  # noqa
-from ray.experimental.util.types import ReduceOp
+from ray.dag import InputNode
+from ray.dag.output_node import MultiOutputNode
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.communicator import (
+    Communicator,
+    TorchTensorAllocator,
+)
+from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.util.types import ReduceOp
+from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 

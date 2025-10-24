@@ -22,7 +22,7 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MOCK_METHOD(void,
               PopWorker,
-              (const TaskSpecification &task_spec, const PopWorkerCallback &callback),
+              (const LeaseSpecification &lease_spec, const PopWorkerCallback &callback),
               (override));
   MOCK_METHOD(void,
               PushWorker,
@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
               (override));
   MOCK_METHOD((std::vector<std::shared_ptr<WorkerInterface>>),
               GetAllRegisteredDrivers,
-              (bool filter_dead_drivers),
+              (bool filter_dead_drivers, bool filter_system_drivers),
               (const, override));
   MOCK_METHOD(Status,
               RegisterDriver,
@@ -100,7 +100,7 @@ class MockWorkerPool : public WorkerPoolInterface {
               (override));
   MOCK_METHOD(void,
               PrestartWorkers,
-              (const TaskSpecification &task_spec, int64_t backlog_size),
+              (const LeaseSpecification &lease_spec, int64_t backlog_size),
               (override));
   MOCK_METHOD(void,
               StartNewWorker,

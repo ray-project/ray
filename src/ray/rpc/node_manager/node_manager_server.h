@@ -19,44 +19,47 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
 
+class ServerCallFactory;
+
 /// TODO(vitsai): Remove this when auth is implemented for node manager
 #define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelTasksWithResourceShapes) \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)              \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)            \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)                  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers)     \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)             \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                      \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)        \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)        \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)             \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                   \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLeasesWithResourceShapes) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)             \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)            \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorkerLease)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers)      \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ResizeLocalResourceInstances)   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                 \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -64,7 +67,7 @@ class NodeManagerServiceHandler {
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
   /// `send_reply_callback` should be called. See
-  /// src/ray/rpc/node_manager/node_manager_client.h and
+  /// src/ray/rpc/raylet/raylet_client.cc and
   /// src/ray/protobuf/node_manager.proto for a description of the
   /// functionality of each handler.
   ///
@@ -76,9 +79,9 @@ class NodeManagerServiceHandler {
                                      rpc::GetResourceLoadReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelTasksWithResourceShapes(
-      rpc::CancelTasksWithResourceShapesRequest request,
-      rpc::CancelTasksWithResourceShapesReply *reply,
+  virtual void HandleCancelLeasesWithResourceShapes(
+      rpc::CancelLeasesWithResourceShapesRequest request,
+      rpc::CancelLeasesWithResourceShapesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
@@ -97,9 +100,9 @@ class NodeManagerServiceHandler {
                                          ReportWorkerBacklogReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReturnWorker(ReturnWorkerRequest request,
-                                  ReturnWorkerReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReturnWorkerLease(ReturnWorkerLeaseRequest request,
+                                       ReturnWorkerLeaseReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest request,
                                                ReleaseUnusedActorWorkersReply *reply,
@@ -136,6 +139,11 @@ class NodeManagerServiceHandler {
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleResizeLocalResourceInstances(
+      rpc::ResizeLocalResourceInstancesRequest request,
+      rpc::ResizeLocalResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandlePinObjectIDs(PinObjectIDsRequest request,
                                   PinObjectIDsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -164,9 +172,9 @@ class NodeManagerServiceHandler {
                                     GetObjectsInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetTaskFailureCause(GetTaskFailureCauseRequest request,
-                                         GetTaskFailureCauseReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetWorkerFailureCause(GetWorkerFailureCauseRequest request,
+                                           GetWorkerFailureCauseReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObject(RegisterMutableObjectRequest request,
                                            RegisterMutableObjectReply *reply,
@@ -175,6 +183,10 @@ class NodeManagerServiceHandler {
   virtual void HandlePushMutableObject(PushMutableObjectRequest request,
                                        PushMutableObjectReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
+                                   GetWorkerPIDsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

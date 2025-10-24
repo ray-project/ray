@@ -28,6 +28,7 @@
 					"type": "string",
 					"enum": [
 						"3.9",
+						"3.10",
 						"3.11",
 						"3.12"
 					]
@@ -72,6 +73,9 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
+				"ray_version": {
+					"type": "string"
+				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -106,6 +110,9 @@
 					"type": "string"
 				},
 				"post_build_script": {
+					"type": "string"
+				},
+				"python_depset": {
 					"type": "string"
 				},
 				"pip": {

@@ -1,12 +1,21 @@
 """APIs exposed under the namespace ray.util.collective."""
+
 import logging
 import os
+import time
 from typing import List
 
 import numpy as np
 
 import ray
-from ray.util.collective import types
+import ray.experimental.internal_kv as _internal_kv
+from . import types
+from ray.experimental.collective.util import (
+    get_address_and_port as _get_address_and_port,
+)
+from ray.util.collective.collective_group.torch_gloo_collective_group import (
+    get_master_address_metadata_key as _get_master_addr_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +28,6 @@ except ImportError:
     _NCCL_AVAILABLE = False
     _LOG_NCCL_WARNING = True
 
-try:
-    from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
-
-    _GLOO_AVAILABLE = True
-except ImportError:
-    _GLOO_AVAILABLE = False
-
 
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
@@ -35,6 +37,13 @@ try:
     _TORCH_DISTRIBUTED_AVAILABLE = True
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
+
+try:
+    from ray.util.collective.collective_group.nixl_backend import NixlBackend
+
+    _NIXL_AVAILABLE = True
+except ImportError:
+    _NIXL_AVAILABLE = False
 
 
 def nccl_available():
@@ -50,11 +59,17 @@ def nccl_available():
 
 
 def gloo_available():
-    return _GLOO_AVAILABLE
+    # Since we use torch_gloo as the backend for Gloo,
+    # we can just return the availability of torch.distributed.
+    return _TORCH_DISTRIBUTED_AVAILABLE
 
 
 def torch_distributed_available():
     return _TORCH_DISTRIBUTED_AVAILABLE
+
+
+def nixl_available():
+    return _NIXL_AVAILABLE
 
 
 class GroupManager(object):
@@ -80,24 +95,39 @@ class GroupManager(object):
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO:
-            logger.debug("Creating GLOO group: '{}'...".format(group_name))
-            g = GLOOGroup(
-                world_size,
-                rank,
-                group_name,
-                store_type="ray_internal_kv",
-                device_type="tcp",
-                gloo_timeout=gloo_timeout,
-            )
-        elif backend == types.Backend.NCCL:
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
-        elif backend == types.Backend.TORCH_GLOO:
+        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            metadata_key = _get_master_addr_key(group_name)
+            if rank == 0:
+                addr, port = _get_address_and_port()
+                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+            else:
+                # Wait until rank 0 publishes the metadata or timeout.
+                deadline_s = time.time() + (
+                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
+                )
+                while True:
+                    meta = _internal_kv._internal_kv_get(metadata_key)
+                    if meta is not None:
+                        break
+                    if time.time() > deadline_s:
+                        raise TimeoutError(
+                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
+                        )
+                    time.sleep(0.05)
+
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name)
+            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
+        elif backend == types.Backend.NCCL:
+            _check_backend_availability(backend)
+            logger.debug("Creating NCCL group: '{}'...".format(group_name))
+            g = NCCLGroup(world_size, rank, group_name)
+        elif backend == types.Backend.NIXL:
+            _check_backend_availability(backend)
+            logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
+            g = NixlBackend()
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -526,13 +556,13 @@ def reducescatter(
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
             "must not be equal to world_size."
         )
-    opts = types.ReduceScatterOptions()
-    opts.reduceOp = op
     g.reducescatter([tensor], [tensor_list], opts)
 
 
@@ -714,24 +744,30 @@ def get_group_handle(group_name: str = "default"):
     Returns:
         The collective group handle.
     """
-    _check_inside_actor()
+    if group_name != types.NIXL_GROUP_NAME:
+        _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
         # try loading from remote info store
         try:
-            # if the information is stored in an Info object,
-            # get and create the group.
-            name = "info_" + group_name
-            mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend, gloo_timeout = ray.get(
-                mgr.get_info.remote()
-            )
-            worker = ray._private.worker.global_worker
-            id_ = worker.core_worker.get_actor_id()
-            r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(
-                backend, world_size, r, group_name, gloo_timeout
-            )
+            if group_name == types.NIXL_GROUP_NAME:
+                _group_mgr.create_collective_group(
+                    types.Backend.NIXL, None, None, group_name, None
+                )
+            else:
+                # if the information is stored in an Info object,
+                # get and create the group.
+                name = "info_" + group_name
+                mgr = ray.get_actor(name=name)
+                ids, world_size, rank, backend, gloo_timeout = ray.get(
+                    mgr.get_info.remote()
+                )
+                worker = ray._private.worker.global_worker
+                id_ = worker.core_worker.get_actor_id()
+                r = rank[ids.index(id_)]
+                _group_mgr.create_collective_group(
+                    backend, world_size, r, group_name, gloo_timeout
+                )
         except ValueError as exc:
             # check if this group is initialized using options()
             if (
@@ -773,14 +809,18 @@ def _check_single_tensor_input(tensor):
 def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
     if backend == types.Backend.GLOO:
-        if not gloo_available():
-            raise RuntimeError("GLOO is not available.")
+        # Now we have deprecated pygloo, and use torch_gloo in all cases.
+        if not torch_distributed_available():
+            raise RuntimeError("torch.distributed is not available.")
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
     elif backend == types.Backend.TORCH_GLOO:
         if not torch_distributed_available():
             raise RuntimeError("torch.distributed is not available.")
+    elif backend == types.Backend.NIXL:
+        if not nixl_available():
+            raise RuntimeError("NIXL is not available.")
 
 
 def _check_inside_actor():

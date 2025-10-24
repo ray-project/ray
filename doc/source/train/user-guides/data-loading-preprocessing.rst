@@ -11,7 +11,7 @@ Key advantages include:
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
-For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.`
+For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.
 
 .. note::
 
@@ -322,7 +322,7 @@ For more details, see the following sections for each framework:
 .. tip::
 
     When using Torch or Hugging Face Datasets directly without Ray Data, make sure to instantiate your Dataset *inside* the ``train_loop_per_worker``.
-    Instatiating the Dataset outside of the ``train_loop_per_worker`` and passing it in via global scope
+    Instantiating the Dataset outside of the ``train_loop_per_worker`` and passing it in via global scope
     can cause errors due to the Dataset not being serializable.
 
 .. note::

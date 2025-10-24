@@ -2,7 +2,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 @dataclass
 class GridPos:
     x: int
@@ -29,12 +32,25 @@ HEATMAP_TARGET_TEMPLATE = {
     "useBackend": False,
 }
 
+HISTOGRAM_BAR_CHART_TARGET_TEMPLATE = {
+    "exemplar": True,
+    "format": "heatmap",
+    "fullMetaSearch": False,
+    "includeNullMetadata": True,
+    "instant": True,
+    "range": False,
+    "useBackend": False,
+}
 
+
+@DeveloperAPI
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
+    HISTOGRAM_BAR_CHART = HISTOGRAM_BAR_CHART_TARGET_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Target:
     """Defines a Grafana target (time-series query) within a panel.
@@ -122,11 +138,11 @@ GRAPH_PANEL_TEMPLATE = {
     "id": 26,
     "legend": {
         "alignAsTable": True,
-        "avg": False,
+        "avg": True,
         "current": True,
         "hideEmpty": False,
         "hideZero": True,
-        "max": False,
+        "max": True,
         "min": False,
         "rightSide": False,
         "show": True,
@@ -359,15 +375,104 @@ PIE_CHART_TEMPLATE = {
     ],
 }
 
+BAR_CHART_PANEL_TEMPLATE = {
+    "aliasColors": {},
+    "dashLength": 10,
+    "dashes": False,
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    # Setting height and width is important here to ensure the default panel has some size to it.
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "hiddenSeries": False,
+    "id": 26,
+    "legend": {
+        "alignAsTable": True,
+        "avg": False,
+        "current": True,
+        "hideEmpty": False,
+        "hideZero": True,
+        "max": False,
+        "min": False,
+        "rightSide": False,
+        "show": False,
+        "sort": "current",
+        "sortDesc": True,
+        "total": False,
+        "values": True,
+    },
+    "lines": False,
+    "linewidth": 1,
+    "bars": True,
+    "nullPointMode": None,
+    "options": {
+        "alertThreshold": True,
+        "legend": {
+            "showLegend": False,
+            "displayMode": "table",
+            "placement": "bottom",
+        },
+    },
+    "percentage": False,
+    "pluginVersion": "7.5.17",
+    "pointradius": 2,
+    "points": False,
+    "renderer": "flot",
+    "spaceLength": 10,
+    "stack": True,
+    "steppedLine": False,
+    "targets": [],
+    "thresholds": [],
+    "timeFrom": None,
+    "timeRegions": [],
+    "timeShift": None,
+    "title": "<Title>",
+    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
+    "type": "graph",
+    "xaxis": {
+        "buckets": None,
+        "mode": "series",
+        "name": None,
+        "show": True,
+        "values": [
+            "total",
+        ],
+    },
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "units",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+    "yaxis": {"align": False, "alignLevel": None},
+}
 
+
+@DeveloperAPI
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
     PIE_CHART = PIE_CHART_TEMPLATE
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
+    BAR_CHART = BAR_CHART_PANEL_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Panel:
     """Defines a Grafana panel (graph) for the Ray dashboard page.
@@ -397,6 +502,7 @@ class Panel:
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
 
 
+@DeveloperAPI
 @dataclass
 class Row:
     """Defines a Grafana row that can contain multiple panels.
@@ -413,6 +519,7 @@ class Row:
     collapsed: bool = False
 
 
+@DeveloperAPI
 @dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars

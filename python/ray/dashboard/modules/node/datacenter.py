@@ -205,10 +205,6 @@ class DataOrganizer:
         actor = actor.copy()
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
-        actor_constructor = core_worker_stats.get(
-            "actorTitle", "Unknown actor constructor"
-        )
-        actor["actorConstructor"] = actor_constructor
         actor.update(core_worker_stats)
 
         # TODO(fyrestone): remove this, give a link from actor
@@ -225,7 +221,7 @@ class DataOrganizer:
                     break
 
             for gpu_stats in node_physical_stats.get("gpus", []):
-                # gpu_stats.get("processes") can be None, an empty list or a
+                # gpu_stats.get("processesPids") can be None, an empty list or a
                 # list of dictionaries.
                 for process in gpu_stats.get("processesPids") or []:
                     if process["pid"] == pid:

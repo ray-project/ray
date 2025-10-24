@@ -49,8 +49,10 @@ class ActorHandle {
               const std::string &ray_namespace,
               int32_t max_pending_calls,
               bool allow_out_of_order_execution = false,
+              bool enable_tensor_transport = false,
               std::optional<bool> enable_task_events = absl::nullopt,
-              const std::unordered_map<std::string, std::string> &labels = {});
+              const std::unordered_map<std::string, std::string> &labels = {},
+              bool is_detached = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -109,6 +111,10 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool AllowOutOfOrderExecution() const { return inner_.allow_out_of_order_execution(); }
+
+  bool EnableTensorTransport() const { return inner_.enable_tensor_transport(); }
+
+  bool IsDetached() const { return inner_.is_detached(); }
 
   const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
     return inner_.labels();

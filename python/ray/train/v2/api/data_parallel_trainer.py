@@ -1,10 +1,11 @@
-import asyncio
 import logging
 import signal
 import sys
+import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.usage import usage_lib
 from ray._private.ray_constants import env_bool
 from ray.actor import ActorHandle
@@ -30,7 +31,6 @@ from ray.train.v2._internal.callbacks import (
     TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.callbacks.datasets import GenDataset
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
@@ -39,15 +39,18 @@ from ray.train.v2._internal.callbacks.metrics import (
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
-    DEFAULT_RUN_CONTROLLER_AS_ACTOR,
+    DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
     METRICS_ENABLED_ENV_VAR,
-    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
+    V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
+    is_v2_enabled,
 )
+from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
+from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -88,6 +91,8 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
+        self.running_in_local_mode = self.scaling_config.num_workers == 0
+
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
             train_loop_config=self.train_loop_config,
@@ -103,8 +108,46 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        self._validate_configs()
+
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+
+    def _validate_configs(self):
+        if not is_v2_enabled():
+            raise ValueError(
+                f"Ray Train V2 must be enabled with `{V2_ENABLED_ENV_VAR}=1` "
+                "when using this V2 Trainer API."
+            )
+
+        from ray.train.v2.api.config import (
+            RunConfig as RunConfigV2,
+            ScalingConfig as ScalingConfigV2,
+        )
+
+        if not isinstance(self.run_config, RunConfigV2):
+            raise ValueError(
+                f"Invalid `RunConfig` type: {self.run_config.__class__}. "
+                "Use `ray.train.RunConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.scaling_config, ScalingConfigV2):
+            raise ValueError(
+                f"Invalid `ScalingConfig` type: {self.scaling_config.__class__}. "
+                "Use `ray.train.ScalingConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+    def _get_train_func(self) -> Callable[[], None]:
+        return construct_train_func(
+            self.train_loop_per_worker,
+            config=self.train_loop_config,
+            train_func_context=self.backend_config.train_func_context,
+            fn_arg_name="train_loop_per_worker",
+        )
 
     def fit(self) -> Result:
         """Launches the Ray Train controller to run training on workers.
@@ -113,34 +156,41 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
-            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
+                This returns a :class:`ray.train.ControllerError` if internal Ray Train controller logic
+                encounters a non-retryable error or reaches the controller failure limit configured in `FailureConfig`.
+                This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
+                training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
-        train_fn = construct_train_func(
-            self.train_loop_per_worker,
-            config=self.train_loop_config,
-            train_func_context=self.backend_config.train_func_context,
-            fn_arg_name="train_loop_per_worker",
+        train_fn = self._get_train_func()
+        if self.running_in_local_mode:
+            return self._initialize_and_run_local_controller(train_fn)
+        else:
+            train_fn_ref = ObjectRefWrapper(train_fn)
+
+            result = self._initialize_and_run_controller(
+                train_fn_ref=train_fn_ref,
+                scaling_policy=create_scaling_policy(self.scaling_config),
+                failure_policy=create_failure_policy(self.run_config.failure_config),
+                train_run_context=self.train_run_context,
+                callbacks=self._create_default_callbacks(),
+            )
+
+            if result.error:
+                # NOTE: If the training run errored out, raise an error back to the
+                # user's driver script.
+                # For example, if the Train `FailurePolicy` runs out of retries,
+                # and one of the workers errors. The controller will exit, and
+                # the error will be raised here.
+                raise result.error
+
+            return result
+
+    def _get_local_controller(self) -> LocalController:
+        return LocalController(
+            experiment_name=self.run_config.name,
+            datasets=self.datasets,
         )
-        train_fn_ref = ObjectRefWrapper(train_fn)
-
-        result = self._initialize_and_run_controller(
-            train_fn_ref=train_fn_ref,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=create_failure_policy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
-        )
-
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
-
-        return result
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
@@ -151,9 +201,7 @@ class DataParallelTrainer:
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
         datasets_setup_callback = DatasetsSetupCallback(
-            datasets=self.datasets,
-            data_config=self.data_config,
-            scaling_config=self.scaling_config,
+            train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
@@ -196,32 +244,38 @@ class DataParallelTrainer:
         )
         return callbacks
 
+    def _initialize_and_run_local_controller(
+        self, train_func: Callable[[], None]
+    ) -> Result:
+        return self._get_local_controller().run(train_func)
+
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
-        run_controller_as_actor = env_bool(
-            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
+        env_vars = get_env_vars_to_propagate()
+        env_vars.setdefault(
+            RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+            DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
         )
-        if run_controller_as_actor:
-            # Attach the controller to the node running the driver script.
-            controller_actor_cls = ray.remote(
-                num_cpus=0,
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(), soft=False
-                ),
-                # TODO: Extract env variables that affect controller behavior
-                # and pass them as explicit args
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
-            )(TrainController)
 
-            controller = controller_actor_cls.remote(**controller_init_kwargs)
+        # Attach the controller to the node running the driver script.
+        controller_actor_cls = ray.remote(
+            num_cpus=0,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(), soft=False
+            ),
+            # TODO: Extract env variables that affect controller behavior
+            # and pass them as explicit args
+            runtime_env={"env_vars": env_vars},
+        )(TrainController)
 
+        controller = controller_actor_cls.remote(**controller_init_kwargs)
+
+        # If this is not the main thread - as is the case when running in Tune -
+        # registering the SIGINT handler raises an exception.
+        if threading.current_thread() is threading.main_thread():
             self._register_sigint_handler(controller)
 
-            ray.get(controller.run.remote())
-            return ray.get(controller.get_result.remote())
-        else:
-            controller = TrainController(**controller_init_kwargs)
-            asyncio.run(controller.run())
-            return controller.get_result()
+        ray.get(controller.run.remote())
+        return ray.get(controller.get_result.remote())
 
     def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
         """Register SIGINT handler so user Ctrl C gracefully aborts run."""

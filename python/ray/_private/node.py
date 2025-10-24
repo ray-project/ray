@@ -36,6 +36,8 @@ from ray._private.utils import (
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
 
+import psutil
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
@@ -1185,6 +1187,10 @@ class Node:
             create_err=True,
         )
 
+        self.resource_isolation_config.add_system_pids(
+            self._get_system_processes_for_resource_isolation()
+        )
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1422,9 +1428,32 @@ class Node:
         if self.resource_isolation_config.is_enabled():
             self.resource_isolation_config.add_object_store_memory(object_store_memory)
 
-        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
+
+        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
+
+    def _get_system_processes_for_resource_isolation(self) -> str:
+        """Returns a list of system processes that will be isolated by raylet.
+
+        NOTE: If a new system process is started before the raylet starts up, it needs to be
+        added to self.all_processes so it can be moved into the raylet's managed cgroup
+        hierarchy.
+        """
+        system_process_pids = [
+            str(p[0].process.pid) for p in self.all_processes.values()
+        ]
+
+        # If the dashboard api server was started on the head node, then include all of the api server's
+        # child processes.
+        if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
+            dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
+                0
+            ].process.pid
+            dashboard_process = psutil.Process(dashboard_pid)
+            system_process_pids += [str(p.pid) for p in dashboard_process.children()]
+
+        return ",".join(system_process_pids)
 
     def _kill_process_type(
         self,

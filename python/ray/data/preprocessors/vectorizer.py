@@ -1,12 +1,14 @@
 from collections import Counter
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 import pandas as pd
 
-from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -246,6 +248,7 @@ class CountVectorizer(Preprocessor):
         *,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer
         self.max_features = max_features
@@ -253,33 +256,43 @@ class CountVectorizer(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
-            def get_token_counts(col):
-                token_series = df[col].apply(self.tokenization_fn)
-                tokens = token_series.sum()
-                return Counter(tokens)
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        def stat_fn(key_gen):
+            def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
+                def get_token_counts(col):
+                    token_series = df[col].apply(self.tokenization_fn)
+                    tokens = token_series.sum()
+                    return Counter(tokens)
 
-            return {col: [get_token_counts(col)] for col in self.columns}
+                return {col: [get_token_counts(col)] for col in self.columns}
 
-        value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-        total_counts = {col: Counter() for col in self.columns}
-        for batch in value_counts.iter_batches(batch_size=None):
-            for col, counters in batch.items():
-                for counter in counters:
-                    total_counts[col].update(counter)
+            value_counts = dataset.map_batches(
+                get_pd_value_counts, batch_format="pandas"
+            )
+            total_counts = {col: Counter() for col in self.columns}
+            for batch in value_counts.iter_batches(batch_size=None):
+                for col, counters in batch.items():
+                    for counter in counters:
+                        total_counts[col].update(counter)
 
-        def most_common(counter: Counter, n: int):
-            return Counter(dict(counter.most_common(n)))
+            def most_common(counter: Counter, n: int):
+                return Counter(dict(counter.most_common(n)))
 
-        top_counts = [
-            most_common(counter, self.max_features) for counter in total_counts.values()
-        ]
+            top_counts = [
+                most_common(counter, self.max_features)
+                for counter in total_counts.values()
+            ]
 
-        self.stats_ = {
-            f"token_counts({col})": counts
-            for (col, counts) in zip(self.columns, top_counts)
-        }
+            return {
+                key_gen(col): counts  # noqa
+                for (col, counts) in zip(self.columns, top_counts)
+            }
+
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: stat_fn(key_gen),
+            stat_key_fn=lambda col: f"token_counts({col})",
+            columns=self.columns,
+        )
 
         return self
 

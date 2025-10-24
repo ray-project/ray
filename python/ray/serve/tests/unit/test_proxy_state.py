@@ -683,6 +683,7 @@ def test_proxy_state_manager_get_targets(all_nodes):
     assert targets[0].ip == "mock_node_ip"
     assert targets[0].port == 8000
     assert targets[0].instance_id == "mock_instance_id"
+    assert targets[0].name == "alice"
 
     targets = manager.get_targets(RequestProtocol.GRPC)
     assert len(targets) == 0

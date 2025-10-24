@@ -5,25 +5,22 @@ import os
 import re
 import sys
 import time
+
 import numpy as np
+import pytest
 import torch
 
-import pytest
-
-
-from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
-from ray.dag import DAGContext, InputNode, MultiOutputNode
-from ray.tests.conftest import *  # noqa
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-
+from ray._private.test_utils import run_string_as_driver
+from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.dag.tests.experimental.actor_defs import Actor, Collector
-
+from ray.exceptions import RayChannelTimeoutError
+from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 

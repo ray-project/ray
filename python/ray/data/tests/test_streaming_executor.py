@@ -2,14 +2,18 @@ import os
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
@@ -25,12 +29,16 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
+    BlockMapTransformFn,
+    MapTransformer,
 )
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
@@ -52,6 +60,8 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators.map_operator import MapRows
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.util import MiB
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -85,7 +95,7 @@ def make_map_transformer(block_fn):
         for block in block_iter:
             yield block_fn(block)
 
-    return create_map_transformer_from_block_fn(map_fn)
+    return MapTransformer([BlockMapTransformFn(map_fn)])
 
 
 def make_ref_bundle(x):
@@ -96,7 +106,7 @@ def make_ref_bundle(x):
     "verbose_progress",
     [True, False],
 )
-def test_build_streaming_topology(verbose_progress):
+def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -109,14 +119,10 @@ def test_build_streaming_topology(verbose_progress):
         o2,
         DataContext.get_current(),
     )
-    topo, num_progress_bars = build_streaming_topology(
+    topo = build_streaming_topology(
         o3, ExecutionOptions(verbose_progress=verbose_progress)
     )
     assert len(topo) == 3, topo
-    if verbose_progress:
-        assert num_progress_bars == 3, num_progress_bars
-    else:
-        assert num_progress_bars == 1, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].input_queues, topo
     assert topo[o1].output_queue == topo[o2].input_queues[0], topo
@@ -124,7 +130,7 @@ def test_build_streaming_topology(verbose_progress):
     assert list(topo) == [o1, o2, o3]
 
 
-def test_disallow_non_unique_operators():
+def test_disallow_non_unique_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -142,7 +148,6 @@ def test_disallow_non_unique_operators():
         "test_combine",
         [o2, o3],
         DataContext.get_current(),
-        target_max_block_size=None,
     )
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
@@ -155,7 +160,7 @@ def sleep_task_ref():
     ray.cancel(sleep_task_ref, force=True)
 
 
-def test_process_completed_tasks(sleep_task_ref):
+def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -163,7 +168,7 @@ def test_process_completed_tasks(sleep_task_ref):
         o1,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
@@ -212,7 +217,7 @@ def test_process_completed_tasks(sleep_task_ref):
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
@@ -221,7 +226,52 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.mark_execution_finished.assert_called_once()
 
 
-def test_get_eligible_operators_to_run():
+def test_update_operator_states_drains_upstream(ray_start_regular_shared):
+    """Test that update_operator_states drains upstream output queues when
+    execution_finished() is called on a downstream operator.
+    """
+    inputs = make_ref_bundles([[x] for x in range(10)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+
+    # First, populate the upstream output queues by processing some tasks
+    process_completed_tasks(topo, [], 0)
+    update_operator_states(topo)
+
+    # Verify that o1 (upstream) has output in its queue
+    assert (
+        len(topo[o1].output_queue) > 0
+    ), "Upstream operator should have output in queue"
+
+    # Store initial queue size for verification
+    initial_o1_queue_size = len(topo[o1].output_queue)
+
+    # Manually mark o2 as execution finished (simulating limit operator behavior)
+    o2.mark_execution_finished()
+    assert o2.execution_finished(), "o2 should be execution finished"
+
+    # Call update_operator_states - this should drain o1's output queue
+    update_operator_states(topo)
+
+    # Verify that o1's output queue was drained due to o2 being execution finished
+    assert len(topo[o1].output_queue) == 0, (
+        f"Upstream operator o1 output queue should be drained when downstream o2 is execution finished. "
+        f"Expected 0, got {len(topo[o1].output_queue)}. "
+        f"Initial size was {initial_o1_queue_size}"
+    )
+
+
+def test_get_eligible_operators_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -237,7 +287,7 @@ def test_get_eligible_operators_to_run():
         DataContext.get_current(),
         name="O3",
     )
-    topo, _ = build_streaming_topology(o3, opts)
+    topo = build_streaming_topology(o3, opts)
 
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
@@ -245,9 +295,6 @@ def test_get_eligible_operators_to_run():
     memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
-    )
-    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
-        return_value=True
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
@@ -304,7 +351,7 @@ def test_get_eligible_operators_to_run():
             assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
-def test_rank_operators():
+def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -338,7 +385,7 @@ def test_rank_operators():
     assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
 
 
-def test_select_ops_to_run():
+def test_select_ops_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
 
     inputs = make_ref_bundles([[x] for x in range(1)])
@@ -378,7 +425,7 @@ def test_select_ops_to_run():
         # Case 1: Should pick the `o4` since it has throttling disabled
         _mock.return_value = [o1, o2, o3, o4]
 
-        topo, _ = build_streaming_topology(o4, opts)
+        topo = build_streaming_topology(o4, opts)
 
         selected = select_operator_to_run(
             topo, resource_manager, [], ensure_liveness=ensure_liveness
@@ -389,7 +436,7 @@ def test_select_ops_to_run():
         # Case 2: Should pick the `o1` since it has lowest object store usage
         _mock.return_value = [o1, o2, o3]
 
-        topo, _ = build_streaming_topology(o3, opts)
+        topo = build_streaming_topology(o3, opts)
 
         selected = select_operator_to_run(
             topo, resource_manager, [], ensure_liveness=ensure_liveness
@@ -398,7 +445,7 @@ def test_select_ops_to_run():
         assert selected is o1
 
 
-def test_dispatch_next_task():
+def test_dispatch_next_task(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o1_state = OpState(o1, [])
@@ -424,7 +471,7 @@ def test_dispatch_next_task():
     o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
-def test_debug_dump_topology():
+def test_debug_dump_topology(ray_start_regular_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -438,7 +485,7 @@ def test_debug_dump_topology():
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt)
     resource_manager = ResourceManager(
         topo,
         ExecutionOptions(),
@@ -450,7 +497,7 @@ def test_debug_dump_topology():
     _debug_dump_topology(topo, resource_manager)
 
 
-def test_validate_dag():
+def test_validate_dag(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -477,7 +524,7 @@ def test_validate_dag():
     "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
     return_value=1,
 )
-def test_configure_output_locality(mock_scale_up):
+def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -498,29 +545,31 @@ def test_configure_output_locality(mock_scale_up):
 
     # Current node locality.
     build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
+    s1 = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
     assert isinstance(s1, NodeAffinitySchedulingStrategy)
     assert s1.node_id == ray.get_runtime_context().get_node_id()
-    s2 = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
+    s2 = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
     assert isinstance(s2, NodeAffinitySchedulingStrategy)
     assert s2.node_id == ray.get_runtime_context().get_node_id()
 
     # Multi node locality.
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
     build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=["node1", "node2"])
+        o3, ExecutionOptions(locality_with_output=[node_id_1, node_id_2])
     )
-    s1a = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1b = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1c = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == "node1"
-    assert s1b.node_id == "node2"
-    assert s1c.node_id == "node1"
-    s2a = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2b = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2c = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == "node1"
-    assert s2b.node_id == "node2"
-    assert s2c.node_id == "node1"
+    s1a = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s1b = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s1c = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    assert s1a.node_id == node_id_1
+    assert s1b.node_id == node_id_2
+    assert s1c.node_id == node_id_1
+    s2a = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s2b = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    s2c = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+    assert s2a.node_id == node_id_1
+    assert s2b.node_id == node_id_2
+    assert s2c.node_id == node_id_1
 
 
 class OpBufferQueueTest(unittest.TestCase):
@@ -573,7 +622,7 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_streaming_exec_schedule_s():
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
     ds = ray.data.range(1)
     for _ in ds.iter_batches():
         continue
@@ -582,7 +631,7 @@ def test_streaming_exec_schedule_s():
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks():
+def test_execution_callbacks(ray_start_regular_shared):
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
@@ -798,7 +847,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert isinstance(logical_ops[0], Read)
     datasource = logical_ops[0]._datasource
     assert isinstance(datasource, ParquetDatasource)
-    assert datasource._unresolved_paths == input_path
+    assert datasource._source_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
     assert logical_ops[1]._fn == udf
@@ -831,7 +880,7 @@ def test_create_topology_metadata():
     executor = StreamingExecutor(DataContext.get_current())
 
     # Initialize the topology on the executor
-    executor._topology, _ = build_streaming_topology(o3, ExecutionOptions())
+    executor._topology = build_streaming_topology(o3, ExecutionOptions())
 
     # Call the _dump_dag_structure method
     op_to_id = {
@@ -894,7 +943,7 @@ def test_create_topology_metadata_with_sub_stages():
 
     # Create the executor and set up topology
     executor = StreamingExecutor(DataContext.get_current())
-    executor._topology, _ = build_streaming_topology(o2, ExecutionOptions())
+    executor._topology = build_streaming_topology(o2, ExecutionOptions())
 
     # Get the DAG structure
     op_to_id = {
@@ -919,6 +968,209 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage1.id.endswith("_sub_0")
     assert sub_stage2.name == "SubStage2"
     assert sub_stage2.id.endswith("_sub_1")
+
+
+def create_stub_streaming_gen(
+    block_nbytes: List[int], raise_exception: Optional[Exception] = None
+) -> ray.ObjectRefGenerator:
+    """Creating a streaming generator for testing.
+
+    The streaming generator passed to the ``DataOpTask`` constructor must yield blocks
+    then block metadata, and buffer the number of blocks specified by
+    ``_max_num_blocks_in_streaming_gen_buffer``. This function is a utility to create
+    streaming generators that satisfy these requirements.
+
+    Args:
+        block_nbytes: A list of the sizes of blocks yielded by the returned streaming
+            generator.
+        raise_exception: An exception that the streaming generator immediately raises.
+
+    Returns:
+        A streaming generator that you can pass to ``DataOpTask``.
+    """
+
+    @ray.remote
+    def stub_map_task():
+        if raise_exception is not None:
+            raise raise_exception
+
+        for nbytes in block_nbytes:
+            # Create a block with a single row of the specified size.
+            builder = DelegatingBlockBuilder()
+            builder.add_batch({"data": np.zeros((1, nbytes), dtype=np.uint8)})
+            block = builder.build()
+            yield block
+
+            block_accessor = BlockAccessor.for_block(block)
+            block_metadata = block_accessor.get_metadata()
+            yield BlockMetadataWithSchema(
+                block_metadata, schema=block_accessor.schema()
+            )
+
+    generator_backpressure_num_objects = (
+        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
+        * 2  # Multiply by two because we yield a metadata object for each block.
+    )
+    streaming_gen = stub_map_task.options(
+        _generator_backpressure_num_objects=generator_backpressure_num_objects
+    ).remote()
+
+    return streaming_gen
+
+
+@pytest.fixture
+def ensure_block_metadata_stored_in_plasma(monkeypatch):
+    # Ray inlines small objects (including metadata) by storing them directly with
+    # the object reference itself rather than in the remote node's object store.
+    # Consequently, when the streaming executor calls `ray.get` on metadata from a
+    # node that has died, the call succeeds because the inlined metadata is not
+    # stored in the failed node's object store. To explicitly test the case where
+    # metadata resides in the object store (and becomes unavailable when the node
+    # dies), we disable inlining by setting the maximum inline size to 0. This
+    # simulates scenarios where metadata is too large to inline, which can occur in
+    # practice when schemas contain many fields.
+    #
+    # For context, see https://github.com/ray-project/ray/pull/56451.
+    monkeypatch.setenv("RAY_max_direct_call_object_size", 0)
+
+
+class TestDataOpTask:
+    def test_on_data_ready_single_output(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
+        def verify_output(bundle):
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        data_op_task = DataOpTask(0, streaming_gen, output_ready_callback=verify_output)
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            nbytes_read = data_op_task.on_data_ready(None)
+            bytes_read += nbytes_read
+
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_multiple_outputs(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
+
+        def verify_output(bundle):
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        data_op_task = DataOpTask(0, streaming_gen, output_ready_callback=verify_output)
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            nbytes_read = data_op_task.on_data_ready(None)
+            bytes_read += nbytes_read
+
+        assert bytes_read == pytest.approx(256 * MiB)
+
+    def test_on_data_ready_exception(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(
+            block_nbytes=[128 * MiB],
+            raise_exception=AssertionError("Block generation failed"),
+        )
+
+        def verify_exception(exc: Optional[Exception]):
+            assert isinstance(exc, AssertionError)
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            task_done_callback=verify_exception,
+        )
+
+        with pytest.raises(AssertionError, match="Block generation failed"):
+            while not data_op_task.has_finished:
+                ray.wait([streaming_gen], fetch_local=False)
+                data_op_task.on_data_ready(None)
+
+    @pytest.mark.parametrize(
+        "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
+    )
+    def test_on_data_ready_with_preemption_during_call(
+        self,
+        preempt_on: Union[
+            Literal["block_ready_callback"], Literal["metadata_ready_callback"]
+        ],
+        ray_start_cluster_enabled,
+        ensure_block_metadata_stored_in_plasma,
+    ):
+        """Test that ``on_data_ready`` works when a node dies during its execution."""
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block, and
+        # configure it so that it preempts the worker node in the specified callback.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
+        def remove_and_add_back_worker_node(_):
+            cluster.remove_node(worker_node)
+
+            new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+            cluster.wait_for_nodes()
+
+        data_op_task = DataOpTask(
+            0, streaming_gen, **{preempt_on: remove_and_add_back_worker_node}
+        )
+
+        # Run the task to completion.
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None)
+
+        # Ensure that we read the expected amount of data. Since the streaming generator
+        # yields a single 128 MiB block, we should read 128 MiB.
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_with_preemption_after_wait(
+        self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
+    ):
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        data_op_task = DataOpTask(0, streaming_gen)
+
+        # Wait for the block to be ready, then remove the worker node.
+        ray.wait([streaming_gen], fetch_local=False)
+        cluster.remove_node(worker_node)
+
+        # The block shouldn't be available anymore, so we shouldn't read any data.
+        bytes_read = data_op_task.on_data_ready(None)
+        assert bytes_read == 0
+
+        # Re-add the worker node, and run the task to completion.
+        new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+        cluster.wait_for_nodes()
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None)
+
+        # We should now be able to read the 128 MiB block.
+        assert bytes_read == pytest.approx(128 * MiB)
 
 
 if __name__ == "__main__":

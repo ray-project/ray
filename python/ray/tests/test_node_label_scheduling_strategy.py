@@ -1,13 +1,14 @@
 import sys
+
 import pytest
 
 import ray
 from ray.util.scheduling_strategies import (
-    In,
-    NotIn,
-    Exists,
     DoesNotExist,
+    Exists,
+    In,
     NodeLabelSchedulingStrategy,
+    NotIn,
 )
 
 

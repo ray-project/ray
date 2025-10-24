@@ -1,6 +1,6 @@
 import copy
-import os
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -8,21 +8,17 @@ import time
 import unittest
 from dataclasses import asdict
 from datetime import datetime
+from functools import partial
 from time import sleep
 from unittest import mock
-import yaml
 
 import pytest
+import yaml
 
 import ray
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray._private.test_utils import same_elements
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilityRecord,
-    NodeAvailabilitySummary,
-    UnavailableNodeInformation,
-)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import (
@@ -30,15 +26,20 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_UTILIZATION_SCORER_KEY,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    UnavailableNodeInformation,
+)
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     _add_min_workers_nodes,
-    _resource_based_utilization_scorer,
     _default_utilization_scorer,
+    _resource_based_utilization_scorer,
     get_bin_pack_residual,
+    get_nodes_for as _get,
 )
-from ray.autoscaler._private.resource_demand_scheduler import get_nodes_for as _get
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     format_info_string,
@@ -65,7 +66,6 @@ from ray.tests.test_autoscaler import (
     fill_in_node_ids,
     mock_node_id,
 )
-from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
@@ -3284,9 +3284,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3341,10 +3341,10 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
  {'CPU': 1, 'GPU': 16}: 10 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3433,9 +3433,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 
@@ -3548,9 +3548,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 
@@ -3640,9 +3640,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3735,9 +3735,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3828,9 +3828,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
 """.strip()
@@ -3917,9 +3917,9 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
-Total Constraints:
+From request_resources:
  {'CPU': 16}: 100 from request_resources()
-Total Demands:
+Pending Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
  {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups

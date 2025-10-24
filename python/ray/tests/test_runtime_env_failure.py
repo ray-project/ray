@@ -3,12 +3,13 @@ import sys
 from unittest import mock
 
 import pytest
+
+import ray
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT
 from ray._private.runtime_env.packaging import (
     RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR,
     RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR,
 )
-import ray
 from ray.exceptions import RuntimeEnvSetupError
 
 

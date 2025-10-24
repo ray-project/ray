@@ -5,9 +5,22 @@ set -exuo pipefail
 
 BAZELISK_VERSION="v1.26.0"
 
-platform="linux"
+ARCH="$(uname -m)"
 
-echo "Architecture(HOSTTYPE) is ${HOSTTYPE}"
+case "$ARCH" in
+  x86_64|amd64)
+    ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    ARCH="aarch64"
+    ;;
+  *)
+    echo "Unsupported arch: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
+echo "Architecture is ${ARCH}"
 
 if [[ ! -e /usr/bin/nproc ]]; then
   echo -e '#!/bin/bash\necho 10' > "/usr/bin/nproc"
@@ -16,13 +29,13 @@ fi
 
 # Install ray cpp dependencies.
 sudo yum -y install unzip zip sudo openssl xz
-if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
+if [[ "${ARCH}" == "x86_64" ]]; then
   sudo yum -y install libasan-4.8.5-44.el7.x86_64 libubsan-7.3.1-5.10.el7.x86_64 \
     devtoolset-8-libasan-devel.x86_64
 fi
 
 # Install ray java dependencies.
-if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1" ]]; then
   sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
   java -version
   JAVA_BIN="$(readlink -f "$(command -v java)")"
@@ -30,28 +43,36 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
-# Install ray dashboard dependencies.
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
+# Install nodejs
+NODE_VERSION_FULL="${NODE_VERSION_FULL:-14.21.3}"
 
-NODE_VERSION="14"
-nvm install "$NODE_VERSION"
-nvm use "$NODE_VERSION"
+if [[ "${ARCH}" == "x86_64" ]]; then
+  NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-x64.tar.xz"
+  NODE_SHA256="05c08a107c50572ab39ce9e8663a2a2d696b5d262d5bd6f98d84b997ce932d9a"
+else # aarch64
+  NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-arm64.tar.xz"
+  NODE_SHA256="f06642bfcf0b8cc50231624629bec58b183954641b638e38ed6f94cd39e8a6ef"
+fi
+
+NODE_DIR="/usr/local/node"
+curl -fsSL "${NODE_URL}" -o /tmp/node.tar.xz
+echo "$NODE_SHA256  /tmp/node.tar.xz" | sha256sum -c -
+sudo mkdir -p "$NODE_DIR"
+sudo tar -xf /tmp/node.tar.xz -C "$NODE_DIR" --strip-components=1
+rm /tmp/node.tar.xz
 
 # Install bazel
 mkdir -p "$HOME"/bin
-if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
-  # architecture is "aarch64", but the bazel tag is "arm64"
-  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
-elif [[ "${HOSTTYPE}" == "x86_64" ]]; then
-  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
-else
-  echo "Could not found matching bazelisk URL for platform ${platform} and architecture ${HOSTTYPE}"
-  exit 1
+if [[ "${ARCH}" == "x86_64" ]]; then
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64"
+else # aarch64
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-arm64"
 fi
-curl -sSfL -o "$HOME"/bin/bazelisk "${BAZELISK_URL}"
-chmod +x "$HOME"/bin/bazelisk
-sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
+
+curl -sSfL -o /tmp/bazelisk "${BAZELISK_URL}"
+chmod +x /tmp/bazelisk
+sudo mv /tmp/bazelisk /usr/local/bin/bazelisk
+sudo ln -sf /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
 sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3

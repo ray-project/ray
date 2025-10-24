@@ -4,14 +4,14 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ray.dashboard.modules.reporter.gpu_providers import (
-    GpuProvider,
-    GpuProviderType,
-    NvidiaGpuProvider,
+    MB,
     AmdGpuProvider,
     GpuMetricProvider,
-    ProcessGPUInfo,
+    GpuProvider,
+    GpuProviderType,
     GpuUtilizationInfo,
-    MB,
+    NvidiaGpuProvider,
+    ProcessGPUInfo,
 )
 
 

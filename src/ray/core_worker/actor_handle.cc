@@ -35,8 +35,10 @@ rpc::ActorHandle CreateInnerActorHandle(
     const std::string &ray_namespace,
     int32_t max_pending_calls,
     bool allow_out_of_order_execution,
+    bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels) {
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -50,10 +52,12 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_max_task_retries(max_task_retries);
   inner.set_name(name);
   inner.set_ray_namespace(ray_namespace);
-  inner.set_allow_out_of_order_execution(allow_out_of_order_execution);
   inner.set_max_pending_calls(max_pending_calls);
+  inner.set_allow_out_of_order_execution(allow_out_of_order_execution);
+  inner.set_enable_tensor_transport(enable_tensor_transport);
   inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   inner.mutable_labels()->insert(labels.begin(), labels.end());
+  inner.set_is_detached(is_detached);
   return inner;
 }
 
@@ -87,6 +91,7 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
       task_spec.actor_creation_task_spec().allow_out_of_order_execution());
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
   inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
+  inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
   return inner;
 }
 }  // namespace
@@ -105,8 +110,10 @@ ActorHandle::ActorHandle(
     const std::string &ray_namespace,
     int32_t max_pending_calls,
     bool allow_out_of_order_execution,
+    bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels)
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -120,8 +127,10 @@ ActorHandle::ActorHandle(
                                          ray_namespace,
                                          max_pending_calls,
                                          allow_out_of_order_execution,
+                                         enable_tensor_transport,
                                          enable_task_events,
-                                         labels)) {}
+                                         labels,
+                                         is_detached)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
