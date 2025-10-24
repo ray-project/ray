@@ -30,6 +30,7 @@ class MyActor:
             sum += t.sum().item()
         return sum
 
+
 # No collective group is needed. The two actors just need to have NIXL
 # installed.
 sender, receiver = MyActor.remote(), MyActor.remote()
@@ -59,6 +60,7 @@ print(ray.get(ref1))
 
 # __nixl_limitations_start__
 import pytest
+
 
 @ray.remote(num_gpus=1)
 class Actor:
