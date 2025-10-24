@@ -20,11 +20,6 @@
 
 #include "ray/util/logging.h"
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
 #ifdef _WIN32
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
@@ -63,9 +58,10 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
 
   // If no token found and auth is enabled, fail with RAY_CHECK
   RAY_CHECK(!token.empty())
-      << "Token authentication is enabled but no authentication token was found. "
-      << "Please set RAY_AUTH_TOKEN environment variable, RAY_AUTH_TOKEN_PATH to a file "
-      << "containing the token, or create a token file at ~/.ray/auth_token";
+      << "Token authentication is enabled but Ray couldn't find an authentication token. "
+      << "Set the RAY_AUTH_TOKEN environment variable, or set RAY_AUTH_TOKEN_PATH to "
+         "point to a file with the token, "
+      << "or create a token file at ~/.ray/auth_token.";
 
   // Cache and return the loaded token
   cached_token_ = std::move(token);
@@ -89,22 +85,26 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
 AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   // Precedence 1: RAY_AUTH_TOKEN environment variable
   const char *env_token = std::getenv("RAY_AUTH_TOKEN");
-  if (env_token != nullptr && std::string(env_token).length() > 0) {
-    RAY_LOG(DEBUG) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
-                      "variable";
-    return AuthenticationToken(TrimWhitespace(std::string(env_token)));
+  if (env_token != nullptr) {
+    std::string token_str(env_token);
+    if (!token_str.empty()) {
+      RAY_LOG(DEBUG) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
+                        "variable";
+      return AuthenticationToken(TrimWhitespace(token_str));
+    }
   }
 
   // Precedence 2: RAY_AUTH_TOKEN_PATH environment variable
   const char *env_token_path = std::getenv("RAY_AUTH_TOKEN_PATH");
-  if (env_token_path != nullptr && std::string(env_token_path).length() > 0) {
-    std::string token_str = TrimWhitespace(ReadTokenFromFile(env_token_path));
-    if (!token_str.empty()) {
-      RAY_LOG(DEBUG) << "Loaded authentication token from file: " << env_token_path;
+  if (env_token_path != nullptr) {
+    std::string path_str(env_token_path);
+    if (!path_str.empty()) {
+      std::string token_str = TrimWhitespace(ReadTokenFromFile(path_str));
+      RAY_CHECK(!token_str.empty())
+          << "RAY_AUTH_TOKEN_PATH is set but file cannot be opened or is empty: "
+          << path_str;
+      RAY_LOG(DEBUG) << "Loaded authentication token from file: " << path_str;
       return AuthenticationToken(token_str);
-    } else {
-      RAY_LOG(WARNING) << "RAY_AUTH_TOKEN_PATH is set but file cannot be opened: "
-                       << env_token_path;
     }
   }
 
@@ -159,6 +159,12 @@ std::string AuthenticationTokenLoader::TrimWhitespace(const std::string &str) {
   std::string whitespace = " \t\n\r\f\v";
   std::string trimmed_str = str;
   trimmed_str.erase(0, trimmed_str.find_first_not_of(whitespace));
+
+  // if the string is empty, return it
+  if (trimmed_str.empty()) {
+    return trimmed_str;
+  }
+
   trimmed_str.erase(trimmed_str.find_last_not_of(whitespace) + 1);
   return trimmed_str;
 }
