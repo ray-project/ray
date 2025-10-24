@@ -173,7 +173,7 @@ def _convert_task_profile_events(
 
 def _populate_task_runtime_and_function_info(
     serialized_runtime_env: str,
-    function_descriptor,
+    function_descriptor: common_pb2.FunctionDescriptor,
     required_resources: Dict[str, float],
     language: int,
     task_info: common_pb2.TaskInfoEntry,
