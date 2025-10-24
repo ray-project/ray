@@ -18,13 +18,9 @@ class PredicatePushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply predicate pushdown optimization to the logical plan."""
         dag = plan.dag
-        while True:
-            new_dag = dag._apply_transform(self._try_fuse_filters)
-            new_dag = new_dag._apply_transform(self._try_push_down_predicate)
-            if new_dag is dag:
-                break
-            dag = new_dag
-        return LogicalPlan(dag, plan.context)
+        new_dag = dag._apply_transform(self._try_fuse_filters)
+        new_dag = new_dag._apply_transform(self._try_push_down_predicate)
+        return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
     def _try_fuse_filters(cls, op: LogicalOperator) -> LogicalOperator:
