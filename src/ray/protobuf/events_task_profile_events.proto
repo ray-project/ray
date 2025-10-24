@@ -16,8 +16,6 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
-option cc_enable_arenas = false;
-
 import "src/ray/protobuf/profile_events.proto";
 
 message TaskProfileEvents {

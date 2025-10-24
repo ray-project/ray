@@ -34,8 +34,6 @@ from ray.includes.common cimport (
     CGcsNodeInfo,
     CAddEventsRequest,
     CAddEventsReply,
-    CAddTaskEventDataRequest,
-    CAddTaskEventDataReply,
     CRayStatus,
 )
 from ray.includes.optional cimport optional, make_optional
@@ -521,6 +519,7 @@ cdef class InnerGcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, cython.double]],
+            label_selectors: c_vector[unordered_map[c_string, c_string]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -529,7 +528,7 @@ cdef class InnerGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .Autoscaler()
-                .RequestClusterResourceConstraint(timeout_ms, bundles, count_array)
+                .RequestClusterResourceConstraint(timeout_ms, bundles, label_selectors, count_array)
             )
 
     def get_cluster_resource_state(
@@ -718,37 +717,6 @@ cdef class InnerGcsClient:
 
         with nogil:
             self.inner.get().Tasks().AsyncAddEvents(
-                move(c_req),
-                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
-                timeout_ms)
-        return await asyncio.wrap_future(fut)
-
-    async def async_add_task_event_data(self, serialized_request: bytes, timeout_s=None, executor=None):
-        """Send async AddTaskEventData request to GCS."""
-        cdef:
-            CAddTaskEventDataRequest c_req
-            int64_t timeout_ms
-            fut = incremented_fut()
-        timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-
-        # Parse the protobuf payload
-        cdef c_string payload = serialized_request
-        cdef bint parsed = False
-        if executor is not None:
-            parsed = await get_or_create_event_loop().run_in_executor(
-                executor,
-                lambda: c_req.ParseFromString(payload),
-            )
-        else:
-            parsed = c_req.ParseFromString(payload)
-
-        if not parsed:
-            # Fail fast on parse error
-            assign_and_decrement_fut((None, ValueError("Invalid AddTaskEventDataRequest payload")), fut)
-            return await asyncio.wrap_future(fut)
-
-        with nogil:
-            self.inner.get().Tasks().AsyncAddTaskEventData(
                 move(c_req),
                 StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms)

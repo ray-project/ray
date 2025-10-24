@@ -18,8 +18,6 @@ import "google/protobuf/timestamp.proto";
 
 package ray.rpc.events;
 
-option cc_enable_arenas = false;
-
 // Message containing the definition of a node, as observed via GCS.
 // The message is expected to be emitted once per node creation.
 //

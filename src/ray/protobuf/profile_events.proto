@@ -17,7 +17,6 @@ syntax = "proto3";
 package ray.rpc;
 
 option java_package = "io.ray.runtime.generated";
-option cc_enable_arenas = false;
 
 message ProfileEventEntry {
   // The start timestamp of the event time.
