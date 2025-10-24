@@ -2,7 +2,7 @@ import copy
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.map_operator import AbstractMap, MapBatches
+from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
@@ -125,13 +125,9 @@ class LimitPushdownRule(Rule):
         # one of the stopping conditions
         current_op = limit_op.input_dependency
         num_rows_preserving_ops: List[LogicalOperator] = []
-
         while (
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows()
-            and not isinstance(current_op, MapBatches)
-            # We should push past MapBatches, but MapBatches can modify the row count
-            # TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
         ):
             num_rows_preserving_ops.append(current_op)
             current_op = current_op.input_dependency
@@ -139,7 +135,6 @@ class LimitPushdownRule(Rule):
         # If we couldn't push through any operators, return original
         if not num_rows_preserving_ops:
             return limit_op
-
         # Apply per-block limit to the deepest operator if it supports it
         limit_input = self._apply_per_block_limit_if_supported(
             current_op, limit_op._limit
