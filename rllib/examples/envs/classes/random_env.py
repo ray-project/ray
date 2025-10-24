@@ -1,7 +1,8 @@
 import copy
+
 import gymnasium as gym
-from gymnasium.spaces import Discrete, Tuple
 import numpy as np
+from gymnasium.spaces import Discrete, Tuple
 
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 
