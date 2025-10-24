@@ -1058,6 +1058,15 @@ class Dataset:
                     raise ValueError(
                         f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
                     )
+        else:
+            # When keys is None, we need schema to determine columns for distinct.
+            # Check early to provide a clear error message.
+            all_cols = self.columns()
+            if all_cols is None:
+                raise ValueError(
+                    "Cannot perform distinct operation on all columns: unable to determine dataset schema. "
+                    "Provide explicit 'keys' parameter or ensure dataset has an inferable schema."
+                )
 
         # Create the Distinct logical operator.
         plan = self._plan.copy()
