@@ -9,7 +9,6 @@ import ray
 @ray.remote(num_cpus=0.5, enable_tensor_transport=True)
 class DSTestActor:
     def __init__(self):
-        # 在 actor 初始化时注册 mock backend
         from ray.util.collective.collective import _group_mgr
         from ray.util.collective.collective_group.ds_backend import DSBackend
         from ray.util.collective.types import DS_GROUP_NAME
