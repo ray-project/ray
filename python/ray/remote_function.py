@@ -59,8 +59,6 @@ class RemoteFunction:
             rounded down to the nearest integer.
         _label_selector: The label requirements on a node for scheduling of the task or actor.
         _fallback_strategy: Soft constraints of a list of decorator options to fall back on when scheduling on a node.
-       _resources: The default custom resource requirements for invocations of
-            on a node.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
