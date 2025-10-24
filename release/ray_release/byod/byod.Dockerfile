@@ -16,8 +16,6 @@ set -euo pipefail
 APT_PKGS=(
     apt-transport-https
     ca-certificates
-    curl
-    gnupg
     htop
     libaio1
     libgl1-mesa-glx
