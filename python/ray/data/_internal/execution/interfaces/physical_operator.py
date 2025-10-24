@@ -827,27 +827,23 @@ def estimate_total_num_of_blocks(
 
     if (
         upstream_op_num_outputs > 0
-        and metrics.num_inputs_received > 0
-        and metrics.num_tasks_finished > 0
+        and metrics.average_num_inputs_per_task
+        and metrics.average_num_outputs_per_task
+        and metrics.average_rows_outputs_per_task
     ):
         estimated_num_tasks = total_num_tasks
         if estimated_num_tasks is None:
             estimated_num_tasks = (
-                upstream_op_num_outputs
-                / metrics.num_inputs_received
-                * num_tasks_submitted
+                upstream_op_num_outputs / metrics.average_num_inputs_per_task
             )
 
         estimated_num_output_bundles = round(
-            estimated_num_tasks
-            * metrics.num_outputs_of_finished_tasks
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_num_outputs_per_task
         )
         estimated_output_num_rows = round(
-            estimated_num_tasks
-            * metrics.rows_task_outputs_generated
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_rows_outputs_per_task
         )
+
         return (
             estimated_num_tasks,
             estimated_num_output_bundles,
