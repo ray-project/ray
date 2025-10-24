@@ -24,7 +24,7 @@ def empty_data():
     )
 
 
-def test_distinct_across_blocks(shutdown_only):
+def test_distinct_across_blocks(ray_start_regular):
     """Test distinct operation across multiple blocks.
 
     Verifies that distinct correctly deduplicates globally across all blocks,
@@ -36,14 +36,14 @@ def test_distinct_across_blocks(shutdown_only):
     assert out == [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}, {"a": 3, "b": "z"}]
 
 
-def test_distinct_all_unique(shutdown_only):
+def test_distinct_all_unique(ray_start_regular):
     """Test distinct on dataset with no duplicates."""
     ds = ray.data.from_arrow(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
     out = ds.distinct().sort(key=["a", "b"]).take_all()
     assert out == [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}, {"a": 3, "b": "z"}]
 
 
-def test_distinct_all_duplicate(shutdown_only):
+def test_distinct_all_duplicate(ray_start_regular):
     """Test distinct on dataset with all duplicate rows.
 
     Also tests distinct with multiple blocks and with null values.
@@ -74,14 +74,14 @@ def test_distinct_all_duplicate(shutdown_only):
     assert {"a": 1, "b": None} in out_nulls
 
 
-def test_distinct_empty(shutdown_only, empty_data):
+def test_distinct_empty(ray_start_regular, empty_data):
     """Test distinct on empty dataset."""
     ds = ray.data.from_arrow(empty_data)
     out = ds.distinct().take_all()
     assert out == []
 
 
-def test_distinct_subset(shutdown_only, subset_data):
+def test_distinct_subset(ray_start_regular, subset_data):
     """Test distinct on subset of columns.
 
     When using keys parameter, distinct should only consider specified columns
@@ -97,14 +97,14 @@ def test_distinct_subset(shutdown_only, subset_data):
     assert set(a_values) == {1, 2, 3, 4}
 
 
-def test_distinct_empty_keys(shutdown_only, subset_data):
+def test_distinct_empty_keys(ray_start_regular, subset_data):
     """Test that empty keys list raises an error."""
     ds = ray.data.from_arrow(subset_data)
     with pytest.raises(ValueError, match="keys cannot be an empty list"):
         ds.distinct(keys=[])
 
 
-def test_distinct_duplicate_keys(shutdown_only, subset_data):
+def test_distinct_duplicate_keys(ray_start_regular, subset_data):
     """Test that duplicate keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
 
@@ -115,7 +115,7 @@ def test_distinct_duplicate_keys(shutdown_only, subset_data):
         ds.distinct(keys=["a", "b", "a", "b"])
 
 
-def test_distinct_invalid_keys(shutdown_only, subset_data):
+def test_distinct_invalid_keys(ray_start_regular, subset_data):
     """Test that invalid keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
 
