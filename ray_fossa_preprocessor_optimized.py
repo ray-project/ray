@@ -33,114 +33,47 @@ class OptimizedRayFossaPreprocessor:
     """Optimized Ray C/C++ dependency analyzer with package-level grouping"""
     
     # =============================================================================
-    # DELIVERABLE TARGETS
+    # CONFIGURATION - All hardcoded patterns consolidated in one place
     # =============================================================================
-    # Purpose: Defines the main Ray targets that produce deliverable binaries requiring
-    #          compliance analysis. These are the entry points for dependency analysis.
-    # Usage: Used as starting points for bazel query to find all transitive dependencies
-    # Generation: Manually curated list of Ray's main deliverable targets that produce
-    #             C/C++ binaries that will be distributed to end users
-    DELIVERABLE_TARGETS = [
-        "//:gen_ray_pkg"
-    ]
     
-    # =============================================================================
-    # BUILD TOOLS
-    # =============================================================================
-    # Purpose: Identifies build-time tools and utilities that are typically not included
-    #          in runtime compliance analysis but can be optionally included.
-    # Usage: Used in classify_package_type() to categorize packages as 'build' type
-    # Generation: Manually curated list of common build tools found in Ray's Bazel
-    #             dependencies, including compilers, build systems, and code generators
-    BUILD_TOOLS = [
-        "protoc", "cmake", "ninja", "bazel", "python", "cython",
-        "rules_foreign_cc", "rules_proto", "rules_cc"
-    ]
+    # Main targets for dependency analysis
+    DELIVERABLE_TARGETS = ["//:gen_ray_pkg"]
     
-    # =============================================================================
-    # NON-C/C++ PATTERNS
-    # =============================================================================
-    # Purpose: Identifies target names that clearly indicate non-C/C++ technologies
-    #          to exclude from C/C++ dependency analysis.
-    # Usage: Used in is_c_cpp_target() to quickly filter out obvious non-C/C++ targets
-    # Generation: Manually curated based on common non-C/C++ technology indicators
-    #             found in Bazel target names, including language-specific build rules
-    #             and package managers
-    NON_CPP_PATTERNS = [
-        'java', 'scala', 'kotlin', 'go_', 'rust_', 'cargo',
-        'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
-        'pytest', 'wheel', 'setuptools', 'pip_'
-    ]
+    # Build tools that can be optionally included in analysis
+    BUILD_TOOLS = ["protoc", "cmake", "ninja", "bazel", "python", "cython", 
+                   "rules_foreign_cc", "rules_proto", "rules_cc"]
     
-    # =============================================================================
-    # C/C++ FILE EXTENSIONS
-    # =============================================================================
-    # Purpose: Defines standard C/C++ source and header file extensions to identify
-    #          C/C++ targets by their file types.
-    # Usage: Used in is_c_cpp_target() to check if a target ends with C/C++ extensions
-    # Generation: Standard C/C++ file extensions as defined by compilers and IDEs
-    #             Includes both source (.c, .cpp) and header (.h, .hpp) files
+    # File extensions for technology identification
     C_CPP_EXTENSIONS = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.h', '.hpp', '.hxx']
+    NON_CPP_EXTENSIONS = ['.py', '.java', '.scala', '.kt', '.go', '.rs', '.js', '.ts', '.jsx', '.tsx']
     
-    # =============================================================================
-    # C/C++ LIBRARY INDICATORS
-    # =============================================================================
-    # Purpose: Identifies common C/C++ library naming patterns and build rule prefixes
-    #          that indicate C/C++ targets, especially for external dependencies.
-    # Usage: Used in is_c_cpp_target() to detect C/C++ libraries by naming conventions
-    # Generation: Manually curated based on:
-    #             - Common C/C++ library naming patterns (lib, static, shared)
-    #             - Popular C/C++ libraries used in Ray (protobuf, grpc, absl, boost)
-    #             - Bazel C/C++ build rule prefixes (cc_, objc_, fdo_, propeller_)
+    # Keywords that indicate non-C/C++ technologies
+    NON_CPP_KEYWORDS = [
+        # Python ecosystem
+        'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
+        # JavaScript/Node.js ecosystem  
+        'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
+        # JVM languages
+        'java', 'maven', 'gradle', 'scala', 'kotlin',
+        # Other languages
+        'go_', 'rust_', 'cargo', 'crate',
+        # Test frameworks
+        'test_', '_test', 'testing', 'mock', 'fixture'
+    ]
+    
+    # Keywords that indicate C/C++ libraries and build artifacts
     C_CPP_INDICATORS = [
+        # Build artifacts
         'lib', 'static', 'shared', 'archive', 'object',
+        # Popular C/C++ libraries
         'protobuf', 'grpc', 'absl', 'boost', 'gtest', 'gflags',
         'zlib', 'openssl', 'boringssl', 'cares', 're2',
+        # Bazel rule prefixes
         'cc_', 'objc_', 'fdo_', 'propeller_'
     ]
     
-    # =============================================================================
-    # SKIP PATTERNS (Internal Targets)
-    # =============================================================================
-    # Purpose: Identifies internal Ray targets that should be skipped during analysis
-    #          as they are not external dependencies requiring compliance review.
-    # Usage: Used in is_c_cpp_target() to exclude internal Ray build artifacts
-    # Generation: Manually curated based on Ray's internal build system patterns:
-    #             - 'bazel': Bazel build system files
-    #             - 'gen_': Generated files and targets
-    #             - 'gen_ray_pkg.py': Specific Python script (not C/C++)
-    SKIP_PATTERNS = ['bazel']
-    
-    # =============================================================================
-    # EXCLUDE PATTERNS (General)
-    # =============================================================================
-    # Purpose: Defines comprehensive patterns for non-C/C++ technologies that should
-    #          be explicitly excluded from compliance analysis.
-    # Usage: Used in is_excluded_target() as the base set of exclusion patterns
-    # Generation: Manually curated comprehensive list covering:
-    #             - Python ecosystem (python, py_, pip_, wheel, setuptools, pytest)
-    #             - JavaScript/Node.js ecosystem (node, npm, yarn, webpack, babel, typescript)
-    #             - JVM languages (java, maven, gradle, scala, kotlin)
-    #             - Other languages (go_, rust_, cargo, crate)
-    EXCLUDE_PATTERNS = [
-        'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
-        'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
-        'java', 'maven', 'gradle', 'scala', 'kotlin',
-        'go_', 'rust_', 'cargo', 'crate'
-    ]
-    
-    # =============================================================================
-    # TEST EXCLUDE PATTERNS
-    # =============================================================================
-    # Purpose: Defines patterns for test-related dependencies that should be excluded
-    #          when not including test dependencies in compliance analysis.
-    # Usage: Used in is_excluded_target() and conditionally added to EXCLUDE_PATTERNS
-    #         based on include_test_deps flag
-    # Generation: Manually curated based on common test framework and testing patterns:
-    #             - Test naming conventions (test_, _test)
-    #             - Testing frameworks (testing, mock, fixture)
-    #             - These are typically not needed for production compliance analysis
-    TEST_EXCLUDE_PATTERNS = ['test_', '_test', 'testing', 'mock', 'fixture']
+    # Internal Ray targets to skip during analysis
+    INTERNAL_SKIP_PATTERNS = ['bazel', 'gen_', 'gen_ray_pkg.py']
     
     def __init__(self, ray_root: str, 
                  fossa_folder: str,
@@ -263,7 +196,7 @@ class OptimizedRayFossaPreprocessor:
             
         # Skip other non-C/C++ patterns
         target_lower = target.lower()
-        if any(pattern in target_lower for pattern in self.NON_CPP_PATTERNS):
+        if any(pattern in target_lower for pattern in self.NON_CPP_KEYWORDS):
             return False
         
         # Check for C/C++ file extensions in the target name
@@ -281,7 +214,7 @@ class OptimizedRayFossaPreprocessor:
         # For internal targets, be more selective
         if target.startswith('//'):
             # Skip obvious non-C/C++ internal targets
-            if any(pattern in target_lower for pattern in self.SKIP_PATTERNS):
+            if any(pattern in target_lower for pattern in self.INTERNAL_SKIP_PATTERNS):
                 return False
             return True
         
@@ -289,12 +222,13 @@ class OptimizedRayFossaPreprocessor:
     
     def is_excluded_target(self, target: str) -> bool:
         """Check if target should be explicitly excluded (non-C/C++ patterns)"""
-        # Start with base exclude patterns
-        exclude_patterns = list(self.EXCLUDE_PATTERNS)
+        # Start with base exclude patterns (non-C/C++ keywords)
+        exclude_patterns = list(self.NON_CPP_KEYWORDS)
         
         # Add test-related patterns only if not including test dependencies
         if not self.include_test_deps:
-            exclude_patterns.extend(self.TEST_EXCLUDE_PATTERNS)
+            # Test patterns are already included in NON_CPP_KEYWORDS, so no need to add them
+            pass
         
         target_lower = target.lower()
         return any(pattern in target_lower for pattern in exclude_patterns)
@@ -451,7 +385,7 @@ class OptimizedRayFossaPreprocessor:
         print(f"\nCreating Fossa folder structure in {self.fossa_folder}")
         
         for package_id, package_info in self.packages.items():
-            if package_info['type'] == 'excluded':
+            if package_info['compliance_required'] == False:
                 continue
                 
             # Sanitize package name for filesystem
