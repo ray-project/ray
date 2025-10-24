@@ -151,6 +151,8 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
+        *std::make_shared<ray::observability::FakeGauge>(),
+        *std::make_shared<ray::observability::FakeGauge>(),
         false);
 
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
@@ -611,7 +613,9 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
-                               is_node_dead);
+                               is_node_dead,
+                               *std::make_shared<ray::observability::FakeGauge>(),
+                               *std::make_shared<ray::observability::FakeGauge>());
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
