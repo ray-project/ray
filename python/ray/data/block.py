@@ -342,6 +342,10 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
+    def drop(self, columns: List[str]) -> Block:
+        """Return a new block with the list of provided columns dropped"""
+        raise NotImplementedError
+
     def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
@@ -507,7 +511,7 @@ class BlockAccessor:
         import pandas
         import pyarrow
 
-        if isinstance(block, pyarrow.Table):
+        if isinstance(block, (pyarrow.Table, pyarrow.RecordBatch)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)

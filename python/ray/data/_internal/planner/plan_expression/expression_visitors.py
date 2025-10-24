@@ -1,4 +1,5 @@
-from typing import Dict, List, Set, TypeVar
+from dataclasses import replace
+from typing import Dict, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -94,34 +95,20 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
-class _ColumnRewriter(_ExprVisitor[Expr]):
-    """Visitor that rewrites column references in expression trees.
+class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
+    """Visitor rebinding column references in ``Expression``s.
 
-    This visitor traverses expression trees and substitutes column references
-    according to a provided substitution map, preserving the structure of the tree.
+    This visitor traverses given ``Expression`` trees and substitutes column references
+    according to a provided substitution map.
     """
 
-    def __init__(self, column_substitutions: dict[str, Expr]):
+    def __init__(self, column_ref_substitutions: Dict[str, Expr]):
         """Initialize with a column substitution map.
 
         Args:
-            column_substitutions: Mapping from column names to replacement expressions.
+            column_ref_substitutions: Mapping from column names to replacement expressions.
         """
-        self.column_substitutions = column_substitutions
-        self._currently_substituting: Set[
-            str
-        ] = set()  # Track columns being substituted to prevent cycles
-
-    def visit(self, expr: Expr) -> Expr:
-        """Visit an expression node and return the rewritten expression.
-
-        Args:
-            expr: The expression to visit.
-
-        Returns:
-            The rewritten expression.
-        """
-        return super().visit(expr)
+        self._col_ref_substitutions = column_ref_substitutions
 
     def visit_column(self, expr: ColumnExpr) -> Expr:
         """Visit a column expression and substitute it.
@@ -132,36 +119,9 @@ class _ColumnRewriter(_ExprVisitor[Expr]):
         Returns:
             The substituted expression or the original if no substitution exists.
         """
-        # Check for cycles: if we're already substituting this column, stop
-        if expr.name in self._currently_substituting:
-            return expr
+        substitution = self._col_ref_substitutions.get(expr.name)
 
-        substitution = self.column_substitutions.get(expr.name)
-        if substitution is None:
-            return expr
-
-        # Mark this column as being substituted
-        self._currently_substituting.add(expr.name)
-
-        try:
-            if not isinstance(substitution, AliasExpr):
-                # Non-aliased expression: recursively rewrite
-                return self.visit(substitution)
-
-            inner = substitution.expr
-            if isinstance(inner, ColumnExpr):
-                inner_def = self.column_substitutions.get(inner.name)
-                if isinstance(inner_def, AliasExpr) and isinstance(
-                    inner_def.expr, ColumnExpr
-                ):
-                    # Preserve simple rename chain (swap semantics -> Example: [col("a").alias("b"), col("b").alias("a")])
-                    return substitution
-
-            # Aliased expression: rewrite inner and preserve alias (unless preserved above)
-            return self.visit(inner).alias(substitution.name)
-        finally:
-            # Remove from tracking when done
-            self._currently_substituting.discard(expr.name)
+        return substitution if substitution is not None else expr
 
     def visit_literal(self, expr: LiteralExpr) -> Expr:
         """Visit a literal expression (no rewriting needed).
@@ -224,7 +184,19 @@ class _ColumnRewriter(_ExprVisitor[Expr]):
         Returns:
             A new alias expression with rewritten inner expression and preserved name.
         """
-        return self.visit(expr.expr).alias(expr.name)
+        # We unalias returned expression to avoid nested aliasing
+        visited = self.visit(expr.expr)._unalias()
+        # NOTE: We're carrying over all of the other aspects of the alias
+        #       only replacing inner expre
+        return replace(
+            expr,
+            expr=visited,
+            # Alias expression will remain a renaming one (ie replacing source column)
+            # so long as it's referencing another column (and not otherwise)
+            #
+            # TODO replace w/ standalone rename expr
+            _is_rename=expr._is_rename and _is_col_expr(visited),
+        )
 
     def visit_download(self, expr: "Expr") -> Expr:
         """Visit a download expression (no rewriting needed).
@@ -247,3 +219,9 @@ class _ColumnRewriter(_ExprVisitor[Expr]):
             The original star expression.
         """
         return expr
+
+
+def _is_col_expr(expr: Expr) -> bool:
+    return isinstance(expr, ColumnExpr) or (
+        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    )
