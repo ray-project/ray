@@ -463,6 +463,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -627,6 +628,7 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            udf_modifying_row_count: Set to False only if the UDF always emits the same number of records it receives (no drops or duplicates). When set to False, the logical optimizer, in the presence of a limit(limit=k), will only scan k rows prior to executing the UDF, thereby saving on compute resources.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -695,6 +697,7 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -715,6 +718,7 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -768,6 +772,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
