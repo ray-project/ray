@@ -33,31 +33,28 @@ class TrainControllerStateType(Enum):
         needs_new_run_attempt: Whether this state requires starting a new run attempt, where
             a run attempt is a logical unit that encompasses both scheduling workers and
             executing training on those workers.
-        is_hidden: Whether this is a hidden state that should not show up as a RunStatus.
     """
 
-    INITIALIZING = ("INITIALIZING", False, True, False)
-    SCHEDULING = ("SCHEDULING", False, False, False)
-    RESCHEDULING = ("RESCHEDULING", False, False, True)
-    RUNNING = ("RUNNING", False, False, False)
-    RESTARTING = ("RESTARTING", False, True, False)
-    RESIZING = ("RESIZING", False, True, False)
-    SHUTTING_DOWN = ("SHUTTING_DOWN", False, False, True)
-    ERRORED = ("ERRORED", True, False, False)
-    FINISHED = ("FINISHED", True, False, False)
-    ABORTED = ("ABORTED", True, False, False)
+    INITIALIZING = ("INITIALIZING", False, True)
+    SCHEDULING = ("SCHEDULING", False, False)
+    RESCHEDULING = ("RESCHEDULING", False, False)
+    RUNNING = ("RUNNING", False, False)
+    RESTARTING = ("RESTARTING", False, True)
+    RESIZING = ("RESIZING", False, True)
+    SHUTTING_DOWN = ("SHUTTING_DOWN", False, False)
+    ERRORED = ("ERRORED", True, False)
+    FINISHED = ("FINISHED", True, False)
+    ABORTED = ("ABORTED", True, False)
 
     def __init__(
         self,
         state_name: str,
         is_terminal: bool,
         needs_new_run_attempt: bool,
-        is_hidden: bool,
     ):
         self.state_name = state_name
         self.is_terminal = is_terminal
         self.needs_new_run_attempt = needs_new_run_attempt
-        self.is_hidden = is_hidden
 
 
 class TrainControllerState:
