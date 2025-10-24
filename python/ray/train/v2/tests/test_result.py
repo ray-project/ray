@@ -10,7 +10,6 @@ from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
-from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
 
@@ -118,8 +117,6 @@ def test_get_best_checkpoint():
 
 @pytest.mark.parametrize("storage", ["local", "remote"])
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
-@pytest.mark.parametrize("pass_storage_filesystem", [True, False])
-@pytest.mark.parametrize("trailing_slash", [False, True])
 def test_result_restore(
     ray_start_4_cpus,
     monkeypatch,
@@ -127,8 +124,6 @@ def test_result_restore(
     storage,
     mock_s3_bucket_uri,
     path_type,
-    pass_storage_filesystem,
-    trailing_slash,
 ):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
 
@@ -156,31 +151,9 @@ def test_result_restore(
     with pytest.raises(WorkerGroupError):
         trainer.fit()
 
-    if pass_storage_filesystem:
-        storage_context = StorageContext(
-            storage_path=storage_path,
-            experiment_dir_name=exp_name,
-        )
-
-        trial_dir = storage_context.experiment_fs_path
-        file_system = storage_context.storage_filesystem
-    else:
-        trial_dir = uri_join(storage_path, exp_name)
-        file_system = None
-
-    # Add trailing slash if parameterized to test that case
-    if trailing_slash:
-        trial_dir = trial_dir + "/"
-
-    # For PathLike test, only use Path() for local paths, not URIs
-    if path_type == "PathLike":
-        trial_dir_arg = Path(trial_dir)
-    else:
-        trial_dir_arg = trial_dir
-
     result = Result.from_path(
-        trial_dir_arg,
-        storage_filesystem=file_system,
+        storage_path,
+        exp_name,
     )
 
     assert result.checkpoint
@@ -222,19 +195,17 @@ def test_result_from_path_validation(
 
     if storage == "local":
         storage_path = str(tmp_path)
-        nonexistent_folder = str(tmp_path / "nonexistent_experiment")
         existing_folder = str(tmp_path / "existing_experiment")
     elif storage == "remote":
         storage_path = str(mock_s3_bucket_uri)
-        nonexistent_folder = uri_join(storage_path, "nonexistent_experiment")
         existing_folder = uri_join(storage_path, "existing_experiment")
 
     # Test 1: Folder doesn't exist
-    folder_path = (
-        Path(nonexistent_folder) if path_type == "PathLike" else nonexistent_folder
-    )
-    with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist!"):
-        Result.from_path(folder_path)
+    with pytest.raises(
+        RuntimeError,
+        match="Experiment folder .* doesn't exist!",
+    ):
+        Result.from_path(storage_path, "nonexistent_experiment")
 
     # Test 2: Folder exists but snapshot file doesn't exist
     if storage == "local":
@@ -245,13 +216,12 @@ def test_result_from_path_validation(
         with fs.open_output_stream(f"{fs_path}/.dummy") as f:
             f.write(b"dummy")
 
-    folder_path = Path(existing_folder) if path_type == "PathLike" else existing_folder
     with pytest.raises(
         RuntimeError,
         match=f"Failed to restore the Result object: {CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the experiment folder. Make sure that this is an output directory created "
         "by a Ray Train run.",
     ):
-        Result.from_path(folder_path)
+        Result.from_path(storage_path, "existing_experiment")
 
 
 if __name__ == "__main__":
