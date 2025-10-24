@@ -16,6 +16,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionRequest,
     EmbeddingCompletionRequest,
     ScoreRequest,
+    TranscriptionRequest,
 )
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
@@ -111,6 +112,31 @@ def mock_embedding_request(dimensions):
     if dimensions:
         request.dimensions = dimensions
     return request
+
+
+@pytest.fixture
+def mock_transcription_request(stream, temperature, language):
+    """Fixture for creating transcription requests for mock testing."""
+    # Create a mock audio file for testing
+    from io import BytesIO
+
+    from fastapi import UploadFile
+
+    # Create a simple mock audio file (WAV format)
+    mock_audio_data = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"  # random byte string to test the transcription API
+    mock_file = UploadFile(
+        file=BytesIO(mock_audio_data),
+        filename="test_audio.wav",
+    )
+
+    return TranscriptionRequest(
+        file=mock_file,
+        model=MOCK_MODEL_ID,
+        language=language,
+        temperature=temperature,
+        stream=stream,
+        prompt="",
+    )
 
 
 @pytest.fixture
