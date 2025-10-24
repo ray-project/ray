@@ -6,6 +6,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from packaging.version import parse as parse_version
 
@@ -31,6 +32,8 @@ from ray.data.aggregate import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.datatype import DataType
+from ray.data.expressions import col, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -1051,6 +1054,89 @@ def test_groupby_map_groups_multicolumn(
         {"A": 1, "B": 1, "count": 17},
         {"A": 1, "B": 2, "count": 16},
     ]
+
+
+def test_groupby_map_groups_expression(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(DataType.int64())
+    def min_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.min(combined).as_py()], type=pa.int64())
+
+    result = (
+        ds.groupby("group")
+        .map_groups(
+            [
+                min_value(col("group")).alias("group"),
+                min_value(col("value")).alias("first_value"),
+            ]
+        )
+        .sort("group")
+        .take_all()
+    )
+
+    assert result == [
+        {"group": 1, "first_value": 1},
+        {"group": 2, "first_value": 3},
+    ]
+
+
+def test_groupby_map_groups_expression_default_alias(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    import pyarrow.compute as pc
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(DataType.int64())
+    def min_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.min(combined).as_py()], type=pa.int64())
+
+    result = ds.groupby("group").map_groups(min_value(col("value"))).take_all()
+    assert set(result[0].keys()) == {"min_value"}
+
+
+def test_groupby_map_groups_expression_invalid_args(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    import pyarrow.compute as pc
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(DataType.int64())
+    def first_value(arr: pa.ChunkedArray) -> pa.Array:
+        return pc.take(arr.combine_chunks(), [0])
+
+    with pytest.raises(ValueError):
+        ds.groupby("group").map_groups(
+            first_value(col("value")), fn_args=["unused"]
+        ).take_all()
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
