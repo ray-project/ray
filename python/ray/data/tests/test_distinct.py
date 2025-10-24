@@ -104,17 +104,6 @@ def test_distinct_empty_keys(shutdown_only, subset_data):
         ds.distinct(keys=[])
 
 
-def test_distinct_invalid_keys(shutdown_only, subset_data):
-    """Test that invalid keys raise an error."""
-    ds = ray.data.from_arrow(subset_data)
-
-    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
-        ds.distinct(keys=["c", "d"])
-
-    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
-        ds.distinct(keys=["a", "c"])
-
-
 def test_distinct_duplicate_keys(shutdown_only, subset_data):
     """Test that duplicate keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
@@ -124,6 +113,17 @@ def test_distinct_duplicate_keys(shutdown_only, subset_data):
 
     with pytest.raises(ValueError, match="Duplicate keys found"):
         ds.distinct(keys=["a", "b", "a", "b"])
+
+
+def test_distinct_invalid_keys(shutdown_only, subset_data):
+    """Test that invalid keys raise an error."""
+    ds = ray.data.from_arrow(subset_data)
+
+    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+        ds.distinct(keys=["c", "d"])
+
+    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+        ds.distinct(keys=["a", "c"])
 
 
 if __name__ == "__main__":
