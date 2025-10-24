@@ -1,5 +1,4 @@
 - name: DEFAULTS
-  python: "3.10"
   group: data-base
   working_dir: nightly_tests/dataset
 
@@ -21,7 +20,7 @@
 ###############
 
 - name: ptest_read_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -37,7 +36,7 @@
       --iter-bundles
 
 - name: ptest_read_large_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -53,7 +52,7 @@
       --iter-bundles
 
 - name: ptest_read_images_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -68,6 +67,7 @@
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: ptest_read_tfrecords
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -76,7 +76,7 @@
       --iter-bundles
 
 - name: ptest_read_from_uris_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -104,7 +104,7 @@
 # Writing tests
 ###############
 
-- name: ptest_write_parquet
+- name: write_parquet
   run:
     timeout: 3600
     script: >
@@ -115,7 +115,7 @@
 # Aggregation tests
 ###################
 
-- name: ptest_count_parquet_{{scaling}}"
+- name: count_parquet_{{scaling}}"
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -155,7 +155,7 @@
 
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
-- name: ptest_aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+- name: aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
 
   matrix:
     setup:
@@ -175,7 +175,7 @@
       --shuffle-strategy {{shuffle_strategy}}
 
 
-- name: ptest_map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+- name: map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
 
   matrix:
     setup:
@@ -220,7 +220,7 @@
 # Do adjust timeout below based on SF above.
 #
 
-- name: ptest_joins_{{dataset}}_{{join_type}}
+- name: joins_{{dataset}}_{{join_type}}
 
   cluster:
     cluster_compute: fixed_size_100_cpu_compute.yaml
@@ -245,7 +245,7 @@
 # Wide Schema tests
 ###############
 
-- name: ptest_wide_schema_pipeline_{{data_type}}
+- name: wide_schema_pipeline_{{data_type}}
 
   cluster:
     cluster_compute: fixed_size_cpu_compute.yaml
@@ -264,7 +264,7 @@
 # Streaming split tests
 #######################
 
-- name: ptest_streaming_split
+- name: streaming_split
 
   run:
     timeout: 300
@@ -293,7 +293,7 @@
 # Training tests
 ################
 
-- name: ptest_distributed_training
+- name: distributed_training
   working_dir: nightly_tests
 
   cluster:
@@ -319,7 +319,7 @@
 # Iteration tests
 #################
 
-- name: ptest_iter_batches_{{format}}"
+- name: iter_batches_{{format}}"
 
   matrix:
     setup:
@@ -332,7 +332,7 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches {{format}}
 
-- name: ptest_to_tf
+- name: to_tf
 
   run:
     timeout: 2400
@@ -341,7 +341,7 @@
       s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
       --to-tf image image
 
-- name: ptest_iter_torch_batches
+- name: iter_torch_batches
 
   cluster:
     cluster_compute: fixed_size_gpu_head_compute.yaml
@@ -357,17 +357,17 @@
 # Map tests
 ###########
 
-- name: ptest_map
+- name: map
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 10
 
-- name: ptest_flat_map
+- name: flat_map
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: ptest_map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
+- name: map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
   matrix:
     setup:
@@ -410,7 +410,7 @@
 # Sort and shuffle tests
 ########################
 
-- name: ptest_random_shuffle_{{scaling}}"
+- name: random_shuffle_{{scaling}}"
 
   matrix:
     setup:
@@ -430,7 +430,7 @@
       python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
 
 
-- name: ptest_random_shuffle_chaos
+- name: random_shuffle_chaos
   working_dir: nightly_tests
   stable: False
 
@@ -450,7 +450,7 @@
       --shuffle
 
 
-- name: ptest_sort_{{scaling}}"
+- name: sort_{{scaling}}"
 
   matrix:
     setup:
@@ -467,7 +467,7 @@
     script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
-- name: ptest_sort_chaos
+- name: sort_chaos
   working_dir: nightly_tests
   stable: False
 
@@ -491,7 +491,7 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: ptest_image_classification_{{scaling}}"
+- name: image_classification_{{scaling}}"
   group: data-batch-inference
 
   cluster:
@@ -507,7 +507,7 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-- name: ptest_image_classification_chaos
+- name: image_classification_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
@@ -525,7 +525,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
 
-- name: ptest_image_embedding_from_uris_{{case}}
+- name: image_embedding_from_uris_{{case}}
   frequency: weekly
   group: data-batch-inference
 
@@ -556,7 +556,7 @@
     script: python image_embedding_from_uris/main.py {{args}}
 
 
-- name: ptest_image_embedding_from_jsonl_{{case}}
+- name: image_embedding_from_jsonl_{{case}}
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -594,7 +594,7 @@
     timeout: 3600
     script: python image_embedding_from_jsonl/main.py {{args}}
 
-- name: ptest_text_embedding_{{case}}
+- name: text_embedding_{{case}}
   frequency: weekly
   group: data-batch-inference
 
@@ -631,7 +631,7 @@
 # TPCH Queries
 ##############
 
-- name: ptest_tpch_q1_{{scaling}}"
+- name: tpch_q1_{{scaling}}"
 
   matrix:
     setup:
