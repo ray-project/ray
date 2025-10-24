@@ -49,6 +49,10 @@ def test_ray_node_events(ray_start_cluster, httpserver):
         == cluster.head_node.node_id
     )
     assert req_json[1]["nodeLifecycleEvent"]["stateTransitions"][0]["state"] == "ALIVE"
+    assert (
+        req_json[1]["nodeLifecycleEvent"]["stateTransitions"][0]["aliveSubState"]
+        == "UNSPECIFIED"
+    )
 
 
 if __name__ == "__main__":
