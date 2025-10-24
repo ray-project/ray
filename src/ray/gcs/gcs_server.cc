@@ -868,10 +868,7 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
-        gcs_task_manager_->OnWorkerDead(worker_id,
-                                        worker_failure_data->exit_type(),
-                                        worker_failure_data->exit_detail(),
-                                        worker_failure_data->end_time_ms());
+        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
   // Install job event listeners.

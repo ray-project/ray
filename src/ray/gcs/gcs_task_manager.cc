@@ -106,10 +106,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
-    const WorkerID &worker_id,
-    rpc::WorkerExitType exit_type,
-    const std::string &exit_detail,
-    uint64_t end_time_ms) {
+    const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
     // No tasks by the worker.
@@ -120,12 +117,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
   std::stringstream error_message;
   error_message << "Worker running the task (" << worker_id.Hex()
-                << ") died with exit_type: " << exit_type
-                << " with error_message: " << exit_detail;
+                << ") died with exit_type: " << worker_failure_data.exit_type()
+                << " with error_message: " << worker_failure_data.exit_detail();
   error_info.set_error_message(error_message.str());
 
   for (const auto &task_locator : task_attempts_itr->second) {
-    MarkTaskAttemptFailedIfNeeded(task_locator, end_time_ms * 1000 * 1000, error_info);
+    MarkTaskAttemptFailedIfNeeded(
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
@@ -133,36 +131,17 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
     int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
-  RAY_LOG(INFO) << "[DEBUG] Within MarkTaskAttemptFailedIfNeeded";
-
-  // Check if locator is invalid (null or pointing to freed memory)
-  if (!locator) {
-    RAY_LOG(INFO) << "[DEBUG] Invalid locator: locator is null";
-    return;
-  }
-
   auto &task_events = locator->GetTaskEventsMutable();
-
-  // Add validation that message is valid (not using dangling arena pointers)
-  RAY_LOG(INFO) << "[DEBUG] Validating TaskEvents before accessing";
-  RAY_CHECK(task_events.IsInitialized()) << "TaskEvents not properly initialized";
-  RAY_LOG(INFO) << "[DEBUG] TaskEvents validated successfully";
-
   // We don't mark tasks as failed if they are already terminated.
   if (IsTaskTerminated(task_events)) {
-    RAY_LOG(INFO) << "[DEBUG] Task already terminated, skipping";
     return;
   }
-
-  RAY_LOG(INFO) << "[DEBUG] Marking task as failed";
 
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
   (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
-
-  RAY_LOG(INFO) << "[DEBUG] Task marked as failed successfully";
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
@@ -216,11 +195,11 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
-    // Splice node without moving/constructing protobuf message data.
-    auto &from_list = task_events_list_[cur_list_index];
-    auto &to_list = task_events_list_[target_list_index];
-    to_list.splice(to_list.begin(), from_list, loc->GetCurrentListIterator());
-    loc->SetCurrentList(target_list_index, to_list.begin());
+    // Need to add to the new list first.
+    task_events_list_[target_list_index].push_front(std::move(existing_task));
+
+    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
+    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
@@ -748,10 +727,8 @@ void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
   usage_stats_client_ = usage_stats_client;
 }
 
-void GcsTaskManager::OnWorkerDead(const WorkerID &worker_id,
-                                  rpc::WorkerExitType exit_type,
-                                  const std::string &exit_detail,
-                                  uint64_t end_time_ms) {
+void GcsTaskManager::OnWorkerDead(
+    const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
   auto timer = std::make_shared<boost::asio::deadline_timer>(
@@ -759,17 +736,16 @@ void GcsTaskManager::OnWorkerDead(const WorkerID &worker_id,
       boost::posix_time::milliseconds(
           RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
-  timer->async_wait([this, timer, worker_id, exit_type, exit_detail, end_time_ms](
-                        const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // timer canceled or aborted.
-      return;
-    }
-    // If there are any non-terminated tasks from the worker, mark them failed since
-    // all workers associated with the worker will be failed.
-    task_event_storage_->MarkTasksFailedOnWorkerDead(
-        worker_id, exit_type, exit_detail, end_time_ms);
-  });
+  timer->async_wait(
+      [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
+        if (error == boost::asio::error::operation_aborted) {
+          // timer canceled or aborted.
+          return;
+        }
+        // If there are any non-terminated tasks from the worker, mark them failed since
+        // all workers associated with the worker will be failed.
+        task_event_storage_->MarkTasksFailedOnWorkerDead(worker_id, *worker_data);
+      });
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {

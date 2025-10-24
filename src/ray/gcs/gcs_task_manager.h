@@ -141,13 +141,9 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   /// of the worker as failed.
   ///
   /// \param worker_id Worker Id
-  /// \param exit_type Worker exit type.
-  /// \param exit_detail Worker exit detail message.
-  /// \param end_time_ms Worker end time in milliseconds.
+  /// \param worker_failure_data Worker failure data.
   void OnWorkerDead(const WorkerID &worker_id,
-                    rpc::WorkerExitType exit_type,
-                    const std::string &exit_detail,
-                    uint64_t end_time_ms);
+                    const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data);
 
   /// Return string of debug state.
   ///
@@ -241,13 +237,9 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// Mark tasks from a worker as failed as worker dies.
     ///
     /// \param worker_id Worker ID
-    /// \param exit_type Worker exit type.
-    /// \param exit_detail Worker exit detail message.
-    /// \param end_time_ms Worker end time in milliseconds.
+    /// \param worker_failure_data Worker failure data.
     void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
-                                     rpc::WorkerExitType exit_type,
-                                     const std::string &exit_detail,
-                                     uint64_t end_time_ms);
+                                     const rpc::WorkerTableData &worker_failure_data);
 
     /// Get the job task summary given a job id.
     ///
