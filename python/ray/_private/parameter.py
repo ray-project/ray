@@ -437,10 +437,15 @@ class RayParams:
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
 
-        if self.temp_dir is not None and os.getenv('VIRTUAL_ENV'):
-            if pathlib.Path(self.temp_dir).resolve().is_relative_to(
-                    pathlib.Path(os.getenv('VIRTUAL_ENV')).resolve()):
-                raise ValueError("temp_dir must not be child directory of virtualenv root")
+        if self.temp_dir is not None and os.getenv("VIRTUAL_ENV"):
+            if (
+                pathlib.Path(self.temp_dir)
+                .resolve()
+                .is_relative_to(pathlib.Path(os.getenv("VIRTUAL_ENV")).resolve())
+            ):
+                raise ValueError(
+                    "temp_dir must not be child directory of virtualenv root"
+                )
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""
