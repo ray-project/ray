@@ -256,6 +256,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR "ray::rpc::WorkerExitType::INTENDED_SYSTEM_EXIT"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_INTENDED_USER_EXIT "ray::rpc::WorkerExitType::INTENDED_USER_EXIT"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
