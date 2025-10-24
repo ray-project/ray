@@ -695,7 +695,7 @@ def config(address: str, name: Optional[str]):
 )
 @click.option(
     "--verbose",
-    "--v",
+    "-v",
     is_flag=True,
     help="Verbose mode. If set, this will display the autoscaling observability of all the deployments in the application.",
 )
