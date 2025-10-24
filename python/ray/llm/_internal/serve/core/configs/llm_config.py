@@ -33,8 +33,8 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.engines.vllm.kv_transfer import (
-    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
+from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
+    KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
@@ -493,12 +493,10 @@ class LLMConfig(BaseModelExtended):
         if not kv_connector:
             raise ValueError("Connector type is not specified.")
 
-        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
-        if not kv_connector_backend_class:
-            raise ValueError(f"Unsupported connector type: {kv_connector}")
-
-        # 2. Setup the backend
-        kv_connector_backend = kv_connector_backend_class(self)
+        # 2. Setup the backend using factory
+        kv_connector_backend = KVConnectorBackendFactory.create_backend(
+            kv_connector, self
+        )
         kv_connector_backend.setup()
 
 

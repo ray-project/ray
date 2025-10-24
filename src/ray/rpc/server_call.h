@@ -211,7 +211,7 @@ class ServerCallImpl : public ServerCall {
     }
 
     // Cluster ID authentication
-    if (::RayConfig::instance().enable_cluster_auth()) {
+    if (auth_success && ::RayConfig::instance().enable_cluster_auth()) {
       if constexpr (EnableAuth == ClusterIdAuthType::LAZY_AUTH) {
         RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
         auto &metadata = context_.client_metadata();

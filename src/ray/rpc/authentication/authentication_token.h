@@ -92,8 +92,8 @@ class AuthenticationToken {
   /// prefix)
   /// @return AuthenticationToken object (empty if format invalid)
   static AuthenticationToken FromMetadata(std::string_view metadata_value) {
-    const std::string_view prefix(kBearerPrefix, sizeof(kBearerPrefix) - 1);
-    if (metadata_value.size() <= prefix.size() ||
+    const std::string_view prefix(kBearerPrefix);
+    if (metadata_value.size() < prefix.size() ||
         metadata_value.substr(0, prefix.size()) != prefix) {
       return AuthenticationToken();  // Invalid format, return empty
     }
@@ -145,7 +145,6 @@ class AuthenticationToken {
   }
 
   void MoveFrom(AuthenticationToken &&other) noexcept {
-    SecureClear();
     secret_ = std::move(other.secret_);
     // Clear the moved-from object explicitly for security
     // Note: 'other' is already an rvalue reference, no need to move again

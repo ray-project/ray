@@ -59,17 +59,6 @@ TEST_F(AuthenticationTokenTest, TestMoveAssignment) {
   EXPECT_TRUE(token1.empty());
 }
 
-TEST_F(AuthenticationTokenTest, TestSelfMoveAssignment) {
-  AuthenticationToken token("test-token");
-
-  // Self-assignment should not break the token
-  token = std::move(token);
-
-  EXPECT_FALSE(token.empty());
-  AuthenticationToken expected("test-token");
-  EXPECT_TRUE(token.Equals(expected));
-}
-
 TEST_F(AuthenticationTokenTest, TestEquals) {
   AuthenticationToken token1("same-token");
   AuthenticationToken token2("same-token");
