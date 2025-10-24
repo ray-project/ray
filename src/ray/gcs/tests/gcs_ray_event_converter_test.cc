@@ -482,14 +482,12 @@ INSTANTIATE_TEST_SUITE_P(
     TaskLifecycleEventOptionalFieldsTest,
     ::testing::Values(
         // All fields empty - none should be set
-        OptionalFieldTestCase{
-            "AllEmpty", "", "", 0, false, false, false},
+        OptionalFieldTestCase{"AllEmpty", "", "", 0, false, false, false},
         // All fields non-empty - all should be set
         OptionalFieldTestCase{
             "AllNonEmpty", "test_node_id", "test_worker_id", 1234, true, true, true},
         // Mixed: node_id set, others empty
-        OptionalFieldTestCase{
-            "OnlyNodeId", "test_node_id", "", 0, true, false, false},
+        OptionalFieldTestCase{"OnlyNodeId", "test_node_id", "", 0, true, false, false},
         // Mixed: worker_id set, others empty
         OptionalFieldTestCase{
             "OnlyWorkerId", "", "test_worker_id", 0, false, true, false},
