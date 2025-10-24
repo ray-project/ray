@@ -296,14 +296,10 @@ in combination.
    to create more than one environment copy per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
    actor. Additionally, you can make the individual sub-environments within a vector
    independent processes through Python's multiprocessing used by gymnasium.
-   Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes
-   and step them in parallel.
-
-.. note::
-
-    Multi-agent setups aren't vectorizable yet. The Ray team is working on a solution for
-    this restriction by using the `gymnasium >= 1.x` custom vectorization feature.
-
+   Set `config.env_runners(gym_env_vectorize_mode=gym.envs.registration.VectorizeMode.ASYNC)` to
+   create individual subenvironments as separate processes and step them in parallel.
+   If your custom entry point already returns a `gym.vector.VectorEnv`, set
+   `config.env_runners(gym_env_vectorize_mode=gym.envs.registration.VectorizeMode.VECTOR_ENTRY_POINT)`.
 
 .. tip::
 
