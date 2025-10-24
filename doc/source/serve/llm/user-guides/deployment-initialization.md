@@ -278,8 +278,7 @@ Torch.compile incurs some latency during initialization. This can be mitigated b
 (RayWorkerWrapper pid=126782) INFO 10-15 11:57:04 [backends.py:608] Using cache directory: /home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9/rank_1_0/backbone for vLLM's torch.compile
 ```
 
-In this example the cache folder is located at `/home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9`.
-Simply upload this file to your S3 bucket. The cache folder can now be retrieved at startup. We provide a custom utility to download the compile cache from cloud storage. Simply specify the `CloudDownloader` callback in `LLMConfig` and supply the relevant arguments. Make sure to set the `cache_dir` in compilation_config correctly. 
+In this example the cache folder is located at `/home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9`. Upload this directory to your S3 bucket. The cache folder can now be retrieved at startup. We provide a custom utility to download the compile cache from cloud storage. Specify the `CloudDownloader` callback in `LLMConfig` and supply the relevant arguments. Make sure to set the `cache_dir` in compilation_config correctly. 
 
 ```python
 llm_config = LLMConfig(
