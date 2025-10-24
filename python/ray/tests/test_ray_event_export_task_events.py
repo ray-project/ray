@@ -83,7 +83,7 @@ def wait_until_grpc_channel_ready(
     return True
 
 
-def get_job_ids_and_driver_script_task_ids_from_events(
+def get_job_id_and_driver_script_task_id_from_events(
     events: json, preserve_proto_field_name: bool
 ) -> tuple[Union[str, None], Union[str, None]]:
     test_job_id = base64.b64encode(
