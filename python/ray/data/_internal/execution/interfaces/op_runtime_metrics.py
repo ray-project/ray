@@ -323,7 +323,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of input blocks received by operator.",
         metrics_group=MetricsGroup.INPUTS,
     )
-    blocks_task_inputs_processed: int = metric_field(
+    num_task_inputs_processed: int = metric_field(
         default=0,
         description=(
             "Number of input blocks that operator's tasks have finished processing."
@@ -662,7 +662,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if self.num_tasks_finished == 0:
             return None
         else:
-            return self.blocks_task_inputs_processed / self.num_tasks_finished
+            return self.num_task_inputs_processed / self.num_tasks_finished
 
     @metric_property(
         description="Average number of output blocks per task per second.",
@@ -999,7 +999,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
-        self.blocks_task_inputs_processed += len(inputs)
+        self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
         input_size = inputs.size_bytes()
