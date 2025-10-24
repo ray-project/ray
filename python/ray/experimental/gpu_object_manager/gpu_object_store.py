@@ -205,7 +205,7 @@ class GPUObjectStore:
             for tensor in gpu_object:
                 if tensor in self._tensor_to_object_ids:
                     raise ValueError(
-                        "Adding a new object with a tensor that already exists in the GPU object store. Must wait for the tensor to be freed before adding a new object with the same tensor."
+                        f"Tensor already exists in the RDT object store. Free all references to ObjectRef({obj_id}) before storing the tensor again."
                     )
             for tensor in gpu_object:
                 self._tensor_to_object_ids[tensor].add(obj_id)

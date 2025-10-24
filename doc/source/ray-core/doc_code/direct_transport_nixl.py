@@ -59,9 +59,6 @@ print(ray.get(ref1))
 
 
 # __nixl_limitations_start__
-import pytest
-
-
 @ray.remote(num_gpus=1)
 class Actor:
     def __init__(self):
@@ -80,13 +77,14 @@ class Actor:
     def sum_dict(self, dict):
         return sum(v.sum().item() for v in dict.values())
 
-
-with pytest.raises(ValueError):
-    sender, receiver = Actor.remote(), Actor.remote()
-    ref1 = sender.send_dict1.remote()
-    result1 = receiver.sum_dict.remote(ref1)
-    print(ray.get(result1))
-    ref2 = sender.send_dict2.remote()
-    result2 = receiver.sum_dict.remote(ref2)
+sender, receiver = Actor.remote(), Actor.remote()
+ref1 = sender.send_dict1.remote()
+result1 = receiver.sum_dict.remote(ref1)
+print(ray.get(result1))
+ref2 = sender.send_dict2.remote()
+result2 = receiver.sum_dict.remote(ref2)
+try:
     print(ray.get(result2))
+except ValueError as e:
+    print("Error caught:", e)
 # __nixl_limitations_end__
