@@ -149,6 +149,20 @@ aws-requests-auth==0.4.3 \
     --hash=sha256:33593372018b960a31dbbe236f89421678b885c35f0b6a7abfae35bb77e069b2 \
     --hash=sha256:646bc37d62140ea1c709d20148f5d43197e6bd2d63909eb36fa4bb2345759977
     # via -r release/requirements_buildkite.in
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
+    # via
+    #   azure-identity
+    #   azure-storage-blob
+azure-identity==1.25.1 \
+    --hash=sha256:87ca8328883de6036443e1c37b40e8dc8fb74898240f61071e09d2e369361456 \
+    --hash=sha256:e9edd720af03dff020223cd269fa3a61e8f345ea75443858273bcb44844ab651
+    # via -r release/requirements_buildkite.in
+azure-storage-blob==12.26.0 \
+    --hash=sha256:5dd7d7824224f7de00bfeb032753601c982655173061e242f13be6e26d78d71f \
+    --hash=sha256:8c5631b8b22b4f53ec5fff2f3bededf34cfef111e2af613ad42c9e6de00a77fe
+    # via -r release/requirements_buildkite.in
 babel==2.15.0 \
     --hash=sha256:08706bdad8d0a3413266ab61bd6c34d0c28d6e1e7badf40a2cebe67644e2e1fb \
     --hash=sha256:8daf0e265d05768bc6c7a314cf1321e9a123afc328cc635c18622a2f30a04413
@@ -396,6 +410,9 @@ cryptography==42.0.5 \
     --hash=sha256:f12764b8fffc7a123f641d7d049d382b73f96a34117e0b637b80643169cec8ac \
     --hash=sha256:f8837fe1d6ac4a8052a9a8ddab256bc006242696f03368a4009be7ee3075cdb7
     # via
+    #   azure-identity
+    #   azure-storage-blob
+    #   msal
     #   pyjwt
     #   secretstorage
 debugpy==1.8.2 \
@@ -823,6 +840,10 @@ ipython==8.18.1 \
     # via
     #   ipykernel
     #   myst-nb
+isodate==0.7.2 \
+    --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
+    --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
+    # via azure-storage-blob
 jaraco-classes==3.4.0 \
     --hash=sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd \
     --hash=sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790
@@ -1003,6 +1024,17 @@ more-itertools==10.2.0 \
     # via
     #   jaraco-classes
     #   jaraco-functools
+msal==1.34.0 \
+    --hash=sha256:76ba83b716ea5a6d75b0279c0ac353a0e05b820ca1f6682c0eb7f45190c43c2f \
+    --hash=sha256:f669b1644e4950115da7a176441b0e13ec2975c29528d8b9e81316023676d6e1
+    # via
+    #   -r release/requirements_buildkite.in
+    #   azure-identity
+    #   msal-extensions
+msal-extensions==1.3.1 \
+    --hash=sha256:96d3de4d034504e969ac5e85bae8106c8373b5c6568e4c8fa7af2eca9dbe6bca \
+    --hash=sha256:c5b0fd10f65ef62b5f1d62f4251d51cbcaf003fcedae8c91b040a488614be1a4
+    # via azure-identity
 multidict==6.0.5 \
     --hash=sha256:01265f5e40f5a17f8241d52656ed27192be03bfa8764d88e8220141d1e4b3556 \
     --hash=sha256:0275e35209c27a3f7951e1ce7aaf93ce0d163b28948444bec61dd7badc6d3f8c \
@@ -1389,7 +1421,9 @@ pygments==2.16.1 \
 pyjwt[crypto]==2.8.0 \
     --hash=sha256:57e28d156e3d5c10088e0c68abb90bfac3df82b40a71bd0daa20c65ccd5c23de \
     --hash=sha256:59127c392cc44c2da5bb3192169a91f429924e17aff6534d70fdc02ab3e04320
-    # via pygithub
+    # via
+    #   msal
+    #   pygithub
 pynacl==1.5.0 \
     --hash=sha256:06b8f6fa7f5de8d5d2f7573fe8c863c051225a27b61e6860fd047b1775807858 \
     --hash=sha256:0c84947a22519e013607c9be43706dd42513f9e6ae5d39d3613ca1e142fba44d \
@@ -1593,10 +1627,12 @@ requests==2.32.3 \
     #   -r release/requirements_buildkite.in
     #   anyscale
     #   aws-requests-auth
+    #   azure-core
     #   docker
     #   google-api-core
     #   google-cloud-storage
     #   id
+    #   msal
     #   pybuildkite
     #   pygithub
     #   requests-toolbelt
@@ -1740,6 +1776,7 @@ six==1.16.0 \
     # via
     #   anyscale
     #   asttokens
+    #   azure-core
     #   oauth2client
     #   python-dateutil
     #   sphinxcontrib-redoc
@@ -1970,6 +2007,9 @@ typing-extensions==4.11.0 \
     #   aioitertools
     #   anyio
     #   anyscale
+    #   azure-core
+    #   azure-identity
+    #   azure-storage-blob
     #   ipython
     #   myst-nb
     #   pydantic
