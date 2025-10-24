@@ -385,6 +385,7 @@ def test_map_batches_with_batch_size_specified_fusion(
     mapped_ds = ds.map_batches(
         lambda x: x,
         batch_size=upstream_batch_size,
+        udf_modifying_row_count=False,
     ).map_batches(
         lambda x: x,
         batch_size=downstream_batch_size,
