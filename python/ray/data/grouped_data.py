@@ -1,8 +1,21 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
-import numpy as np
-import pandas as pd
-import pyarrow as pa
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
@@ -638,8 +651,9 @@ GroupedDataset = GroupedData
 def _normalize_map_groups_exprs(fn: Any) -> Optional[List[Expr]]:
     """Normalize map_groups expression input to a list of named expressions."""
 
+    exprs: List[Expr]
     if isinstance(fn, Expr):
-        exprs: Optional[List[Expr]] = [fn]
+        exprs = [fn]
     elif isinstance(fn, (list, tuple)) and all(isinstance(expr, Expr) for expr in fn):
         exprs = list(fn)
     elif isinstance(fn, dict) and all(isinstance(expr, Expr) for expr in fn.values()):
@@ -666,7 +680,7 @@ def _derive_expr_name(expr: Expr, idx: int) -> str:
 
 
 def _evaluate_exprs_on_block(block: Block, exprs: List[Expr]) -> Block:
-    columns: Dict[str, pa.Array] = {}
+    columns: Dict[str, "pyarrow.Array"] = {}
     expected_length: Optional[int] = None
 
     for expr in exprs:
@@ -687,6 +701,10 @@ def _evaluate_exprs_on_block(block: Block, exprs: List[Expr]) -> Block:
 
 
 def _expr_value_to_arrow_array(value: Any) -> "pyarrow.Array":
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
+
     if isinstance(value, pa.ChunkedArray):
         value = value.combine_chunks()
     if isinstance(value, pa.Array):
