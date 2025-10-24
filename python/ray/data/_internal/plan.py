@@ -135,14 +135,13 @@ class ExecutionPlan:
         sections = []
         for title, convert_fn in zip(titles, convert_fns):
 
-            banner = f"\n-------- {title} --------\n"
-
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
 
             # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
 
+            banner = f"\n-------- {title} --------\n"
             section = f"{banner}{plan_str}"
             sections.append(section)
 
