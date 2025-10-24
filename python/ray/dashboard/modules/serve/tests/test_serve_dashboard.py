@@ -1,8 +1,10 @@
 import copy
+import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict
 
@@ -18,6 +20,7 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -30,6 +33,9 @@ TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
 SERVE_HEAD_DEPLOYMENT_SCALE_URL = "http://localhost:8265/api/v1/applications/{app_name}/deployments/{deployment_name}/scale"
+SERVE_HEAD_AUTOSCALING_OBSERVABILITY_URL = (
+    "http://localhost:8265/api/serve/autoscaling/observability"
+)
 CONFIG_FILE_TEXT = """
 applications:
   - name: test_app
@@ -1124,6 +1130,110 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
         serve_details = ServeInstanceDetails(**response.json())
         assert len(serve_details.applications) == 1
         assert "test_app" in serve_details.applications
+
+
+# Test the autoscaling observability endpoint read
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_autoscaling_observability_snapshot_read(ray_start_with_dashboard):
+    """
+    Populate the autoscaling snapshot files with a single application and two deployments.
+    This is currently in accordance with #56225
+    """
+    logs_dir = get_serve_logs_dir()
+    os.makedirs(logs_dir, exist_ok=True)
+
+    old_path = os.path.join(logs_dir, "autoscaling_snapshot_old.log")
+    new_path = os.path.join(logs_dir, "autoscaling_snapshot_new.log")
+
+    def add_autoscaling_decision(
+        application_name,
+        deployment_name,
+        decision_timestamp,
+        cur_replicas,
+        target_replicas,
+    ):
+        from ray.serve.autoscaling_policy import default_autoscaling_policy
+
+        return {
+            "application_name": application_name,
+            "deployment_name": deployment_name,
+            "current_replicas": cur_replicas,
+            "target_replicas": target_replicas,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "scaling_status": "UPSCALING"
+            if target_replicas > cur_replicas
+            else "DOWNSCALING"
+            if target_replicas < cur_replicas
+            else "STABLE",
+            "policy_name": default_autoscaling_policy.__name__,
+            "look_back_period_s": 30.0,
+            "queued_requests": 0.0,
+            "ongoing_requests": 1.0,
+            "metrics_health": "healthy",
+            "errors": [],
+            "decisions": [
+                {
+                    "timestamp_str": time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(decision_timestamp)
+                    ),
+                    "current_num_replicas": cur_replicas,
+                    "target_num_replicas": target_replicas,
+                    "reason": f"current={cur_replicas}, proposed={target_replicas}",
+                }
+            ],
+        }
+
+    now = time.time()
+
+    # Add entries to the old file
+    with open(old_path, "w") as f:
+        f.write(
+            json.dumps(add_autoscaling_decision("demoapp", "Worker", now - 120, 1, 2))
+            + "\n"
+        )
+        f.write(
+            json.dumps(add_autoscaling_decision("demoapp", "Router", now - 100, 2, 3))
+            + "\n"
+        )
+        f.write(
+            json.dumps(add_autoscaling_decision("demoapp", "Worker", now - 90, 2, 3))
+            + "\n"
+        )
+        f.write(
+            json.dumps(add_autoscaling_decision("demoapp", "Router", now - 60, 3, 5))
+            + "\n"
+        )
+    os.utime(old_path, (now - 61, now - 61))
+
+    # Add entries to the new file
+    with open(new_path, "w") as f:
+        f.write(
+            json.dumps(add_autoscaling_decision("demoapp", "Worker", now - 5, 3, 1))
+            + "\n"
+        )
+    os.utime(new_path, (now, now))
+
+    response = requests.get(SERVE_HEAD_AUTOSCALING_OBSERVABILITY_URL, timeout=10)
+    assert response.status_code == 200, response.text
+    details = response.json()
+
+    # Check if application and deployment names are present
+    assert (
+        "demoapp" in details
+        and "Worker" in details["demoapp"]
+        and "Router" in details["demoapp"]
+    )
+    worker = details["demoapp"]["Worker"]
+    router = details["demoapp"]["Router"]
+
+    # Pick latest file for Worker
+    assert worker["metrics"]["target_replicas"] == 1
+
+    # Pick last line from the old file for router
+    assert router["metrics"]["target_replicas"] == 5
 
 
 if __name__ == "__main__":
