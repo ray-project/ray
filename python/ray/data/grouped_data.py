@@ -1,3 +1,4 @@
+from collections.abc import Iterator as IteratorABC
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -569,7 +570,7 @@ def _apply_udf_to_groups(
         )
 
         # Check if the UDF returned an iterator/generator.
-        if isinstance(result, Iterator):
+        if isinstance(result, IteratorABC):
             # If so, yield each item from the iterator.
             yield from result
         else:
