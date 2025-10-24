@@ -49,31 +49,31 @@ class MyActor:
         return sum(v.sum().item() for v in dict.values())
 
 
-# # No collective group is needed. The two actors just need to have NIXL
-# # installed.
-# sender, receiver = MyActor.remote(), MyActor.remote()
+# No collective group is needed. The two actors just need to have NIXL
+# installed.
+sender, receiver = MyActor.remote(), MyActor.remote()
 
-# # The tensor will be stored by the `sender` actor instead of in Ray's object
-# # store.
-# tensor = sender.random_tensor.remote()
-# result = receiver.sum.remote(tensor)
-# ray.get(result)
-# # __nixl_full_example_end__
+# The tensor will be stored by the `sender` actor instead of in Ray's object
+# store.
+tensor = sender.random_tensor.remote()
+result = receiver.sum.remote(tensor)
+ray.get(result)
+# __nixl_full_example_end__
 
-# # __nixl_get_start__
-# # ray.get will also use NIXL to retrieve the
-# # result.
-# print(ray.get(tensor))
-# # torch.Tensor(...)
-# # __nixl_get_end__
+# __nixl_get_start__
+# ray.get will also use NIXL to retrieve the
+# result.
+print(ray.get(tensor))
+# torch.Tensor(...)
+# __nixl_get_end__
 
-# # __nixl_put__and_get_start__
-# tensor1 = torch.randn(1000, 1000).cuda()
-# tensor2 = torch.randn(1000, 1000).cuda()
-# refs = sender.produce.remote([tensor1, tensor2])
-# ref1 = receiver.consume_with_nixl.remote(refs)
-# print(ray.get(ref1))
-# # __nixl_put__and_get_end__
+# __nixl_put__and_get_start__
+tensor1 = torch.randn(1000, 1000).cuda()
+tensor2 = torch.randn(1000, 1000).cuda()
+refs = sender.produce.remote([tensor1, tensor2])
+ref1 = receiver.consume_with_nixl.remote(refs)
+print(ray.get(ref1))
+# __nixl_put__and_get_end__
 
 
 # __nixl_limitations_start__
