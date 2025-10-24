@@ -272,6 +272,7 @@ class ProjectionPushdown(Rule):
         upstream_project: Project = current_project.input_dependency  # type: ignore[assignment]
         return _try_fuse_consecutive_projects(upstream_project, current_project)
 
+    # TODO(Justin): Rename this method
     @classmethod
     def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
 

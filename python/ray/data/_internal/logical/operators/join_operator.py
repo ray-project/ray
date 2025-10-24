@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator, SupportsPushThrough
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class JoinType(Enum):
     RIGHT_ANTI = "right_anti"
 
 
-class Join(NAry):
+class Join(NAry, SupportsPushThrough):
     """Logical operator for join."""
 
     def __init__(
@@ -119,3 +119,38 @@ class Join(NAry):
                 "in both left and right operands of the join operation: "
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> LogicalOperator:
+
+        left_op, right_op = self.input_dependencies
+
+        left_upstream_project = self._create_upstream_project(
+            columns, column_rename_map, left_op
+        )
+        left_new_columns = self._rename_projection(
+            column_rename_map, columns_to_rename=self._left_key_columns
+        )
+
+        right_upstream_project = self._create_upstream_project(
+            columns, column_rename_map, right_op
+        )
+        right_new_columns = self._rename_projection(
+            column_rename_map, columns_to_rename=self._right_key_columns
+        )
+
+        return Join(
+            left_input_op=left_upstream_project,
+            right_input_op=right_upstream_project,
+            join_type=self._join_type,
+            left_key_columns=left_new_columns,
+            right_key_columns=right_new_columns,
+            num_partitions=self._num_outputs,
+            left_columns_suffix=self._left_columns_suffix,
+            right_columns_suffix=self._right_columns_suffix,
+            partition_size_hint=self._partition_size_hint,
+            aggregator_ray_remote_args=self._aggregator_ray_remote_args,
+        )

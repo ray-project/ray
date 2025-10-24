@@ -4,7 +4,7 @@ import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator, SupportsPushThrough
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
@@ -339,7 +339,7 @@ class FlatMap(AbstractUDFMap):
         return True
 
 
-class StreamingRepartition(AbstractMap):
+class StreamingRepartition(AbstractMap, SupportsPushThrough):
     """Logical operator for streaming repartition operation.
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
@@ -360,3 +360,16 @@ class StreamingRepartition(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> LogicalOperator:
+
+        upstream_project = self._create_upstream_project(columns, column_rename_map)
+
+        return StreamingRepartition(
+            input_op=upstream_project,
+            target_num_rows_per_block=self._target_num_rows_per_block,
+        )
