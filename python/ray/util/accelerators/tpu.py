@@ -138,16 +138,19 @@ class SlicePlacementGroup:
         # Should validate topology and generation values, calculate and
         # set self._num_workers, and self._chips_per_host, and return a
         # ValueError if invalid.
-        total_chips = 1
-        for value in self._topology.strip().lower().split("x"):
-            total_chips *= int(value)
-
         self._accelerator_version_check(self.accelerator_version)
         if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
             tpu_accelerator_version=self.accelerator_version,
             tpu_topology=self._topology,
         ):
-            raise ValueError("Invalid accelerator topology")
+            raise ValueError(
+                f"Invalid accelerator topology: '{self._topology}' for "
+                f"accelerator version: '{self.accelerator_version}'"
+            )
+
+        total_chips = 1
+        for value in self._topology.strip().lower().split("x"):
+            total_chips *= int(value)
 
         self._chips_per_host = get_chips_per_host(
             self._topology, self.accelerator_version
