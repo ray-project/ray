@@ -24,7 +24,7 @@
 
 namespace ray {
 
-/// This struct holds all options for a single fallback scheduling strategy.
+/// This struct holds all the information for a single fallback option in the fallback strategy list.
 /// It is designed to be extensible.
 struct FallbackStrategyOptions {
   FallbackStrategyOptions() = default;
