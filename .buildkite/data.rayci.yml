@@ -228,7 +228,7 @@ steps:
         --only-tags gpu
         --skip-ray-installation
         --python-version 3.10
-    depends_on: docgpubuild-py3.10
+    depends_on: docgpubuild
 
   - label: ":database: data: integration tests"
     tags:
@@ -284,7 +284,7 @@ steps:
         --build-name docgpubuild-py3.10
         --only-tags gpu,gpu_only
         --python-version 3.10
-    depends_on: docgpubuild-py3.10
+    depends_on: docgpubuild
   - label: ":data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
     tags:
