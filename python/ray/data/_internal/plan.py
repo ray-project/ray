@@ -129,17 +129,21 @@ class ExecutionPlan:
             "Physical Plan (Optimized)",
         ]
 
+        # 1. Set initial plan
         plan = self._logical_plan
 
         output_strs = []
         for title, convert_fn in zip(titles, convert_fns):
 
-            title = f"\n-------- {title} --------\n"
+            banner = f"\n-------- {title} --------\n"
 
+            # 2. Convert plan to new plan
             plan = convert_fn(plan)
 
+            # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
-            combined = f"{title}{plan_str}"
+
+            combined = f"{banner}{plan_str}"
             output_strs.append(combined)
 
         return "".join(output_strs)
