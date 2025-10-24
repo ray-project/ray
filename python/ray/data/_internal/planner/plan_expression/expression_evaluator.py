@@ -751,4 +751,4 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     for name, output_col in zip(names, output_cols):
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
-    return BlockAccessor.for_block(new_block).drop("__stub__")
+    return BlockAccessor.for_block(new_block).drop(["__stub__"])
