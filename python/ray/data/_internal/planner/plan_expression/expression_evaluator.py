@@ -53,11 +53,11 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.NE: operator.ne,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
-    Operation.NOT: operator.not_,
+    Operation.NOT: operator.invert,
     Operation.IS_NULL: pd.isna,
     Operation.IS_NOT_NULL: pd.notna,
-    Operation.IN: lambda left, right: left.is_in(right),
-    Operation.NOT_IN: lambda left, right: ~left.is_in(right),
+    Operation.IN: lambda left, right: left.isin(right),
+    Operation.NOT_IN: lambda left, right: ~left.isin(right),
 }
 
 
