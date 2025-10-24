@@ -277,7 +277,8 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   stable: false
@@ -295,7 +296,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -332,7 +333,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49847
+  frequency: manual
   team: ml
 
   cluster:
@@ -354,7 +356,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49846
+  frequency: manual
   team: ml
 
   cluster:
