@@ -33,7 +33,7 @@ class OptimizedRayFossaPreprocessor:
     """Optimized Ray C/C++ dependency analyzer with package-level grouping"""
     
     # =============================================================================
-    # CONFIGURATION - All hardcoded patterns consolidated in one place
+    # CONFIGURATION - Minimal essential patterns only
     # =============================================================================
     
     # Main targets for dependency analysis
@@ -43,37 +43,17 @@ class OptimizedRayFossaPreprocessor:
     BUILD_TOOLS = ["protoc", "cmake", "ninja", "bazel", "python", "cython", 
                    "rules_foreign_cc", "rules_proto", "rules_cc"]
     
-    # File extensions for technology identification
+    # C/C++ file extensions for identification
     C_CPP_EXTENSIONS = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.h', '.hpp', '.hxx']
-    NON_CPP_EXTENSIONS = ['.py', '.java', '.scala', '.kt', '.go', '.rs', '.js', '.ts', '.jsx', '.tsx']
     
-    # Keywords that indicate non-C/C++ technologies
+    # Non-C/C++ keywords for exclusion
     NON_CPP_KEYWORDS = [
-        # Python ecosystem
         'python', 'py_', 'pip_', 'wheel', 'setuptools', 'pytest',
-        # JavaScript/Node.js ecosystem  
         'node', 'npm', 'yarn', 'webpack', 'babel', 'typescript',
-        # JVM languages
         'java', 'maven', 'gradle', 'scala', 'kotlin',
-        # Other languages
         'go_', 'rust_', 'cargo', 'crate',
-        # Test frameworks
         'test_', '_test', 'testing', 'mock', 'fixture'
     ]
-    
-    # Keywords that indicate C/C++ libraries and build artifacts
-    C_CPP_INDICATORS = [
-        # Build artifacts
-        'lib', 'static', 'shared', 'archive', 'object',
-        # Popular C/C++ libraries
-        'protobuf', 'grpc', 'absl', 'boost', 'gtest', 'gflags',
-        'zlib', 'openssl', 'boringssl', 'cares', 're2',
-        # Bazel rule prefixes
-        'cc_', 'objc_', 'fdo_', 'propeller_'
-    ]
-    
-    # Internal Ray targets to skip during analysis
-    INTERNAL_SKIP_PATTERNS = ['bazel', 'gen_', 'gen_ray_pkg.py']
     
     def __init__(self, ray_root: str, 
                  fossa_folder: str,
@@ -203,9 +183,8 @@ class OptimizedRayFossaPreprocessor:
         if any(target.endswith(ext) for ext in self.C_CPP_EXTENSIONS):
             return True
         
-        # Check for common C/C++ library indicators in target name
-        if any(indicator in target_lower for indicator in self.C_CPP_INDICATORS):
-            return True
+        # For external targets, assume C/C++ unless proven otherwise
+        # (removed C_CPP_INDICATORS as it was not providing value)
         
         # For external targets, assume C/C++ unless proven otherwise
         if target.startswith('//external:') or target.startswith('@'):
@@ -214,7 +193,7 @@ class OptimizedRayFossaPreprocessor:
         # For internal targets, be more selective
         if target.startswith('//'):
             # Skip obvious non-C/C++ internal targets
-            if any(pattern in target_lower for pattern in self.INTERNAL_SKIP_PATTERNS):
+            if any(skip in target_lower for skip in ['bazel', 'gen_', 'gen_ray_pkg.py']):
                 return False
             return True
         
