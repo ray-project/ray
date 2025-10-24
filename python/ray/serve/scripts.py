@@ -751,30 +751,24 @@ def status(
         autoscaling_details = ServeSubmissionClient(
             address
         ).get_autoscaling_observability()
+        if not autoscaling_details:
+            cli_logger.print("No autoscaling details found.")
+            return
+        if name and name not in autoscaling_details:
+            cli_logger.error(f'Application "{name}" does not exist.')
+            return
+        if deployment_name and not name:
+            cli_logger.error("--deployment-name requires --name to be set.")
+            return
+        if deployment_name and deployment_name not in autoscaling_details[name]:
+            cli_logger.error(f'Deployment "{deployment_name}" does not exist.')
+            return
+        deployment_details = autoscaling_details
         if name:
-            if name not in autoscaling_details:
-                cli_logger.error(f'Application "{name}" does not exist.')
-            else:
-                if deployment_name:
-                    if deployment_name not in autoscaling_details[name]:
-                        cli_logger.error(
-                            f'Deployment "{deployment_name}" does not exist.'
-                        )
-                    else:
-                        print(
-                            yaml.safe_dump(
-                                autoscaling_details[name][deployment_name],
-                                sort_keys=False,
-                            ),
-                            end="",
-                        )
-                else:
-                    print(
-                        yaml.safe_dump(autoscaling_details[name], sort_keys=False),
-                        end="",
-                    )
-        else:
-            print(yaml.safe_dump(autoscaling_details, sort_keys=False), end="")
+            deployment_details = autoscaling_details[name]
+            if deployment_name:
+                deployment_details = deployment_details[deployment_name]
+        print(yaml.safe_dump(deployment_details, sort_keys=False), end="")
 
 
 @cli.command(

@@ -1060,6 +1060,8 @@ class DeploymentAutoscalingDetail(BaseModel):
             # Convert ISO string from log to float timestamp for the model
             timestamp_str = raw_decision.get("timestamp_str")
             # This is a required field so assuming this is always present in raw data
+            if not timestamp_str:
+                continue
             timestamp_float = datetime.fromisoformat(
                 str(timestamp_str).replace("Z", "+00:00")
             ).timestamp()

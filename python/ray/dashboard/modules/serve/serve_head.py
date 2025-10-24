@@ -22,7 +22,6 @@ from ray.serve.schema import (
     DeploymentAutoscalingDetail,
 )
 
-DEFAULT_SNAPSHOT_TAIL_LINES = 50
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -374,7 +373,7 @@ class ServeHead(SubprocessModule):
         all_snapshot_files = glob.glob(snapshot_pattern)
         # Return if there are no files
         if not all_snapshot_files:
-            return None
+            return {}
 
         # Sort files by their last modification time, newest first.
         sorted_files = sorted(all_snapshot_files, key=os.path.getmtime, reverse=True)
