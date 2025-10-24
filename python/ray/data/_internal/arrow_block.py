@@ -373,9 +373,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
             return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
         return self._table.select(columns)
 
-    def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
-        return self._table.rename_columns(columns_rename)
-
     def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
 
         result_table = self._table

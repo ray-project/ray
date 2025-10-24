@@ -346,10 +346,6 @@ class BlockAccessor:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
 
-    def rename_columns(self, columns_rename: Dict[str, str]) -> Block:
-        """Return the block reflecting the renamed columns."""
-        raise NotImplementedError
-
     def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
         """
         Upserts a column into the block. If the column already exists, it will be replaced.

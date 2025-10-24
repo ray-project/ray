@@ -371,9 +371,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             )
         return self._table[columns]
 
-    def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
-        return self._table.rename(columns=columns_rename, inplace=False, copy=False)
-
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "pandas.DataFrame":
