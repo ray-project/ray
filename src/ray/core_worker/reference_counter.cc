@@ -1261,12 +1261,11 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
           WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
-        auto inserted = inner_it->second.mutable_borrow()
-                            ->stored_in_objects.emplace(object_id, owner_address)
-                            .second;
-        // This should be the first time that we have stored this object ID
-        // inside this return ID.
-        RAY_CHECK(inserted);
+        // The object_id might be already in stored_in_objects if the task is
+        // retried due to response loss caused by network failures.
+        // See https://github.com/ray-project/ray/issues/57997
+        inner_it->second.mutable_borrow()->stored_in_objects.emplace(object_id,
+                                                                     owner_address);
       }
       PRINT_REF_COUNT(inner_it);
     }
