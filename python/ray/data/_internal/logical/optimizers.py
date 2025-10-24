@@ -95,9 +95,18 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    from ray.data._internal.planner import create_planner
 
-    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    # 1. Get planning functions
+    optimize_logical, plan, optimize_physical = get_plan_conversion_fns()
+
+    # 2. Logical -> Logical (Optimized)
+    optimized_logical_plan = optimize_logical(logical_plan)
+
+    # 3. Rewire Logical -> Logical (Optimized)
     logical_plan._dag = optimized_logical_plan.dag
-    physical_plan = create_planner().plan(optimized_logical_plan)
-    return PhysicalOptimizer().optimize(physical_plan)
+
+    # 4. Logical (Optimized) -> Physical
+    physical_plan = plan(optimized_logical_plan)
+
+    # 5. Physical (Optimized) -> Physical
+    return optimize_physical(physical_plan)
