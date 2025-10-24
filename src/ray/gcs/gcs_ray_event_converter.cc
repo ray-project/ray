@@ -147,11 +147,10 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (!event.worker_id().empty()) {
     task_state_update->set_worker_id(event.worker_id());
   }
-  // Only if pid==0 can never be valid; better to make it optional for presence.
+  // worker pid can never be 0
   if (event.worker_pid() != 0) {
     task_state_update->set_worker_pid(event.worker_pid());
   }
-  // For messages, you can check `has_*` even in proto3, or compare to default instance.
   if (event.has_ray_error_info()) {
     *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
   }
