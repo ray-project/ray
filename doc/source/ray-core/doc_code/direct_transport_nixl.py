@@ -7,7 +7,6 @@ import ray
 
 @ray.remote(num_gpus=1)
 class MyActor:
-
     @ray.method(tensor_transport="nixl")
     def random_tensor(self):
         return torch.randn(1000, 1000).cuda()
