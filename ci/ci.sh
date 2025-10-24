@@ -117,6 +117,11 @@ compile_pip_dependencies() {
 }
 
 test_cpp() {
+  if [[ "${OSTYPE}" == darwin* ]]; then
+    echo "use macos_ci.sh to run cpp tests"
+    exit 1
+  fi
+
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
@@ -126,16 +131,17 @@ test_cpp() {
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
-  bazel test --test_output=all //cpp:test_python_call_cpp
+  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example, currently does not work on mac
-  if [[ "${OSTYPE}" != darwin* ]]; then
-    rm -rf ray-template
-    ray cpp --generate-bazel-project-template-to ray-template
-    pushd ray-template && bash run.sh
-  fi
+  rm -rf ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  (
+    cd ray-template
+    bash run.sh
+  )
 }
 
 test_macos_wheels() {

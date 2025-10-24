@@ -15,7 +15,7 @@ from ray.llm._internal.serve.config_generator.utils.gpu import (
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionModelConfig,
 )
-from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
 def get_model_default_config(model_id: str) -> Dict[str, Any]:

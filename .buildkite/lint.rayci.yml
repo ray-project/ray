@@ -12,7 +12,7 @@ steps:
     matrix:
       - clang_format
       - pre_commit
-      - untested_code_snippet
+      - semgrep_lint
       - banned_words
       - doc_readme
       - dashboard_format

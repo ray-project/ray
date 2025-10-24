@@ -377,8 +377,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 6
-            assert len(manager.build_graph.edges()) == 3
+            assert len(manager.build_graph.nodes()) == 7
+            assert len(manager.build_graph.edges()) == 4
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -655,7 +655,7 @@ class TestCli(unittest.TestCase):
             with self.assertRaises(RuntimeError) as e:
                 manager.diff_lock_files()
             assert (
-                "Lock files are not up to date. Please update lock files and push the changes."
+                "Lock files are not up to date for config: test.depsets.yaml. Please update lock files and push the changes."
                 in str(e.exception)
             )
             assert "+emoji==2.8.0" in str(e.exception)
@@ -735,6 +735,34 @@ class TestCli(unittest.TestCase):
             stdout = mock_stdout.getvalue()
             assert "Pre-hook test\n" in stdout
             assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
+
+    def test_get_expanded_depset_requirements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            requirements = manager.get_expanded_depset_requirements(
+                "general_depset__py311_cpu", []
+            )
+            assert requirements == ["requirements_test.txt"]
+            requirements = manager.get_expanded_depset_requirements(
+                "expand_general_depset__py311_cpu", []
+            )
+            assert sorted(requirements) == sorted(
+                [
+                    "requirements_test.txt",
+                    "requirements_expanded.txt",
+                ]
+            )
+            requirements = manager.get_expanded_depset_requirements(
+                "nested_expand_depset__py311_cpu", []
+            )
+            assert sorted(requirements) == sorted(
+                [
+                    "requirements_compiled_test_expand.txt",
+                    "requirements_expanded.txt",
+                    "requirements_test.txt",
+                ]
+            )
 
 
 if __name__ == "__main__":

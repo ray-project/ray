@@ -238,3 +238,53 @@ def construct_user_exception_with_traceback(
     )
     logger.error(f"Error in training function:\n{exc_traceback_str}")
     return UserExceptionWithTraceback(e, traceback_str=exc_traceback_str)
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V2 worker."""
+    from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+
+    try:
+        get_train_fn_utils()
+        return True
+    except RuntimeError:
+        return False
+
+
+def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
+    """Check that the caller is a Ray Train worker spawned by Ray Train,
+    with access to training function utilities.
+
+    Args:
+        raise_in_tune_session: Whether to raise a specific error message if the caller
+            is in a Tune session. If True, will raise a DeprecationWarning.
+
+    Returns:
+        A decorator that performs this check, which raises an error if the caller
+        is not a Ray Train worker.
+    """
+
+    def _wrap(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def _wrapped_fn(*args, **kwargs):
+            from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+            if raise_in_tune_session and _in_tune_session():
+                raise DeprecationWarning(
+                    f"`ray.train.{fn.__name__}` is deprecated when running in a function "
+                    "passed to Ray Tune. Please use the equivalent `ray.tune` API instead. "
+                    "See this issue for more context: "
+                    "https://github.com/ray-project/ray/issues/49454"
+                )
+
+            if not _in_ray_train_worker():
+                raise RuntimeError(
+                    f"`{fn.__name__}` cannot be used outside of a Ray Train training function. "
+                    "You are calling this API from the driver or another non-training process. "
+                    "These utilities are only available within a function launched by `trainer.fit()`."
+                )
+            return fn(*args, **kwargs)
+
+        return _wrapped_fn
+
+    return _wrap

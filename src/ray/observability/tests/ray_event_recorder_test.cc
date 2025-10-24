@@ -69,7 +69,6 @@ class RayEventRecorderTest : public ::testing::Test {
                                                    max_buffer_size_,
                                                    "gcs",
                                                    *fake_dropped_events_counter_);
-    recorder_->StartExportingEvents();
   }
 
   instrumented_io_context io_service_;
@@ -80,6 +79,13 @@ class RayEventRecorderTest : public ::testing::Test {
 };
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
   rpc::JobTableData data1;
   data1.set_job_id("test_job_id_1");
   data1.set_is_dead(false);
@@ -173,6 +179,13 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
 }
 
 TEST_F(RayEventRecorderTest, TestDropEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
   size_t expected_num_dropped_events = 3;
 
   // Add more events than the buffer size
@@ -202,6 +215,32 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
     num_dropped_events += value;
   }
   ASSERT_EQ(num_dropped_events, expected_num_dropped_events);
+}
+
+TEST_F(RayEventRecorderTest, TestDisabled) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": false
+}
+  )");
+  recorder_->StartExportingEvents();
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id_1");
+  data.set_is_dead(false);
+  data.set_driver_pid(12345);
+  data.set_start_time(absl::ToUnixSeconds(absl::Now()));
+  data.set_end_time(0);
+  data.set_entrypoint("python test_script.py");
+  data.mutable_driver_address()->set_ip_address("127.0.0.1");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+  io_service_.run_one();
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 0);
 }
 
 }  // namespace observability
