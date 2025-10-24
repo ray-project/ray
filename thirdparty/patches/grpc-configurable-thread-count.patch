@@ -17,7 +17,7 @@ index 670ca6551c..043021dc4a 100644
 -  ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
 +  static constexpr const char* grpc_pooling_env_var_name = "RAY_num_grpc_internal_threads";
 +  gpr_log(GPR_ERROR, "init_num_cpus called");
-+  const char* env_var_value = std::getenv(grpc_pooling_env_var_name);
++  const char* env_var_value = nullptr;
 +  if (env_var_value != nullptr) {
 +    const char* end = env_var_value + std::strlen(env_var_value);
 +    auto const out = std::from_chars(env_var_value, end, ncpus);
