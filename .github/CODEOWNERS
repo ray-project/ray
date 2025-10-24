@@ -123,3 +123,9 @@
 /.github/workflows/ @ray-project/ray-ci
 
 /.gemini/ @edoakes @ray-project/ray-ci
+
+# ==== Providers ====
+
+# Azure
+/python/ray/autoscaler/azure/ @marosset @jackfrancis @alimaazamat
+/python/ray/autoscaler/_private/_azure/ @marosset @jackfrancis @alimaazamat
