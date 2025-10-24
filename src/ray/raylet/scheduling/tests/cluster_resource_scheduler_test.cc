@@ -1819,10 +1819,12 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   ASSERT_EQ(best_node_1, node_1);
   ASSERT_FALSE(is_infeasible);
 
-  // Create LabelSelector map to pass to TaskSpec
+  // Create LabelSelector to pass to TaskSpec. This is constructed in the raylet in
+  // prepare_label_selector.
   std::unordered_map<std::string, std::string> label_selector_dict = {
       {"ray.io/accelerator-type", "A100"},
   };
+  label_selector = ray::LabelSelector(label_selector_dict);
 
   // Add label selector to TaskSpec and confirm node is no longer schedulable
   TaskSpecBuilder label_selector_spec;
@@ -1851,7 +1853,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
       "",
       true,
       {},
-      label_selector_dict);
+      label_selector);
   label_selector_spec.SetNormalTaskSpec(
       0, false, "", scheduling_strategy, ActorID::Nil());
   auto built_label_selector = std::move(label_selector_spec).ConsumeAndBuild();
