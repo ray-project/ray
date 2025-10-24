@@ -4,13 +4,16 @@
 The initialization phase of a serve.llm deployment involves many steps, including preparation of model weights, engine (vLLM) initialization, and Ray serve replica autoscaling overheads. A detailed breakdown of the steps involved in using serve.llm with vLLM is provided below.
 
 ## Startup Breakdown
-- **Node Acquiring**: If a GPU node isn't available, a new instance must be provisioned. 
+- **Provisioning Nodes**: If a GPU node isn't available, a new instance must be provisioned.
+- **Image Download**: Downloading image to target instance incurs latency correlated with image size.
 - **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (such as vLLM), preparing model and engine configurations, etc.
-- **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
-- **Warmup**: vLLM runs additional inference to warm up the KV cache.
-- **CUDA Graph Capture**: vLLM handles Cuda Graph capture independently of Torch Compile. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
-- **Model Loading**: Retrieve model from source to GPU memory, either from Hugging Face or cloud storage. 
+- **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory
 - **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
+- **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
+- **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
+- **Warmup**: Initialize KV cache, run model inference.
+
+
 
 This document will provide an overview of the numerous ways to customize your deployment initialization.
 
@@ -252,7 +255,7 @@ llm_config = LLMConfig(
 ```
 
 ### Model Sharding
-Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By presharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
+Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
 
 Once the sharded weights have been saved, upload them to S3 and use RunAI streamer with a new flag to load the sharded weights
 
