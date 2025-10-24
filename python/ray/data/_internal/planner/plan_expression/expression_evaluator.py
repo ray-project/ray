@@ -11,6 +11,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.logical.rules.projection_pushdown import (
+    _extract_input_columns_renaming_mapping,
+)
 from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
@@ -24,6 +27,7 @@ from ray.data.expressions import (
     UDFExpr,
     UnaryExpr,
     _ExprVisitor,
+    col,
 )
 
 logger = logging.getLogger(__name__)
@@ -693,7 +697,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     return evaluator.visit(expr)
 
 
-def eval_projection(exprs: List[Expr], block: Block) -> Block:
+def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
 
@@ -704,7 +708,7 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
     - Column ordering
 
     Args:
-        exprs: List of expressions to evaluate (may include StarExpr)
+        projection_exprs: List of expressions to evaluate (may include StarExpr)
         block: The block to project
 
     Returns:
@@ -716,71 +720,35 @@ def eval_projection(exprs: List[Expr], block: Block) -> Block:
     if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
         return block
 
-    existing_cols = list(block_accessor.column_names())
-
     # Handle simple cases early.
-    if len(exprs) == 0:
+    if len(projection_exprs) == 0:
         return block_accessor.select([])
 
-    if len(exprs) == 1 and isinstance(exprs[0], StarExpr):
-        return block
+    input_column_names = list(block_accessor.column_names())
+    # Collect input column rename map from the projection list
+    input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Helper function to check if expression is a simple rename of existing column.
-    def is_simple_rename(expr: Expr) -> bool:
-        return isinstance(expr, AliasExpr) and expr.expr.name in existing_cols
+    # Expand star expr (if any)
+    if isinstance(projection_exprs[0], StarExpr):
+        # Cherry-pick input block's columns that aren't explicitly removed via
+        # renaming
+        input_column_ref_exprs = [
+            col(c) for c in input_column_names if c not in input_column_rename_map
+        ]
 
-    # Build rename map: src_name -> dest_name for simple renames.
-    rename_map: Dict[str, str] = {}
-    for expr in exprs:
-        if is_simple_rename(expr) and expr.expr.name != expr.name:
-            rename_map[expr.expr.name] = expr.name
+        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
 
-    # Expand stars to determine output column order.
-    non_star_exprs = [e for e in exprs if not isinstance(e, StarExpr)]
-    output_order: List[str] = []
-    for expr in exprs:
-        if isinstance(expr, StarExpr):
-            output_order.extend(rename_map.get(c, c) for c in existing_cols)
-        else:
-            output_order.append(expr.name)
+    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
-    # Determine which source columns should be dropped in final output.
-    # ANY alias where src != dest should drop 'src' if no later expression outputs 'src'.
-    drop_sources: set[str] = set()
-    for idx, expr in enumerate(non_star_exprs):
-        # Check if this is ANY alias (not just simple renames of existing cols)
-        if isinstance(expr, AliasExpr):
-            src = expr.expr.name
-            dest = expr.name
-            if src != dest:
-                # Check if any expression AFTER this one outputs the source name.
-                if not any(e.name == src for e in non_star_exprs[idx + 1 :]):
-                    drop_sources.add(src)
+    # This clumsy workaround is necessary to be able to fill in Pyarrow tables
+    # that has to be "seeded" from existing table with N rows, and couldn't be
+    # started from a truly empty table.
+    #
+    # TODO fix
+    new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
+    new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
 
-    # Evaluate expressions sequentially.
-    cur_block = block
-    seen_outputs = set()
+    for name, output_col in zip(names, output_cols):
+        new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
-    for expr in non_star_exprs:
-        output_name = expr.name
-
-        # Check for duplicate output names.
-        if output_name in seen_outputs:
-            raise ValueError(f"Column name '{output_name}' is a duplicate.")
-        seen_outputs.add(output_name)
-
-        # Simple renames evaluate against original block to preserve swap semantics.
-        # Other expressions evaluate against current block to access prior outputs.
-        source_block = block if is_simple_rename(expr) else cur_block
-        value = eval_expr(expr, source_block)
-        cur_block = BlockAccessor.for_block(cur_block).fill_column(output_name, value)
-
-    # Build final column list: deduplicate output_order and exclude dropped sources.
-    final_cols: List[str] = []
-    seen_final = set()
-    for name in output_order:
-        if name not in drop_sources and name not in seen_final:
-            final_cols.append(name)
-            seen_final.add(name)
-
-    return BlockAccessor.for_block(cur_block).select(final_cols)
+    return BlockAccessor.for_block(new_block).drop(["__stub__"])

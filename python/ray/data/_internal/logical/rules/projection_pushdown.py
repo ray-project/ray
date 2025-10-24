@@ -9,7 +9,8 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
-    _ColumnRewriter,
+    _ColumnRefRebindingVisitor,
+    _is_col_expr,
 )
 from ray.data.expressions import (
     AliasExpr,
@@ -45,17 +46,20 @@ def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
     """
     Check if an expression is a simple column rename.
 
-    Returns (source_name, dest_name) if the expression is of form:
+    Returns (source_name, target_name) if the expression is of form:
         col("source").alias("dest")
-    where source != dest.
 
     Returns None for other expression types.
     """
-    if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr):
-        dest_name = expr.name
+    if (
+        isinstance(expr, AliasExpr)
+        and isinstance(expr.expr, ColumnExpr)
+        and expr._is_rename
+    ):
+        target_name = expr.name
         source_name = expr.expr.name
-        if source_name != dest_name:
-            return source_name, dest_name
+        return source_name, target_name
+
     return None
 
 
@@ -67,27 +71,28 @@ def _analyze_upstream_project(
 
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
-    output_columns = {
+    output_column_names = {
         expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
     }
-    column_definitions = {
-        expr.name: expr
-        for expr in upstream_project.exprs
-        if not isinstance(expr, StarExpr)
+
+    # Compose column definitions in the form of a mapping of
+    #   - Target column name
+    #   - Target expression
+    output_column_defs = {
+        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
     }
 
-    # Identify columns removed by renames (source not in output)
-    removed_by_renames: Set[str] = set()
-    for expr in upstream_project.exprs:
-        if isinstance(expr, StarExpr):
-            continue
-        rename_pair = _extract_simple_rename(expr)
-        if rename_pair is not None:
-            source_name, _ = rename_pair
-            if source_name not in output_columns:
-                removed_by_renames.add(source_name)
+    # Identify upstream input columns removed by renaming (ie not propagated into
+    # its output)
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(
+        upstream_project.exprs
+    )
 
-    return output_columns, column_definitions, removed_by_renames
+    return (
+        output_column_names,
+        output_column_defs,
+        set(upstream_column_renaming_map.keys()),
+    )
 
 
 def _validate_fusion(
@@ -142,96 +147,122 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
-def _compose_projects(
-    upstream_project: Project,
-    downstream_project: Project,
-    upstream_has_star: bool,
-) -> List[Expr]:
-    """
-    Compose two Projects when the downstream has star().
-
-    Strategy:
-    - Emit a single star() only if the upstream had star() as well.
-    - Evaluate upstream non-star expressions first, then downstream non-star expressions.
-      With sequential projection evaluation, downstream expressions can reference
-      upstream outputs without explicit rewriting.
-    - Rename-of-computed columns will be dropped from final output by the evaluator
-      when there's no later explicit mention of the source name.
-    """
-    fused_exprs: List[Expr] = []
-
-    # Include star only if upstream had star; otherwise, don't reintroduce dropped cols.
-    if upstream_has_star:
-        fused_exprs.append(StarExpr())
-
-    # Then upstream non-star expressions in order.
-    for expr in upstream_project.exprs:
-        if not isinstance(expr, StarExpr):
-            fused_exprs.append(expr)
-
-    # Then downstream non-star expressions in order.
-    for expr in downstream_project.exprs:
-        if not isinstance(expr, StarExpr):
-            fused_exprs.append(expr)
-
-    return fused_exprs
-
-
-def _try_fuse_consecutive_projects(
-    upstream_project: Project, downstream_project: Project
-) -> Project:
+def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
     """
     Attempt to merge two consecutive Project operations into one.
 
     Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
     """
     upstream_has_star: bool = upstream_project.has_star_expr()
-    downstream_has_star: bool = downstream_project.has_star_expr()
+
+    # TODO add validations that
+    #   - exprs only depend on input attrs (ie no dep on output of other exprs)
 
     # Analyze upstream
     (
-        upstream_output_columns,
-        upstream_column_definitions,
-        removed_by_renames,
+        upstream_output_cols,
+        upstream_column_defs,
+        upstream_input_cols_removed,
     ) = _analyze_upstream_project(upstream_project)
 
     # Validate fusion possibility
     is_valid, missing_columns = _validate_fusion(
         downstream_project,
         upstream_has_star,
-        upstream_output_columns,
-        removed_by_renames,
+        upstream_output_cols,
+        upstream_input_cols_removed,
     )
 
     if not is_valid:
         # Raise KeyError to match expected error type in tests
         raise KeyError(
             f"Column(s) {sorted(missing_columns)} not found. "
-            f"Available columns: {sorted(upstream_output_columns) if not upstream_has_star else 'all columns (has star)'}"
+            f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
         )
 
-    rewritten_exprs: List[Expr] = []
-    # Intersection case: This is when downstream is a selection (no star), and we need to recursively rewrite the downstream expressions into the upstream column definitions.
-    # Example: Upstream: [col("a").alias("b")], Downstream: [col("b").alias("c")] → Rewritten: [col("a").alias("c")]
-    if not downstream_has_star:
-        for expr in downstream_project.exprs:
-            rewritten = _ColumnRewriter(upstream_column_definitions).visit(expr)
-            rewritten_exprs.append(rewritten)
-    else:
-        # Composition case: downstream has star(), and we need to merge both upstream and downstream expressions.
+    # Following invariants are upheld for each ``Project`` logical op:
+    #
+    #   1. ``Project``s list of expressions are bound to op's input columns **only**
+    #   (ie there could be no inter-dependency b/w expressions themselves)
+    #
+    #   2. `Each of expressions on the `Project``s list constitutes an output
+    #   column definition, where column's name is derived from ``expr.name`` and
+    #   column itself is derived by executing that expression against the op's
+    #   input block.
+    #
+    # Therefore to abide by and satisfy aforementioned invariants, when fusing
+    # 2 ``Project`` operators, following scenarios are considered:
+    #
+    #   1. Composition: downstream including (and potentially renaming) upstream
+    #      output columns (this is the case when downstream holds ``StarExpr``).
+    #
+    #   2. Projection: downstream projecting upstream output columns (by for ex,
+    #      only selecting & transforming some of the upstream output columns).
+    #
+
+    # Upstream output column refs inside downstream expressions need to be bound
+    # to upstream output column definitions to satisfy invariant #1 (common for both
+    # composition/projection cases)
+    v = _ColumnRefRebindingVisitor(upstream_column_defs)
+
+    rebound_downstream_exprs = [
+        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
+    ]
+
+    if not downstream_project.has_star_expr():
+        # Projection case: this is when downstream is a *selection* (ie, not including
+        # the upstream columns with ``StarExpr``)
+        #
         # Example:
-        # Upstream: [star(), col("a").alias("b")], Downstream: [star(), col("b").alias("c")] → Rewritten: [star(), col("a").alias("b"), col("b").alias("c")]
-        rewritten_exprs = _compose_projects(
-            upstream_project,
-            downstream_project,
-            upstream_has_star,
+        #   Upstream: Project([col("a").alias("b")])
+        #   Downstream: Project([col("b").alias("c")])
+        #
+        #   Result: Project([col("a").alias("c")])
+        new_exprs = rebound_downstream_exprs
+    else:
+        # Composition case: downstream has ``StarExpr`` (entailing that downstream
+        # output will be including all of the upstream output columns)
+        #
+        # Example 1:
+        #   Upstream: [star(), col("a").alias("b")],
+        #   Downstream: [star(), col("b").alias("c")]
+        #
+        #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
+        #
+        # Example 2:
+        #   Input (columns): ["a", "b"]
+        #   Upstream: [star({"b": "z"}), col("a").alias("x")],
+        #   Downstream: [star({"x": "y"}), col("z")]
+        #
+        #   Result: [star(), col("a").alias("y"), col("b").alias("z")]
+
+        # Extract downstream's input column rename map (downstream inputs are
+        # upstream's outputs)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(
+            downstream_project.exprs
         )
+        # Collect upstream output column expression "projected" to become
+        # downstream expressions
+        projected_upstream_output_col_exprs = []
+
+        # When fusing 2 projections
+        for e in upstream_project.exprs:
+            # NOTE: We have to filter out upstream output columns that are
+            #       being *renamed* by downstream expression
+            if e.name not in downstream_input_column_rename_map:
+                projected_upstream_output_col_exprs.append(e)
+
+        new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
 
     return Project(
         upstream_project.input_dependency,
-        exprs=rewritten_exprs,
+        exprs=new_exprs,
         ray_remote_args=downstream_project._ray_remote_args,
     )
+
+
+def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
+    return [e for e in exprs if not isinstance(e, StarExpr)]
 
 
 class ProjectionPushdown(Rule):
@@ -270,7 +301,10 @@ class ProjectionPushdown(Rule):
             return op
 
         upstream_project: Project = current_project.input_dependency  # type: ignore[assignment]
-        return _try_fuse_consecutive_projects(upstream_project, current_project)
+
+        fused = _try_fuse(upstream_project, current_project)
+
+        return fused
 
     @classmethod
     def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
@@ -287,28 +321,27 @@ class ProjectionPushdown(Rule):
             and input_op.supports_projection_pushdown()
         ):
             if current_project.has_star_expr():
-                # If project has a star, than no projection is feasible
+                # If project has a star, then projection is not feasible
                 required_columns = None
             else:
-                # Otherwise, collect required column for projection
+                # Otherwise, collect required columns to push projection down
+                # into the reader
                 required_columns = _collect_referenced_columns(current_project.exprs)
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole
-            is_simple_projection = all(
-                _is_col_expr(expr)
-                for expr in current_project.exprs
-                if not isinstance(expr, StarExpr)
+            is_projection = all(
+                _is_col_expr(expr) for expr in _filter_out_star(current_project.exprs)
             )
 
-            if is_simple_projection:
+            if is_projection:
                 # NOTE: We only can rename output columns when it's a simple
                 #       projection and Project operator is discarded (otherwise
                 #       it might be holding expression referencing attributes
                 #       by original their names prior to renaming)
                 #
                 # TODO fix by instead rewriting exprs
-                output_column_rename_map = _collect_output_column_rename_map(
+                output_column_rename_map = _extract_input_columns_renaming_mapping(
                     current_project.exprs
                 )
 
@@ -330,18 +363,35 @@ class ProjectionPushdown(Rule):
         return current_project
 
 
-def _is_col_expr(expr: Expr) -> bool:
-    return isinstance(expr, ColumnExpr) or (
-        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+def _extract_input_columns_renaming_mapping(
+    projection_exprs: List[Expr],
+) -> Dict[str, str]:
+    """Fetches renaming mapping of all input columns names being renamed (replaced).
+    Format is source column name -> new column name.
+    """
+
+    return dict(
+        [
+            _get_renaming_mapping(expr)
+            for expr in _filter_out_star(projection_exprs)
+            if _is_renaming_expr(expr)
+        ]
     )
 
 
-def _collect_output_column_rename_map(exprs: List[Expr]) -> Dict[str, str]:
-    # First, extract all potential rename pairs
-    rename_map = {
-        expr.expr.name: expr.name
-        for expr in exprs
-        if isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
-    }
+def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
+    assert _is_renaming_expr(expr)
 
-    return rename_map
+    alias: AliasExpr = expr
+
+    return alias.expr.name, alias.name
+
+
+def _is_renaming_expr(expr: Expr) -> bool:
+    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
+
+    assert not is_renaming or isinstance(
+        expr.expr, ColumnExpr
+    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
+
+    return is_renaming
