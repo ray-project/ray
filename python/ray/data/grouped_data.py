@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
     import pyarrow as pa
+
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
@@ -113,13 +114,7 @@ class GroupedData:
     @PublicAPI(api_group=FA_API_GROUP)
     def map_groups(
         self,
-        fn: Union[
-            UserDefinedFunction[DataBatch, DataBatch],
-            Expr,
-            List[Expr],
-            Tuple[Expr, ...],
-            Dict[str, Expr],
-        ],
+        fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         zero_copy_batch: bool = False,
         compute: Union[str, ComputeStrategy] = None,
@@ -177,32 +172,11 @@ class GroupedData:
             ...     )
             ... ) # doctest: +SKIP
 
-            >>> # Use Ray Data expressions to compute per-group results.
-            >>> from ray.data.expressions import col, udf  # doctest: +SKIP
-            >>> from ray.data.datatype import DataType  # doctest: +SKIP
-            >>> import pyarrow as pa  # doctest: +SKIP
-            >>> import pyarrow.compute as pc  # doctest: +SKIP
-            >>>
-            >>> @udf(DataType.int64())  # doctest: +SKIP
-            ... def min_value(arr: pa.ChunkedArray) -> pa.Array:
-            ...     return pa.array([pc.min(arr).as_py()])
-            >>>
-            >>> ds.groupby("group").map_groups(  # doctest: +SKIP
-            ...     [
-            ...         min_value(col("group")).alias("group"),
-            ...         min_value(col("value")).alias("min_value"),
-            ...     ]
-            ... ).show()  # doctest: +SKIP
-
         Args:
-            fn: The function to apply to each group of records, a Ray Data
-                expression, or a collection of expressions. Callables receive the
-                entire group as input and must return a batch of zero or more
-                records, similar to map_batches. When
-                expressions are provided, each expression is evaluated against
-                the group and must produce the same number of rows. Use
-                ray.data.expressions.Expr.alias to control the output
-                column names.
+            fn: The function to apply to each group of records, or a class type
+                that can be instantiated to create such a callable. It takes as
+                input a batch of all records from a single group, and returns a
+                batch of zero or more records, similar to map_batches().
             zero_copy_batch: If True, each group of rows (batch) will be provided w/o
                 making an additional copy.
             compute: The compute strategy to use for the map operation.
@@ -251,11 +225,6 @@ class GroupedData:
         Returns:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
-
-        Note:
-            When expressions are provided, ``fn_args``, ``fn_kwargs``,
-            ``fn_constructor_args``, ``fn_constructor_kwargs``, and
-            ``ray_remote_args_fn`` are not supported.
 
         .. seealso::
 
@@ -306,35 +275,7 @@ class GroupedData:
         #       object in its closure to ensure its serializability
         #
         # See https://github.com/ray-project/ray/issues/54280 for more details
-        exprs = _normalize_map_groups_exprs(fn)
-        if exprs is not None:
-            if any(
-                [
-                    fn_args,
-                    fn_kwargs,
-                    fn_constructor_args,
-                    fn_constructor_kwargs,
-                    ray_remote_args_fn,
-                ]
-            ):
-                raise ValueError(
-                    "map_groups expressions do not support fn_args, fn_kwargs, "
-                    "fn_constructor_args, fn_constructor_kwargs, or ray_remote_args_fn."
-                )
-
-            target_batch_format = batch_format
-
-            def wrapped_fn(block, *args, **kwargs):
-                projected_block = _evaluate_exprs_on_block(block, exprs)
-                projected_accessor = BlockAccessor.for_block(projected_block)
-                return projected_accessor.to_batch_format(target_batch_format)
-
-            wrapped_fn.__name__ = (
-                exprs[0].name if len(exprs) == 1 else "map_groups_expr"
-            )
-            group_batch_format = None
-
-        elif isinstance(fn, CallableClass):
+        if isinstance(fn, CallableClass):
 
             class wrapped_fn:
                 def __init__(self, *args, **kwargs):
@@ -345,8 +286,6 @@ class GroupedData:
                         self.fn, batch, keys, batch_format, *args, **kwargs
                     )
 
-            group_batch_format = None
-
         else:
 
             def wrapped_fn(batch, *args, **kwargs):
@@ -354,13 +293,11 @@ class GroupedData:
                     fn, batch, keys, batch_format, *args, **kwargs
                 )
 
-            group_batch_format = None
-
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        if exprs is None and isinstance(fn, partial):
+        if isinstance(fn, partial):
             wrapped_fn.__name__ = fn.func.__name__
-        elif exprs is None:
+        else:
             wrapped_fn.__name__ = fn.__name__
 
         # NOTE: We set batch_size=None here, so that every batch contains the entire block,
@@ -372,7 +309,7 @@ class GroupedData:
             # NOTE: We specify `batch_format` as none to avoid converting
             #       back-n-forth between batch and block formats (instead we convert
             #       once per group inside the method applying the UDF itself)
-            batch_format=group_batch_format,
+            batch_format=None,
             zero_copy_batch=zero_copy_batch,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
@@ -383,6 +320,95 @@ class GroupedData:
             memory=memory,
             concurrency=concurrency,
             udf_modifying_row_count=True,
+            ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=FA_API_GROUP)
+    def with_column(
+        self,
+        column_name: str,
+        expr: Expr,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Evaluate an expression for each group and return a dataset.
+
+        Args:
+            column_name: Name of the output column.
+            expr: Expression evaluated on each group.
+            **ray_remote_args: Additional Ray remote arguments to pass to the
+                underlying map tasks (for example, `num_gpus=1`).
+        """
+
+        return self.with_columns({column_name: expr}, **ray_remote_args)
+
+    @PublicAPI(api_group=FA_API_GROUP)
+    def with_columns(
+        self,
+        column_map: Dict[str, Expr],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Evaluate expressions against each group and return the results.
+
+        Args:
+            column_map: Mapping of output column names to expressions. Include
+                existing columns by referencing them inside the expression,
+                e.g., `{ "group": col("group"), "min_value": min(col("value")) }`.
+            compute: Optional compute strategy for the map tasks.
+            num_cpus/num_gpus/memory/concurrency: Resource hints for each map
+                worker.
+            ray_remote_args_fn: Optional callable that supplies dynamic Ray
+                remote args per worker.
+            **ray_remote_args: Additional Ray remote args forwarded to the map
+                tasks.
+        """
+
+        if not column_map:
+            raise ValueError("column_map must contain at least one expression.")
+
+        unsupported_args = {
+            "fn_args",
+            "fn_kwargs",
+            "fn_constructor_args",
+            "fn_constructor_kwargs",
+        }
+        invalid = unsupported_args.intersection(ray_remote_args.keys())
+        if invalid:
+            raise ValueError(
+                "GroupedData.with_columns expressions do not support the "
+                f"following arguments: {sorted(invalid)}."
+            )
+
+        exprs = _normalize_grouped_expressions(column_map)
+
+        shuffled_ds = _shuffle_for_grouped_operation(
+            self._dataset, self._key, self._num_partitions
+        )
+
+        def wrapped_fn(block, *args, **kwargs):
+            return _evaluate_grouped_exprs(block, exprs)
+
+        return shuffled_ds._map_batches_without_batch_size_validation(
+            wrapped_fn,
+            batch_size=None,
+            compute=compute,
+            batch_format=None,
+            zero_copy_batch=False,
+            fn_args=None,
+            fn_kwargs=None,
+            fn_constructor_args=None,
+            fn_constructor_kwargs=None,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -646,41 +672,38 @@ def _apply_udf_to_groups(
 
 # Backwards compatibility alias.
 GroupedDataset = GroupedData
+def _shuffle_for_grouped_operation(
+    dataset: Dataset,
+    key: Optional[Union[str, List[str]]],
+    num_partitions: Optional[int],
+) -> Dataset:
+    if key is None:
+        return dataset.repartition(1)
+
+    if dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        partitions = num_partitions or dataset.context.default_hash_shuffle_parallelism
+        return dataset.repartition(partitions, keys=key, sort=True)
+
+    return dataset.sort(key)
 
 
-def _normalize_map_groups_exprs(fn: Any) -> Optional[List[Expr]]:
-    """Normalize map_groups expression input to a list of named expressions."""
-
-    exprs: List[Expr]
-    if isinstance(fn, Expr):
-        exprs = [fn]
-    elif isinstance(fn, (list, tuple)) and all(isinstance(expr, Expr) for expr in fn):
-        exprs = list(fn)
-    elif isinstance(fn, dict) and all(isinstance(expr, Expr) for expr in fn.values()):
-        exprs = [expr.alias(name) for name, expr in fn.items()]
-    else:
-        return None
-
-    normalized: List[Expr] = []
-    for idx, expr in enumerate(exprs):
-        if expr.name:
-            normalized.append(expr)
+def _normalize_grouped_expressions(column_map: Dict[str, Expr]) -> List[Expr]:
+    exprs: List[Expr] = []
+    for name, expr in column_map.items():
+        if not isinstance(expr, Expr):
+            raise TypeError(
+                "GroupedData.with_columns expects expressions, but received "
+                f"{type(expr)!r} for column '{name}'."
+            )
+        if expr.name == name:
+            exprs.append(expr)
         else:
-            normalized.append(expr.alias(_derive_expr_name(expr, idx)))
-    return normalized
+            exprs.append(expr.alias(name))
+    return exprs
 
 
-def _derive_expr_name(expr: Expr, idx: int) -> str:
-    """Generate a stable column name for an unnamed expression to feed to alias."""
-    if isinstance(expr, UDFExpr):
-        fn_name = getattr(expr.fn, "__name__", None)
-        if fn_name:
-            return fn_name
-    return f"expr_{idx}"
-
-
-def _evaluate_exprs_on_block(block: Block, exprs: List[Expr]) -> Block:
-    columns: Dict[str, "pyarrow.Array"] = {}
+def _evaluate_grouped_exprs(block: Block, exprs: List[Expr]) -> Block:
+    columns = {}
     expected_length: Optional[int] = None
 
     for expr in exprs:
@@ -691,8 +714,8 @@ def _evaluate_exprs_on_block(block: Block, exprs: List[Expr]) -> Block:
             expected_length = length
         elif length != expected_length:
             raise ValueError(
-                "All expressions passed to map_groups must produce the same number "
-                f"of rows, but got outputs of length expected: {expected_length} and actual: {length} "
+                "All expressions passed to with_columns must produce the same number "
+                f"of rows, but got outputs of length {expected_length} and {length} "
                 f"for expression '{expr.name}'."
             )
         columns[expr.name] = array
@@ -720,6 +743,5 @@ def _expr_value_to_arrow_array(value: Any) -> "pyarrow.Array":
     if np.isscalar(value) or isinstance(value, (str, bytes, bool)):
         return pa.array([value])
     raise TypeError(
-        f"Unsupported expression result type {type(value)!r} returned from "
-        "map_groups expression."
+        f"Unsupported expression result type {type(value)!r} returned from grouped expression."
     )

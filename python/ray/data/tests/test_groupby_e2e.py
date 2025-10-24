@@ -1056,7 +1056,7 @@ def test_groupby_map_groups_multicolumn(
     ]
 
 
-def test_groupby_map_groups_expression_inputs(
+def test_groupby_with_columns_expression_inputs(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
     """Expression inputs: single expr, list/tuple, and dict outputs."""
@@ -1081,7 +1081,9 @@ def test_groupby_map_groups_expression_inputs(
         return pa.array([pc.max(combined).as_py()], type=pa.int64())
 
     # Single expression (auto alias).
-    single_result = ds.groupby("group").map_groups(min_value(col("value"))).take_all()
+    single_result = (
+        ds.groupby("group").with_column("min_value", min_value(col("value"))).take_all()
+    )
     assert sorted(single_result, key=lambda row: row["min_value"]) == [
         {"min_value": 1},
         {"min_value": 3},
@@ -1090,11 +1092,11 @@ def test_groupby_map_groups_expression_inputs(
     # List of expressions with explicit aliases.
     list_result = (
         ds.groupby("group")
-        .map_groups(
-            [
-                min_value(col("group")).alias("group"),
-                max_value(col("value")).alias("max_value"),
-            ]
+        .with_columns(
+            {
+                "group": min_value(col("group")),
+                "max_value": max_value(col("value")),
+            }
         )
         .sort("group")
         .take_all()
@@ -1107,7 +1109,7 @@ def test_groupby_map_groups_expression_inputs(
     # Dict of expressions using keys for output names.
     dict_result = (
         ds.groupby("group")
-        .map_groups(
+        .with_columns(
             {
                 "group": min_value(col("group")),
                 "range": max_value(col("value")),
@@ -1121,7 +1123,8 @@ def test_groupby_map_groups_expression_inputs(
         {"group": 2, "range": 4},
     ]
 
-def test_groupby_map_groups_expression_invalid_args(
+
+def test_groupby_with_columns_expression_invalid_args(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
     
@@ -1140,9 +1143,7 @@ def test_groupby_map_groups_expression_invalid_args(
         return pc.take(arr.combine_chunks(), [0])
 
     with pytest.raises(ValueError):
-        ds.groupby("group").map_groups(
-            first_value(col("value")), fn_args=["unused"]
-        ).take_all()
+        ds.groupby("group").with_columns({"value": first_value(col("value"))}, fn_args=["unused"])  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
