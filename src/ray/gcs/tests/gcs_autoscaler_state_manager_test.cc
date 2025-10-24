@@ -67,6 +67,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<GCSFunctionManager> function_manager_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   ray::observability::FakeGauge fake_placement_group_gauge_;
   ray::observability::FakeHistogram
@@ -89,12 +90,18 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         std::make_unique<GCSFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
+    raylet_client_pool_ =
+        std::make_unique<rpc::RayletClientPool>([](const rpc::Address &address) {
+          return std::make_shared<rpc::FakeRayletClient>();
+        });
     worker_client_pool_ =
         std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
           return std::make_shared<rpc::MockCoreWorkerClientInterface>();
         });
-    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
-        *runtime_env_manager_, *function_manager_, *worker_client_pool_);
+    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(*runtime_env_manager_,
+                                                               *function_manager_,
+                                                               *raylet_client_pool_,
+                                                               *worker_client_pool_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,

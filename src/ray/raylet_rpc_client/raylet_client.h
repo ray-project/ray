@@ -164,6 +164,10 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
+  void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) override;
+
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
