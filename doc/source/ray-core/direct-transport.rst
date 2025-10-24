@@ -300,7 +300,7 @@ For collective-based tensor transports (Gloo and NCCL):
 
 For NIXL:
 
-* Due to an issue with our implementation of memory deregistration, we currently do not support repeated transfers of tensors that share the same memory space but belong to different objects before the object in the first transfer is freed from Ray's gpu object store. Here are some examples of what will not work:
+* Due to a known issue, we currently do not support repeated transfers of tensors that share the same memory space but belong to different objects before the object in the first transfer is freed from Ray's gpu object store. Here are some examples of what will not work:
 
    * Sending two lists of tensors that overlap, e.g. first ``{"tensor-round1-1": tensor1, "tensor-round1-2": tensor2}`` and then ``{"tensor-round2-1": tensor1, "tensor-round2-2": tensor3}``.
    * Sending the same tensor twice across rounds, e.g. first ``{"tensor-round1-1": tensor1, "tensor-round1-2": tensor2}`` and then ``{"tensor-round2-1": tensor1, "tensor-round2-2": tensor2}``.
