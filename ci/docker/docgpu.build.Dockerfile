@@ -2,7 +2,8 @@
 
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu
 FROM $DOCKER_IMAGE_BASE_BUILD
-
+ARG PYTHON
+ENV PYTHON=$PYTHON
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .

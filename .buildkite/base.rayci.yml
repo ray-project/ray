@@ -93,7 +93,7 @@ steps:
       REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
     tags: cibase
 
-  - name: docgpubuild
+  - name: docgpubuild-py3.10
     label: "wanda: docgpubuild-py3.10"
     wanda: ci/docker/docgpu.build.wanda.yaml
     depends_on: oss-ci-base_gpu-multipy
