@@ -49,7 +49,7 @@ class Zip(NAry, SupportsPushThrough):
             )
             new_input_ops.append(upstream_project)
 
-        return Zip(input_ops=new_input_ops)
+        return Zip(*new_input_ops)
 
 
 class Union(NAry, SupportsPushThrough):
@@ -83,4 +83,4 @@ class Union(NAry, SupportsPushThrough):
             )
             new_input_ops.append(upstream_project)
 
-        return Union(input_ops=new_input_ops)
+        return Union(*new_input_ops)
