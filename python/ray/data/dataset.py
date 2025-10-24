@@ -1035,15 +1035,6 @@ class Dataset:
         Returns:
             A new dataset with duplicate rows removed, keeping one arbitrary row from each set of duplicates.
         """
-        all_cols = self.columns()
-
-        # Handle schema inference failure.
-        if all_cols is None:
-            raise ValueError(
-                "Cannot perform distinct operation: unable to determine dataset schema. "
-                "Schema inference failed."
-            )
-
         # Validate keys parameter.
         if keys is not None:
             if not keys:
@@ -1059,11 +1050,14 @@ class Dataset:
                 )
 
             # Check that all specified keys exist in the dataset.
-            invalid_keys = set(keys) - set(all_cols)
-            if invalid_keys:
-                raise ValueError(
-                    f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
-                )
+            # Fetching the schema can trigger execution, so only do it when validating keys.
+            all_cols = self.columns()
+            if all_cols is not None:
+                invalid_keys = set(keys) - set(all_cols)
+                if invalid_keys:
+                    raise ValueError(
+                        f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
+                    )
 
         # Create the Distinct logical operator.
         plan = self._plan.copy()
