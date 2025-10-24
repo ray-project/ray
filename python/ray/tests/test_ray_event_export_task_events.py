@@ -1,7 +1,7 @@
 import base64
 import json
 import logging
-from typing import Union
+from typing import Optional
 
 import grpc
 import pytest
@@ -247,7 +247,7 @@ ray.get(normal_task.remote())
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
@@ -431,7 +431,7 @@ except Exception as e:
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
@@ -709,7 +709,7 @@ except Exception as e:
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
@@ -909,7 +909,7 @@ ray.get(actor.task.remote(obj))
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
@@ -1211,7 +1211,7 @@ ray.get(actor.task.options().remote())
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
@@ -1521,7 +1521,7 @@ ray.kill(actor)
             (
                 driver_script_job_id,
                 driver_task_id,
-            ) = get_job_ids_and_driver_script_task_ids_from_events(
+            ) = get_job_id_and_driver_script_task_id_from_events(
                 events, preserve_proto_field_name
             )
 
