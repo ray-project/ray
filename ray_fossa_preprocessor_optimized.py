@@ -41,7 +41,7 @@ class OptimizedRayFossaPreprocessor:
     
     # Build tools that can be optionally included in analysis
     BUILD_TOOLS = ["protoc", "cmake", "ninja", "bazel", "python", "cython", 
-                   "rules_foreign_cc", "rules_proto", "rules_cc"]
+                   "rules_foreign_cc", "rules_proto", "rules_cc", "rules_license", "rules_pkg", "platforms"]
     
     # C/C++ file extensions for identification
     C_CPP_EXTENSIONS = ['.c', '.cc', '.cpp', '.cxx', '.c++', '.h', '.hpp', '.hxx']
