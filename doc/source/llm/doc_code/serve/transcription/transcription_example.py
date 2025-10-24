@@ -40,7 +40,7 @@ llm.build_openai_app = _testing_build_openai_app
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 
-transcription_config = LLMConfig(
+llm_config = LLMConfig(
     model_loading_config={
         "model_id": "voxtral-mini",
         "model_source": "mistralai/Voxtral-Mini-3B-2507",
@@ -61,7 +61,7 @@ transcription_config = LLMConfig(
     log_engine_metrics=True,
 )
 
-app = build_openai_app({"llm_configs": [transcription_config]})
+app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 # __transcription_example_end__
 

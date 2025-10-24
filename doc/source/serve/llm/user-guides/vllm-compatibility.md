@@ -83,15 +83,15 @@ curl -X POST http://localhost:8000/v1/embeddings \
 
 ## Transcriptions
 
-You can generate audio transcriptions for Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
 
 
 ### Deploy a transcription model
 
 ::::{tab-set}
 
-:::{tab-item} Python
-:sync: python
+:::{tab-item} Server
+:sync: server
 
 ```{literalinclude} ../../../llm/doc_code/serve/transcription/transcription_example.py
 :language: python
