@@ -1,6 +1,6 @@
+import base64
 import json
 import logging
-import time
 from typing import Union
 
 import grpc
@@ -35,7 +35,7 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
             preserve_proto_field_name,
             {
                 "env_vars": {
-                    "RAY_task_events_report_interval_ms": 50,
+                    "RAY_task_events_report_interval_ms": 100,
                     "RAY_enable_core_worker_ray_event_to_aggregator": "1",
                     "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
                     "RAY_DASHBOARD_AGGREGATOR_AGENT_PRESERVE_PROTO_FIELD_NAME": (
@@ -86,7 +86,9 @@ def wait_until_grpc_channel_ready(
 def get_job_ids_and_driver_script_task_ids_from_events(
     events: json, preserve_proto_field_name: bool
 ) -> tuple[Union[str, None], Union[str, None]]:
-    test_job_id = ray.get_runtime_context().get_job_id()
+    test_job_id = base64.b64encode(
+        ray.JobID.from_hex(ray.get_runtime_context().get_job_id()).binary()
+    ).decode()
     driver_script_job_id = None
     driver_task_id = None
     for event in events:
@@ -215,18 +217,10 @@ def get_and_validate_events(httpserver, validation_func):
 def run_driver_script_and_wait_for_events(script, httpserver, cluster, validation_func):
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     node_ids = [node.node_id for node in cluster.list_all_nodes()]
+    # Here we wait for the dashboard agent grpc server to be ready before running the
+    # driver script. Ideally, the startup sequence should guarantee that. Created an
+    # issue to track this: https://github.com/ray-project/ray/issues/58007
     assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
-    # The sleep is added here to give time for the worker grpc client to estabilish
-    # the connection to the aggregator agent. Due to the start up sequence, it could be
-    # possible that when the worker starts to connect to the dashboard agent grpc
-    # server, the server is not yet ready to accept the connection. The connection
-    # retry backoff strategy kicks and the connection won't be retried until the
-    # interval is reached. This sleep is a workaround to ensure the connections from
-    # the workers to the aggregator agent are estabilished with the backoff strategy
-    # before start the driver script. A longer term fix is to improve the start up
-    # sequence of the dashboard agent and the workers.
-    # Followup issue: https://github.com/ray-project/ray/issues/58007
-    time.sleep(3)
     run_string_as_driver_nonblocking(script)
     wait_for_condition(lambda: get_and_validate_events(httpserver, validation_func))
 
@@ -1202,6 +1196,7 @@ import time
 @ray.remote(num_cpus=1)
 class Actor:
     def __init__(self):
+        time.sleep(1)
         raise Exception("actor creation error")
 
     def task(self):
