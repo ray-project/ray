@@ -1513,8 +1513,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
   // Mock reference counter as enabled
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
-      io_context.GetIoService(), /*reference_counting=*/true);
+  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1598,8 +1597,8 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
 TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
   // Mock reference counter as enabled
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
-      store_io_context.GetIoService(), /*reference_counting=*/true);
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,

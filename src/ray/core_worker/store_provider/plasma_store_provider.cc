@@ -259,7 +259,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   // TODO(57923): Need to understand if batching is necessary. If it's necessary,
   // then the reason needs to be documented.
-  // Send initial requests to pull all objects in parallel.
   bool got_exception = false;
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {

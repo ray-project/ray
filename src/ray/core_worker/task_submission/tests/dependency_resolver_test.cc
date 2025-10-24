@@ -383,9 +383,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
-  // Mock reference counter as enabled
-  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-                                                       /*reference_counting=*/true);
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(

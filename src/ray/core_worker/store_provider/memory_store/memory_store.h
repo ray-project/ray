@@ -51,7 +51,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      bool reference_counting,
+      bool reference_counting_enabled = true,
       std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
@@ -202,7 +202,7 @@ class CoreWorkerMemoryStore {
   instrumented_io_context &io_context_;
 
   /// Set to true if reference counting is enabled (i.e. not local mode).
-  bool reference_counting_;
+  bool reference_counting_enabled_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;

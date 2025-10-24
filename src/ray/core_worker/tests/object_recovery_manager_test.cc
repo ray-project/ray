@@ -126,8 +126,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
-        memory_store_(std::make_shared<CoreWorkerMemoryStore>(
-            io_context_.GetIoService(), /*reference_counting=*/true)),
+        memory_store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
             [&](const rpc::Address &) { return raylet_client_; })),
         raylet_client_(std::make_shared<MockRayletClient>()),

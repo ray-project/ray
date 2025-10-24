@@ -127,14 +127,14 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    bool reference_counting,
+    bool reference_counting_enabled,
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
-      reference_counting_(reference_counting),
+      reference_counting_enabled_(reference_counting_enabled),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
@@ -212,7 +212,7 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
       }
     }
     // Don't put it in the store, since we won't get a callback for deletion.
-    if (reference_counting_ && !has_reference) {
+    if (reference_counting_enabled_ && !has_reference) {
       should_add_entry = false;
     }
 

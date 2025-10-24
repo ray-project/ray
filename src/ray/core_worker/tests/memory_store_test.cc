@@ -239,8 +239,7 @@ class TestMemoryStoreWait : public ::testing::Test {
  protected:
   TestMemoryStoreWait()
       : io_context("TestWait"),
-        memory_store(std::make_shared<CoreWorkerMemoryStore>(
-            io_context.GetIoService(), /*reference_counting=*/true)),
+        memory_store(std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService())),
         ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1)),
         buffer("hello"),
         memory_store_object(

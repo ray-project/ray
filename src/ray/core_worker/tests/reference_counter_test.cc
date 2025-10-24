@@ -822,7 +822,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; });
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc != nullptr);
+  CoreWorkerMemoryStore store(io_context.GetIoService());
 
   // Tests putting an object with no references is ignored.
   store.Put(buffer, id2, rc->HasReference(id2));

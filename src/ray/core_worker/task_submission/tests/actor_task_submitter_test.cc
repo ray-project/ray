@@ -89,8 +89,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
       : client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &addr) { return worker_client_; })),
         worker_client_(std::make_shared<MockWorkerClient>()),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context,
-                                                       /*reference_counting=*/true)),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         io_work(io_context.get_executor()),
         reference_counter_(std::make_shared<MockReferenceCounter>()),
