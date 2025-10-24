@@ -1,7 +1,7 @@
 import copy
-from functools import partial
 import itertools
 import pathlib
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -34,7 +35,10 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray._common.deprecation import Deprecated
+from ray.rllib.utils.metrics.ray_metrics import (
+    TimerAndPrometheusLogger,
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+)
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -45,6 +49,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.util.annotations import PublicAPI
+from ray.util.metrics import Histogram
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -150,6 +155,18 @@ class LearnerGroup(Checkpointable):
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
+
+            # Ray metrics
+            self._metrics_local_learner_training_data_solve_refs = Histogram(
+                name="rllib_learner_local_training_data_solve_refs_time",
+                description="Time spent in resolve training data refs for local learner.",
+                boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+                tag_keys=("rllib",),
+            )
+            self._metrics_local_learner_training_data_solve_refs.set_default_tags(
+                {"rllib": self.__class__.__name__}
+            )
+
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
@@ -205,6 +222,15 @@ class LearnerGroup(Checkpointable):
                     self.config.max_requests_in_flight_per_learner
                 ),
             )
+
+        # Ray metrics
+        self._metrics_update_time = Histogram(
+            name="rllib_learner_group_update_time",
+            description="Time spent in LearnerGroup.update()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_update_time.set_default_tags({"rllib": self.__class__.__name__})
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
@@ -289,104 +315,113 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        # Create and validate TrainingData object, if not already provided.
-        if training_data is None:
-            training_data = TrainingData(
-                batch=batch,
-                batches=batches,
-                batch_refs=batch_refs,
-                episodes=episodes,
-                episodes_refs=episodes_refs,
-                data_iterators=data_iterators,
-            )
-        training_data.validate()
-
-        # Local Learner instance.
-        if self.is_local:
-            if async_update:
-                raise ValueError(
-                    "Can't call `update(async_update=True)` when running with "
-                    "`num_learners=0`! Set `config.num_learners > 0` to allow async "
-                    "updates."
+        with TimerAndPrometheusLogger(self._metrics_update_time):
+            # Create and validate TrainingData object, if not already provided.
+            if training_data is None:
+                training_data = TrainingData(
+                    batch=batch,
+                    batches=batches,
+                    batch_refs=batch_refs,
+                    episodes=episodes,
+                    episodes_refs=episodes_refs,
+                    data_iterators=data_iterators,
                 )
-            # Solve all ray refs locally already here.
-            training_data.solve_refs()
-            if return_state:
-                kwargs["return_state"] = return_state
-            # Return the single Learner's update results.
-            return [
-                self._learner.update(
-                    training_data=training_data,
+            training_data.validate()
+
+            # Local Learner instance.
+            if self.is_local:
+                if async_update:
+                    raise ValueError(
+                        "Can't call `update(async_update=True)` when running with "
+                        "`num_learners=0`! Set `config.num_learners > 0` to allow async "
+                        "updates."
+                    )
+                # Solve all ray refs locally already here.
+
+                # Ray metrics
+                with TimerAndPrometheusLogger(
+                    self._metrics_local_learner_training_data_solve_refs
+                ):
+                    training_data.solve_refs()
+                if return_state:
+                    kwargs["return_state"] = return_state
+                # Return the single Learner's update results.
+                return [
+                    self._learner.update(
+                        training_data=training_data,
+                        timesteps=timesteps,
+                        **kwargs,
+                    )
+                ]
+
+            # Remote Learner actors' kwargs.
+            remote_call_kwargs = [
+                dict(
+                    training_data=td_shard,
                     timesteps=timesteps,
+                    # If `return_state=True`, only return it from the first Learner
+                    # actor.
+                    return_state=(return_state and i == 0),
+                    **kw,
                     **kwargs,
+                )
+                for i, (td_shard, kw) in enumerate(
+                    training_data.shard(
+                        num_shards=len(self),
+                        len_lookback_buffer=self.config.episode_lookback_horizon,
+                        **kwargs,
+                    )
                 )
             ]
 
-        # Remote Learner actors' kwargs.
-        remote_call_kwargs = [
-            dict(
-                training_data=td_shard,
-                timesteps=timesteps,
-                # If `return_state=True`, only return it from the first Learner
-                # actor.
-                return_state=(return_state and i == 0),
-                **kw,
-                **kwargs,
-            )
-            for i, (td_shard, kw) in enumerate(
-                training_data.shard(
-                    num_shards=len(self),
-                    len_lookback_buffer=self.config.episode_lookback_horizon,
-                    **kwargs,
+            # Async updates.
+            if async_update:
+                # Retrieve all ready results (kicked off by prior calls to this method).
+                results = self._worker_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0
                 )
-            )
-        ]
+                # Send out new request(s), if there is still capacity on the actors
+                # (each actor is allowed only some number of max in-flight requests
+                # at the same time).
+                num_sent_requests = self._worker_manager.foreach_actor_async(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-        # Async updates.
-        if async_update:
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
-            # Send out new request(s), if there is still capacity on the actors
-            # (each actor is allowed only some number of max in-flight requests
-            # at the same time).
-            num_sent_requests = self._worker_manager.foreach_actor_async(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+                # Some requests were dropped, record lost ts/data.
+                if num_sent_requests != len(self):
+                    factor = 1 - (num_sent_requests / len(self))
+                    # TODO (sven): Move this logic into a TrainingData API as well
+                    #  (`TrainingData.env_steps()`).
+                    if training_data.batch_refs is not None:
+                        dropped = (
+                            len(training_data.batch_refs)
+                            * self.config.train_batch_size_per_learner
+                        )
+                    elif training_data.batch is not None:
+                        dropped = len(training_data.batch)
+                    # List of Ray ObjectRefs (each object ref is a list of episodes of
+                    # total len=`rollout_fragment_length * num_envs_per_env_runner`)
+                    elif training_data.episodes_refs is not None:
+                        dropped = (
+                            len(training_data.episodes_refs)
+                            * self.config.get_rollout_fragment_length()
+                            * self.config.num_envs_per_env_runner
+                        )
+                    else:
+                        assert training_data.episodes is not None
+                        dropped = sum(len(e) for e in training_data.episodes)
 
-            # Some requests were dropped, record lost ts/data.
-            if num_sent_requests != len(self):
-                factor = 1 - (num_sent_requests / len(self))
-                # TODO (sven): Move this logic into a TrainingData API as well
-                #  (`TrainingData.env_steps()`).
-                if training_data.batch_refs is not None:
-                    dropped = (
-                        len(training_data.batch_refs)
-                        * self.config.train_batch_size_per_learner
-                    )
-                elif training_data.batch is not None:
-                    dropped = len(training_data.batch)
-                # List of Ray ObjectRefs (each object ref is a list of episodes of
-                # total len=`rollout_fragment_length * num_envs_per_env_runner`)
-                elif training_data.episodes_refs is not None:
-                    dropped = (
-                        len(training_data.episodes_refs)
-                        * self.config.get_rollout_fragment_length()
-                        * self.config.num_envs_per_env_runner
-                    )
-                else:
-                    assert training_data.episodes is not None
-                    dropped = sum(len(e) for e in training_data.episodes)
+                    self._ts_dropped += factor * dropped
+            # Sync updates.
+            else:
+                results = self._worker_manager.foreach_actor(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-                self._ts_dropped += factor * dropped
-        # Sync updates.
-        else:
-            results = self._worker_manager.foreach_actor(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+            results = self._get_results(results)
 
-        results = self._get_results(results)
         return results
 
     def add_module(

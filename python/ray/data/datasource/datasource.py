@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 import numpy as np
 
@@ -20,7 +20,11 @@ class _DatasourceProjectionPushdownMixin:
         """Retrurns current projection"""
         return None
 
-    def apply_projection(self, columns: List[str]) -> "Datasource":
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "Datasource":
         return self
 
 
