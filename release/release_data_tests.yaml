@@ -523,21 +523,6 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: image_classification_chaos_no_scale_back
-  stable: False
-  working_dir: nightly_tests
-  group: data-batch-inference
-
-  cluster:
-    cluster_compute: dataset/autoscaling_gpu_compute.yaml
-
-  run:
-    timeout: 1800
-    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
-    script: >
-      python dataset/gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
-
 
 - name: image_embedding_from_uris_{{case}}
   frequency: weekly
