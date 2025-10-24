@@ -42,8 +42,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 transcription_config = LLMConfig(
     model_loading_config={
-        "model_id": "voxtral-small",
-        "model_source": "mistralai/Voxtral-Small-24B-2507",
+        "model_id": "voxtral-mini",
+        "model_source": "mistralai/Voxtral-Mini-3B-2507",
     },
     deployment_config={
         "autoscaling_config": {
@@ -93,7 +93,7 @@ client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 with open("audio.wav", "rb") as f:
     try:
         response = client.audio.transcriptions.create(
-            model="voxtral-small",
+            model="voxtral-mini",
             file=f,
             temperature=0.0,
             language="en",
