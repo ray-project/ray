@@ -95,10 +95,9 @@ class StreamingRepartitionTaskBuilder:
     """
 
     def __init__(self, target_num_rows_per_block: int):
-        if target_num_rows_per_block <= 0:
-            raise ValueError(
-                "target_num_rows_per_block must be positive for streaming repartition."
-            )
+        assert (
+            target_num_rows_per_block > 0
+        ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
         self._pending_blocks: Deque[_PendingBlock] = deque()
         self._total_pending_rows = 0
@@ -107,11 +106,7 @@ class StreamingRepartitionTaskBuilder:
     def add_input(self, ref_bundle: RefBundle) -> List[_TaskInput]:
         schema = ref_bundle.schema
         for block_ref, metadata in ref_bundle.blocks:
-            if metadata.num_rows is None:
-                raise ValueError(
-                    "Streaming repartition requires upstream block metadata to include "
-                    "num_rows."
-                )
+            assert metadata.num_rows
             self._pending_blocks.append(
                 _PendingBlock(
                     block_ref=block_ref,
@@ -141,7 +136,7 @@ class StreamingRepartitionTaskBuilder:
                 full_blocks = first.remaining_rows // self._target_num_rows
                 if full_blocks > 0:
                     task_inputs.append(
-                        self._build_task_from_single_block_full_blocks(full_blocks)
+                        self._build_task([self._target_num_rows] * full_blocks)
                     )
                     continue
 
@@ -151,112 +146,78 @@ class StreamingRepartitionTaskBuilder:
                 if self._total_pending_rows >= self._target_num_rows
                 else self._total_pending_rows
             )
-            task_inputs.append(self._build_single_output_task(rows_needed))
+            task_inputs.append(self._build_task([rows_needed]))
         return task_inputs
 
-    def _build_single_output_task(self, rows_needed: int) -> _TaskInput:
-        contributors: List[StreamingRepartitionContributorSpec] = []
-        bundle_blocks: List = []
+    def _build_task(self, output_rows: List[int]) -> _TaskInput:
+        total_rows_needed = sum(output_rows)
+        assert (
+            total_rows_needed <= self._total_pending_rows
+        ), "Requested more rows than are pending in the repartition builder."
+        used_blocks: List[_PendingBlock] = []
+        rows_by_block: List[int] = []
         bundle_schema = None
-        remaining = rows_needed
+        outputs: List[StreamingRepartitionOutputSpec] = []
 
-        while remaining > 0 and self._pending_blocks:
-            block = self._pending_blocks[0]
-            available = block.remaining_rows
-            take = min(available, remaining)
+        for num_rows in output_rows:
+            contributors: List[StreamingRepartitionContributorSpec] = []
+            remaining = num_rows
 
-            # Add this block slice to the bundle and record the contributor.
-            block_index = len(bundle_blocks)
-            bundle_schema = bundle_schema or block.schema
-            bundle_blocks.append(
-                (
-                    block.block_ref,
-                    _slice_block_metadata(block.metadata, take),
+            while remaining > 0:
+                assert (
+                    self._pending_blocks
+                ), "No pending blocks available to build task."
+
+                block = self._pending_blocks[0]
+                if not used_blocks or used_blocks[-1] is not block:
+                    used_blocks.append(block)
+                    rows_by_block.append(0)
+                    bundle_schema = bundle_schema or block.schema
+
+                block_index = len(used_blocks) - 1
+                available = block.remaining_rows
+                take = min(available, remaining)
+
+                start_offset = block.start_offset
+                end_offset = start_offset + take
+
+                contributors.append(
+                    StreamingRepartitionContributorSpec(
+                        block_index=block_index,
+                        start_offset=start_offset,
+                        end_offset=end_offset,
+                    )
+                )
+
+                block.start_offset += take
+                rows_by_block[block_index] += take
+                self._total_pending_rows -= take
+                remaining -= take
+
+                assert block.start_offset <= block.metadata.num_rows
+
+                if block.start_offset == block.metadata.num_rows:
+                    self._pending_blocks.popleft()
+
+            outputs.append(
+                StreamingRepartitionOutputSpec(
+                    num_rows=num_rows, contributors=contributors
                 )
             )
 
-            start_offset = block.start_offset
-            end_offset = start_offset + take
-
-            contributors.append(
-                StreamingRepartitionContributorSpec(
-                    block_index=block_index,
-                    start_offset=start_offset,
-                    end_offset=end_offset,
-                )
+        bundle_blocks = [
+            (
+                block.block_ref,
+                _slice_block_metadata(block.metadata, consumed_rows),
             )
-            block.start_offset += take
-            remaining -= take
-            self._total_pending_rows -= take
-
-            assert block.start_offset <= block.metadata.num_rows
-
-            if block.start_offset == block.metadata.num_rows:
-                self._pending_blocks.popleft()
+            for block, consumed_rows in zip(used_blocks, rows_by_block)
+        ]
 
         ref_bundle = RefBundle(
             blocks=tuple(bundle_blocks),
             schema=bundle_schema,
             owns_blocks=False,
         )
-
-        spec = StreamingRepartitionTaskSpec(
-            outputs=[
-                StreamingRepartitionOutputSpec(
-                    num_rows=rows_needed, contributors=contributors
-                )
-            ]
-        )
-
-        return _TaskInput(
-            bundle=ref_bundle,
-            task_kwargs={STREAMING_REPARTITION_SPEC_KEY: spec},
-        )
-
-    def _build_task_from_single_block_full_blocks(self, full_blocks: int) -> _TaskInput:
-        """Build a task input that consumes as many full target-sized blocks
-        as possible from the first pending block and emits multiple outputs
-        in a single Ray task.
-        """
-        assert self._pending_blocks
-        block = self._pending_blocks[0]
-        target = self._target_num_rows
-        use_rows = full_blocks * target
-
-        # Build outputs specs, each contributed solely by this one block.
-        outputs: List[StreamingRepartitionOutputSpec] = []
-        start = block.start_offset
-        for _ in range(full_blocks):
-            end = start + target
-            outputs.append(
-                StreamingRepartitionOutputSpec(
-                    num_rows=target,
-                    contributors=[
-                        StreamingRepartitionContributorSpec(
-                            block_index=0, start_offset=start, end_offset=end
-                        )
-                    ],
-                )
-            )
-            start = end
-
-        # Bundle consists of just this block with metadata reflecting rows consumed.
-        ref_bundle = RefBundle(
-            blocks=(
-                (block.block_ref, _slice_block_metadata(block.metadata, use_rows)),
-            ),
-            schema=block.schema,
-            owns_blocks=False,
-        )
-
-        # Update builder state to reflect consumption.
-        block.start_offset += use_rows
-        self._total_pending_rows -= use_rows
-        assert (
-            block.start_offset <= block.metadata.num_rows
-        ), "internal error: consumed past end of block"
-        if block.start_offset == block.metadata.num_rows:
-            self._pending_blocks.popleft()
 
         spec = StreamingRepartitionTaskSpec(outputs=outputs)
         return _TaskInput(
@@ -271,8 +232,7 @@ def streaming_repartition_block_fn(
     spec: StreamingRepartitionTaskSpec = ctx.kwargs.pop(
         STREAMING_REPARTITION_SPEC_KEY, None
     )
-    if spec is None:
-        raise ValueError("Missing streaming repartition task spec in TaskContext.")
+    assert spec, "Missing streaming repartition task spec in TaskContext."
 
     # Materialize input blocks to allow arbitrary contributor ordering.
     blocks_list = list(blocks)
@@ -301,16 +261,11 @@ def streaming_repartition_block_fn(
 
 
 def _slice_block_metadata(metadata: BlockMetadata, slice_rows: int) -> BlockMetadata:
-    if slice_rows <= 0:
-        raise ValueError(
-            f"slice_rows must be positive for streaming repartition: {slice_rows}"
-        )
+    assert slice_rows > 0, "slice_rows must be positive for streaming repartition."
     size_bytes = metadata.size_bytes
-
     if metadata.size_bytes is not None and metadata.num_rows:
         per_row = metadata.size_bytes / metadata.num_rows
         size_bytes = max(1, int(math.ceil(per_row * slice_rows)))
-
     return BlockMetadata(
         num_rows=slice_rows if metadata.num_rows is not None else None,
         size_bytes=size_bytes,
