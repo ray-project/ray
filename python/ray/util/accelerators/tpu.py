@@ -54,32 +54,11 @@ class SlicePlacementGroup:
     A handle to a placement group reservation for a TPU slice.
 
     The following definitions are added for clarity:
-        - Accelerator type: A string describing the accelerator type and version (e.g. TPU-V2, TPU-V6E).
-        - Accelerator version: The accelerator generation only (e.g. v6e, v5p, v5litepod).
-        - Pod type: The TPU accelerator version and the # of chips in a supported topology. (e.g. v6e-128, v5p-8).
-        - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
-        .. testcode::
-            import ray
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-            from ray.util.accelerators.tpu import SlicePlacementGroup
-
-            slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-            slice_pg = slice_handle.placement_group
-            ray.get(slice_pg.ready(), timeout=10)
-
-            @ray.remote(num_cpus=0, resources={'TPU': 4})
-            def spmd_task(world, rank):
-                print(f"Current TPU is rank {rank} of {world}")
-
-            tasks = [
-            spmd_task.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=slice_pg,
-                )
-            ).remote(world=4, rank=i)
-            for i in range(slice_handle.num_workers)
-            ]
+    - Accelerator type: A string describing the accelerator type and version (e.g. TPU-V2, TPU-V6E).
+    - Accelerator version: The accelerator generation only (e.g. v6e, v5p, v5litepod).
+    - Pod type: The TPU accelerator version and the number of chips in a topology. (e.g. v6e-128, v5p-8).
+    - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
         Args:
             topology: The TPU topology string (e.g. "2x2x2").
@@ -96,7 +75,34 @@ class SlicePlacementGroup:
                 will fate share with its creator and will be deleted once its
                 creator is dead, or "detached", which means the placement group
                 will live as a global object independent of the creator.
-            num_slices: Number of TPU slices in the TPU placement group. Currently default to 1.
+
+            num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+
+        Examples:
+
+        .. testcode:: python
+
+            import ray
+            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+            from ray.util.accelerators.tpu import SlicePlacementGroup
+
+            slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+            slice_pg = slice_handle.placement_group
+            ray.get(slice_pg.ready(), timeout=10)
+
+            @ray.remote(num_cpus=0, resources={'TPU': 4})
+            def spmd_task(world, rank):
+                print(f"Current TPU is rank {rank} of {world}")
+
+            tasks = [
+                spmd_task.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=slice_pg,
+                    )
+                ).remote(world=4, rank=i)
+                for i in range(slice_handle.num_workers)
+            ]
+
     """
 
     def __init__(
@@ -207,7 +213,7 @@ class SlicePlacementGroup:
         return self._accelerator_version
 
     @property
-    def num_slices(self) -> str:
+    def num_slices(self) -> int:
         """The number of TPU slices this SlicePlacementGroup spans."""
         return self._num_slices
 
