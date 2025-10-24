@@ -5,6 +5,7 @@ import numpy as np
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
+from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -28,8 +29,24 @@ class _DatasourceProjectionPushdownMixin:
         return self
 
 
+class _DatasourcePredicatePushdownMixin:
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return None
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "Datasource":
+        return self
+
+
 @PublicAPI
-class Datasource(_DatasourceProjectionPushdownMixin):
+class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.

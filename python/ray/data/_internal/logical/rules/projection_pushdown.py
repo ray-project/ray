@@ -42,27 +42,6 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
     return collector.get_column_refs()
 
 
-def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
-    """
-    Check if an expression is a simple column rename.
-
-    Returns (source_name, target_name) if the expression is of form:
-        col("source").alias("dest")
-
-    Returns None for other expression types.
-    """
-    if (
-        isinstance(expr, AliasExpr)
-        and isinstance(expr.expr, ColumnExpr)
-        and expr._is_rename
-    ):
-        target_name = expr.name
-        source_name = expr.expr.name
-        return source_name, target_name
-
-    return None
-
-
 def _analyze_upstream_project(
     upstream_project: Project,
 ) -> Tuple[Set[str], dict[str, Expr], Set[str]]:

@@ -56,6 +56,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
+from ray.data.expressions import Expr
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -286,7 +287,7 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-
+        self._predicate_expr: Optional[Expr] = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
         elif isinstance(shuffle, FileShuffleConfig):
@@ -362,6 +363,12 @@ class ParquetDatasource(Datasource):
         )
 
         read_tasks = []
+        filter_expr = (
+            self._predicate_expr.to_pyarrow()
+            if self._predicate_expr is not None
+            else None
+        )
+
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
             np.array_split(pq_paths, parallelism),
@@ -411,6 +418,7 @@ class ParquetDatasource(Datasource):
                         f,
                         include_paths,
                         partitioning,
+                        filter_expr,
                     ),
                     meta,
                     schema=target_schema,
@@ -432,6 +440,9 @@ class ParquetDatasource(Datasource):
         return self._supports_distributed_reads
 
     def supports_projection_pushdown(self) -> bool:
+        return True
+
+    def supports_predicate_pushdown(self) -> bool:
         return True
 
     def get_current_projection(self) -> Optional[List[str]]:
@@ -456,6 +467,35 @@ class ParquetDatasource(Datasource):
 
         return clone
 
+    # TODO: This should be moved to the Datasource class
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "ParquetDatasource":
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _ColumnRefRebindingVisitor,
+        )
+        from ray.data.expressions import col
+
+        clone = copy.copy(self)
+        # Handle column renaming for Ray Data expressions
+        if self._data_columns_rename_map:
+            # Create mapping from new column names to old column names
+            column_mapping = {
+                new_col: col(old_col)
+                for old_col, new_col in self._data_columns_rename_map.items()
+            }
+            visitor = _ColumnRefRebindingVisitor(column_mapping)
+            predicate_expr = visitor.visit(predicate_expr)
+
+        # Combine with existing predicate using AND
+        if clone._predicate_expr is not None:
+            clone._predicate_expr = clone._predicate_expr & predicate_expr
+        else:
+            clone._predicate_expr = predicate_expr
+
+        return clone
+
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
@@ -473,6 +513,7 @@ def read_fragments(
     fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
+    filter_expr: Optional["pyarrow.dataset.Expression"] = None,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -494,6 +535,7 @@ def read_fragments(
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                filter_expr=filter_expr,
                 batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
@@ -532,7 +574,14 @@ def _read_batches_from(
     # NOTE: Passed in kwargs overrides always take precedence
     # TODO deprecate to_batches_kwargs
     use_threads = to_batches_kwargs.pop("use_threads", use_threads)
-    filter_expr = to_batches_kwargs.pop("filter", filter_expr)
+    # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
+    if to_batches_kwargs.get("filter") is not None:
+        filter_from_kwargs = to_batches_kwargs.get("filter")
+        if filter_expr is not None:
+            filter_expr = filter_expr & filter_from_kwargs
+        else:
+            filter_expr = filter_from_kwargs
+        to_batches_kwargs.pop("filter")
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)

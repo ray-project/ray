@@ -4,6 +4,7 @@ import math
 from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
+    LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SourceOperator,
 )
@@ -14,9 +15,15 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader
+from ray.data.expressions import Expr
 
 
-class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdown):
+class Read(
+    AbstractMap,
+    SourceOperator,
+    LogicalOperatorSupportsProjectionPushdown,
+    LogicalOperatorSupportsPredicatePushdown,
+):
     """Logical operator for read."""
 
     # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
@@ -170,6 +177,21 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
         )
         clone._datasource = projected_datasource
         clone._datasource_or_legacy_reader = projected_datasource
+
+        return clone
+
+    def supports_predicate_pushdown(self) -> bool:
+        return self._datasource.supports_predicate_pushdown()
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return self._datasource.get_current_predicate()
+
+    def apply_predicate(self, predicate_expr: Expr) -> "Read":
+        clone = copy.copy(self)
+
+        predicated_datasource = self._datasource.apply_predicate(predicate_expr)
+        clone._datasource = predicated_datasource
+        clone._datasource_or_legacy_reader = predicated_datasource
 
         return clone
 
