@@ -248,7 +248,8 @@ def test_result_from_path_validation(
     folder_path = Path(existing_folder) if path_type == "PathLike" else existing_folder
     with pytest.raises(
         RuntimeError,
-        match=f"Failed to restore the Result object: {CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the experiment folder!",
+        match=f"Failed to restore the Result object: {CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the experiment folder. Make sure that this is an output directory created "
+        "by a Ray Train run.",
     ):
         Result.from_path(folder_path)
 
