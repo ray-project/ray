@@ -109,8 +109,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 
   void set_env_var(const char *name, const char *value) {
 #ifdef _WIN32
-    std::string env_str = std::string(name) + "=" + std::string(value);
-    _putenv(env_str.c_str());
+    _putenv_s(name, value);
 #else
     setenv(name, value, 1);
 #endif
@@ -118,8 +117,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 
   void unset_env_var(const char *name) {
 #ifdef _WIN32
-    std::string env_str = std::string(name) + "=";
-    _putenv(env_str.c_str());
+    _putenv_s(name, "")
 #else
     unsetenv(name);
 #endif
@@ -301,7 +299,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "Token authentication is enabled but no authentication token was found");
+      "Token authentication is enabled but Ray couldn't find an authentication token.");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
