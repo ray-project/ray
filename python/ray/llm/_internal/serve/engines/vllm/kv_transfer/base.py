@@ -43,19 +43,30 @@ class BaseConnectorBackend(abc.ABC):
         Uses data_parallel_rank if DP case, otherwise falls back to
         the replica rank assigned by Ray Serve (TP/PP case).
 
+        For TP/PP cases, multiply by tensor_parallel_size to reserve
+        sufficient port space, since each TP worker adds its tp_rank
+        (0, 1, ..., tp_size-1) to the base port at bind time.
+
         Returns:
             Non-negative integer offset to add to a base port.
         """
+        # Get TP size for spacing calculation
+        tp_size = self.llm_config.engine_kwargs.get("tensor_parallel_size", 1)
+
         # Prefer explicit DP rank when available
         dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
         if isinstance(dp_rank, int) and dp_rank >= 0:
+            # vLLM already accounts for TP spacing in DP offset calculation
+            # (data_parallel_rank × tp_size), so we don't multiply here
             return dp_rank
 
         # Fall back to Serve replica rank for TP/PP cases
         try:
             rc = serve.get_replica_context()
             if rc and hasattr(rc, "rank"):
-                return rc.rank
+                # Multiply by tp_size to reserve ports for all TP workers
+                # Each TP worker will add its tp_rank (0, 1, ..., tp_size-1)
+                return rc.rank * tp_size
         except Exception:
             # Best-effort fallback; avoid introducing failures in setup paths
             pass
