@@ -1142,7 +1142,7 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
     assert "MapBatches(func)" in ds.__repr__()
 
 
-def test_map_groups_generator_udf(ray_start_regular_shared):
+def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
     """
     Tests that map_groups supports UDFs that return generators (iterators).
     """
