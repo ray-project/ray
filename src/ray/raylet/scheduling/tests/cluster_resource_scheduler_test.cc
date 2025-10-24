@@ -2091,7 +2091,7 @@ TEST_F(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest) {
   std::vector<ray::FallbackStrategyOptions> infeasible_fallback_strategy;
   std::transform(fallback_strategy_map.begin(),
                  fallback_strategy_map.end(),
-                 std::back_inserter(prepared_fallback_strategy),
+                 std::back_inserter(infeasible_fallback_strategy),
                  [](const FallbackMap &nested_map) {
                    const auto &inner_map = nested_map.at("label_selector");
                    return ray::FallbackStrategyOptions(ray::LabelSelector(inner_map));
