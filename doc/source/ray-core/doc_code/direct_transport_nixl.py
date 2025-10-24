@@ -77,6 +77,7 @@ class Actor:
     def sum_dict(self, dict):
         return sum(v.sum().item() for v in dict.values())
 
+
 sender, receiver = Actor.remote(), Actor.remote()
 ref1 = sender.send_dict1.remote()
 result1 = receiver.sum_dict.remote(ref1)
