@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, TypeVar, Union
+from typing import Any, Callable, Dict, List, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.logical.rules.projection_pushdown import (
+    _extract_input_columns_renaming_mapping,
+)
 from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
@@ -24,6 +27,7 @@ from ray.data.expressions import (
     UDFExpr,
     UnaryExpr,
     _ExprVisitor,
+    col,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,11 +53,11 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.NE: operator.ne,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
-    Operation.NOT: operator.not_,
+    Operation.NOT: operator.invert,
     Operation.IS_NULL: pd.isna,
     Operation.IS_NOT_NULL: pd.notna,
-    Operation.IN: lambda left, right: left.is_in(right),
-    Operation.NOT_IN: lambda left, right: ~left.is_in(right),
+    Operation.IN: lambda left, right: left.isin(right),
+    Operation.NOT_IN: lambda left, right: ~left.isin(right),
 }
 
 
@@ -691,3 +695,60 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     """
     evaluator = NativeExpressionEvaluator(block)
     return evaluator.visit(expr)
+
+
+def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    Handles projection semantics including:
+    - Empty projections
+    - Star() expressions for preserving existing columns
+    - Rename detection
+    - Column ordering
+
+    Args:
+        projection_exprs: List of expressions to evaluate (may include StarExpr)
+        block: The block to project
+
+    Returns:
+        A new block with the projected schema
+    """
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Skip projection only for schema-less empty blocks.
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
+    # Handle simple cases early.
+    if len(projection_exprs) == 0:
+        return block_accessor.select([])
+
+    input_column_names = list(block_accessor.column_names())
+    # Collect input column rename map from the projection list
+    input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
+
+    # Expand star expr (if any)
+    if isinstance(projection_exprs[0], StarExpr):
+        # Cherry-pick input block's columns that aren't explicitly removed via
+        # renaming
+        input_column_ref_exprs = [
+            col(c) for c in input_column_names if c not in input_column_rename_map
+        ]
+
+        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+
+    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
+
+    # This clumsy workaround is necessary to be able to fill in Pyarrow tables
+    # that has to be "seeded" from existing table with N rows, and couldn't be
+    # started from a truly empty table.
+    #
+    # TODO fix
+    new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
+    new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
+
+    for name, output_col in zip(names, output_cols):
+        new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
+
+    return BlockAccessor.for_block(new_block).drop(["__stub__"])
