@@ -50,14 +50,13 @@ class BaseConnectorBackend(abc.ABC):
         Returns:
             Non-negative integer offset to add to a base port.
         """
-        # Get TP size for spacing calculation
         tp_size = self.llm_config.engine_kwargs.get("tensor_parallel_size", 1)
 
         # Prefer explicit DP rank when available
         dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
         if isinstance(dp_rank, int) and dp_rank >= 0:
             # vLLM already accounts for TP spacing in DP offset calculation
-            # (data_parallel_rank × tp_size), so we don't multiply here
+            # (data_parallel_rank × tp_size), don't multiply here
             return dp_rank
 
         # Fall back to Serve replica rank for TP/PP cases
