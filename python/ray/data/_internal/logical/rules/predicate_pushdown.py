@@ -23,13 +23,17 @@ class PredicatePushdown(Rule):
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
+    def _is_valid_filter_operator(self, op: LogicalOperator) -> bool:
+        return isinstance(op, Filter) and op.is_expression_based()
+
+    @classmethod
     def _try_fuse_filters(cls, op: LogicalOperator) -> LogicalOperator:
         """Fuse consecutive Filter operators with compatible expressions."""
-        if not isinstance(op, Filter) or not op.is_expression_based():
+        if not cls._is_valid_filter_operator(op):
             return op
 
         input_op = op.input_dependencies[0]
-        if not isinstance(input_op, Filter) or not input_op.is_expression_based():
+        if not cls._is_valid_filter_operator(input_op):
             return op
 
         # Combine predicates
@@ -44,7 +48,7 @@ class PredicatePushdown(Rule):
     @classmethod
     def _try_push_down_predicate(cls, op: LogicalOperator) -> LogicalOperator:
         """Push Filter down to any operator that supports predicate pushdown."""
-        if not isinstance(op, Filter) or not op.is_expression_based():
+        if not cls._is_valid_filter_operator(op):
             return op
 
         input_op = op.input_dependencies[0]

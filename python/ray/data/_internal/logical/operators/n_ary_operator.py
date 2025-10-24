@@ -81,23 +81,24 @@ class Union(NAry, LogicalOperatorSupportsPredicatePushdown):
         clone = copy.copy(self)
 
         # Combine with existing predicate using AND
-        if clone._predicate_expr is not None:
-            clone._predicate_expr = clone._predicate_expr & predicate_expr
-        else:
-            clone._predicate_expr = predicate_expr
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
 
         # Apply predicate to each branch
         new_inputs = []
-        for branch in self._input_dependencies:
+        for input_op in self._input_dependencies:
             # If the branch supports predicate pushdown, use it
             if (
-                isinstance(branch, LogicalOperatorSupportsPredicatePushdown)
-                and branch.supports_predicate_pushdown()
+                isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
+                and input_op.supports_predicate_pushdown()
             ):
-                new_inputs.append(branch.apply_predicate(predicate_expr))
+                new_inputs.append(input_op.apply_predicate(predicate_expr))
             else:
                 # Otherwise, wrap with a Filter operator
-                new_inputs.append(Filter(branch, predicate_expr=predicate_expr))
+                new_inputs.append(Filter(input_op, predicate_expr=predicate_expr))
 
         clone._input_dependencies = new_inputs
         return clone

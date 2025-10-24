@@ -489,11 +489,11 @@ class ParquetDatasource(Datasource):
             predicate_expr = visitor.visit(predicate_expr)
 
         # Combine with existing predicate using AND
-        if clone._predicate_expr is not None:
-            clone._predicate_expr = clone._predicate_expr & predicate_expr
-        else:
-            clone._predicate_expr = predicate_expr
-
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
         return clone
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
@@ -577,10 +577,11 @@ def _read_batches_from(
     # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
     filter_from_kwargs = to_batches_kwargs.pop("filter", None)
     if filter_from_kwargs is not None:
-        if filter_expr is not None:
-            filter_expr = filter_expr & filter_from_kwargs
-        else:
-            filter_expr = filter_from_kwargs
+        filter_expr = (
+            filter_from_kwargs
+            if filter_expr is None
+            else filter_expr & filter_from_kwargs
+        )
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
