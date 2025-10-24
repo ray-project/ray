@@ -1,20 +1,19 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
 
 import pyarrow
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.logical.interfaces import Plan, SourceOperator
+from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.optimizers import LogicalOptimizer, PhysicalOptimizer
-from ray.data._internal.planner import create_planner
+from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
@@ -116,12 +115,7 @@ class ExecutionPlan:
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
 
-        convert_fns: List[Callable[[Plan], Plan]] = [
-            lambda x: x,
-            LogicalOptimizer().optimize,
-            create_planner().plan,
-            PhysicalOptimizer().optimize,
-        ]
+        convert_fns = [lambda x: x] + get_plan_conversion_fns()
         titles: List[str] = [
             "Logical Plan",
             "Logical Plan (Optimized)",
