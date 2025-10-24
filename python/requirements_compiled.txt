@@ -1684,7 +1684,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.9.0
+pyiceberg==0.10.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1734,6 +1734,8 @@ pyro-ppl==1.9.1
     # via botorch
 pyro4==4.82
     # via hpbandster
+pyroaring==1.0.3
+    # via pyiceberg
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
