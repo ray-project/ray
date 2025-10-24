@@ -1,7 +1,8 @@
-import os
 import sys
-import ray
+
 import pytest
+
+import ray
 
 
 def test_double_borrowing_with_network_failure(monkeypatch, shutdown_only):
