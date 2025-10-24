@@ -132,7 +132,7 @@ class ExecutionPlan:
         # 1. Set initial plan
         plan = self._logical_plan
 
-        output_strs = []
+        sections = []
         for title, convert_fn in zip(titles, convert_fns):
 
             banner = f"\n-------- {title} --------\n"
@@ -143,10 +143,10 @@ class ExecutionPlan:
             # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
 
-            combined = f"{banner}{plan_str}"
-            output_strs.append(combined)
+            section = f"{banner}{plan_str}"
+            sections.append(section)
 
-        return "".join(output_strs)
+        return "".join(sections)
 
     @staticmethod
     def generate_plan_string(
