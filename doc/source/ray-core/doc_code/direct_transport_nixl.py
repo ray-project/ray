@@ -8,12 +8,6 @@ import ray
 @ray.remote(num_gpus=1)
 class MyActor:
 
-    def __init__(self):
-        self.tensor1 = torch.tensor([1, 2, 3])
-        self.tensor2 = torch.tensor([4, 5, 6])
-        self.tensor3 = torch.tensor([7, 8, 9])
-
-
     @ray.method(tensor_transport="nixl")
     def random_tensor(self):
         return torch.randn(1000, 1000).cuda()
@@ -36,18 +30,6 @@ class MyActor:
             assert t.device.type == "cuda"
             sum += t.sum().item()
         return sum
-
-    @ray.method(tensor_transport="nixl")
-    def send_dict1(self):
-        return {"round1-1": self.tensor1, "round1-2": self.tensor2}
-
-    @ray.method(tensor_transport="nixl")
-    def send_dict2(self):
-        return {"round2-1": self.tensor1, "round2-3": self.tensor3}
-    
-    def sum_dict(self, dict):
-        return sum(v.sum().item() for v in dict.values())
-
 
 # No collective group is needed. The two actors just need to have NIXL
 # installed.
@@ -79,8 +61,27 @@ print(ray.get(ref1))
 # __nixl_limitations_start__
 import pytest
 
+@ray.remote(num_gpus=1)
+class Actor:
+    def __init__(self):
+        self.tensor1 = torch.tensor([1, 2, 3])
+        self.tensor2 = torch.tensor([4, 5, 6])
+        self.tensor3 = torch.tensor([7, 8, 9])
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict1(self):
+        return {"round1-1": self.tensor1, "round1-2": self.tensor2}
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict2(self):
+        return {"round2-1": self.tensor1, "round2-3": self.tensor3}
+
+    def sum_dict(self, dict):
+        return sum(v.sum().item() for v in dict.values())
+
+
 with pytest.raises(ValueError):
-    sender, receiver = MyActor.remote(), MyActor.remote()
+    sender, receiver = Actor.remote(), Actor.remote()
     ref1 = sender.send_dict1.remote()
     result1 = receiver.sum_dict.remote(ref1)
     print(ray.get(result1))
