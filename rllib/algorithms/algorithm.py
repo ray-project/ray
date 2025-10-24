@@ -1724,6 +1724,15 @@ class Algorithm(Checkpointable, Trainable):
             if self.config.enable_env_runner_and_connector_v2:
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
+                throughput_estimate = self.metrics.peek(
+                    (
+                        EVALUATION_RESULTS,
+                        ENV_RUNNER_RESULTS,
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                    ),
+                    throughput=True,
+                    default={"throughput_since_last_restore": 0.0},
+                )["throughput_since_last_restore"]
                 _num = min(
                     # Clamp number of steps to take between a max and a min.
                     self.config.evaluation_auto_duration_max_env_steps_per_sample,
@@ -1734,15 +1743,7 @@ class Algorithm(Checkpointable, Trainable):
                             (train_mean_time - (time.time() - t0))
                             # Multiply by our own (eval) throughput to get the timesteps
                             # to do (per worker).
-                            * self.metrics.peek(
-                                (
-                                    EVALUATION_RESULTS,
-                                    ENV_RUNNER_RESULTS,
-                                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                                ),
-                                throughput=True,
-                                default=0.0,
-                            )
+                            * throughput_estimate
                             / num_healthy_workers
                         ),
                     ),
