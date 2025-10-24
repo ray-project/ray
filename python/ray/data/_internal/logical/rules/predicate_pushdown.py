@@ -36,10 +36,6 @@ class PredicatePushdown(Rule):
         if not isinstance(input_op, Filter) or not input_op.is_expression_based():
             return op
 
-        # Check if predicates are of the same type
-        if type(op._predicate_expr) is not type(input_op._predicate_expr):
-            return op
-
         # Combine predicates
         combined_predicate = op._predicate_expr & input_op._predicate_expr
 

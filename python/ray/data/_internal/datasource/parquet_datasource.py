@@ -575,13 +575,12 @@ def _read_batches_from(
     # TODO deprecate to_batches_kwargs
     use_threads = to_batches_kwargs.pop("use_threads", use_threads)
     # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
-    if to_batches_kwargs.get("filter") is not None:
-        filter_from_kwargs = to_batches_kwargs.get("filter")
+    filter_from_kwargs = to_batches_kwargs.pop("filter", None)
+    if filter_from_kwargs is not None:
         if filter_expr is not None:
             filter_expr = filter_expr & filter_from_kwargs
         else:
             filter_expr = filter_from_kwargs
-        to_batches_kwargs.pop("filter")
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
