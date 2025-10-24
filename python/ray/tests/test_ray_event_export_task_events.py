@@ -85,7 +85,7 @@ def wait_until_grpc_channel_ready(
 
 def get_job_id_and_driver_script_task_id_from_events(
     events: json, preserve_proto_field_name: bool
-) -> tuple[Union[str, None], Union[str, None]]:
+) -> tuple[Optional[str], Optional[str]]:
     test_job_id = base64.b64encode(
         ray.JobID.from_hex(ray.get_runtime_context().get_job_id()).binary()
     ).decode()
