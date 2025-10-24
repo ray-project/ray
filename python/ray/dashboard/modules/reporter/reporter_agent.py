@@ -1312,8 +1312,8 @@ class ReporterAgent(
 
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
-            # All ray processes start with ray::
-            if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
+            # collect both worker and driver stats
+            if cmdline:
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
 
@@ -1323,9 +1323,6 @@ class ReporterAgent(
                     or stat.get("gpu_utilization", 0) > 0
                 ):
                     gpu_worker_proc_names.add(proc_name)
-            # We will lose worker stats that don't follow the ray worker proc
-            # naming convention. Theoretically, there should be no data loss here
-            # because all worker processes are renamed to ray::.
 
         records = []
 
