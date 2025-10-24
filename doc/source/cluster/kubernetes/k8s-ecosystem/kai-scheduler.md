@@ -132,9 +132,27 @@ kubectl apply -f ray-cluster.kai-scheduler.yaml
 
 #Verify queues are created
 kubectl get queues
+# NAME           PRIORITY   PARENT         CHILDREN     DISPLAYNAME
+# department-1                             ["team-a"]   
+# team-a                    department-1                
 
 # Watch the pods get scheduled
 kubectl get pods -w
+# NAME                                    READY   STATUS              RESTARTS   AGE
+# kuberay-operator-7d86f4f46b-dq22x       1/1     Running             0          50s
+# raycluster-sample-head-rvrkz            0/1     ContainerCreating   0          13s
+# raycluster-sample-worker-worker-mlvtz   0/1     Init:0/1            0          13s
+# raycluster-sample-worker-worker-rcb54   0/1     Init:0/1            0          13s
+# raycluster-sample-worker-worker-mlvtz   0/1     Init:0/1            0          40s
+# raycluster-sample-worker-worker-rcb54   0/1     Init:0/1            0          41s
+# raycluster-sample-head-rvrkz            0/1     Running             0          42s
+# raycluster-sample-head-rvrkz            1/1     Running             0          54s
+# raycluster-sample-worker-worker-rcb54   0/1     PodInitializing     0          59s
+# raycluster-sample-worker-worker-mlvtz   0/1     PodInitializing     0          59s
+# raycluster-sample-worker-worker-rcb54   0/1     Running             0          60s
+# raycluster-sample-worker-worker-mlvtz   0/1     Running             0          60s
+# raycluster-sample-worker-worker-rcb54   1/1     Running             0          71s
+# raycluster-sample-worker-worker-mlvtz   1/1     Running             0          71s
 ```
 
 ## Set priorities for workloads
@@ -168,6 +186,22 @@ kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 
 # Watch the pods get scheduled
 kubectl get pods -w
+# NAME                                          READY   STATUS    RESTARTS   AGE
+# kuberay-operator-7d86f4f46b-dq22x             1/1     Running   0          4m9s
+# raycluster-half-gpu-head-9rtxf                0/1     Running   0          4s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Pending   0          4s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Pending   0          4s
+# ... (skip for brevity)
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Init:0/1   0          6s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Init:0/1   0          7s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Init:0/1   0          8s
+# raycluster-half-gpu-head-9rtxf                1/1     Running    0          19s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     PodInitializing   0          19s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     PodInitializing   0          19s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Running           0          20s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Running           0          20s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   1/1     Running           0          31s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   1/1     Running           0          31s
 ```
 
 Note: GPU sharing with time slicing in this example occurs only at the Kubernetes layer, allowing multiple pods to share a single GPU device. The scheduler doesn't enforce memory isolation, so applications must manage their own usage to prevent interference. For other GPU sharing approaches (e.g., MPS), see the [the KAI documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/gpu-sharing).
