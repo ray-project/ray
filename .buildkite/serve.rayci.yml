@@ -211,7 +211,7 @@ steps:
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve
-        --build-name docgpubuild-py3.10
+        --build-name docgpubuild
         --only-tags gpu --python-version 3.10
     depends_on: docgpubuild
 
