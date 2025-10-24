@@ -170,9 +170,6 @@ class OptimizedRayFossaPreprocessor:
     
     def is_c_cpp_target(self, target: str) -> bool:
         """Determine if a target is C/C++ related using multiple heuristics"""
-        # Skip Python files explicitly
-        if target.endswith('.py') or 'python' in target.lower():
-            return False
             
         # Skip other non-C/C++ patterns
         target_lower = target.lower()
@@ -193,7 +190,7 @@ class OptimizedRayFossaPreprocessor:
         # For internal targets, be more selective
         if target.startswith('//'):
             # Skip obvious non-C/C++ internal targets
-            if any(skip in target_lower for skip in ['bazel', 'gen_', 'gen_ray_pkg.py']):
+            if any(skip in target_lower for skip in ['bazel', 'gen_ray_pkg', 'gen_ray_pkg.py']):
                 return False
             return True
         
@@ -267,7 +264,6 @@ class OptimizedRayFossaPreprocessor:
                 
                 # Check if it's a C/C++ target
                 if self.is_c_cpp_target(dep):
-                    print(dep, True)
                     c_cpp_deps.append(dep)
                 else:
                     excluded_deps.append(dep)
