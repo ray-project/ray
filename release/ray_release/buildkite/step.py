@@ -174,8 +174,8 @@ def get_step(
         concurrency_test = test
     concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
 
-    # step["concurrency_group"] = concurrency_group
-    # step["concurrency"] = concurrency_limit
+    step["concurrency_group"] = concurrency_group
+    step["concurrency"] = concurrency_limit
 
     step["priority"] = priority_val
 

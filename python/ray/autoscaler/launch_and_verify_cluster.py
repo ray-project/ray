@@ -11,6 +11,7 @@ Usage:
         <cluster_configuration_file_path>
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -156,10 +157,6 @@ def azure_authenticate():
         SecretId="azure-service-principal-oss-release"
     )
     secret = secret_response["SecretString"]
-    print(f"Secret: {secret}")
-
-    # Extract credentials
-    import json
 
     client_id = json.loads(secret)["client_id"]
     tenant_id = json.loads(secret)["tenant_id"]
@@ -169,7 +166,6 @@ def azure_authenticate():
         SecretId="azure-service-principal-certificate"
     )
     cert = cert_response["SecretString"]
-    print(f"Cert: {cert}")
 
     # Write certificate to temp file
     tmp_dir = tempfile.mkdtemp()
@@ -178,7 +174,7 @@ def azure_authenticate():
         f.write(cert)
 
     # Login to Azure
-    result = subprocess.check_call(
+    subprocess.check_call(
         [
             "az",
             "login",
@@ -191,7 +187,6 @@ def azure_authenticate():
             tenant_id,
         ]
     )
-    print(f"Login result: {result}")
 
 
 def download_ssh_key_aws():
@@ -403,9 +398,7 @@ def run_ray_commands(
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, env=env)
-        print(f"cmd stdout:\n{result.stdout.decode('utf-8')}")
-        print(f"cmd stderr:\n{result.stderr.decode('utf-8')}")
+        subprocess.run(cmd, check=True, capture_output=True, env=env)
     except subprocess.CalledProcessError as e:
         print(e.output)
         # print stdout and stderr
@@ -427,7 +420,6 @@ def run_ray_commands(
                 str(cluster_config),
                 (
                     'python -c \'import ray; ray.init("localhost:6379");'
-                    + 'print("Num nodes: ", len(ray.nodes()));'
                     + f" assert len(ray.nodes()) >= {num_expected_nodes}'"
                 ),
             ]
