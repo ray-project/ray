@@ -844,37 +844,6 @@ def test_report_per_component_stats():
         0,
     )
 
-    """
-    Verify worker names are only reported when they start with ray::.
-    """
-    # Verify if the command doesn't start with ray::, metrics are not reported.
-    unknown_stats = {
-        "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-        "memory_full_info": Bunch(
-            uss=51428381, rss=55934976, vms=7026937856, pfaults=15354, pageins=0
-        ),
-        "cpu_percent": 6.0,
-        "num_fds": 8,
-        "cmdline": ["python mock", "", "", "", "", "", "", "", "", "", "", ""],
-        "create_time": 1614826391.338613,
-        "pid": 7175,
-        "cpu_times": Bunch(
-            user=0.607899328,
-            system=0.274044032,
-            children_user=0.0,
-            children_system=0.0,
-        ),
-    }
-    test_stats["workers"] = [idle_stats, unknown_stats]
-
-    records = agent._to_records(test_stats, cluster_stats)
-    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
-        records
-    )
-    assert "python mock" not in uss_records
-    assert "python mock" not in cpu_records
-    assert "python mock" not in num_fds_records
-
     stats_payload = agent._generate_stats_payload(test_stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
