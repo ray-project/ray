@@ -300,6 +300,5 @@ ray_cc_binary(
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
-        "@rapidyaml",
     ],
 )

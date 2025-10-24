@@ -76,7 +76,6 @@ cc_library(
         "@com_google_absl//absl/flags:parse",
         "@msgpack",
         "@nlohmann_json",
-        "@rapidyaml",
     ],
     alwayslink = True,
 )
