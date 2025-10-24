@@ -1056,9 +1056,10 @@ def test_groupby_map_groups_multicolumn(
     ]
 
 
-def test_groupby_map_groups_expression(
+def test_groupby_map_groups_expression_inputs(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
+    """Expression inputs: single expr, list/tuple, and dict outputs."""
 
     ds = ray.data.from_items(
         [
@@ -1074,51 +1075,56 @@ def test_groupby_map_groups_expression(
         combined = arr.combine_chunks()
         return pa.array([pc.min(combined).as_py()], type=pa.int64())
 
-    result = (
+    @udf(DataType.int64())
+    def max_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.max(combined).as_py()], type=pa.int64())
+
+    # Single expression (auto alias).
+    single_result = ds.groupby("group").map_groups(min_value(col("value"))).take_all()
+    assert sorted(single_result, key=lambda row: row["min_value"]) == [
+        {"min_value": 1},
+        {"min_value": 3},
+    ]
+
+    # List of expressions with explicit aliases.
+    list_result = (
         ds.groupby("group")
         .map_groups(
             [
                 min_value(col("group")).alias("group"),
-                min_value(col("value")).alias("first_value"),
+                max_value(col("value")).alias("max_value"),
             ]
         )
         .sort("group")
         .take_all()
     )
-
-    assert result == [
-        {"group": 1, "first_value": 1},
-        {"group": 2, "first_value": 3},
+    assert list_result == [
+        {"group": 1, "max_value": 2},
+        {"group": 2, "max_value": 4},
     ]
 
-
-def test_groupby_map_groups_expression_default_alias(
-    ray_start_regular_shared_2_cpus, configure_shuffle_method
-):
-    import pyarrow.compute as pc
-
-    ds = ray.data.from_items(
-        [
-            {"group": 1, "value": 1},
-            {"group": 1, "value": 2},
-            {"group": 2, "value": 3},
-            {"group": 2, "value": 4},
-        ]
+    # Dict of expressions using keys for output names.
+    dict_result = (
+        ds.groupby("group")
+        .map_groups(
+            {
+                "group": min_value(col("group")),
+                "range": max_value(col("value")),
+            }
+        )
+        .sort("group")
+        .take_all()
     )
-
-    @udf(DataType.int64())
-    def min_value(arr: pa.ChunkedArray) -> pa.Array:
-        combined = arr.combine_chunks()
-        return pa.array([pc.min(combined).as_py()], type=pa.int64())
-
-    result = ds.groupby("group").map_groups(min_value(col("value"))).take_all()
-    assert set(result[0].keys()) == {"min_value"}
-
+    assert dict_result == [
+        {"group": 1, "range": 2},
+        {"group": 2, "range": 4},
+    ]
 
 def test_groupby_map_groups_expression_invalid_args(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
-    import pyarrow.compute as pc
+    
 
     ds = ray.data.from_items(
         [
