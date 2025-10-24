@@ -491,27 +491,27 @@ def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
 
 
 @pytest.mark.parametrize(
-    "preserves_row_count,expected_plan",
+    "udf_modifying_row_count,expected_plan",
     [
         (
-            True,
+            False,
             "Read[ReadRange] -> Limit[limit=10] -> MapBatches[MapBatches(<lambda>)]",
         ),
         (
-            False,
+            True,
             "Read[ReadRange] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=10]",
         ),
     ],
 )
-def test_limit_pushdown_preserves_row_count_with_map_batches(
+def test_limit_pushdown_udf_modifying_row_count_with_map_batches(
     ray_start_regular_shared_2_cpus,
-    preserves_row_count,
+    udf_modifying_row_count,
     expected_plan,
 ):
     """Test that limit pushdown preserves the row count with map batches."""
     ds = (
         ray.data.range(100)
-        .map_batches(lambda x: x, preserves_row_count=preserves_row_count)
+        .map_batches(lambda x: x, udf_modifying_row_count=udf_modifying_row_count)
         .limit(10)
     )
     _check_valid_plan_and_result(
