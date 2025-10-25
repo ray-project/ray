@@ -19,8 +19,8 @@
 # Reading tests
 ###############
 
-- name: "read_parquet_{{scaling}}"
-
+- name: ptest_read_parquet_{{scaling}}"
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -35,8 +35,8 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
-- name: "read_large_parquet_{{scaling}}"
-
+- name: ptest_read_large_parquet_{{scaling}}"
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -51,8 +51,8 @@
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles
 
-- name: "read_images_{{scaling}}"
-
+- name: ptest_read_images_{{scaling}}"
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -66,7 +66,8 @@
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
-- name: read_tfrecords
+- name: ptest_read_tfrecords
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -74,8 +75,8 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: "read_from_uris_{{scaling}}"
-
+- name: ptest_read_from_uris_{{scaling}}"
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -87,7 +88,7 @@
     timeout: 5400
     script: python read_from_uris_benchmark.py
 
-- name: read_images_comparison_microbenchmark_single_node
+- name: ptest_read_images_comparison_microbenchmark_single_node
   frequency: manual
 
   cluster:
@@ -114,7 +115,7 @@
 # Aggregation tests
 ###################
 
-- name: "count_parquet_{{scaling}}"
+- name: count_parquet_{{scaling}}"
 
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -154,7 +155,7 @@
 
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
-- name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+- name: aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
 
   matrix:
     setup:
@@ -174,7 +175,7 @@
       --shuffle-strategy {{shuffle_strategy}}
 
 
-- name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+- name: map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
 
   matrix:
     setup:
@@ -318,7 +319,7 @@
 # Iteration tests
 #################
 
-- name: "iter_batches_{{format}}"
+- name: iter_batches_{{format}}"
 
   matrix:
     setup:
@@ -366,7 +367,7 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
+- name: map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
   matrix:
     setup:
@@ -409,7 +410,7 @@
 # Sort and shuffle tests
 ########################
 
-- name: "random_shuffle_{{scaling}}"
+- name: random_shuffle_{{scaling}}"
 
   matrix:
     setup:
@@ -449,7 +450,7 @@
       --shuffle
 
 
-- name: "sort_{{scaling}}"
+- name: sort_{{scaling}}"
 
   matrix:
     setup:
@@ -490,7 +491,7 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: "image_classification_{{scaling}}"
+- name: image_classification_{{scaling}}"
   group: data-batch-inference
 
   cluster:
@@ -630,7 +631,7 @@
 # TPCH Queries
 ##############
 
-- name: "tpch_q1_{{scaling}}"
+- name: tpch_q1_{{scaling}}"
 
   matrix:
     setup:
