@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import traceback
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 
@@ -162,6 +162,61 @@ class ReferenceTable:
         return self._runtime_env_reference
 
 
+class LRULoggerCache:
+    def __init__(self, maxsize=128):
+        self.maxsize = maxsize
+        self.cache = OrderedDict()
+
+    def get(
+        self, cache_key: str, create_func: Callable[[], logging.Logger]
+    ) -> logging.Logger:
+        """Retrieve or create a logger and update the access order"""
+        if cache_key in self.cache:
+            # Move to Recently Used
+            self.cache.move_to_end(cache_key)
+            return self.cache[cache_key]
+
+        # Create a new logger
+        logger = create_func()
+
+        # Check size before adding new logger to avoid temporary maxsize+1
+        if len(self.cache) >= self.maxsize:
+            self._evict_oldest()
+
+        # Now add the new logger
+        self.cache[cache_key] = logger
+        return logger
+
+    def _cleanup_logger(self, logger: logging.Logger) -> List[str]:
+        """
+        Internal helper to close logger handlers and return associated file paths.
+        Args:
+            logger: The logger object to be cleaned up.
+        Returns:
+            A list of file paths for log files that can be deleted.
+        """
+        pending_files = []
+        for handler in logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                try:
+                    filepath = handler.baseFilename
+                    handler.close()
+                    pending_files.append(filepath)
+                except Exception as e:
+                    default_logger.error(f"Failed to close handler: {str(e)}")
+            logger.removeHandler(handler)
+        return pending_files
+
+    def _evict_oldest(self):
+        """Eliminate the oldest unused recorder"""
+        if not self.cache:
+            return
+
+        _, oldest_logger = self.cache.popitem(last=False)
+        self._cleanup_logger(oldest_logger)
+        del oldest_logger
+
+
 class RuntimeEnvAgent:
     """An RPC server to create and delete runtime envs.
 
@@ -194,7 +249,15 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
-        self._per_job_logger_cache = dict()
+        try:
+            cache_size = int(os.environ.get("RAY_RUNTIME_ENV_LOG_CACHE_SIZE", 128))
+        except ValueError:
+            self._logger.warning(
+                "RAY_RUNTIME_ENV_LOG_CACHE_SIZE environment variable is set to a non-integer value, "
+                "using default value 128"
+            )
+            cache_size = 128
+        self._per_job_logger_cache = LRULoggerCache(maxsize=cache_size)
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -291,14 +354,22 @@ class RuntimeEnvAgent:
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
-        if job_id not in self._per_job_logger_cache:
-            params = self._logging_params.copy()
-            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
-            params["logger_name"] = f"runtime_env_{job_id}"
-            params["propagate"] = False
-            per_job_logger = setup_component_logger(**params)
-            self._per_job_logger_cache[job_id] = per_job_logger
-        return self._per_job_logger_cache[job_id]
+        # Create a cache key that includes both job_id and log_files
+        # Create a unique cache key using length-prefixed encoding to avoid ambiguity
+        log_files_sorted = sorted(log_files)
+        cache_key = f"{job_id}_{len(log_files_sorted)}_{'|'.join(log_files_sorted)}"
+        # Using LRU cache to retrieve or create a logger
+        return self._per_job_logger_cache.get(
+            cache_key, lambda: self._create_logger(job_id, log_files, cache_key)
+        )
+
+    def _create_logger(self, job_id: str, log_files: List[str], cache_key: str):
+        params = self._logging_params.copy()
+        params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
+        # Use cache_key as logger name to ensure uniqueness based on both job_id and log_files
+        params["logger_name"] = f"runtime_env_{cache_key}"
+        params["propagate"] = False
+        return setup_component_logger(**params)
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
