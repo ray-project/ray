@@ -67,16 +67,16 @@ class Operator:
         """
 
         transformed_input_ops = []
-        new_ops = []
+        input_changed = False
 
         for input_op in self.input_dependencies:
             transformed_input_op = input_op._apply_transform(transform)
             transformed_input_ops.append(transformed_input_op)
             # Keep track of new input ops
             if transformed_input_op is not input_op:
-                new_ops.append(transformed_input_op)
+                input_changed = True
 
-        if new_ops:
+        if input_changed:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
 
