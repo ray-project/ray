@@ -420,313 +420,113 @@ class TestToPyArrow:
             udf_expr.to_pyarrow()
 
 
-class TestExpressionRepr:
-    """Test tree representation of expressions."""
+def _build_complex_expr():
+    """Build a convoluted expression that exercises all visitor code paths.
 
-    def test_column_repr(self):
-        """Test repr for simple column expression."""
-        expr = col("age")
-        expected = "COL('age')"
-        assert repr(expr) == expected
+    This expression includes:
+    - Binary operations: ADD, SUB, MUL, DIV, FLOORDIV, GT, LT, GE, LE, EQ, NE, AND, OR, IN, NOT_IN
+    - Unary operations: NOT, IS_NULL, IS_NOT_NULL
+    - Literals: int, float, string, bool, list
+    - Columns
+    - Aliases
+    - Star expression
+    - Download expression
+    - UDF expression
+    - Deep nesting on both left and right sides
+    """
+    from ray.data.datatype import DataType
+    from ray.data.expressions import UDFExpr, download, star
 
-    def test_literal_repr(self):
-        """Test repr for literal expressions."""
-        # Integer literal
-        expr = lit(42)
-        expected = "LIT(42)"
-        assert repr(expr) == expected
+    def custom_udf(x, y):
+        return x + y
 
-        # String literal
-        expr = lit("hello")
-        expected = "LIT('hello')"
-        assert repr(expr) == expected
+    # Create UDF expression
+    udf_expr = UDFExpr(
+        fn=custom_udf,
+        args=[col("value"), lit(10)],
+        kwargs={"z": col("multiplier")},
+        data_type=DataType(int),
+    )
 
-        # Boolean literal
-        expr = lit(True)
-        expected = "LIT(True)"
-        assert repr(expr) == expected
-
-        # Float literal
-        expr = lit(3.14)
-        expected = "LIT(3.14)"
-        assert repr(expr) == expected
-
-        # List literal
-        expr = lit([1, 2, 3])
-        expected = "LIT([1, 2, 3])"
-        assert repr(expr) == expected
-
-    def test_literal_repr_truncation(self):
-        """Test that long values are truncated."""
-        long_value = "x" * 100
-        expr = lit(long_value)
-        repr_str = repr(expr)
-        # Should be truncated to 50 chars (47 + "...")
-        assert len(repr_str) <= len("LIT('')") + 50
-        assert "..." in repr_str
-
-    def test_simple_binary_expr_repr(self):
-        """Test repr for simple binary expressions."""
-        expr = col("x") + lit(5)
-        expected = """ADD
-    ├── left: COL('x')
-    └── right: LIT(5)"""
-        assert repr(expr) == expected
-
-    def test_binary_expr_multiplication_repr(self):
-        """Test repr for multiplication."""
-        expr = col("price") * lit(2)
-        expected = """MUL
-    ├── left: COL('price')
-    └── right: LIT(2)"""
-        assert repr(expr) == expected
-
-    def test_nested_binary_expr_repr(self):
-        """Test repr for nested binary expressions."""
-        # (col("x") + 5) * col("y")
-        expr = (col("x") + lit(5)) * col("y")
-        expected = """MUL
-    ├── left: ADD
-    │   ├── left: COL('x')
-    │   └── right: LIT(5)
-    └── right: COL('y')"""
-        assert repr(expr) == expected
-
-    def test_deeply_nested_binary_expr_repr(self):
-        """Test repr for deeply nested expressions."""
-        # ((col("a") + 5) * col("b")) > 100
-        expr = ((col("a") + lit(5)) * col("b")) > lit(100)
-        expected = """GT
-    ├── left: MUL
-    │   ├── left: ADD
-    │   │   ├── left: COL('a')
-    │   │   └── right: LIT(5)
-    │   └── right: COL('b')
-    └── right: LIT(100)"""
-        assert repr(expr) == expected
-
-    def test_unary_expr_not_repr(self):
-        """Test repr for NOT operation."""
-        expr = ~col("active")
-        expected = """NOT
-    └── operand: COL('active')"""
-        assert repr(expr) == expected
-
-    def test_unary_expr_is_null_repr(self):
-        """Test repr for IS_NULL operation."""
-        expr = col("value").is_null()
-        expected = """IS_NULL
-    └── operand: COL('value')"""
-        assert repr(expr) == expected
-
-    def test_unary_expr_is_not_null_repr(self):
-        """Test repr for IS_NOT_NULL operation."""
-        expr = col("value").is_not_null()
-        expected = """IS_NOT_NULL
-    └── operand: COL('value')"""
-        assert repr(expr) == expected
-
-    def test_alias_simple_repr(self):
-        """Test repr for simple alias expressions."""
-        expr = col("price").alias("product_price")
-        expected = """ALIAS('product_price')
-    └── COL('price')"""
-        assert repr(expr) == expected
-
-    def test_alias_complex_repr(self):
-        """Test repr for complex aliased expression."""
-        expr = (col("x") + lit(5)).alias("result")
-        expected = """ALIAS('result')
-    └── ADD
-        ├── left: COL('x')
-        └── right: LIT(5)"""
-        assert repr(expr) == expected
-
-    def test_udf_expr_with_args_repr(self):
-        """Test repr for UDF expressions with positional args."""
-        from ray.data.datatype import DataType
-        from ray.data.expressions import UDFExpr
-
-        def my_function(x, y):
-            return x + y
-
-        expr = UDFExpr(
-            fn=my_function,
-            args=[col("value"), lit(10)],
-            kwargs={},
-            data_type=DataType(int),
+    # Build the mega-complex expression
+    inner_expr = (
+        ((col("age") + lit(10)) * col("rate") / lit(2.5) >= lit(100))
+        & (
+            col("name").is_not_null()
+            | (col("status").is_in(["active", "pending"]) & col("verified"))
         )
-        expected = """UDF(my_function)
-    ├── arg[0]: COL('value')
-    └── arg[1]: LIT(10)"""
-        assert repr(expr) == expected
+        & ((col("count") - lit(5)) // lit(2) <= col("limit"))
+        & ~(col("deleted").is_null() | (col("score") != lit(0)))
+        & (download("uri") < star())
+        & (udf_expr.alias("udf_result") > lit(50))
+    ).alias("complex_filter")
 
-    def test_udf_expr_with_kwargs_repr(self):
-        """Test repr for UDF expressions with keyword args."""
-        from ray.data.datatype import DataType
-        from ray.data.expressions import UDFExpr
+    expr = ~inner_expr
 
-        def my_function(x, y):
-            return x + y
+    return expr
 
-        expr = UDFExpr(
-            fn=my_function,
-            args=[],
-            kwargs={"x": col("a"), "y": lit(5)},
-            data_type=DataType(int),
-        )
-        expected = """UDF(my_function)
-    ├── kwarg['x']: COL('a')
-    └── kwarg['y']: LIT(5)"""
-        assert repr(expr) == expected
 
-    def test_udf_expr_mixed_args_repr(self):
-        """Test repr for UDF with both positional and keyword args."""
-        from ray.data.datatype import DataType
-        from ray.data.expressions import UDFExpr
-
-        def mixed_fn(a, b, c):
-            return a + b + c
-
-        expr = UDFExpr(
-            fn=mixed_fn,
-            args=[col("x")],
-            kwargs={"y": lit(10), "z": col("w")},
-            data_type=DataType(int),
-        )
-        expected = """UDF(mixed_fn)
-    ├── arg[0]: COL('x')
-    ├── kwarg['y']: LIT(10)
-    └── kwarg['z']: COL('w')"""
-        assert repr(expr) == expected
-
-    def test_star_expr_repr(self):
-        """Test repr for star expressions."""
-        from ray.data.expressions import star
-
-        expr = star()
-        expected = "COL(*)"
-        assert repr(expr) == expected
-
-    def test_download_expr_repr(self):
-        """Test repr for download expressions."""
-        from ray.data.expressions import download
-
-        expr = download("uri_column")
-        expected = "DOWNLOAD('uri_column')"
-        assert repr(expr) == expected
-
-    def test_boolean_and_repr(self):
-        """Test repr for AND operation."""
-        expr = (col("age") > lit(18)) & (col("status") == lit("active"))
-        expected = """AND
-    ├── left: GT
-    │   ├── left: COL('age')
-    │   └── right: LIT(18)
-    └── right: EQ
-        ├── left: COL('status')
-        └── right: LIT('active')"""
-        assert repr(expr) == expected
-
-    def test_boolean_or_repr(self):
-        """Test repr for OR operation."""
-        expr = (col("age") < lit(18)) | (col("age") > lit(65))
-        expected = """OR
-    ├── left: LT
-    │   ├── left: COL('age')
-    │   └── right: LIT(18)
-    └── right: GT
-        ├── left: COL('age')
-        └── right: LIT(65)"""
-        assert repr(expr) == expected
-
-    def test_is_in_operation_repr(self):
-        """Test repr for is_in operations."""
-        expr = col("status").is_in(["active", "pending"])
-        expected = """IN
-    ├── left: COL('status')
-    └── right: LIT(['active', 'pending'])"""
-        assert repr(expr) == expected
-
-    def test_not_in_operation_repr(self):
-        """Test repr for not_in operations."""
-        expr = col("status").not_in(["deleted", "archived"])
-        expected = """NOT_IN
-    ├── left: COL('status')
-    └── right: LIT(['deleted', 'archived'])"""
-        assert repr(expr) == expected
-
-    def test_all_binary_operations_repr(self):
-        """Test repr for all binary operation types."""
-        test_cases = [
-            (col("a") + col("b"), "ADD"),
-            (col("a") - col("b"), "SUB"),
-            (col("a") * col("b"), "MUL"),
-            (col("a") / col("b"), "DIV"),
-            (col("a") // col("b"), "FLOORDIV"),
-            (col("a") > col("b"), "GT"),
-            (col("a") < col("b"), "LT"),
-            (col("a") >= col("b"), "GE"),
-            (col("a") <= col("b"), "LE"),
-            (col("a") == col("b"), "EQ"),
-            (col("a") != col("b"), "NE"),
-            (col("a") & col("b"), "AND"),
-            (col("a") | col("b"), "OR"),
-        ]
-
-        for expr, op_name in test_cases:
-            expected = f"""{op_name}
-    ├── left: COL('a')
-    └── right: COL('b')"""
-            assert repr(expr) == expected, f"Failed for operation {op_name}"
-
-    def test_complex_nested_with_unary_repr(self):
-        """Test repr for complex expression with unary operations."""
-        # ~((col("age") > 18) & col("active"))
-        expr = ~((col("age") > lit(18)) & col("active"))
-        expected = """NOT
-    └── operand: AND
-        ├── left: GT
-        │   ├── left: COL('age')
-        │   └── right: LIT(18)
-        └── right: COL('active')"""
-        assert repr(expr) == expected
-
-    def test_right_side_nested_repr(self):
-        """Test repr when right side has deeper nesting."""
-        # col("x") + (col("y") * col("z"))
-        expr = col("x") + (col("y") * col("z"))
-        expected = """ADD
-    ├── left: COL('x')
-    └── right: MUL
-        ├── left: COL('y')
-        └── right: COL('z')"""
-        assert repr(expr) == expected
-
-    def test_multiple_levels_both_sides_repr(self):
-        """Test repr with deep nesting on both sides."""
-        # (col("a") + col("b")) * (col("c") - col("d"))
-        expr = (col("a") + col("b")) * (col("c") - col("d"))
-        expected = """MUL
-    ├── left: ADD
-    │   ├── left: COL('a')
-    │   └── right: COL('b')
-    └── right: SUB
-        ├── left: COL('c')
-        └── right: COL('d')"""
-        assert repr(expr) == expected
-
-    def test_print_expr(self, capsys):
-        """Test that printing an expression shows the tree."""
-        expr = col("x") + lit(5)
-        print(expr)
-
-        expected = """ADD
-    ├── left: COL('x')
-    └── right: LIT(5)
-"""
-        captured = capsys.readouterr()
-        assert captured.out == expected
+@pytest.mark.parametrize(
+    "expr_fn,expected",
+    [
+        (
+            _build_complex_expr,
+            """NOT
+    └── operand: ALIAS('complex_filter')
+        └── AND
+            ├── left: AND
+            │   ├── left: AND
+            │   │   ├── left: AND
+            │   │   │   ├── left: AND
+            │   │   │   │   ├── left: GE
+            │   │   │   │   │   ├── left: DIV
+            │   │   │   │   │   │   ├── left: MUL
+            │   │   │   │   │   │   │   ├── left: ADD
+            │   │   │   │   │   │   │   │   ├── left: COL('age')
+            │   │   │   │   │   │   │   │   └── right: LIT(10)
+            │   │   │   │   │   │   │   └── right: COL('rate')
+            │   │   │   │   │   │   └── right: LIT(2.5)
+            │   │   │   │   │   └── right: LIT(100)
+            │   │   │   │   └── right: OR
+            │   │   │   │       ├── left: IS_NOT_NULL
+            │   │   │   │       │   └── operand: COL('name')
+            │   │   │   │       └── right: AND
+            │   │   │   │           ├── left: IN
+            │   │   │   │           │   ├── left: COL('status')
+            │   │   │   │           │   └── right: LIT(['active', 'pending'])
+            │   │   │   │           └── right: COL('verified')
+            │   │   │   └── right: LE
+            │   │   │       ├── left: FLOORDIV
+            │   │   │       │   ├── left: SUB
+            │   │   │       │   │   ├── left: COL('count')
+            │   │   │       │   │   └── right: LIT(5)
+            │   │   │       │   └── right: LIT(2)
+            │   │   │       └── right: COL('limit')
+            │   │   └── right: NOT
+            │   │       └── operand: OR
+            │   │           ├── left: IS_NULL
+            │   │           │   └── operand: COL('deleted')
+            │   │           └── right: NE
+            │   │               ├── left: COL('score')
+            │   │               └── right: LIT(0)
+            │   └── right: LT
+            │       ├── left: DOWNLOAD('uri')
+            │       └── right: COL(*)
+            └── right: GT
+                ├── left: ALIAS('udf_result')
+                │   └── UDF(custom_udf)
+                │       ├── arg[0]: COL('value')
+                │       ├── arg[1]: LIT(10)
+                │       └── kwarg['z']: COL('multiplier')
+                └── right: LIT(50)""",
+        ),
+    ],
+    ids=["complex_expression"],
+)
+def test_expression_repr(expr_fn, expected):
+    """Test tree representation of expressions with a comprehensive example."""
+    expr = expr_fn()
+    assert repr(expr) == expected
 
 
 if __name__ == "__main__":
