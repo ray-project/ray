@@ -448,9 +448,7 @@ def patch_update_stats_actor():
 def patch_update_stats_actor_iter():
     with patch(
         "ray.data._internal.stats.StatsManager.update_iteration_metrics"
-    ) as update_fn, patch(
-        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
-    ):
+    ) as update_fn:
         yield update_fn
 
 
@@ -2194,56 +2192,45 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
-@patch.object(StatsManager, "_stats_actor_handle")
-@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
-def test_stats_manager(shutdown_only):
+@patch.object(StatsManager, "UPDATE_EXECUTION_METRICS_INTERVAL_S", new=0.5)
+@patch.object(StatsManager, "_get_or_create_stats_actor")
+def testStatsManager_register_dataset(mock_get_or_create, shutdown_only):
+
+    # Configure what _get_or_create_stats_actor() returns
+    mock_actor = MagicMock()
+    mock_get_or_create.return_value = mock_actor
+
     ray.init()
     num_threads = 10
 
     datasets = [None] * num_threads
-    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
-    # are not cleared. We will assert on them afterwards.
-    with (
-        patch.object(StatsManager, "clear_last_execution_stats"),
-        patch.object(StatsManager, "clear_iteration_metrics"),
-    ):
 
-        def update_stats_manager(i):
-            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
-            for _ in datasets[i].iter_batches(batch_size=1):
-                pass
+    def updateStatsManager(i):
+        datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+        for _ in datasets[i].iter_batches(batch_size=1):
+            pass
 
-        threads = [
-            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
-            for i in range(num_threads)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+    threads = [
+        threading.Thread(target=updateStatsManager, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
 
-    assert len(StatsManager._last_execution_stats) == num_threads
-    assert len(StatsManager._last_iteration_stats) == num_threads
+    # Count calls to update_execution_metrics.remote()
+    execution_calls = mock_actor.register_dataset.remote.call_count
 
-    # Clear dataset tags manually.
-    for dataset in datasets:
-        dataset_tag = dataset.get_dataset_id()
-        assert dataset_tag in StatsManager._last_execution_stats
-        assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_last_execution_stats(dataset_tag)
-        StatsManager.clear_iteration_metrics(dataset_tag)
+    # Count calls to update_iteration_metrics.remote()
+    iteration_calls = mock_actor.register_dataset.remote.call_count
 
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
-    prev_thread = StatsManager._update_thread
-
-    ray.data.range(100).map_batches(lambda x: x).materialize()
-    # Check that a new different thread is spawned.
-    assert StatsManager._update_thread != prev_thread
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    # Assert expected number of calls
+    assert execution_calls == num_threads
+    assert iteration_calls == num_threads
 
 
-def test_stats_manager_stale_actor_handle(ray_start_cluster):
+def testStatsManager_stale_actor_handle(ray_start_cluster):
     """
     This test asserts that StatsManager is able to handle appropriately
     cases of StatsActor being killed upon driver disconnecting from running
