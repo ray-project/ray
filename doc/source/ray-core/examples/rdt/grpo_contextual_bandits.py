@@ -147,12 +147,6 @@ class ReplayBuffer:
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
         """Sample n scored trajectory slices."""
-        if self.size() < n:
-            print(
-                f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices..."
-            )
-            while len(self.storage) < n:
-                time.sleep(0.05)
         # The probability of sampling a slice is proportional to its policy version.
         total = sum(slice["policy_version"] for slice in self.storage)
         probs = [slice["policy_version"] / total for slice in self.storage]
@@ -285,19 +279,9 @@ class Learner:
         # This is a proxy for how different the new policy is from the old policy.
         ratio = (new_logps - old_logps).exp()
         unclipped = ratio * advantages
-        # The 1 ± ε ratio defines the trust region. If the new policy's probability for an action is more than 1 ± ε times the old policy, clip the ratio.
-        # The clamp() operation causes the gradients to be zero outside the trust region. Therefore, any element which is outside the trust region will
-        # not contribute to a gradient update (but it still contributes to the loss value)
+        # The 1 ± ε ratio defines the trust region. If the new policy's probability for an action is more than 1 ± ε times the old policy, clip the ratio
+        # to prevent too-large updates.
         clipped = torch.clamp(ratio, 1 - GRPO_CLIP_EPS, 1 + GRPO_CLIP_EPS) * advantages
-        # Inside the trust region (ratio is 1 ± ε), both clamp() and min() are no-ops, so you get the normal policy gradient signal (positive for advantages > 0, negative for advantages < 0).
-        # For advantages > 0 (good action):
-        #   ratio > 1 + ε: the min() selects the clipped branch. This prevents a too-large update, even though the model chose a better action.
-        #   ratio < 1 - ε: the min() selects the unclipped branch. The model is penalized for reducing the probabily of a better action.
-
-        # For advantages < 0 (bad action):
-        #   ratio > 1 + ε: the min() selects the unclipped branch. The model is penalized for increasing the probabily of a bad action.
-        #   ratio < 1 - ε: the min() selects the clipped branch. This prevents the
-        #     policy from decreasing the probability for a bad action "too much".
         loss = -torch.min(unclipped, clipped).mean()
         # Fraction of actions which did not contribute to the gradient update.
         clip_fraction = (
@@ -326,6 +310,14 @@ class Learner:
         slices: list[TrajectorySlice] = ray.get(
             self.replay_buffer.sample_from.remote(BATCH_SIZE)
         )
+        while len(slices) < BATCH_SIZE:
+            print(
+                f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices..."
+            )
+            time.sleep(0.05)
+            slices = ray.get(
+              self.replay_buffer.sample_from.remote(BATCH_SIZE)
+            )
         # Prepare the tensors for the policy update.
         actions = torch.cat([s["actions"] for s in slices]).to("cuda")
         old_logps = torch.cat([s["old_logps"] for s in slices]).to("cuda")
@@ -348,13 +340,6 @@ class Learner:
         The tensor_transport="nixl" option enables NIXL via RDT to transfer model weight
         tensors. Without it, the weights will be transferred using the Ray object store.
         """
-        # Note: deepcopy() is needed because RDT does not support pointers to tensors yet.
-        # This will not be needed in the future.
-        state_dict = copy.deepcopy(self.model.state_dict())
-        assert (
-            next(iter(state_dict.values())).device.type == "cuda"
-        ), "Expected tensors in the sender's cuda memory to demonstrate RDT."
-
         return self.model.state_dict()
 
     def get_version(self) -> int:
@@ -428,20 +413,24 @@ def train(total_steps: int) -> None:
     scorer = Scorer.remote(replay_buf)
     generator = Generator.remote(scorer)
 
-    # Initialize the generator with current learner weights.
-    ray.get(
-        generator.update_weights.remote(
+    # Asynchronously initialize the generator with current learner weights.
+    weights_updated_ref = generator.update_weights.remote(
             learner.get_weights.remote(), learner.get_version.remote()
         )
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
-    # Sampling will block until enough scored trajectories are available.
-    ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
+    generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE))
     losses, rewards, clip_fractions = [], [], []
     for i in range(total_steps):
         states = sample_unit_vector(batch_size=BATCH_SIZE)
         generator.generate.remote(states)
+
+        # Wait until the generator has been updated before launching the next learner step.
+        # Otherwise, the weights transfer could still be in progress during the next learner
+        # update, and the generator may receive inconsistent weights.
+        ray.wait([weights_updated_ref])
+
         step_result = ray.get(learner.step.remote())
         losses.append(step_result["loss"])
         rewards.append(step_result["rewards"])
@@ -452,9 +441,7 @@ def train(total_steps: int) -> None:
             )
 
         # Update the generator with new weights and version.
-        weights_ref = learner.get_weights.remote()
-        version_ref = learner.get_version.remote()
-        generator.update_weights.remote(weights_ref, version_ref)
+        weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote(), learner.get_version.remote())
 
 
 if __name__ == "__main__":
