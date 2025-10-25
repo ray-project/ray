@@ -90,6 +90,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
+        # TODO(xgui): CheckpointManager is used to save or restore the checkpoint manager state.
+        # We should sanity check if we should see old state in the storage folder.
         self._maybe_load_state_from_storage()
 
     def register_checkpoint(
