@@ -1,4 +1,5 @@
 import posixpath
+import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
@@ -278,6 +279,9 @@ class PathPartitionParser:
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
+        # URL-decode partition values
+        kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
             if len(kv_pairs) != len(field_names):
