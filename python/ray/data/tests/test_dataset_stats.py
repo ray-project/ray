@@ -5,6 +5,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray.data.aggregate import (
     ApproximateQuantile,
+    ApproximateTopK,
     Count,
     Max,
     Mean,
@@ -52,8 +53,8 @@ class TestFeatureAggregatorsForDataset:
         assert len(feature_aggs.vector_columns) == 0
 
         # Check that we have the right number of aggregators
-        # 3 numerical columns * 8 aggregators each + 1 string column * 2 aggregators = 26 total
-        assert len(feature_aggs.aggregators) == 26
+        # 3 numerical columns * 8 aggregators each + 1 string column * 3 aggregators = 27 total
+        assert len(feature_aggs.aggregators) == 27
 
     def test_categorical_columns_detection(self):
         """Test that string columns are correctly identified as categorical."""
@@ -75,8 +76,8 @@ class TestFeatureAggregatorsForDataset:
         assert "value" in feature_aggs.numerical_columns
         assert "category" not in feature_aggs.numerical_columns
 
-        # Check aggregator count: 1 numerical * 8 + 2 categorical * 2 = 12
-        assert len(feature_aggs.aggregators) == 12
+        # Check aggregator count: 1 numerical * 8 + 3 categorical * 2 = 14
+        assert len(feature_aggs.aggregators) == 14
 
     def test_vector_columns_detection(self):
         """Test that list columns are correctly identified as vector columns."""
@@ -98,8 +99,8 @@ class TestFeatureAggregatorsForDataset:
         assert "scalar" in feature_aggs.numerical_columns
         assert "text" in feature_aggs.str_columns
 
-        # Check aggregator count: 1 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 12
-        assert len(feature_aggs.aggregators) == 12
+        # Check aggregator count: 1 numerical * 8 + 1 categorical * 3 + 1 vector * 2 = 12
+        assert len(feature_aggs.aggregators) == 13
 
     def test_mixed_column_types(self):
         """Test dataset with all column types mixed together."""
@@ -131,8 +132,8 @@ class TestFeatureAggregatorsForDataset:
         # bool_val should be treated as numerical (integer-like)
         assert "bool_val" in feature_aggs.numerical_columns
 
-        # Check aggregator count: 3 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 28
-        assert len(feature_aggs.aggregators) == 28
+        # Check aggregator count: 3 numerical * 8 + 1 categorical * 3 + 1 vector * 2 = 29
+        assert len(feature_aggs.aggregators) == 29
 
     def test_column_filtering(self):
         """Test that only specified columns are included when columns parameter is provided."""
@@ -200,8 +201,8 @@ class TestFeatureAggregatorsForDataset:
         assert "unsupported_binary" not in feature_aggs.str_columns
         assert "unsupported_binary" not in feature_aggs.vector_columns
 
-        # Check aggregator count: 1 numerical * 8 + 1 categorical * 2 = 10
-        assert len(feature_aggs.aggregators) == 10
+        # Check aggregator count: 1 numerical * 8 + 1 categorical * 3 = 11
+        assert len(feature_aggs.aggregators) == 11
 
     def test_aggregator_types_verification(self):
         """Test that the correct aggregator types are generated for each column type."""
@@ -230,7 +231,7 @@ class TestFeatureAggregatorsForDataset:
 
         # Categorical aggregators should include count and missing percentage
         cat_agg_names = [name for name in agg_names if "cat" in name]
-        assert len(cat_agg_names) == 2
+        assert len(cat_agg_names) == 3
         assert any("count" in name.lower() for name in cat_agg_names)
         assert any("missing" in name.lower() for name in cat_agg_names)
 
@@ -263,12 +264,13 @@ class TestFeatureAggregatorsForDataset:
 
         # Find aggregators for the categorical column
         cat_aggs = [agg for agg in feature_aggs.aggregators if "cat" in agg.name]
-        assert len(cat_aggs) == 2
+        assert len(cat_aggs) == 3
 
         # Check that we have the right aggregator types for categorical
         cat_agg_types = [type(agg) for agg in cat_aggs]
         assert Count in cat_agg_types
         assert MissingValuePercentage in cat_agg_types
+        assert ApproximateTopK in cat_agg_types
         # Should not have numerical aggregators for categorical columns
         assert Mean not in cat_agg_types
         assert Min not in cat_agg_types
@@ -355,8 +357,8 @@ class TestFeatureAggregatorsForDataset:
         assert "category" in feature_aggs.str_columns
         assert "vector" in feature_aggs.vector_columns
 
-        # Check aggregator count: 2 numerical * 8 + 1 categorical * 2 + 1 vector * 2 = 20
-        assert len(feature_aggs.aggregators) == 20
+        # Check aggregator count: 2 numerical * 8 + 1 categorical * 3 + 1 vector * 2 = 21
+        assert len(feature_aggs.aggregators) == 21
 
 
 class TestIndividualAggregatorFunctions:
@@ -379,12 +381,13 @@ class TestIndividualAggregatorFunctions:
         assert Std in agg_types
         assert MissingValuePercentage in agg_types
         assert ZeroPercentage in agg_types
+        assert ApproximateQuantile in agg_types
 
     def test_categorical_aggregators(self):
         """Test categorical_aggregators function."""
         aggs = categorical_aggregators("test_column")
 
-        assert len(aggs) == 2
+        assert len(aggs) == 3
         assert all(hasattr(agg, "get_target_column") for agg in aggs)
         assert all(agg.get_target_column() == "test_column" for agg in aggs)
 
@@ -392,6 +395,7 @@ class TestIndividualAggregatorFunctions:
         agg_types = [type(agg) for agg in aggs]
         assert Count in agg_types
         assert MissingValuePercentage in agg_types
+        assert ApproximateTopK in agg_types
 
     def test_vector_aggregators(self):
         """Test vector_aggregators function."""
