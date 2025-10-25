@@ -158,8 +158,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 self._metrics.on_output_queued(b)
         self._buffer = []
 
-    def internal_queue_size(self) -> int:
-        return len(self._buffer)
+    def internal_queue_num_blocks(self) -> int:
+        return sum(len(b.block_refs) for b in self._buffer)
+
+    def internal_queue_num_bytes(self) -> int:
+        return sum(b.size_bytes() for b in self._buffer)
 
     def progress_str(self) -> str:
         if self._locality_hints:
