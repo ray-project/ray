@@ -90,6 +90,9 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
+  const ResourceSet resource_request_adjusted =
+      this->ConvertRelativeResources(resource_request.GetResourceSet());
+
   const auto &label_selector = resource_request.GetLabelSelector();
   if (!HasRequiredLabels(label_selector)) {
     return false;
@@ -98,9 +101,9 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return available_resources >= resource_request.GetResourceSet();
+    return available_resources >= resource_request_adjusted;
   }
-  return this->available >= resource_request.GetResourceSet();
+  return this->available >= resource_request_adjusted;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
@@ -108,7 +111,9 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   if (!HasRequiredLabels(label_selector)) {
     return false;
   }
-  return this->total >= resource_request.GetResourceSet();
+  const ResourceSet resource_request_adjusted =
+      this->ConvertRelativeResources(resource_request.GetResourceSet());
+  return this->total >= resource_request_adjusted;
 }
 
 bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const {
@@ -170,6 +175,32 @@ std::string NodeResources::DebugString() const {
   return buffer.str();
 }
 
+const ResourceSet NodeResources::ConvertRelativeResources(
+    const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource;
+  // convert gpu_memory to GPU
+  if (resource.Has(ResourceID::GPU_Memory())) {
+    double accelerator_memory_per_accelerator = 0;
+    if (this->labels.find(kLabelKeyAcceleratorMemoryPerAccelerator) !=
+        this->labels.end()) {
+      accelerator_memory_per_accelerator =
+          std::stod(this->labels.at(kLabelKeyAcceleratorMemoryPerAccelerator));
+    }
+    double num_gpus_request = 0;
+    if (accelerator_memory_per_accelerator > 0) {
+      // round up to closes kResourceUnitScaling
+      num_gpus_request = (resource.Get(ResourceID::GPU_Memory()).Double() /
+                          accelerator_memory_per_accelerator) +
+                         1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+    adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
+  }
+  return adjusted_resource;
+}
+
 std::string NodeResources::DictString() const { return DebugString(); }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
@@ -186,6 +217,32 @@ std::string NodeResourceInstances::DebugString() const {
   }
   buffer << "}";
   return buffer.str();
+};
+
+const ResourceSet NodeResourceInstances::ConvertRelativeResources(
+    const ResourceSet &resource) const {
+  ResourceSet adjusted_resource = resource;
+  // convert gpu_memory to GPU
+  if (resource.Has(ResourceID::GPU_Memory())) {
+    double accelerator_memory_per_accelerator = 0;
+    if (this->labels.find(kLabelKeyAcceleratorMemoryPerAccelerator) !=
+        this->labels.end()) {
+      accelerator_memory_per_accelerator =
+          std::stod(this->labels.at(kLabelKeyAcceleratorMemoryPerAccelerator));
+    }
+    double num_gpus_request = 0;
+    if (accelerator_memory_per_accelerator > 0) {
+      // round up to closes kResourceUnitScaling
+      num_gpus_request = (resource.Get(ResourceID::GPU_Memory()).Double() /
+                          accelerator_memory_per_accelerator) +
+                         1 / static_cast<double>(2 * kResourceUnitScaling);
+    } else {
+      return resource;
+    }
+    adjusted_resource.Set(ResourceID::GPU(), num_gpus_request);
+    adjusted_resource.Set(ResourceID::GPU_Memory(), 0);
+  }
+  return adjusted_resource;
 };
 
 const NodeResourceInstanceSet &NodeResourceInstances::GetAvailableResourceInstances()
