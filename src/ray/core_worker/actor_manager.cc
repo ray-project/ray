@@ -130,7 +130,7 @@ std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
   return nullptr;
 }
 
-void ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                          const std::string &call_site,
                                          const rpc::Address &caller_address,
                                          bool owned) {
@@ -140,8 +140,10 @@ void ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
-    RAY_CHECK(!actor_handles_.contains(actor_id))
-        << "Actor handle already exists for actor id: " << actor_id;
+    if (actor_handles_.contains(actor_id)) {
+      RAY_LOG(WARNING) << "Actor handle already exists for actor id: " << actor_id;
+      return false;
+    }
 
     // Else, place a sentinel value in the map to indicate that the
     // actor handle is being created to prevent uncaught double creation.
@@ -159,14 +161,14 @@ void ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
                                       /*add_local_ref=*/true);
   }
 
-  AddActorHandle(std::move(actor_handle),
-                 call_site,
-                 caller_address,
-                 actor_id,
-                 actor_creation_return_id,
-                 /*add_local_ref=*/false,
-                 /*is_self*/ false,
-                 owned);
+  return AddActorHandle(std::move(actor_handle),
+                        call_site,
+                        caller_address,
+                        actor_id,
+                        actor_creation_return_id,
+                        /*add_local_ref=*/false,
+                        /*is_self*/ false,
+                        owned);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
