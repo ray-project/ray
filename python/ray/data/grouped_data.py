@@ -12,10 +12,9 @@ from typing import (
     Union,
 )
 
-if TYPE_CHECKING:
-    import numpy as np
-    import pandas as pd
-    import pyarrow as pa
+import numpy as np
+import pandas as pd
+import pyarrow as pa
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -31,7 +30,7 @@ from ray.data.block import (
 )
 from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset
-from ray.data.expressions import Expr, UDFExpr
+from ray.data.expressions import Expr
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
@@ -387,23 +386,17 @@ class GroupedData:
 
         exprs = _normalize_grouped_expressions(column_map)
 
-        shuffled_ds = _shuffle_for_grouped_operation(
-            self._dataset, self._key, self._num_partitions
-        )
+        def _evaluate_group(batch: DataBatch) -> DataBatch:
+            block = BlockAccessor.batch_to_block(batch)
+            result_block = _evaluate_grouped_exprs(block, exprs, keys=[])
+            accessor = BlockAccessor.for_block(result_block)
+            return accessor.to_batch_format("pyarrow")
 
-        def wrapped_fn(block, *args, **kwargs):
-            return _evaluate_grouped_exprs(block, exprs)
-
-        return shuffled_ds._map_batches_without_batch_size_validation(
-            wrapped_fn,
-            batch_size=None,
-            compute=compute,
-            batch_format=None,
+        return self.map_groups(
+            _evaluate_group,
             zero_copy_batch=False,
-            fn_args=None,
-            fn_kwargs=None,
-            fn_constructor_args=None,
-            fn_constructor_kwargs=None,
+            compute=compute,
+            batch_format="pyarrow",
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
@@ -671,20 +664,6 @@ def _apply_udf_to_groups(
 
 # Backwards compatibility alias.
 GroupedDataset = GroupedData
-def _shuffle_for_grouped_operation(
-    dataset: Dataset,
-    key: Optional[Union[str, List[str]]],
-    num_partitions: Optional[int],
-) -> Dataset:
-    if key is None:
-        return dataset.repartition(1)
-
-    if dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-        partitions = num_partitions or dataset.context.default_hash_shuffle_parallelism
-        return dataset.repartition(partitions, keys=key, sort=True)
-
-    return dataset.sort(key)
-
 
 def _normalize_grouped_expressions(column_map: Dict[str, Expr]) -> List[Expr]:
     exprs: List[Expr] = []
@@ -701,32 +680,78 @@ def _normalize_grouped_expressions(column_map: Dict[str, Expr]) -> List[Expr]:
     return exprs
 
 
-def _evaluate_grouped_exprs(block: Block, exprs: List[Expr]) -> Block:
-    columns = {}
-    expected_length: Optional[int] = None
+def _evaluate_grouped_exprs(
+    block: Block, exprs: List[Expr], keys: List[str]
+) -> Block:
+    import pyarrow as pa
 
-    for expr in exprs:
-        value = eval_expr(expr, block)
-        array = _expr_value_to_arrow_array(value)
-        length = len(array)
-        if expected_length is None:
-            expected_length = length
-        elif length != expected_length:
-            raise ValueError(
-                "All expressions passed to with_columns must produce the same number "
-                f"of rows, but got outputs of length {expected_length} and {length} "
-                f"for expression '{expr.name}'."
-            )
-        columns[expr.name] = array
+    block_accessor = BlockAccessor.for_block(block)
+
+    if block_accessor.num_rows() == 0:
+        return BlockAccessor.batch_to_block(
+            {expr.name: pa.array([], type=pa.null()) for expr in exprs}
+        )
+
+    # Fast path when there is a single global group.
+    if not keys:
+        columns = {}
+        expected_length: Optional[int] = None
+        for expr in exprs:
+            value = eval_expr(expr, block)
+            array = _expr_value_to_arrow_array(value)
+            length = len(array)
+            if expected_length is None:
+                expected_length = length
+            elif length != expected_length:
+                raise ValueError(
+                    "All expressions passed to with_columns must produce the same "
+                    f"number of rows, but got outputs of length {expected_length} and "
+                    f"{length} for expression '{expr.name}'."
+                )
+            columns[expr.name] = array
+        return BlockAccessor.batch_to_block(columns)
+
+    boundaries = block_accessor._get_group_boundaries_sorted(keys)
+    if len(boundaries) <= 1:
+        # Only a single group is present in this block; fall back to the global path.
+        return _evaluate_grouped_exprs(block, exprs, [])
+
+    grouped_columns: Dict[str, List[pa.Array]] = {expr.name: [] for expr in exprs}
+
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        group_block = block_accessor.slice(start, end, copy=False)
+        group_length: Optional[int] = None
+        group_values: Dict[str, pa.Array] = {}
+
+        for expr in exprs:
+            value = eval_expr(expr, group_block)
+            array = _expr_value_to_arrow_array(value)
+            length = len(array)
+            if group_length is None:
+                group_length = length
+            elif length != group_length:
+                raise ValueError(
+                    "All expressions passed to with_columns must produce the same "
+                    "number of rows within a group. "
+                    f"Got {length} rows for expression '{expr.name}' but expected "
+                    f"{group_length}."
+                )
+            group_values[expr.name] = array
+
+        for name, array in group_values.items():
+            grouped_columns[name].append(array)
+
+    columns = {}
+    for name, arrays in grouped_columns.items():
+        if arrays:
+            columns[name] = pa.concat_arrays(arrays)
+        else:
+            columns[name] = pa.array([], type=pa.null())
 
     return BlockAccessor.batch_to_block(columns)
 
 
 def _expr_value_to_arrow_array(value: Any) -> "pyarrow.Array":
-    import numpy as np
-    import pandas as pd
-    import pyarrow as pa
-
     if isinstance(value, pa.ChunkedArray):
         value = value.combine_chunks()
     if isinstance(value, pa.Array):
