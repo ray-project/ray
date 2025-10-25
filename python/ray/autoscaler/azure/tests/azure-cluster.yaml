@@ -1,5 +1,5 @@
 # Unique identifier for the head node and workers of this cluster.
-cluster_name: nightly-cpu-minimal
+cluster_name: nightly-cpu-minimal-centralus
 max_workers: 2
 idle_timeout_minutes: 5
 
@@ -7,8 +7,8 @@ idle_timeout_minutes: 5
 provider:
   type: azure
   # https://azure.microsoft.com/en-us/global-infrastructure/locations
-  location: westus2
-  resource_group: ray-nightly-cpu-minimal
+  location: centralus
+  resource_group: ray-nightly-cpu-minimal-centralus
   cache_stopped_nodes: False
 
 auth:
