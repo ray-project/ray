@@ -298,6 +298,13 @@ For collective-based tensor transports (Gloo and NCCL):
    * Any unexpected system bugs
 
 
+Due to a known issue, we currently do not support repeated transfers of tensors that share the same memory space but simultaneously belong to different objects. To support this pattern, ensure that the first object is freed before storing the same tensor again in a second object.
+
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_limitations_start__
+   :end-before: __nixl_limitations_end__
+
 Advanced: RDT Internals
 =======================
 
