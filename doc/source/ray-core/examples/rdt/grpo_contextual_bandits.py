@@ -351,9 +351,9 @@ class Learner:
         # Note: deepcopy() is needed because RDT does not support pointers to tensors yet.
         # This will not be needed in the future.
         state_dict = copy.deepcopy(self.model.state_dict())
-        assert next(
-            iter(state_dict.values())).device.type == "cuda"
-            ), "Expected tensors in the sender's cuda memory to demonstrate RDT."
+        assert (
+            next(iter(state_dict.values())).device.type == "cuda"
+        ), "Expected tensors in the sender's cuda memory to demonstrate RDT."
 
         return state_dict
 
@@ -381,7 +381,6 @@ class Generator:
             states = states.to("cuda")
             logits = self.model(states)  # [batch_size, ACTION_DIM]
 
-
             dist = Categorical(logits=logits)
             # Sample GROUP_SIZE actions for each state.
             actions = dist.sample((GROUP_SIZE,))  # [GROUP_SIZE, batch_size]
@@ -407,7 +406,7 @@ class Generator:
         first_tensor = next(iter(cuda_weights.values()))
         assert (
             first_tensor.device.type == "cuda"
-            ), "Expected CUDA tensors after GPU-to-GPU direct transfer"
+        ), "Expected CUDA tensors after GPU-to-GPU direct transfer"
         self.model.load_state_dict(cuda_weights)
         self.model.eval()
         self.policy_version = version
@@ -437,7 +436,7 @@ def train(total_steps: int) -> None:
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
-    # Training will block until until enough scored trajectories are available.
+    # Sampling will block until until enough scored trajectories are available.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
     losses, rewards, clip_fractions = [], [], []
     for i in range(total_steps):
