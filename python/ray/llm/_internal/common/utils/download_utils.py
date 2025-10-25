@@ -19,7 +19,7 @@ torch = try_import("torch")
 
 logger = get_logger(__name__)
 
-STREAMING_LOAD_FORMATS = ["runai_streamer", "tensorizer"]
+STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
 
 
 class NodeModelDownloadable(enum.Enum):
@@ -267,7 +267,7 @@ def download_model_files(
     # cannot be created by torch if the parent directory doesn't exist.
     torch_cache_home = torch.hub._get_torch_home()
     os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
-    model_path_or_id = None
+    model_path_or_id = model_id
 
     if callback is not None:
         callback.run_callback_sync("on_before_download_model_files_distributed")

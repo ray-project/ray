@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any, List, Tuple
 
 from pydantic import BaseModel, field_validator
@@ -76,20 +77,12 @@ class CloudDownloader(CallbackBase):
         from ray.llm._internal.common.utils.cloud_utils import CloudFileSystem
 
         paths = self.kwargs["paths"]
-        logger.info(
-            f"CloudDownloader: Starting download of {len(paths)} files from cloud storage"
-        )
-
+        start_time = time.monotonic()
         for cloud_uri, local_path in paths:
-            try:
-                logger.info(f"CloudDownloader: Downloading {cloud_uri} to {local_path}")
-                CloudFileSystem.download_files(path=local_path, bucket_uri=cloud_uri)
-                logger.info(
-                    f"CloudDownloader: Successfully downloaded {cloud_uri} to {local_path}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"CloudDownloader: Failed to download {cloud_uri} to {local_path}: {e}"
-                )
-                if self.raise_error_on_callback:
-                    raise
+            CloudFileSystem.download_files_parallel(
+                path=local_path, bucket_uri=cloud_uri
+            )
+        end_time = time.monotonic()
+        logger.info(
+            f"CloudDownloader: Files downloaded in {end_time - start_time} seconds"
+        )
