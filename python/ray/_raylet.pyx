@@ -2248,13 +2248,11 @@ cdef execute_task_with_cancellation_handler(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        print("here1", file=sys.stderr)
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         print("here2", file=sys.stderr)
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        print("here3", file=sys.stderr)
 
         # Record the actor class via :actor_name: magic token in the log.
         #

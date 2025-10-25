@@ -540,10 +540,12 @@ class FunctionActorManager:
                     )
 
             else:
+                print("here1.1", file=sys.stderr)
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+                print("here1.2", file=sys.stderr)
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -577,6 +579,7 @@ class FunctionActorManager:
                 )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
+            print("here1.3", file=sys.stderr)
         return actor_class
 
     def _load_actor_class_from_local(self, actor_creation_function_descriptor):
