@@ -285,6 +285,9 @@ class FakeRayletClient : public RayletClientInterface {
 
   int64_t GetPinsInFlight() const override { return 0; }
 
+  void CancelLocalTask(const CancelLocalTaskRequest &request,
+                       const ClientCallback<CancelLocalTaskReply> &callback) override {}
+
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
