@@ -273,7 +273,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
-        r"https://www.meetup.com/*",  # seems to be flaky
         r"https://www.pettingzoo.ml/*",  # seems to be flaky
         r"http://localhost[:/].*",  # Ignore localhost links
         r"^http:/$",  # Ignore incomplete links
