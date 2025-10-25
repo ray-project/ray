@@ -72,9 +72,12 @@ class Config:
             if build_arg_set_keys:
                 # Expand the depset for each build arg set
                 for build_arg_set_key in build_arg_set_keys:
-                    build_arg_set = build_arg_sets[build_arg_set_key]
-                    if build_arg_set is None:
-                        raise KeyError(f"Build arg set {build_arg_set_key} not found")
+                    try:
+                        build_arg_set = build_arg_sets[build_arg_set_key]
+                    except KeyError:
+                        raise KeyError(
+                            f"Build arg set {build_arg_set_key} not found in config {config_name}"
+                        )
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
                     depsets.append(_dict_to_depset(depset_yaml, config_name))
             else:
@@ -117,8 +120,8 @@ class Workspace:
     def load_config(self, config_path: str) -> Config:
         with open(os.path.join(self.dir, config_path), "r") as f:
             data = yaml.safe_load(f)
-            config_name = os.path.basename(config_path)
-            config = Config.from_dict(data, config_name)
+        config_name = os.path.basename(config_path)
+        config = Config.from_dict(data, config_name)
         return config
 
     def merge_configs(self, configs: List[Config]) -> Config:

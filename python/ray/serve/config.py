@@ -16,10 +16,10 @@ from ray._common.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
 
 # Import types needed for AutoscalingContext
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -63,18 +63,18 @@ class AutoscalingContext:
 
     # Built-in metrics
     total_num_requests: float  #: Total number of requests across all replicas.
-    queued_requests: Optional[float]  #: Number of requests currently queued.
-    requests_per_replica: Dict[
-        ReplicaID, float
-    ]  #: Mapping of replica ID to number of requests.
+    total_queued_requests: Optional[float]  #: Number of requests currently queued.
+    total_running_requests: Optional[
+        float
+    ]  #: Total number of requests currently running.
 
     # Custom metrics
     aggregated_metrics: Dict[
         str, Dict[ReplicaID, float]
     ]  #: Time-weighted averages of custom metrics per replica.
     raw_metrics: Dict[
-        str, Dict[ReplicaID, List[float]]
-    ]  #: Raw custom metric values per replica.
+        str, Dict[ReplicaID, TimeSeries]
+    ]  #: Raw custom metric timeseries per replica.
 
     # Capacity and bounds
     capacity_adjusted_min_replicas: int  #: Minimum replicas adjusted for cluster capacity.
@@ -192,8 +192,30 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
+        serialized_request_router_cls = kwargs.pop(
+            "_serialized_request_router_cls", None
+        )
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        if serialized_request_router_cls:
+            self._serialized_request_router_cls = serialized_request_router_cls
+        else:
+            self._serialize_request_router_cls()
+
+    def set_serialized_request_router_cls(
+        self, serialized_request_router_cls: bytes
+    ) -> None:
+        self._serialized_request_router_cls = serialized_request_router_cls
+
+    @classmethod
+    def from_serialized_request_router_cls(
+        cls, request_router_config: dict, serialized_request_router_cls: bytes
+    ) -> "RequestRouterConfig":
+        config = request_router_config.copy()
+        config["_serialized_request_router_cls"] = serialized_request_router_cls
+        return cls(**config)
+
+    def get_serialized_request_router_cls(self) -> Optional[bytes]:
+        return self._serialized_request_router_cls
 
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
@@ -209,9 +231,13 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
+        request_router_module, request_router_class = import_module_and_attr(
+            request_router_path
+        )
+        cloudpickle.register_pickle_by_value(request_router_module)
+        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+        cloudpickle.unregister_pickle_by_value(request_router_module)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
@@ -242,8 +268,26 @@ class AutoscalingPolicy(BaseModel):
     )
 
     def __init__(self, **kwargs):
+        serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
         super().__init__(**kwargs)
-        self.serialize_policy()
+        if serialized_policy_def:
+            self._serialized_policy_def = serialized_policy_def
+        else:
+            self.serialize_policy()
+
+    def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
+        self._serialized_policy_def = serialized_policy_def
+
+    @classmethod
+    def from_serialized_policy_def(
+        cls, policy_config: dict, serialized_policy_def: bytes
+    ) -> "AutoscalingPolicy":
+        config = policy_config.copy()
+        config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**config)
+
+    def get_serialized_policy_def(self) -> Optional[bytes]:
+        return self._serialized_policy_def
 
     def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
@@ -257,9 +301,15 @@ class AutoscalingPolicy(BaseModel):
             policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
 
         if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
+            policy_module, policy_function = import_module_and_attr(policy_path)
+            cloudpickle.register_pickle_by_value(policy_module)
+            self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
+            cloudpickle.unregister_pickle_by_value(policy_module)
 
         self.policy_function = policy_path
+
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""

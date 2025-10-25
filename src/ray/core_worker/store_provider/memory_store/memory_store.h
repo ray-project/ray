@@ -24,6 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
+#include "ray/common/metrics.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_counter_interface.h"
@@ -253,6 +254,8 @@ class CoreWorkerMemoryStore {
   std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                            const ObjectID &object_id)>
       object_allocator_;
+
+  ray::stats::Gauge object_store_memory_gauge_{ray::GetObjectStoreMemoryGaugeMetric()};
 };
 
 }  // namespace core

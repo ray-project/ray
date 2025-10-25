@@ -40,7 +40,7 @@ steps:
     tags:
       - data
     instance_type: medium
-    parallelism: 2
+    parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
@@ -54,8 +54,11 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
+    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name data9build
         --only-tags data_non_parallel
     depends_on: data9build
@@ -65,7 +68,7 @@ steps:
       - python
       - data
     instance_type: medium
-    parallelism: 2
+    parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
@@ -80,8 +83,11 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
+    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name datalbuild
         --only-tags data_non_parallel
     depends_on: datalbuild
@@ -285,7 +291,6 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - pip install -U boto3==1.28.70 awscli==1.29.70
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name datalbuild
