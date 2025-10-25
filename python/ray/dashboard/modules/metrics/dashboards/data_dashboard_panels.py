@@ -330,7 +330,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -347,7 +347,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
     unit="blocks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -438,7 +438,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     unit="tasks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Finished Tasks: {{dataset}}, {{node_ip}}",
         )
     ],
