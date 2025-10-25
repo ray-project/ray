@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr, star
+from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -463,6 +463,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -627,6 +628,7 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            udf_modifying_row_count: Set to False only if the UDF always emits the same number of records it receives (no drops or duplicates). When set to False, the logical optimizer, in the presence of a limit(limit=k), will only scan k rows prior to executing the UDF, thereby saving on compute resources.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -695,6 +697,7 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -715,6 +718,7 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -768,6 +772,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -838,7 +843,7 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                exprs=[star(), expr.alias(column_name)],
+                exprs=[StarExpr(), expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1155,10 +1160,6 @@ class Dataset:
                 :func:`ray.remote` for details.
         """  # noqa: E501
 
-        from ray.data.expressions import col
-
-        exprs = []
-
         if isinstance(names, dict):
             if not names:
                 raise ValueError("rename_columns received 'names' with no entries.")
@@ -1175,7 +1176,8 @@ class Dataset:
                     "rename_columns requires both keys and values in the 'names' "
                     "to be strings."
                 )
-            exprs = [col(old).alias(new) for old, new in names.items()]
+
+            exprs = [col(prev)._rename(new) for prev, new in names.items()]
 
         elif isinstance(names, list):
             if not names:
@@ -1200,10 +1202,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            exprs = [
-                col(old).alias(new)
-                for old, new in dict(zip(current_names, names)).items()
-            ]
+            exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1224,7 +1223,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=[star()] + exprs,
+            exprs=[StarExpr(), *exprs],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
