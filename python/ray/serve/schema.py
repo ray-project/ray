@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
@@ -1019,9 +1020,6 @@ class ScalingDecision(BaseModel):
     curr_num_replicas: int = Field(
         ..., ge=0, description="Replica count after the decision."
     )
-    policy: Optional[str] = Field(
-        None, description="Policy name or identifier (if applicable)."
-    )
 
 
 @PublicAPI(stability="alpha")
@@ -1044,6 +1042,64 @@ class DeploymentAutoscalingDetail(BaseModel):
     errors: List[str] = Field(
         default_factory=list, description="Recent errors/abnormal events."
     )
+    policy_name: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+
+    @classmethod
+    def from_snapshot(cls, raw: dict):
+        """
+        Factory method to create a DeploymentAutoscalingDetail instance
+        from a raw snapshot dictionary.
+        """
+
+        # Parse and map the list of scaling decisions
+        scaling_decisions = []
+        for raw_decision in raw.get("decisions", []):
+
+            # Convert ISO string from log to float timestamp for the model
+            timestamp_str = raw_decision.get("timestamp_str")
+            # This is a required field so assuming this is always present in raw data
+            if not timestamp_str:
+                continue
+            timestamp_float = datetime.fromisoformat(
+                str(timestamp_str).replace("Z", "+00:00")
+            ).timestamp()
+
+            scaling_decisions.append(
+                ScalingDecision(
+                    timestamp_s=timestamp_float,
+                    reason=raw_decision.get("reason"),
+                    prev_num_replicas=raw_decision.get("current_num_replicas"),
+                    curr_num_replicas=raw_decision.get("target_num_replicas"),
+                )
+            )
+
+        # Aggregate metrics into the 'metrics' dictionary (#56225)
+        metrics_keys = [
+            "current_replicas",
+            "target_replicas",
+            "min_replicas",
+            "max_replicas",
+            "look_back_period_s",
+            "queued_requests",
+            "ongoing_requests",
+        ]
+        metrics_dict = {
+            key: raw.get(key) for key in metrics_keys if raw.get(key) is not None
+        }
+        if not metrics_dict:
+            metrics_dict = None
+
+        # 3. Create and return the validated Pydantic model
+        return cls(
+            scaling_status=raw.get("scaling_status"),
+            decisions=scaling_decisions,
+            metrics=metrics_dict,
+            metrics_health=raw.get("metrics_health"),
+            errors=raw.get("errors", []),
+            policy_name=raw.get("policy_name"),
+        )
 
 
 @PublicAPI(stability="stable")
