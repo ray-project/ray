@@ -33,14 +33,8 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   (*data.mutable_required_resources())["CPU"] = 1.0;
   (*data.mutable_required_resources())["GPU"] = 0.5;
   data.set_placement_group_id("pg_id");
-  auto *team_constraint = data.mutable_label_selector()->add_label_constraints();
-  team_constraint->set_label_key("team");
-  team_constraint->set_operator_(ray::rpc::LABEL_OPERATOR_IN);
-  team_constraint->add_label_values("core");
-  auto *tier_constraint = data.mutable_label_selector()->add_label_constraints();
-  tier_constraint->set_label_key("tier");
-  tier_constraint->set_operator_(ray::rpc::LABEL_OPERATOR_IN);
-  tier_constraint->add_label_values("prod");
+  (*data.mutable_label_selector())["team"] = "core";
+  (*data.mutable_label_selector())["tier"] = "prod";
 
   auto event = std::make_unique<RayActorDefinitionEvent>(data, "test_session_name");
   auto serialized_event = std::move(*event).Serialize();
@@ -62,14 +56,8 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   ASSERT_EQ(actor_def.required_resources().at("CPU"), 1.0);
   ASSERT_EQ(actor_def.required_resources().at("GPU"), 0.5);
   ASSERT_EQ(actor_def.placement_group_id(), "pg_id");
-  const auto &read_team_constraint = actor_def.label_selector().label_constraints(0);
-  ASSERT_EQ(read_team_constraint.label_key(), "team");
-  ASSERT_EQ(read_team_constraint.operator_(), ray::rpc::LABEL_OPERATOR_IN);
-  ASSERT_EQ(read_team_constraint.label_values(0), "core");
-  const auto &read_tier_constraint = actor_def.label_selector().label_constraints(1);
-  ASSERT_EQ(read_tier_constraint.label_key(), "tier");
-  ASSERT_EQ(read_tier_constraint.operator_(), ray::rpc::LABEL_OPERATOR_IN);
-  ASSERT_EQ(read_tier_constraint.label_values(0), "prod");
+  ASSERT_EQ(actor_def.label_selector().at("team"), "core");
+  ASSERT_EQ(actor_def.label_selector().at("tier"), "prod");
 }
 
 }  // namespace observability

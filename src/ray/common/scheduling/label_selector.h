@@ -91,7 +91,11 @@ class LabelSelector {
     }
   }
 
+  // Convert LabelSelector object to rpc::LabelSelector proto message.
   rpc::LabelSelector ToProto() const;
+
+  // Convert the LabelSelector object back into a string map.
+  google::protobuf::Map<std::string, std::string> ToStringMap() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
 

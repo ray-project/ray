@@ -14,6 +14,8 @@
 
 #include "ray/observability/ray_actor_definition_event.h"
 
+#include "ray/common/scheduling/label_selector.h"
+
 namespace ray {
 namespace observability {
 
@@ -37,7 +39,8 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data
   if (data.has_placement_group_id()) {
     data_.set_placement_group_id(data.placement_group_id());
   }
-  *data_.mutable_label_selector() = data.label_selector();
+  *data_.mutable_label_selector() =
+      ray::LabelSelector(data.label_selector()).ToStringMap();
 }
 
 std::string RayActorDefinitionEvent::GetEntityId() const { return data_.actor_id(); }

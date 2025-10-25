@@ -41,5 +41,5 @@ message ActorDefinitionEvent {
   // Placement group ID if the actor requires a placement group.
   bytes placement_group_id = 9;
   // The label selector for the actor.
-  LabelSelector label_selector = 11;
+  map<string, string> label_selector = 11;
 }

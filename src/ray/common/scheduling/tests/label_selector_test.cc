@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -82,5 +83,47 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
   auto values = constraint.GetLabelValues();
   EXPECT_EQ(values.size(), 1);
   EXPECT_TRUE(values.contains("dev"));
+}
+
+TEST(LabelSelectorTest, ToStringMap) {
+  using ::testing::ElementsAre;
+  using ::testing::IsEmpty;
+  using ::testing::Pair;
+  using ::testing::UnorderedElementsAre;
+
+  // Unpopulated label selector.
+  LabelSelector empty_selector;
+  auto empty_map = empty_selector.ToStringMap();
+  EXPECT_TRUE(empty_map.empty());
+
+  // Test label selector with all supported constraints.
+  LabelSelector selector;
+
+  selector.AddConstraint(
+      LabelConstraint("region", LabelSelectorOperator::LABEL_IN, {"us-west"}));
+
+  selector.AddConstraint(LabelConstraint(
+      "tier", LabelSelectorOperator::LABEL_IN, {"prod", "dev", "staging"}));
+
+  selector.AddConstraint(
+      LabelConstraint("env", LabelSelectorOperator::LABEL_NOT_IN, {"dev"}));
+
+  selector.AddConstraint(
+      LabelConstraint("team", LabelSelectorOperator::LABEL_NOT_IN, {"A100", "B200"}));
+
+  // Validate LabelSelector is correctly converted back to a string map.
+  auto string_map = selector.ToStringMap();
+
+  ASSERT_EQ(string_map.size(), 4);
+  EXPECT_EQ(string_map.at("region"), "us-west");
+  EXPECT_EQ(string_map.at("env"), "!dev");
+  EXPECT_EQ(string_map.at("tier"), "in(dev,prod,staging)");
+  EXPECT_EQ(string_map.at("team"), "!in(A100,B200)");
+
+  EXPECT_THAT(string_map,
+              UnorderedElementsAre(Pair("region", "us-west"),
+                                   Pair("env", "!dev"),
+                                   Pair("tier", "in(dev,prod,staging)"),
+                                   Pair("team", "!in(A100,B200)")));
 }
 }  // namespace ray

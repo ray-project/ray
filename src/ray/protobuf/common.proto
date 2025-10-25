@@ -640,7 +640,7 @@ message TaskInfoEntry {
   // format depends on the language. Only populated if the flag is enabled.
   optional string call_site = 27;
   // The key-value label constraints of the node to schedule this task or actor on.
-  LabelSelector label_selector = 28;
+  map<string, string> label_selector = 28;
 }
 
 message TaskAttempt {

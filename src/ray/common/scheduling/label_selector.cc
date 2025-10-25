@@ -14,10 +14,13 @@
 
 #include "ray/common/scheduling/label_selector.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
 
 namespace ray {
 
@@ -33,6 +36,35 @@ rpc::LabelSelector LabelSelector::ToProto() const {
     }
   }
   return result;
+}
+
+google::protobuf::Map<std::string, std::string> LabelSelector::ToStringMap() const {
+  google::protobuf::Map<std::string, std::string> string_map;
+
+  for (const auto &constraint : constraints_) {
+    const std::string &key = constraint.GetLabelKey();
+    const auto &values = constraint.GetLabelValues();
+
+    // Sort the values to get a deterministic string output.
+    std::vector<std::string> sorted_values(values.begin(), values.end());
+    std::sort(sorted_values.begin(), sorted_values.end());
+
+    std::string value_str;
+    if (constraint.GetOperator() == LabelSelectorOperator::LABEL_IN) {
+      if (sorted_values.size() == 1) {
+        value_str = sorted_values[0];
+      } else {
+        value_str = "in(" + absl::StrJoin(sorted_values, ",") + ")";
+      }
+    } else if (constraint.GetOperator() == LabelSelectorOperator::LABEL_NOT_IN) {
+      value_str = "!in(" + absl::StrJoin(sorted_values, ",") + ")";
+    }
+
+    if (!value_str.empty()) {
+      string_map[key] = value_str;
+    }
+  }
+  return string_map;
 }
 
 void LabelSelector::AddConstraint(const std::string &key, const std::string &value) {
