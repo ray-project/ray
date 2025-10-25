@@ -52,7 +52,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
 std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
-  RAY_CHECK(it != actor_handles_.end())
+  RAY_CHECK(it != actor_handles_.end() && it->second != nullptr)
       << "Cannot find an actor handle of id, " << actor_id
       << ". This method should be called only when you ensure actor handles exists.";
   return it->second;
@@ -80,10 +80,10 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
   if (status.ok()) {
     auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
     actor_id = actor_handle->GetActorID();
-    AddNewActorHandle(std::move(actor_handle),
-                      call_site,
-                      caller_address,
-                      /*owned*/ false);
+    EmplaceNewActorHandle(std::move(actor_handle),
+                          call_site,
+                          caller_address,
+                          /*owned*/ false);
   } else {
     // Use a NIL actor ID to signal that the actor wasn't found.
     RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -116,7 +116,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
 
 bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
-  return actor_handles_.find(actor_id) != actor_handles_.end();
+  return actor_handles_.find(actor_id) != actor_handles_.end() &&
+         actor_handles_.at(actor_id) != nullptr;
 }
 
 std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
@@ -129,16 +130,30 @@ std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
   return nullptr;
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool owned) {
+bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                         const std::string &call_site,
+                                         const rpc::Address &caller_address,
+                                         bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  // Verify that the actor handle is not already in the map.
+  {
+    absl::MutexLock lock(&mutex_);
+    if (actor_handles_.contains(actor_id)) {
+      RAY_LOG(WARNING) << "Actor handle already exists for actor id: " << actor_id;
+      return false;
+    }
+
+    // Else, place a sentinel value in the map to indicate that the
+    // actor handle is being created to prevent uncaught double creation.
+    actor_handles_.emplace(actor_id, nullptr);
+  }
+
   // Detached actor doesn't need ref counting.
   if (owned) {
     reference_counter_.AddOwnedObject(actor_creation_return_id,
-                                      /*inner_ids=*/{},
+                                      /*contained_ids=*/{},
                                       caller_address,
                                       call_site,
                                       /*object_size*/ -1,
@@ -176,7 +191,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
-    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    // check if the actor handle is a sentinel value
+    auto it = actor_handles_.find(actor_id);
+    if (it != actor_handles_.end() && it->second == nullptr) {
+      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle));
+      inserted = true;
+    } else {
+      inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    }
   }
 
   if (is_self) {
@@ -263,9 +285,12 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> actor_handle_ids;
   for (const auto &handle : actor_handles_) {
-    auto actor_id = handle.first;
-    auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
-    actor_handle_ids.push_back(actor_handle_id);
+    // ignore sentinels
+    if (handle.second != nullptr) {
+      auto actor_id = handle.first;
+      auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
+      actor_handle_ids.push_back(actor_handle_id);
+    }
   }
   return actor_handle_ids;
 }
@@ -277,7 +302,7 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
     if (it != cached_actor_name_to_ids_.end()) {
       absl::MutexLock lock(&mutex_);
       auto handle_it = actor_handles_.find(it->second);
-      RAY_CHECK(handle_it != actor_handles_.end());
+      RAY_CHECK(handle_it != actor_handles_.end() && handle_it->second != nullptr);
       return it->second;
     }
   }
