@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import common_pb2, gcs_pb2
+from ray.exceptions import GetTimeoutError, TaskCancelledError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -162,6 +163,75 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
         )
 
     wait_for_condition(verify_actor_ref_deleted, timeout=30)
+
+
+@pytest.fixture
+def inject_cancel_remote_task_rpc_failure(monkeypatch, request):
+    deterministic_failure = request.param
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "CoreWorkerService.grpc_client.CancelRemoteTask=1:"
+        + ("100:0" if deterministic_failure == "request" else "0:100"),
+    )
+
+
+@pytest.mark.parametrize(
+    "inject_cancel_remote_task_rpc_failure", ["request", "response"], indirect=True
+)
+def test_cancel_remote_task_rpc_retry_and_idempotency(
+    inject_cancel_remote_task_rpc_failure, ray_start_cluster
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"worker1": 1})
+    cluster.add_node(num_cpus=1, resources={"worker2": 1})
+    signaler = SignalActor.remote()
+
+    @ray.remote(num_cpus=1, resources={"worker1": 1})
+    def wait_for(y):
+        return ray.get(y[0])
+
+    @ray.remote(num_cpus=1, resources={"worker2": 1})
+    def remote_wait(sg):
+        return [wait_for.remote([sg[0]])]
+
+    sig = signaler.wait.remote()
+
+    outer = remote_wait.remote([sig])
+    inner = ray.get(outer)[0]
+    with pytest.raises(GetTimeoutError):
+        ray.get(inner, timeout=1)
+    ray.cancel(inner)
+    with pytest.raises(TaskCancelledError):
+        ray.get(inner, timeout=10)
+
+
+def test_double_borrowing_with_rpc_failure(monkeypatch, shutdown_only):
+    """Regression test for https://github.com/ray-project/ray/issues/57997"""
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure", "CoreWorkerService.grpc_client.PushTask=3:0:100"
+    )
+
+    ray.init()
+
+    @ray.remote(max_task_retries=-1, max_restarts=-1)
+    class Actor:
+        def __init__(self, objs):
+            # Actor is a borrower of obj
+            self.obj = objs[0]
+
+        def test(self):
+            # Return the borrowed object inside the list
+            # so the caller is a borrower as well.
+            # This actor task will be retried since
+            # the first PushTask RPC response will be lost.
+            return [self.obj]
+
+    obj = ray.put(31)
+    actor = Actor.remote([obj])
+    result = ray.get(actor.test.remote())
+    assert ray.get(result[0]) == 31
 
 
 if __name__ == "__main__":

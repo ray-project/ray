@@ -101,6 +101,12 @@ class DataOpTask(OpTask):
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        block_ready_callback: Callable[
+            [ray.ObjectRef[Block]], None
+        ] = lambda block_ref: None,
+        metadata_ready_callback: Callable[
+            [ray.ObjectRef[BlockMetadata]], None
+        ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """Create a DataOpTask
@@ -110,6 +116,10 @@ class DataOpTask(OpTask):
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            block_ready_callback: A callback that's invoked when a new block reference
+                is ready. This is exposed as a seam for testing.
+            metadata_ready_callback: A callback that's invoked when a new block metadata
+                reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
         """
         super().__init__(task_index, task_resource_bundle)
@@ -120,6 +130,8 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._block_ready_callback = block_ready_callback
+        self._metadata_ready_callback = metadata_ready_callback
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -127,6 +139,8 @@ class DataOpTask(OpTask):
         # can happen if a node dies after producing a block.
         self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
         self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
+
+        self._has_finished = False
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -154,12 +168,15 @@ class DataOpTask(OpTask):
                     )
                 except StopIteration:
                     self._task_done_callback(None)
+                    self._has_finished = True
                     break
 
                 if self._pending_block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break
+
+                self._block_ready_callback(self._pending_block_ref)
 
             if self._pending_meta_ref.is_nil():
                 try:
@@ -178,12 +195,15 @@ class DataOpTask(OpTask):
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
                         self._task_done_callback(ex)
+                        self._has_finished = True
                         raise ex from None
 
                 if self._pending_meta_ref.is_nil():
                     # We have a reference to the block but the metadata isn't ready
                     # yet.
                     break
+
+                self._metadata_ready_callback(self._pending_meta_ref)
 
             try:
                 # The timeout for `ray.get` includes the time required to ship the
@@ -219,6 +239,10 @@ class DataOpTask(OpTask):
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    @property
+    def has_finished(self) -> bool:
+        return self._has_finished
 
 
 class MetadataOpTask(OpTask):
@@ -803,27 +827,23 @@ def estimate_total_num_of_blocks(
 
     if (
         upstream_op_num_outputs > 0
-        and metrics.num_inputs_received > 0
-        and metrics.num_tasks_finished > 0
+        and metrics.average_num_inputs_per_task
+        and metrics.average_num_outputs_per_task
+        and metrics.average_rows_outputs_per_task
     ):
         estimated_num_tasks = total_num_tasks
         if estimated_num_tasks is None:
             estimated_num_tasks = (
-                upstream_op_num_outputs
-                / metrics.num_inputs_received
-                * num_tasks_submitted
+                upstream_op_num_outputs / metrics.average_num_inputs_per_task
             )
 
         estimated_num_output_bundles = round(
-            estimated_num_tasks
-            * metrics.num_outputs_of_finished_tasks
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_num_outputs_per_task
         )
         estimated_output_num_rows = round(
-            estimated_num_tasks
-            * metrics.rows_task_outputs_generated
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_rows_outputs_per_task
         )
+
         return (
             estimated_num_tasks,
             estimated_num_output_bundles,

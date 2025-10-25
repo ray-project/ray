@@ -453,7 +453,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='increase(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
             legend="Block Generation Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -468,7 +468,7 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='increase(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_submitted{{{global_filters}, operator=~"$Operator"}}[5m])',
             legend="Backpressure Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -1051,7 +1051,11 @@ ALL_RESOURCES_UTILIZATION_PANEL = Panel(
     stack=False,
 )
 
-OPERATOR_PANELS = [ROWS_OUTPUT_PER_SECOND_PANEL, ALL_RESOURCES_UTILIZATION_PANEL]
+OPERATOR_PANELS = [
+    ROWS_OUTPUT_PER_SECOND_PANEL,
+    ALL_RESOURCES_UTILIZATION_PANEL,
+    COMBINED_INQUEUE_BLOCKS_PANEL,
+]
 
 DATA_GRAFANA_ROWS = [
     # Overview Row
