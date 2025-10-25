@@ -112,6 +112,7 @@ class RunnerThread(threading.Thread):
                     "signal to terminate the thread without error."
                 )
             )
+            print(f">>> [debugging] RunnerThread, we entered here because of StopIteration")
         except SystemExit as e:
             # Do not propagate up for graceful termination.
             if e.code == 0:
@@ -124,6 +125,7 @@ class RunnerThread(threading.Thread):
                 )
             else:
                 # If non-zero exit code, then raise exception to main thread.
+                print(f">>> [debugging] RunnerThread, we entered here because of SystemExit")
                 self._propagate_exception(e)
         except BaseException as e:
             # Propagate all other exceptions to the main thread.
