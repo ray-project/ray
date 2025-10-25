@@ -47,6 +47,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.progress_manager import SubProgressBar
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
@@ -1550,8 +1551,6 @@ def test_per_block_limit_fn(blocks_data, per_block_limit, expected_output):
 
 
 def test_apply_transform_dag_consistency():
-    from ray.data._internal.logical.interfaces.operator import Operator
-
     a = Operator("A", [])
     b = Operator("B", [])
     c = Operator("C", [a, b])
