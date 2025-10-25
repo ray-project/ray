@@ -635,6 +635,7 @@ class ProxyStateManager:
                 ip=state.actor_details.node_ip,
                 port=port,
                 instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
             )
             for _, state in self._proxy_states.items()
             if state.actor_details.status == ProxyStatus.HEALTHY

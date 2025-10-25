@@ -24,9 +24,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
-#include "ray/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 namespace ray {
 namespace core {
 
@@ -142,6 +142,9 @@ class ActorManager {
   ///
   /// \param actor_id ID of the actor to be subscribed.
   void SubscribeActorState(const ActorID &actor_id);
+
+  /// Returns the actor handle if it exists, nullptr otherwise.
+  std::shared_ptr<ActorHandle> GetActorHandleIfExists(const ActorID &actor_id);
 
  private:
   /// Give this worker a handle to an actor.

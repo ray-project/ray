@@ -1029,6 +1029,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
 
@@ -1036,10 +1037,14 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
+            log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
+        self._log_buffer_size = log_buffer_size
+
+        self._update_logging_config(logging_config)
 
     @abstractmethod
     async def ready(self) -> str:
@@ -1047,6 +1052,18 @@ class ProxyActorInterface(ABC):
 
         Returns:
             JSON-serialized metadata containing proxy information (worker ID, log file path, etc.)
+        """
+        pass
+
+    @abstractmethod
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests.
+
+        Args:
+            wait_for_applications_running: Whether to wait for the applications to be running
+
+        Returns:
+            None
         """
         pass
 
@@ -1120,6 +1137,14 @@ class ProxyActorInterface(ABC):
         """Get replicas for a route (for testing)."""
         pass
 
+    def _update_logging_config(self, logging_config: LoggingConfig):
+        configure_component_logger(
+            component_name="proxy",
+            component_id=self._node_ip_address,
+            logging_config=logging_config,
+            buffer_size=self._log_buffer_size,
+        )
+
 
 @ray.remote(num_cpus=0)
 class ProxyActor(ProxyActorInterface):
@@ -1150,13 +1175,6 @@ class ProxyActor(ProxyActorInterface):
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
-        )
-
-        configure_component_logger(
-            component_name="proxy",
-            component_id=node_ip_address,
-            logging_config=logging_config,
-            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
@@ -1259,13 +1277,6 @@ class ProxyActor(ProxyActorInterface):
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
 
-    def _update_logging_config(self, logging_config: LoggingConfig):
-        configure_component_logger(
-            component_name="proxy",
-            component_id=self._node_ip_address,
-            logging_config=logging_config,
-        )
-
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
@@ -1308,6 +1319,10 @@ class ProxyActor(ProxyActorInterface):
                 get_component_logger_file_path(),
             ]
         )
+
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests."""
+        return
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
         """Update the draining status of the HTTP and gRPC proxies.

@@ -1,9 +1,9 @@
 import os
 from datetime import datetime
 from enum import Enum
-from typing import List
+from typing import Dict, List
 
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
@@ -36,7 +36,19 @@ class RayType(str, Enum):
     RAY = "ray"
     RAY_EXTRA = "ray-extra"
     RAY_ML = "ray-ml"
+    RAY_ML_EXTRA = "ray-ml-extra"
     RAY_LLM = "ray-llm"
+    RAY_LLM_EXTRA = "ray-llm-extra"
+
+
+RAY_REPO_MAP: Dict[str, str] = {
+    RayType.RAY.value: RayType.RAY.value,
+    RayType.RAY_ML.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM.value: RayType.RAY_LLM.value,
+    RayType.RAY_EXTRA.value: RayType.RAY.value,
+    RayType.RAY_ML_EXTRA.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM_EXTRA.value: RayType.RAY_LLM.value,
+}
 
 
 class DockerContainer(LinuxContainer):
@@ -54,12 +66,22 @@ class DockerContainer(LinuxContainer):
         upload: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
+        rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
 
-        if image_type == RayType.RAY_ML:
+        super().__init__(
+            "forge" if architecture == "x86_64" else "forge-aarch64",
+            python_version=python_version,
+            volumes=[
+                f"{rayci_checkout_dir}:/rayci",
+                "/var/run/docker.sock:/var/run/docker.sock",
+            ],
+        )
+
+        if image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
             assert python_version in PYTHON_VERSIONS_RAY_ML
             assert platform in PLATFORMS_RAY_ML
             assert architecture in ARCHITECTURES_RAY_ML
-        elif image_type == RayType.RAY_LLM:
+        elif image_type in [RayType.RAY_LLM, RayType.RAY_LLM_EXTRA]:
             assert python_version in PYTHON_VERSIONS_RAY_LLM
             assert platform in PLATFORMS_RAY_LLM
             assert architecture in ARCHITECTURES_RAY_LLM
@@ -69,21 +91,11 @@ class DockerContainer(LinuxContainer):
             assert platform in PLATFORMS_RAY
             assert architecture in ARCHITECTURES_RAY
 
-        rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
-        self.python_version = python_version
         self.platform = platform
         self.image_type = image_type
         self.architecture = architecture
         self.canonical_tag = canonical_tag
         self.upload = upload
-
-        super().__init__(
-            "forge" if architecture == "x86_64" else "forge-aarch64",
-            volumes=[
-                f"{rayci_checkout_dir}:/rayci",
-                "/var/run/docker.sock:/var/run/docker.sock",
-            ],
-        )
 
     def _get_image_version_tags(self, external: bool) -> List[str]:
         """
@@ -159,7 +171,7 @@ class DockerContainer(LinuxContainer):
         elif self.platform == GPU_PLATFORM:
             # gpu is alias to cu118 for ray image
             platforms.append("-gpu")
-            if self.image_type == RayType.RAY_ML:
+            if self.image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
@@ -168,7 +180,11 @@ class DockerContainer(LinuxContainer):
             py_versions.append("")
 
         variation = ""
-        if self.image_type == RayType.RAY_EXTRA:
+        if self.image_type in [
+            RayType.RAY_EXTRA,
+            RayType.RAY_ML_EXTRA,
+            RayType.RAY_LLM_EXTRA,
+        ]:
             variation = "-extra"
 
         tags = []

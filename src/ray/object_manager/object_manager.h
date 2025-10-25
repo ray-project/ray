@@ -31,13 +31,17 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
-#include "ray/rpc/object_manager/object_manager_client_interface.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/object_manager_rpc_client/object_manager_client_interface.h"
+#include "ray/rpc/object_manager_server.h"
 #include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+namespace rpc {
+class ClientCallManager;
+}
 
 struct ObjectManagerConfig {
   /// The IP address this object manager is running on.
@@ -517,31 +521,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
 
-  /// Metrics
-  ray::stats::Gauge ray_metric_object_store_available_memory_{
-      /*name=*/"object_store_available_memory",
-      /*description=*/"Amount of memory currently available in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_used_memory_{
-      /*name=*/"object_store_used_memory",
-      /*description=*/"Amount of memory currently occupied in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_fallback_memory_{
-      /*name=*/"object_store_fallback_memory",
-      /*description=*/"Amount of memory in fallback allocations in the filesystem.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_local_objects_{
-      /*name=*/"object_store_num_local_objects",
-      /*description=*/"Number of objects currently in the object store.",
-      /*unit=*/"objects"};
-
-  ray::stats::Gauge ray_metric_object_manager_pull_requests_{
-      /*name=*/"object_manager_num_pull_requests",
-      /*description=*/"Number of active pull requests for objects.",
-      /*unit=*/"requests"};
+  ray::stats::Gauge object_store_available_memory_gauge_{
+      GetObjectStoreAvailableMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_used_memory_gauge_{
+      ray::GetObjectStoreUsedMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_fallback_memory_gauge_{
+      ray::GetObjectStoreFallbackMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_local_objects_gauge_{
+      ray::GetObjectStoreLocalObjectsGaugeMetric()};
+  ray::stats::Gauge object_manager_pull_requests_gauge_{
+      ray::GetObjectManagerPullRequestsGaugeMetric()};
+  ray::stats::Gauge object_manager_bytes_gauge_{ray::GetObjectManagerBytesGaugeMetric()};
+  ray::stats::Gauge object_manager_received_chunks_gauge_{
+      ray::GetObjectManagerReceivedChunksGaugeMetric()};
 };
 
 }  // namespace ray

@@ -32,21 +32,8 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
   data_.mutable_config()->mutable_metadata()->insert(data.config().metadata().begin(),
                                                      data.config().metadata().end());
 
-  auto runtime_env_info = data_.mutable_config()->mutable_runtime_env_info();
-  runtime_env_info->set_serialized_runtime_env(
+  data_.mutable_config()->set_serialized_runtime_env(
       data.config().runtime_env_info().serialized_runtime_env());
-  auto runtime_env_uris = runtime_env_info->mutable_uris();
-  runtime_env_uris->set_working_dir_uri(
-      data.config().runtime_env_info().uris().working_dir_uri());
-  runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
-      data.config().runtime_env_info().uris().py_modules_uris());
-  auto runtime_env_config = runtime_env_info->mutable_runtime_env_config();
-  runtime_env_config->set_setup_timeout_seconds(
-      data.config().runtime_env_info().runtime_env_config().setup_timeout_seconds());
-  runtime_env_config->set_eager_install(
-      data.config().runtime_env_info().runtime_env_config().eager_install());
-  runtime_env_config->mutable_log_files()->CopyFrom(
-      data.config().runtime_env_info().runtime_env_config().log_files());
 }
 
 std::string RayDriverJobDefinitionEvent::GetEntityId() const { return data_.job_id(); }

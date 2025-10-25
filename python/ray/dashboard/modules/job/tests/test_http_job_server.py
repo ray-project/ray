@@ -268,8 +268,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }

@@ -391,7 +391,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -410,7 +410,7 @@ cdef extern from "ray/gcs_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs_client/accessor.h" nogil:
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
@@ -561,7 +561,8 @@ cdef extern from "ray/gcs_client/accessor.h" nogil:
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            const c_vector[int64_t] &count_array
+            const c_vector[unordered_map[c_string, c_string]] &label_selectors,
+            const c_vector[int64_t] &count_array,
         )
 
         CRayStatus GetClusterResourceState(
@@ -616,7 +617,7 @@ cdef extern from "ray/gcs_client/accessor.h" nogil:
         )
 
 
-cdef extern from "ray/gcs_client/gcs_client.h" nogil:
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
@@ -626,11 +627,11 @@ cdef extern from "ray/gcs_client/gcs_client.h" nogil:
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(
-            const c_string &gcs_address, int port, CClusterID cluster_id,
+            c_string gcs_address, int port, CClusterID cluster_id,
             c_bool allow_cluster_id_nil, c_bool fetch_cluster_id_if_nil)
 
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
-        CGcsClient(const CGcsClientOptions &options)
+        CGcsClient(CGcsClientOptions options)
 
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
@@ -646,7 +647,7 @@ cdef extern from "ray/gcs_client/gcs_client.h" nogil:
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
-cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
@@ -672,7 +673,7 @@ cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
 cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" nogil:
     c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
-cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
 
@@ -763,6 +764,12 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
+    cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
+        CRayletClientWithIoContext(const c_string &ip_address, int port)
+        CRayStatus GetWorkerPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
+                                 int64_t timeout_ms)
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -796,3 +803,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+    cdef const char[] kRayInternalNamespacePrefix
