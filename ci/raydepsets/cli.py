@@ -34,7 +34,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/configs/ray.depsets.yaml")
+@click.argument("config_path", default="ci/raydepsets/configs/*.depsets.yaml")
 @click.option(
     "--workspace-dir",
     default=None,
@@ -53,12 +53,18 @@ def cli():
     is_flag=True,
     help="Check the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
 )
+@click.option(
+    "--all-configs",
+    is_flag=True,
+    help="Build all configs",
+)
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
     check: Optional[bool],
+    all_configs: Optional[bool],
 ):
     """
     Build dependency sets from a config file.
@@ -70,6 +76,7 @@ def build(
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
         check=check,
+        build_all_configs=all_configs,
     )
     manager.execute(name)
     if check:
@@ -89,12 +96,13 @@ class DependencySetManager:
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
         check: Optional[bool] = False,
+        build_all_configs: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_configs(config_path)
         self.config_name = os.path.basename(config_path)
         self.build_graph = DiGraph()
-        self._build()
+        self._build(build_all_configs)
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
         if check:
@@ -147,7 +155,7 @@ class DependencySetManager:
     def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
 
-    def _build(self):
+    def _build(self, build_all_configs: Optional[bool] = False):
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
@@ -191,7 +199,8 @@ class DependencySetManager:
                         config_name=depset.config_name,
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
-        self.subgraph_config_nodes()
+        if not build_all_configs:
+            self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)

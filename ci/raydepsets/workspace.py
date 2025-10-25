@@ -102,11 +102,11 @@ class Workspace:
         if self.dir is None:
             raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
-    def load_configs(self, config_path: str = None) -> Config:
+    def load_configs(self, config_path: str) -> Config:
         merged_configs = self.merge_configs(self.get_all_configs(config_path))
         return merged_configs
 
-    def get_all_configs(self, config_path: str = None) -> List[Config]:
+    def get_all_configs(self, config_path: str) -> List[Config]:
         return [self.load_config(path) for path in self.get_configs_dir(config_path)]
 
     def get_configs_dir(self, configs_path: str) -> List[str]:
