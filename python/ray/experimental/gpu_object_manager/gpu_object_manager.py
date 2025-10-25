@@ -47,6 +47,7 @@ class TransferMetadata(NamedTuple):
     recv_ref: ObjectRef
     communicator_meta: "CommunicatorMetadata"
     backend: str
+    obj_id: str
     timeout: float
 
 
@@ -179,28 +180,59 @@ class GPUObjectManager:
         Cleans up the ref_info_map, kill the src and dst actors, and destroy the
         collective group if necessary.
         """
-        from ray.experimental.collective import destroy_collective_group
+        from ray.experimental.collective import (
+            destroy_collective_group,
+            get_tensor_transport_manager,
+        )
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_abort_transport__,
+        )
         from ray.util.collective.types import CollectiveCommunicatorMetadata
 
         ref_info = ref_info_map.pop(failed_ref.hex(), None)
         if ref_info is None:
             return
 
-        logger.error(
-            "RDT transfer with src actor %s and dst actor %s failed. Killing the actors. "
-            "Transfer failed with exception: %s",
-            ref_info.src_actor,
-            ref_info.dst_actor,
-            exception,
-        )
-
         if ref_info.send_ref:
             ref_info_map.pop(ref_info.send_ref.hex(), None)
         ref_info_map.pop(ref_info.recv_ref.hex(), None)
 
-        # TODO(#51276): Kill all actors in the collective group when we support more collective operations
-        ray.kill(ref_info.src_actor)
-        ray.kill(ref_info.dst_actor)
+        tensor_transport_manager = get_tensor_transport_manager(ref_info.backend)
+        if tensor_transport_manager.can_abort_transport():
+            if not tensor_transport_manager.is_one_sided():
+                # This is dead code until we implement a NCCL abort since NIXL
+                # is the only abortable transport for now and is one-sided.
+                ref_info.src_actor.__ray_call__.options(
+                    concurrency_group="_ray_system_error"
+                ).remote(
+                    __ray_abort_transport__,
+                    ref_info.obj_id,
+                    ref_info.communicator_meta,
+                )
+            ref_info.dst_actor.__ray_call__.options(
+                concurrency_group="_ray_system_error"
+            ).remote(
+                __ray_abort_transport__,
+                ref_info.obj_id,
+                ref_info.communicator_meta,
+            )
+            logger.info(
+                "RDT transfer with src actor %s and dst actor %s failed due to %s.",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+                exception,
+            )
+        else:
+            # TODO(#51276): Kill all actors in the collective group when we support more collective operations
+            ray.kill(ref_info.src_actor)
+            ray.kill(ref_info.dst_actor)
+            logger.error(
+                "RDT transfer with src actor %s and dst actor %s failed. Killing the actors. "
+                "Transfer failed with exception: %s",
+                ref_info.src_actor,
+                ref_info.dst_actor,
+                exception,
+            )
 
         # isinstance does an implicit cast and makes communicator_name inaccessible
         # so we have to get communicator_name before the cast.
@@ -336,7 +368,7 @@ class GPUObjectManager:
                     __ray_fetch_gpu_object__, obj_id
                 )
             )
-            self.gpu_object_store.add_object(obj_id, tensors)
+            self.gpu_object_store.add_object(obj_id, tensors, is_primary=False)
         else:
             if isinstance(gpu_object_meta.tensor_transport_meta, ObjectRef):
                 # If the tensor transport meta is an ObjectRef, gpu object manager
@@ -358,7 +390,7 @@ class GPUObjectManager:
                 None, None, tensor_transport_backend
             )
             __ray_recv__(
-                None, obj_id, gpu_object_meta.tensor_transport_meta, communicator_meta
+                None, obj_id, [gpu_object_meta.tensor_transport_meta], communicator_meta
             )
 
     def trigger_out_of_band_tensor_transfer(
@@ -474,7 +506,7 @@ class GPUObjectManager:
             ).remote(
                 __ray_recv__,
                 obj_id,
-                tensor_transport_meta,
+                [tensor_transport_meta],
                 communicator_meta,
             )
 
@@ -486,6 +518,7 @@ class GPUObjectManager:
                     recv_ref=recv_ref,
                     communicator_meta=communicator_meta,
                     backend=gpu_object_meta.tensor_transport_backend,
+                    obj_id=obj_id,
                     timeout=time.time() + ray_constants.FETCH_FAIL_TIMEOUT_SECONDS,
                 )
             )
