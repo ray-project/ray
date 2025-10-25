@@ -12,10 +12,12 @@ from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
 )
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.context import DataContext
 
 
@@ -38,7 +40,15 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         data_context = ray.data.DataContext.get_current()
         data_context.remove_config(ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY)
 
-    def test_basic(self):
+    def test_basic_without_queue_backpressure(self):
+        """Test basic functionality without queue size backpressure."""
+        self._test_basic(enable_queue_backpressure=False)
+
+    def test_basic_with_queue_backpressure(self):
+        """Test basic functionality with queue size backpressure."""
+        self._test_basic(enable_queue_backpressure=True)
+
+    def _test_basic(self, enable_queue_backpressure):
         concurrency = 16
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op_no_concurrency = TaskPoolMapOperator(
@@ -59,13 +69,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             input_op: MagicMock(),
             map_op_no_concurrency: MagicMock(),
         }
-
+        resource_manager = ResourceManager(
+            topology, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
             topology,
-            MagicMock(),
+            resource_manager,
         )
 
+        policy.enable_dynamic_output_queue_size_backpressure = enable_queue_backpressure
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
         self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))
         self.assertTrue(math.isinf(policy._concurrency_caps[map_op_no_concurrency]))
