@@ -36,7 +36,7 @@ import ray
 from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
 from ray._common.prometheus_utils import (
-    prom_serve,
+    fetch_from_prom_server as prometheus_handler,
 )
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
@@ -169,7 +169,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
-        prometheus_handler: Callable[..., Any] = prom_serve,
+        prometheus_handler: Callable[..., Any] = prometheus_handler,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -452,7 +452,7 @@ class ReplicaMetricsManager:
             for metric in prometheus_metrics:
                 # Add label selector for this replica
                 query = f'{metric}{{replica="{self._replica_id.unique_id}"}}'
-                response = prom_serve(
+                response = prometheus_handler(
                     prom_addr,
                     query,
                     timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
@@ -620,7 +620,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
-            user_callable_wrapper=self._user_callable_wrapper,
+            prometheus_handler=prometheus_handler,
         )
 
         self._internal_grpc_port: Optional[int] = None

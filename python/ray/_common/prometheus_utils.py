@@ -10,7 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
-import aiohttp
 import requests
 
 try:
@@ -46,20 +45,18 @@ class PrometheusTimeseries:
         self.metric_samples.clear()
 
 
-def prom_serve(
-    host: str,
+def fetch_from_prom_server(
+    address: str,
     query: str,
     *,
-    port: int = 9090,
     time: Union[str, int, float] = None,
     timeout: float = None,
 ) -> Dict[str, Any]:
     """Query Prometheus server using PromQL query expression.
 
     Args:
-        host: Hostname or IP address of the Prometheus server.
+        address: Hostname:Port of the prometheus server
         query: PromQL query expression.
-        port: Port number of the Prometheus server. Defaults to 9090.
         time: RFC3339 or Unix timestamp to use for the query. If None, current time is used.
         timeout: Query timeout in seconds. If None, uses Prometheus server default.
 
@@ -77,7 +74,7 @@ def prom_serve(
         params["timeout"] = str(timeout)
 
     response = requests.get(
-        f"http://{host}:{port}/api/v1/query",
+        f"http://{address}/api/v1/query",
         params=params,
         timeout=timeout,
     )
@@ -194,36 +191,6 @@ def fetch_prometheus_metric_timeseries(
     for sample in samples:
         samples_by_name[sample.name].append(sample)
     return samples_by_name
-
-
-async def fetch_prometheus_metrics_async(
-    prom_address: str,
-    timeout: float = 30,
-) -> Optional[str]:
-    """Fetch prometheus metrics asynchronously from a single address.
-
-    Args:
-        prom_address: Address to fetch metrics from.
-        timeout: Optional timeout in seconds.
-
-    Returns:
-        Raw metrics text or None if fetch failed.
-    """
-
-    try:
-        client_timeout = aiohttp.ClientTimeout(total=timeout) if timeout else None
-        async with aiohttp.ClientSession(timeout=client_timeout) as session:
-            async with session.get(f"{prom_address}/metrics") as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    logger.error(
-                        f"Failed to fetch metrics from prometheus exporter: HTTP {response.status}"
-                    )
-                    return None
-    except Exception as e:
-        logger.error(f"Error fetching prometheus metrics: {e}")
-        return None
 
 
 def parse_prometheus_metrics_text(metrics_text: str) -> Dict[str, List[Sample]]:
