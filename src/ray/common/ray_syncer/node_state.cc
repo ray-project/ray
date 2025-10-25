@@ -14,7 +14,9 @@
 
 #include "ray/common/ray_syncer/node_state.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -37,29 +39,31 @@ bool NodeState::SetComponent(MessageType message_type,
   return false;
 }
 
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
+std::optional<InnerRaySyncMessage> NodeState::CreateInnerSyncMessage(
+    MessageType message_type) {
   if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
-  auto message = reporters_[message_type]->CreateSyncMessage(
+  auto inner_message = reporters_[message_type]->CreateInnerSyncMessage(
       sync_message_versions_taken_[message_type], message_type);
-  if (message != std::nullopt) {
-    sync_message_versions_taken_[message_type] = message->version();
+  if (inner_message != std::nullopt) {
+    sync_message_versions_taken_[message_type] = inner_message->version();
     RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
-                   << ", version:" << message->version()
-                   << ", node:" << NodeID::FromBinary(message->node_id());
+                   << ", version:" << inner_message->version()
+                   << ", node:" << NodeID::FromBinary(inner_message->node_id());
   }
-  return message;
+  return inner_message;
 }
 
 bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
+bool NodeState::ConsumeInnerSyncMessage(
+    std::shared_ptr<const InnerRaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->message_type()];
 
-  RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
+  RAY_LOG(DEBUG) << "ConsumeInnerSyncMessage: local_version="
                  << (current ? current->version() : -1)
                  << " message_version=" << message->version()
                  << ", message_from=" << NodeID::FromBinary(message->node_id());
@@ -73,7 +77,7 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   if (receiver != nullptr) {
     RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
         << "Consume message from node";
-    receiver->ConsumeSyncMessage(message);
+    receiver->ConsumeInnerSyncMessage(message);
   }
   return true;
 }

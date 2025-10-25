@@ -964,14 +964,15 @@ void GcsServer::TryGlobalGC() {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
+    auto inner_msg = std::make_shared<syncer::InnerRaySyncMessage>();
+    inner_msg->set_version(absl::GetCurrentTimeNanos());
+    inner_msg->set_node_id(kGCSNodeID.Binary());
+    inner_msg->set_message_type(syncer::MessageType::COMMANDS);
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
-    ray_syncer_->BroadcastMessage(std::move(msg));
+    inner_msg->set_sync_message(std::move(serialized_msg));
+
+    ray_syncer_->BroadcastInnerMessage(std::move(inner_msg));
     global_gc_throttler_->RunNow();
   }
 }

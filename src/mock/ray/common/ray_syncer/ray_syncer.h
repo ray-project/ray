@@ -23,8 +23,8 @@ namespace syncer {
 
 class MockReporterInterface : public ReporterInterface {
  public:
-  MOCK_METHOD(std::optional<RaySyncMessage>,
-              CreateSyncMessage,
+  MOCK_METHOD(std::optional<InnerRaySyncMessage>,
+              CreateInnerSyncMessage,
               (int64_t current_version, MessageType message_type),
               (const, override));
 };
@@ -38,8 +38,8 @@ namespace syncer {
 class MockReceiverInterface : public ReceiverInterface {
  public:
   MOCK_METHOD(void,
-              ConsumeSyncMessage,
-              (std::shared_ptr<const RaySyncMessage> message),
+              ConsumeInnerSyncMessage,
+              (std::shared_ptr<const InnerRaySyncMessage> message),
               (override));
 };
 
@@ -57,7 +57,7 @@ class MockRaySyncerBidiReactor : public RaySyncerBidiReactor {
 
   MOCK_METHOD(bool,
               PushToSendingQueue,
-              (std::shared_ptr<const RaySyncMessage>),
+              (std::shared_ptr<const InnerRaySyncMessage>),
               (override));
 };
 

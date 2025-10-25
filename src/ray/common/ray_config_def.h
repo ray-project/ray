@@ -1001,3 +1001,9 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // Whether to enable the feature of outputting error log if the task is
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
+
+// The batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
+RAY_CONFIG(size_t, syncer_batch_size, 0)
+
+// The delay for ray_syncer_bidi_reactor to sync messages to other nodes.
+RAY_CONFIG(int64_t, syncer_batch_delay_ms, 0)
