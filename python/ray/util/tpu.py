@@ -84,7 +84,7 @@ class SlicePlacementGroup:
 
             import ray
             from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-            from ray.util.accelerators.tpu import SlicePlacementGroup
+            from ray.util import SlicePlacementGroup
 
             slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
             slice_pg = slice_handle.placement_group
