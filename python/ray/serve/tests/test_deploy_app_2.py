@@ -618,7 +618,6 @@ def test_num_replicas_auto_basic(serve_instance):
                 "num_replicas": "auto",
                 "autoscaling_config": {
                     "look_back_period_s": 2.0,
-                    "metrics_interval_s": 1.0,
                     "upscale_delay_s": 1.0,
                 },
                 "graceful_shutdown_timeout_s": 1,
@@ -642,11 +641,11 @@ def test_num_replicas_auto_basic(serve_instance):
         "target_ongoing_requests": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
-        # Overrided by `autoscaling_config`
+        # Overridden by `autoscaling_config`
         "look_back_period_s": 2.0,
-        "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
+        "metrics_interval_s": 10.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
@@ -671,7 +670,7 @@ def test_num_replicas_auto_basic(serve_instance):
 
         wait_for_condition(check_num_waiters, target=2 * (i + 1))
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=20)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
     signal.send.remote()
