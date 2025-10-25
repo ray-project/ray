@@ -32,6 +32,7 @@ namespace ray {
 /// Encapsulates non-resource artifacts that evidence work when present.
 enum WorkFootprint {
   NODE_WORKERS = 1,
+  PULLING_FROM_OBJECT_STORE = 2,
 };
 
 // Represents artifacts of a node that can be busy or idle.
@@ -171,6 +172,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Return the resource usage map for each resource.
   absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
   GetResourceUsageMap() const;
+
+  void ShutdownRayletGracefully();
 
   /// Notify the subscriber that the local resouces or state has changed.
   void OnResourceOrStateChanged();

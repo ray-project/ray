@@ -128,16 +128,12 @@ void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
     return;
   }
   last_idle_times_[item] = absl::nullopt;
-  OnResourceOrStateChanged();
 }
 
 void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
-
   last_idle_times_[item] = absl::Now();
-  if (state_change) {
-    OnResourceOrStateChanged();
+  if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
+    ShutdownRayletGracefully();
   }
 }
 
@@ -350,6 +346,9 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
         case WorkFootprint::NODE_WORKERS:
           resource_view_sync_message.add_node_activity("Busy workers on node.");
           break;
+        case WorkFootprint::PULLING_FROM_OBJECT_STORE:
+          resource_view_sync_message.add_node_activity("Pulling from object store.");
+          break;
         default:
           UNREACHABLE;
         }
@@ -389,11 +388,15 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
+void LocalResourceManager::ShutdownRayletGracefully() {
+  RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
+  rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+  shutdown_raylet_gracefully_(std::move(node_death_info));
+}
+
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
-    rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
-    shutdown_raylet_gracefully_(std::move(node_death_info));
+    ShutdownRayletGracefully();
   }
 
   ++version_;

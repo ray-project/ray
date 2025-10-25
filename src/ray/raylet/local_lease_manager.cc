@@ -111,6 +111,8 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
       RAY_LOG(DEBUG) << "Waiting for args for lease: " << lease_id;
       auto it = waiting_lease_queue_.insert(waiting_lease_queue_.end(), std::move(work));
       RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
+      cluster_resource_scheduler_.GetLocalResourceManager().SetBusyFootprint(
+          WorkFootprint::PULLING_FROM_OBJECT_STORE);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, lease can be granted " << lease_id;
@@ -320,6 +322,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           auto it = waiting_lease_queue_.insert(waiting_lease_queue_.begin(),
                                                 std::move(*work_it));
           RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
+          cluster_resource_scheduler_.GetLocalResourceManager().SetBusyFootprint(
+              WorkFootprint::PULLING_FROM_OBJECT_STORE);
           work_it = leases_to_grant_queue.erase(work_it);
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
@@ -495,6 +499,10 @@ void LocalLeaseManager::SpillWaitingLeases() {
       num_waiting_lease_spilled_++;
       waiting_leases_index_.erase(lease_id);
       it = waiting_lease_queue_.erase(it);
+      if (waiting_lease_queue_.empty()) {
+        cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+            WorkFootprint::PULLING_FROM_OBJECT_STORE);
+      }
     } else {
       if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "RayLease " << lease_id
@@ -726,6 +734,10 @@ void LocalLeaseManager::LeasesUnblocked(const std::vector<LeaseID> &ready_ids) {
       leases_to_grant_[scheduling_key].push_back(work);
       waiting_lease_queue_.erase(it->second);
       waiting_leases_index_.erase(it);
+      if (waiting_lease_queue_.empty()) {
+        cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+            WorkFootprint::PULLING_FROM_OBJECT_STORE);
+      }
     }
   }
   ScheduleAndGrantLeases();
@@ -887,6 +899,10 @@ std::vector<std::shared_ptr<internal::Work>> LocalLeaseManager::CancelLeasesWith
         cancelled_works.push_back(work);
         return true;
       });
+  if (waiting_lease_queue_.empty()) {
+    cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+        WorkFootprint::PULLING_FROM_OBJECT_STORE);
+  }
 
   return cancelled_works;
 }
