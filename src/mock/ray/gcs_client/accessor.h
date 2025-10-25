@@ -63,13 +63,13 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const TaskSpecification &task_spec,
                const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribe,
               (const ActorID &actor_id,
                (const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
                const StatusCallback &done),
               (override));
-  MOCK_METHOD(Status, AsyncUnsubscribe, (const ActorID &actor_id), (override));
+  MOCK_METHOD(void, AsyncUnsubscribe, (const ActorID &actor_id), (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(bool, IsActorUnsubscribed, (const ActorID &actor_id), (override));
 };
@@ -91,7 +91,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               AsyncMarkFinished,
               (const JobID &job_id, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeAll,
               ((const SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
                const StatusCallback &done),
@@ -191,7 +191,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(void,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
@@ -231,7 +230,7 @@ namespace gcs {
 
 class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToWorkerFailures,
               (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                const StatusCallback &done),
