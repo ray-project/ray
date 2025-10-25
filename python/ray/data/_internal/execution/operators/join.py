@@ -1,6 +1,7 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.transform_pyarrow import _is_pa_extension_type
@@ -21,6 +22,19 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+
+@dataclass(frozen=True)
+class _DatasetPreprocessingResult:
+    """Result of join preprocessing containing split tables.
+
+    Separates tables into supported (directly joinable) and unsupported
+    (requires indexing) column projections.
+    """
+
+    supported_projection: "pa.Table"
+    unsupported_projection: "pa.Table"
+
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -110,6 +124,43 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         partition_builder.add_block(partition_shard)
 
     def finalize(self, partition_id: int) -> Block:
+
+        left_on, right_on = list(self._left_key_col_names), list(
+            self._right_key_col_names
+        )
+
+        preprocess_result_l, preprocess_result_r = self._preprocess(
+            left_on, right_on, partition_id
+        )
+
+        # Perform the join on supported columns
+        arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
+
+        # Perform the join on supported columns
+        supported = preprocess_result_l.supported_projection.join(
+            preprocess_result_r.supported_projection,
+            join_type=arrow_join_type,
+            keys=left_on,
+            right_keys=right_on,
+            left_suffix=self._left_columns_suffix,
+            right_suffix=self._right_columns_suffix,
+        )
+
+        # Add back unsupported columns (join type logic is in should_index_* variables)
+        supported = self._postprocess(
+            supported,
+            preprocess_result_l.unsupported_projection,
+            preprocess_result_r.unsupported_projection,
+        )
+
+        return supported
+
+    def _preprocess(
+        self,
+        left_on: List[str],
+        right_on: List[str],
+        partition_id: int,
+    ) -> Tuple[_DatasetPreprocessingResult, _DatasetPreprocessingResult]:
         import pyarrow as pa
 
         left_seq_partition: pa.Table = self._get_partition_builder(
@@ -119,15 +170,11 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             input_seq_id=1, partition_id=partition_id
         ).build()
 
-        left_on, right_on = list(self._left_key_col_names), list(
-            self._right_key_col_names
-        )
-
-        arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
-
         # Get supported columns
-        supported_l, unsupported_l = _split_unsupported_columns(left_seq_partition)
-        supported_r, unsupported_r = _split_unsupported_columns(right_seq_partition)
+        supported_l, unsupported_l = self._split_unsupported_columns(left_seq_partition)
+        supported_r, unsupported_r = self._split_unsupported_columns(
+            right_seq_partition
+        )
 
         # Handle joins on unsupported columns
         conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
@@ -152,38 +199,54 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         # Add index columns for back-referencing if we have unsupported columns
         # TODO: what are the chances of a collision with the index column?
-        index_name_l = "__ray_data_index_level_left__"
         if should_index_l:
-            supported_l = _append_index_column(table=supported_l, col_name=index_name_l)
-        index_name_r = "__ray_data_index_level_right__"
+            supported_l = self._append_index_column(
+                table=supported_l, col_name=self._index_name("left")
+            )
         if should_index_r:
-            supported_r = _append_index_column(table=supported_r, col_name=index_name_r)
+            supported_r = self._append_index_column(
+                table=supported_r, col_name=self._index_name("right")
+            )
 
-        # Perform the join on supported columns
-        supported = supported_l.join(
-            supported_r,
-            join_type=arrow_join_type,
-            keys=left_on,
-            right_keys=right_on,
-            left_suffix=self._left_columns_suffix,
-            right_suffix=self._right_columns_suffix,
+        left = _DatasetPreprocessingResult(
+            supported_projection=supported_l,
+            unsupported_projection=unsupported_l,
         )
+        right = _DatasetPreprocessingResult(
+            supported_projection=supported_r,
+            unsupported_projection=unsupported_r,
+        )
+        return left, right
+
+    def _postprocess(
+        self,
+        supported: "pa.Table",
+        unsupported_l: "pa.Table",
+        unsupported_r: "pa.Table",
+    ) -> "pa.Table":
+        # Index if we have unsupported columns
+        should_index_l = self._index_name("left") in supported.schema.names
+        should_index_r = self._index_name("right") in supported.schema.names
+
         # Add back unsupported columns (join type logic is in should_index_* variables)
         if should_index_l:
-            supported = _add_back_unsupported_columns(
+            supported = self._add_back_unsupported_columns(
                 joined_table=supported,
                 unsupported_table=unsupported_l,
-                index_col_name=index_name_l,
+                index_col_name=self._index_name("left"),
             )
 
         if should_index_r:
-            supported = _add_back_unsupported_columns(
+            supported = self._add_back_unsupported_columns(
                 joined_table=supported,
                 unsupported_table=unsupported_r,
-                index_col_name=index_name_r,
+                index_col_name=self._index_name("right"),
             )
 
         return supported
+
+    def _index_name(self, suffix: str) -> str:
+        return f"__ray_data_index_level_{suffix}__"
 
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
@@ -236,98 +299,97 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             # Right side appears in result for all joins except left_semi/left_anti
             return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
 
+    def _split_unsupported_columns(
+        self, table: "pa.Table"
+    ) -> Tuple["pa.Table", "pa.Table"]:
+        """
+        Split a PyArrow table into two tables based on column joinability.
 
-def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table"]:
-    """
-    Split a PyArrow table into two tables based on column joinability.
+        Separates columns into supported types and unsupported types that cannot be
+        directly joined on but should be preserved in results.
 
-    Separates columns into supported types and unsupported types that cannot be
-    directly joined on but should be preserved in results.
+        Args:
+            table: Input PyArrow table to split
 
-    Args:
-        table: Input PyArrow table to split
+        Returns:
+            Tuple of (supported_table, unsupported_table) where:
+            - supported_table contains columns with primitive/joinable types
+            - unsupported_table contains columns with complex/unjoinable types
+        """
+        supported, unsupported = [], []
+        for idx in range(len(table.columns)):
+            column: "pa.ChunkedArray" = table.column(idx)
 
-    Returns:
-        Tuple of (supported_table, unsupported_table) where:
-        - supported_table contains columns with primitive/joinable types
-        - unsupported_table contains columns with complex/unjoinable types
-    """
-    supported, unsupported = [], []
-    for idx in range(len(table.columns)):
-        column: "pa.ChunkedArray" = table.column(idx)
+            col_type = column.type
 
-        col_type = column.type
-        if _is_pa_extension_type(column.type):
-            col_type = column.type.storage_type
+            if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
+                col_type
+            ):
+                unsupported.append(idx)
+            else:
+                supported.append(idx)
 
-        if _is_pa_join_not_supported(col_type):
-            unsupported.append(idx)
-        else:
-            supported.append(idx)
+        return (table.select(supported), table.select(unsupported))
 
-    return (table.select(supported), table.select(unsupported))
+    def _add_back_unsupported_columns(
+        self,
+        joined_table: "pa.Table",
+        unsupported_table: "pa.Table",
+        index_col_name: str,
+    ) -> "pa.Table":
+        # Extract the index column array and drop the column from the joined table
+        i = joined_table.schema.get_field_index(index_col_name)
+        indices = joined_table.column(i)
+        joined_table = joined_table.remove_column(i)
 
+        # Project the unsupported columns using the indices and combine with joined table
+        projected = ArrowBlockAccessor(unsupported_table).take(indices)
+        return ArrowBlockAccessor(joined_table).hstack(projected)
 
-def _add_back_unsupported_columns(
-    joined_table: "pa.Table",
-    unsupported_table: "pa.Table",
-    index_col_name: str,
-) -> "pa.Table":
-    # Extract the index column array and drop the column from the joined table
-    i = joined_table.schema.get_field_index(index_col_name)
-    indices = joined_table.column(i)
-    joined_table = joined_table.remove_column(i)
+    def _append_index_column(self, table: "pa.Table", col_name: str) -> "pa.Table":
+        import numpy as np
+        import pyarrow as pa
 
-    # Project the unsupported columns using the indices and combine with joined table
-    projected = ArrowBlockAccessor(unsupported_table).take(indices)
-    return ArrowBlockAccessor(joined_table).hstack(projected)
+        index_col = pa.array(np.arange(table.num_rows))
+        return table.append_column(col_name, index_col)
 
+    def _is_pa_join_not_supported(self, type: "pa.DataType") -> bool:
+        """
+        The latest pyarrow versions do not support joins where the
+        tables contain the following types below (lists,
+        structs, maps, unions, extension types, etc.)
 
-def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
-    import numpy as np
-    import pyarrow as pa
+        Args:
+            type: The input type of column.
 
-    index_col = pa.array(np.arange(table.num_rows))
-    return table.append_column(col_name, index_col)
+        Returns:
+            True if the type cannot be present (non join-key) during joins.
+            False if the type can be present.
+        """
+        import pyarrow as pa
 
+        pyarrow_version = get_pyarrow_version()
+        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
 
-def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
-    """
-    The latest pyarrow versions do not support joins where the
-    tables contain the following types below (lists,
-    structs, maps, unions, extension types, etc.)
-
-    Args:
-        type: The input type of column.
-
-    Returns:
-        True if the type cannot be present (non join-key) during joins.
-        False if the type can be present.
-    """
-    import pyarrow as pa
-
-    pyarrow_version = get_pyarrow_version()
-    is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-    is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
-    return (
-        pa.types.is_map(type)
-        or pa.types.is_union(type)
-        or pa.types.is_list(type)
-        or pa.types.is_struct(type)
-        or pa.types.is_null(type)
-        or pa.types.is_large_list(type)
-        or pa.types.is_fixed_size_list(type)
-        or (is_v12 and pa.types.is_run_end_encoded(type))
-        or (
-            is_v16
-            and (
-                pa.types.is_binary_view(type)
-                or pa.types.is_string_view(type)
-                or pa.types.is_list_view(type)
+        return (
+            pa.types.is_map(type)
+            or pa.types.is_union(type)
+            or pa.types.is_list(type)
+            or pa.types.is_struct(type)
+            or pa.types.is_null(type)
+            or pa.types.is_large_list(type)
+            or pa.types.is_fixed_size_list(type)
+            or (is_v12 and pa.types.is_run_end_encoded(type))
+            or (
+                is_v16
+                and (
+                    pa.types.is_binary_view(type)
+                    or pa.types.is_string_view(type)
+                    or pa.types.is_list_view(type)
+                )
             )
         )
-    )
 
 
 class JoinOperator(HashShufflingOperatorBase):
@@ -345,7 +407,16 @@ class JoinOperator(HashShufflingOperatorBase):
         right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_aggregation_type: Optional[Type[StatefulShuffleAggregation]] = None,
     ):
+        if shuffle_aggregation_type is not None:
+            if not issubclass(shuffle_aggregation_type, StatefulShuffleAggregation):
+                raise TypeError(
+                    f"shuffle_aggregation_type must be a subclass of StatefulShuffleAggregation, "
+                    f"got {shuffle_aggregation_type}"
+                )
+
+        aggregation_class = shuffle_aggregation_type or JoiningShuffleAggregation
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"Join(num_partitions={num_partitions})"
@@ -356,7 +427,7 @@ class JoinOperator(HashShufflingOperatorBase):
             num_partitions=num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
+                lambda aggregator_id, target_partition_ids: aggregation_class(
                     aggregator_id=aggregator_id,
                     join_type=join_type,
                     left_key_col_names=left_key_columns,

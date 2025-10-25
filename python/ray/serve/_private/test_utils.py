@@ -14,7 +14,6 @@ import requests
 from starlette.requests import Request
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
@@ -37,6 +36,7 @@ from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, TargetGroup
+from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -279,7 +279,7 @@ def get_num_alive_replicas(
     """Get the replicas currently running for the given deployment."""
 
     dep_id = DeploymentID(name=deployment_name, app_name=app_name)
-    actors = state_api.list_actors(
+    actors = list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),
             ("state", "=", "ALIVE"),
@@ -746,6 +746,7 @@ def get_application_urls(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
+    from_proxy_manager: bool = False,
 ) -> List[str]:
     """Get the URL of the application.
 
@@ -757,6 +758,7 @@ def get_application_urls(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
+        from_proxy_manager: Whether the caller is a proxy manager.
     Returns:
         The URLs of the application.
     """
@@ -773,7 +775,7 @@ def get_application_urls(
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
-        client._controller.get_target_groups.remote(app_name)
+        client._controller.get_target_groups.remote(app_name, from_proxy_manager)
     )
     target_groups = [
         target_group
@@ -810,6 +812,7 @@ def get_application_url(
     use_localhost: bool = True,
     is_websocket: bool = False,
     exclude_route_prefix: bool = False,
+    from_proxy_manager: bool = False,
 ) -> str:
     """Get the URL of the application.
 
@@ -821,6 +824,7 @@ def get_application_url(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
+        from_proxy_manager: Whether the caller is a proxy manager.
     Returns:
         The URL of the application. If there are multiple URLs, a random one is returned.
     """
@@ -831,6 +835,7 @@ def get_application_url(
             use_localhost,
             is_websocket,
             exclude_route_prefix,
+            from_proxy_manager,
         )
     )
 

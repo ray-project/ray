@@ -22,10 +22,11 @@ namespace ray {
 namespace core {
 namespace experimental {
 
-MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory raylet_client_factory,
-                                             std::function<Status(void)> check_signals)
-    : plasma_(plasma),
+MutableObjectProvider::MutableObjectProvider(
+    std::shared_ptr<plasma::PlasmaClientInterface> plasma,
+    RayletFactory raylet_client_factory,
+    std::function<Status(void)> check_signals)
+    : plasma_(std::move(plasma)),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
           std::move(check_signals))),
       raylet_client_factory_(std::move(raylet_client_factory)) {}
@@ -47,7 +48,7 @@ void MutableObjectProvider::RegisterWriterChannel(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
   {
     std::unique_ptr<plasma::MutableObject> writer_object;
-    RAY_CHECK_OK(plasma_.GetExperimentalMutableObject(writer_object_id, &writer_object));
+    RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(writer_object_id, &writer_object));
     RAY_CHECK_OK(object_manager_->RegisterChannel(
         writer_object_id, std::move(writer_object), /*reader=*/false));
     // `object` is now a nullptr.
@@ -71,8 +72,10 @@ void MutableObjectProvider::RegisterWriterChannel(
 
   // Find remote readers.
   for (const auto &node_id : remote_reader_node_ids) {
-    client_call_managers_.push_back(
-        std::make_unique<rpc::ClientCallManager>(io_context, /*record_stats=*/false));
+    // NOTE: Not setting local address because we're not testing compiled graphs with
+    // testing_rpc_failure_avoid_intra_node_failures for now.
+    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(
+        io_context, /*record_stats=*/false, /*local_address=*/"always not local"));
     std::shared_ptr<RayletClientInterface> reader = raylet_client_factory_(node_id);
     remote_readers->push_back(reader);
   }
@@ -95,7 +98,7 @@ void MutableObjectProvider::RegisterWriterChannel(
 
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
-  RAY_CHECK_OK(plasma_.GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK_OK(
       object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/true));
   // `object` is now a nullptr.

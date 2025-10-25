@@ -23,7 +23,8 @@ namespace core {
 NormalSchedulingQueue::NormalSchedulingQueue(){};
 
 void NormalSchedulingQueue::Stop() {
-  // No-op
+  CancelAllPending(Status::SchedulingCancelled(
+      "Normal scheduling queue stopped; canceling pending tasks"));
 }
 
 bool NormalSchedulingQueue::TaskQueueEmpty() const {
@@ -88,6 +89,15 @@ void NormalSchedulingQueue::ScheduleRequests() {
       }
     }
     head.Accept();
+  }
+}
+
+void NormalSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  while (!pending_normal_tasks_.empty()) {
+    auto it = pending_normal_tasks_.begin();
+    it->Cancel(status);
+    pending_normal_tasks_.erase(it);
   }
 }
 

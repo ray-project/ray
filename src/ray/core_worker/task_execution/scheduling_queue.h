@@ -39,6 +39,9 @@ class SchedulingQueue {
   virtual size_t Size() const = 0;
   virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
+  /// Cancel all pending (not yet accepted/executing) requests in the queue with the
+  /// provided status. Implementations should be thread-safe.
+  virtual void CancelAllPending(const Status &status) = 0;
 };
 
 }  // namespace core

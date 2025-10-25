@@ -84,6 +84,7 @@ jupytext>1.13.6
 jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
+opentelemetry-instrumentation-fastapi==0.55b1
 
 # For dataset tests
 polars>=1.32.3,<2.0.0

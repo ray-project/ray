@@ -1,14 +1,14 @@
 import functools
 import os
-from pathlib import Path
 import pickle
 import sys
 import time
 import unittest
+from pathlib import Path
 
 import ray
-from ray.util.state import list_actors
 from ray.rllib.utils.actor_manager import FaultAwareApply, FaultTolerantActorManager
+from ray.util.state import list_actors
 
 
 def load_random_numbers():
@@ -422,6 +422,17 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(result.tag, "call")
             else:
                 raise ValueError("result is not str or int")
+
+    def test_foreach_actor_async_fetch_ready(self):
+        """Test foreach_actor_async_fetch_ready works."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(2)]
+        manager = FaultTolerantActorManager(actors=actors)
+        manager.foreach_actor_async_fetch_ready(lambda w: w.ping(), tag="ping")
+        time.sleep(5)
+        results = manager.foreach_actor_async_fetch_ready(
+            lambda w: w.ping(), tag="ping"
+        )
+        self.assertEqual(len(results), 2)
 
 
 if __name__ == "__main__":

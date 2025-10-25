@@ -217,8 +217,8 @@ class Client {
   }
 
   template <typename F>
-  std::result_of_t<F()> AlwaysRetry(const F &f) {
-    using R = std::result_of_t<F()>;
+  std::invoke_result_t<F> AlwaysRetry(const F &f) {
+    using R = std::invoke_result_t<F>;
     R r{};
     while (true) {
       try {

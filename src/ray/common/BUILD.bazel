@@ -312,8 +312,7 @@ ray_cc_library(
     deps = [
         ":ray_config",
         "//src/ray/stats:stats_metric",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        "//src/ray/util:time",
     ],
 )
 
@@ -419,5 +418,13 @@ ray_cc_library(
     hdrs = ["gcs_callback_types.h"],
     deps = [
         "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
     ],
 )

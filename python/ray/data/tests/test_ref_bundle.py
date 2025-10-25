@@ -52,3 +52,11 @@ def test_get_preferred_locations():
         "2": 7168,  # first_block_ref, second_block_ref, third_block_ref
         "3": 3072,  # first_block_ref, second_block_ref
     } == preferred_object_locs
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

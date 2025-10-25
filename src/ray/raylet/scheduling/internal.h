@@ -19,6 +19,7 @@
 
 #include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray::raylet::internal {
@@ -57,19 +58,19 @@ class Work {
   bool grant_or_reject_;
   bool is_selected_based_on_locality_;
   rpc::RequestWorkerLeaseReply *reply_;
-  std::function<void(void)> callback_;
+  rpc::SendReplyCallback send_reply_callback_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   Work(RayLease lease,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
        rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback,
+       rpc::SendReplyCallback send_reply_callback,
        WorkStatus status = WorkStatus::WAITING)
       : lease_(std::move(lease)),
         grant_or_reject_(grant_or_reject),
         is_selected_based_on_locality_(is_selected_based_on_locality),
         reply_(reply),
-        callback_(std::move(callback)),
+        send_reply_callback_(std::move(send_reply_callback)),
         allocated_instances_(nullptr),
         status_(status){};
   Work(const Work &Work) = delete;
@@ -102,6 +103,7 @@ class Work {
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
 };
 
-using NodeInfoGetter = std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)>;
+using NodeInfoGetter =
+    std::function<std::optional<rpc::GcsNodeAddressAndLiveness>(const NodeID &node_id)>;
 
 }  // namespace ray::raylet::internal

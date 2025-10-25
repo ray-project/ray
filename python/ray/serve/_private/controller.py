@@ -21,7 +21,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
     NodeId,
@@ -204,6 +203,7 @@ class ServeController:
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
             self.deployment_state_manager,
+            self.autoscaling_state_manager,
             self.endpoint_state,
             self.kv_store,
             self.global_logging_config,
@@ -274,9 +274,6 @@ class ServeController:
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: ReplicaMetricReport
     ):
-        logger.debug(
-            f"Received metrics from replica {replica_metric_report.replica_id}: {replica_metric_report.aggregated_metrics.get(RUNNING_REQUESTS_KEY)} running requests"
-        )
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
@@ -293,10 +290,6 @@ class ServeController:
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: HandleMetricReport
     ):
-        logger.debug(
-            f"Received metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id}: "
-            f"{handle_metric_report.queued_requests} queued requests and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
-        )
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
@@ -310,11 +303,15 @@ class ServeController:
             handle_metric_report
         )
 
-    def _dump_all_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_all_metrics()
+    def _get_total_num_requests_for_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ):
+        return self.autoscaling_state_manager.get_total_num_requests_for_deployment(
+            deployment_id
+        )
 
-    def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_metrics()
+    def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
+        return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
@@ -1013,7 +1010,11 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
+    def get_target_groups(
+        self,
+        app_name: Optional[str] = None,
+        from_proxy_manager: bool = False,
+    ) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 

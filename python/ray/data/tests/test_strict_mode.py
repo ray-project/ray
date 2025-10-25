@@ -2,11 +2,13 @@ from collections import UserDict
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
+from ray.data.dataset import Schema
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -249,6 +251,44 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     assert schema.base_schema.types == [TensorDtype(shape=(10,), dtype=pa.float64())]
     # NOTE: Schema by default returns Arrow types
     assert schema.types == [expected_arrow_ext_type]
+
+
+@pytest.mark.parametrize(
+    "input_dtype, expected_arrow_type",
+    [
+        (pd.ArrowDtype(pa.int32()), pa.int32()),
+        (np.dtype("int64"), pa.int64()),
+        # Integer nullable types
+        (pd.Int8Dtype(), pa.int8()),
+        (pd.Int16Dtype(), pa.int16()),
+        (pd.Int32Dtype(), pa.int32()),
+        (pd.Int64Dtype(), pa.int64()),
+        (pd.UInt8Dtype(), pa.uint8()),
+        (pd.UInt16Dtype(), pa.uint16()),
+        (pd.UInt32Dtype(), pa.uint32()),
+        (pd.UInt64Dtype(), pa.uint64()),
+        # Float nullable types
+        (pd.Float32Dtype(), pa.float32()),
+        (pd.Float64Dtype(), pa.float64()),
+        # Boolean nullable type
+        (pd.BooleanDtype(), pa.bool_()),
+        # String type (default storage)
+        (pd.StringDtype(), pa.string()),
+        # String type with explicit pyarrow storage
+        (pd.StringDtype(storage="pyarrow"), pa.string()),
+        # String type with python storage
+        (pd.StringDtype(storage="python"), pa.string()),
+    ],
+)
+def test_schema_types_property(input_dtype, expected_arrow_type):
+    """
+    Tests that the Schema.types property correctly converts pandas and numpy
+    dtypes to pyarrow types, including BaseMaskedDtype subclasses.
+    """
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    schema = Schema(PandasBlockSchema(names=["a"], types=[input_dtype]))
+    assert schema.types == [expected_arrow_type]
 
 
 def test_use_raw_dicts(ray_start_regular_shared_2_cpus):

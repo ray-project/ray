@@ -12,6 +12,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray.util.state import list_tasks
 
 
 def test_idle_termination(ray_start_cluster):
@@ -426,14 +427,21 @@ def test_draining_reason(ray_start_cluster, graceful):
 
     # Simulate autoscaler terminates the worker node after the draining deadline.
     cluster.remove_node(node2, graceful)
-    try:
-        ray.get(actor.ping.remote())
-        raise
-    except ray.exceptions.ActorDiedError as e:
-        assert e.preempted
-        if graceful:
-            assert "The actor died because its node has died." in str(e)
-            assert "the actor's node was preempted: " + drain_reason_message in str(e)
+
+    def check_actor_died_error():
+        try:
+            ray.get(actor.ping.remote())
+            return False
+        except ray.exceptions.ActorDiedError as e:
+            assert e.preempted
+            if graceful:
+                assert "The actor died because its node has died." in str(e)
+                assert "the actor's node was preempted: " + drain_reason_message in str(
+                    e
+                )
+        return True
+
+    wait_for_condition(check_actor_died_error)
 
 
 def test_drain_node_actor_restart(ray_start_cluster):
@@ -569,6 +577,59 @@ def test_drain_node_task_retry(ray_start_cluster):
     # max_retries is reached, the task should fail.
     with pytest.raises(ray.exceptions.NodeDiedError):
         ray.get(r1)
+
+
+def test_leases_rescheduling_during_draining(ray_start_cluster):
+    """Test that when a node is being drained, leases inside local lease manager
+    will be cancelled and re-added to the cluster lease manager for rescheduling
+    instead of being marked as permanently infeasible.
+
+    This is regression test for https://github.com/ray-project/ray/pull/57834/
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    worker1 = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    @ray.remote(num_cpus=1)
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    obj_ref = get_node_id.options(name="f1").remote()
+
+    def verify_f1_pending_node_assignment():
+        tasks = list_tasks(filters=[("name", "=", "f1")])
+        assert len(tasks) == 1
+        assert tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+        return True
+
+    # f1 should be in the local lease manager of worker1,
+    # waiting for resource to be available.
+    wait_for_condition(verify_f1_pending_node_assignment)
+
+    is_accepted, _ = gcs_client.drain_node(
+        worker1.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        2**63 - 1,
+    )
+    assert is_accepted
+
+    # The task should be rescheduled on another node.
+    worker2 = cluster.add_node(num_cpus=1)
+    assert ray.get(obj_ref) == worker2.node_id
 
 
 if __name__ == "__main__":

@@ -490,27 +490,6 @@ def test_anti_join_multi_key(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
-def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
-    """Test that joining ON unjoinable column types raises appropriate errors."""
-    # Dataset with proper list column (unjoinable)
-    list_ds = ray.data.from_items(
-        [{"list_col": [[1, 2], [3, 4], [5, 6]], "data": [10, 20, 30]}]
-    )
-
-    # Simple joinable dataset
-    simple_ds = ray.data.from_items([{"id": [1, 2, 3], "value": ["a", "b", "c"]}])
-
-    # Test that joining ON list column raises ValueError
-    with pytest.raises(ValueError):
-        list_ds.join(
-            simple_ds,
-            join_type="inner",
-            on=("list_col",),
-            right_on=("id",),
-            num_partitions=1,
-        ).materialize()
-
-
 # Helper functions to reduce test code bloat
 def _assert_columns_match(result, expected_columns):
     """Assert that result has the expected column schema."""

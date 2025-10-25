@@ -2,6 +2,8 @@ group: serve tests
 depends_on:
   - forge
   - oss-ci-base_build
+  - ray-core-build
+  - ray-dashboard-build
 steps:
   # builds
   - name: servebuild

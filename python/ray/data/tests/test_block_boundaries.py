@@ -60,3 +60,11 @@ def test_groupby_map_groups_get_block_boundaries_with_nan():
     )
 
     assert list(indices) == [0, 1, 2, 4, 6, 7]
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

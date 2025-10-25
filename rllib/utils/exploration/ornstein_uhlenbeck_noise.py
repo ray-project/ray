@@ -1,14 +1,15 @@
-import numpy as np
 from typing import Optional, Union
+
+import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import (
+    TensorType,
+    get_variable,
     try_import_tf,
     try_import_torch,
-    get_variable,
-    TensorType,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule

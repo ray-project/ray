@@ -1,19 +1,24 @@
 """Shared test utilities for raydepsets tests."""
 
 import shutil
+from pathlib import Path
+from typing import List, Optional
 
 import runfiles
+
+from ci.raydepsets.workspace import Depset
 
 _REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
-def copy_data_to_tmpdir(tmpdir):
+def copy_data_to_tmpdir(tmpdir, ignore_patterns: Optional[str] = None):
     """Copy test data to a temporary directory."""
     shutil.copytree(
         _runfiles.Rlocation(f"{_REPO_NAME}/ci/raydepsets/tests/test_data"),
         tmpdir,
         dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(ignore_patterns) if ignore_patterns else None,
     )
 
 
@@ -49,3 +54,27 @@ def get_depset_by_name(depsets, name):
     for depset in depsets:
         if depset.name == name:
             return depset
+
+
+def write_to_config_file(
+    tmpdir: str, depset: Depset, config_name: str, build_arg_sets: List[str] = None
+):
+    with open(Path(tmpdir) / config_name, "w") as f:
+        f.write(
+            f"""
+depsets:
+    - name: {depset.name}
+      operation: {depset.operation}
+      {f"constraints: {depset.constraints}" if depset.constraints else ""}
+      {f"requirements: {depset.requirements}" if depset.requirements else ""}
+      output: {depset.output}
+      {f"pre_hooks: {depset.pre_hooks}" if depset.pre_hooks else ""}
+      {f"depsets: {depset.depsets}" if depset.depsets else ""}
+      {f"source_depset: {depset.source_depset}" if depset.source_depset else ""}
+      {f"config_name: {depset.config_name}" if depset.config_name else ""}
+      {f"append_flags: {depset.append_flags}" if depset.append_flags else ""}
+      {f"override_flags: {depset.override_flags}" if depset.override_flags else ""}
+      {f"packages: {depset.packages}" if depset.packages else ""}
+      {f"build_arg_sets: {build_arg_sets}" if build_arg_sets else ""}
+                """
+        )

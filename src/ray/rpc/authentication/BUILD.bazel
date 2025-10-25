@@ -1,0 +1,34 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "authentication_mode",
+    srcs = ["authentication_mode.cc"],
+    hdrs = ["authentication_mode.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "authentication_token",
+    hdrs = ["authentication_token.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:constants",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "authentication_token_loader",
+    srcs = ["authentication_token_loader.cc"],
+    hdrs = ["authentication_token_loader.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":authentication_mode",
+        ":authentication_token",
+        "//src/ray/util:logging",
+    ],
+)

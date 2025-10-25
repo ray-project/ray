@@ -175,6 +175,7 @@ def _unwrap_protocol(path):
         return pathlib.Path(path).as_posix()
 
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
+    params = ";" + parsed.params if parsed.params else ""  # support ';' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
     if parsed.scheme == "s3" and "@" in parsed.netloc:
@@ -195,7 +196,7 @@ def _unwrap_protocol(path):
     ):
         parsed_path = parsed_path[1:]
 
-    return netloc + parsed_path + query
+    return netloc + parsed_path + params + query
 
 
 def _is_url(path) -> bool:

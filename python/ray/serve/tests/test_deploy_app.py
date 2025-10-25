@@ -511,8 +511,8 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
         ]
     }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(check_running, timeout=15)
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template), _blocking=True)
+    check_running()
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
     pid1, _ = httpx.get(url).json()
 
@@ -529,8 +529,8 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
             "num_cpus": 0.2
         }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
-    wait_for_condition(check_running, timeout=15)
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template), _blocking=True)
+    check_running()
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
 
     pids = []
@@ -549,8 +549,10 @@ def test_update_config_user_config(serve_instance):
     }
 
     # Deploy first time
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
+    client.deploy_apps(
+        ServeDeploySchema.parse_obj({"applications": [config_template]}), _blocking=True
+    )
+    check_running()
     # Query
     url = get_application_url("HTTP")
     pid1, res = httpx.get(f"{url}/f").json()

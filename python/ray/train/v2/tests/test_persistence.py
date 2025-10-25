@@ -174,9 +174,9 @@ def train_fn(config):
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
 
-    assert len(ray.train.get_all_reported_checkpoints()) == min(
-        start, config.get("num_to_keep", float("inf"))
-    )
+    got = len(ray.train.get_all_reported_checkpoints())
+    expected = min(start, config.get("num_to_keep", float("inf")))
+    assert got == expected, f"Expected {expected} checkpoints, got {got}"
 
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(config.get("time_per_iter", 0.25))
@@ -219,9 +219,9 @@ def train_fn(config):
         ray.train.collective.barrier()
 
         if i in config.get("fail_iters", []):
-            assert len(ray.train.get_all_reported_checkpoints()) == min(
-                i + 1, config.get("num_to_keep", float("inf"))
-            )
+            got = len(ray.train.get_all_reported_checkpoints())
+            expected = min(i + 1, config.get("num_to_keep", float("inf")))
+            assert got == expected, f"Expected {expected} checkpoints, got {got}"
             raise RuntimeError(f"Failing on iter={i}!!")
 
 

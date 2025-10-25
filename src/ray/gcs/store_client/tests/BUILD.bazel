@@ -6,6 +6,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client",
+        "//src/ray/observability:fake_metric",
     ],
 )
 
@@ -85,6 +86,7 @@ ray_cc_test(
         ":store_client_test_lib",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
+        "//src/ray/observability:fake_metric",
         "@com_google_googletest//:gtest_main",
     ],
 )

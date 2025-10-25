@@ -17,6 +17,13 @@ def test_get_wheel_filename():
     ray_version = "3.0.0.dev0"
     for arch in ["x86_64", "aarch64", "arm64"]:
         for sys_platform in ["darwin", "linux", "win32"]:
+            # Windows only has x86_64 wheels
+            if sys_platform == "win32" and arch != "x86_64":
+                continue
+            # MacOS only has arm64 wheels
+            if sys_platform == "darwin" and arch == "x86_64":
+                continue
+
             for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
                 filename = get_wheel_filename(
                     sys_platform, ray_version, py_version, arch
@@ -35,8 +42,8 @@ def test_get_master_wheel_url():
     # `s3://ray-wheels/master/<test_commit>/`.
     #
     # Link to commit:
-    # https://github.com/ray-project/ray/commit/263c7e1e66746c03f16e8ee20753d05a9936f6f0
-    test_commit = "263c7e1e66746c03f16e8ee20753d05a9936f6f0"
+    # https://github.com/ray-project/ray/commit/faf06e09e55558fb36c72e91a5cf8a7e3da8b8c6
+    test_commit = "faf06e09e55558fb36c72e91a5cf8a7e3da8b8c6"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             url = get_master_wheel_url(
@@ -50,7 +57,7 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.47.1": "61d3f2f1aa33563faa398105f4abda88cb39440b"}
+    test_commits = {"2.49.2": "479fa716904109d9df4b56b98ca3c3350e1ec13c"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():

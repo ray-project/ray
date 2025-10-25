@@ -281,6 +281,7 @@ def test_custom_batch_collate_fn(
     # Set the device that's returned by device="auto" -> get_device()
     # This is used in `finalize_fn` to move the tensors to the correct device.
     device = torch.device(device)
+    monkeypatch.setattr(ray.train.utils, "_in_ray_train_worker", lambda: True)
     monkeypatch.setattr(ray.train.torch, "get_device", lambda: device)
 
     ds = ray.data.from_items(

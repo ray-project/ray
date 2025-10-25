@@ -38,7 +38,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
 
@@ -219,7 +219,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const = 0;
+      bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
 
   virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                                 const rpc::JobConfig &job_config,
@@ -519,10 +519,14 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
   /// that are still registered.
+  /// \param filter_system_drivers whether or not if this method will filter system
+  /// drivers. A system driver is a driver with job config namespace starting with
+  /// "__ray_internal__".
   ///
   /// \return A list containing all the drivers.
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const override;
+      bool filter_dead_drivers = false,
+      bool filter_system_drivers = false) const override;
 
   /// Returns debug string for class.
   ///

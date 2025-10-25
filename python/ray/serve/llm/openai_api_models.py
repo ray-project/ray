@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest as _ChatCompletionRequest,
     ChatCompletionResponse as _ChatCompletionResponse,
     ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
@@ -8,6 +8,9 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest as _EmbeddingRequest,
     EmbeddingResponse as _EmbeddingResponse,
     ErrorResponse as _ErrorResponse,
+    TranscriptionRequest as _TranscriptionRequest,
+    TranscriptionResponse as _TranscriptionResponse,
+    TranscriptionStreamResponse as _TranscriptionStreamResponse,
 )
 from ray.util.annotations import PublicAPI
 
@@ -78,6 +81,36 @@ EmbeddingRequest = _EmbeddingRequest
 @PublicAPI(stability="alpha")
 class EmbeddingResponse(_EmbeddingResponse):
     """EmbeddingResponse is the response body for the embedding API.
+
+    This model is compatible with vLLM's OpenAI API models.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TranscriptionRequest(_TranscriptionRequest):
+    """TranscriptionRequest is the request body for the transcription API.
+
+    This model is compatible with vLLM's OpenAI API models.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TranscriptionResponse(_TranscriptionResponse):
+    """TranscriptionResponse is the response body for the transcription API.
+
+    This model is compatible with vLLM's OpenAI API models.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TranscriptionStreamResponse(_TranscriptionStreamResponse):
+    """TranscriptionStreamResponse is the response body for the transcription API.
 
     This model is compatible with vLLM's OpenAI API models.
     """

@@ -1,6 +1,7 @@
-import numpy as np
 import sys
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.impala as impala

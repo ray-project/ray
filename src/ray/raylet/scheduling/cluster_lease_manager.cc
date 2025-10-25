@@ -53,14 +53,11 @@ void ClusterLeaseManager::QueueAndScheduleLease(
   RAY_LOG(DEBUG) << "Queuing and scheduling lease "
                  << lease.GetLeaseSpecification().LeaseId();
   const auto scheduling_class = lease.GetLeaseSpecification().GetSchedulingClass();
-  auto work = std::make_shared<internal::Work>(
-      std::move(lease),
-      grant_or_reject,
-      is_selected_based_on_locality,
-      reply,
-      [send_reply_callback = std::move(send_reply_callback)] {
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
+  auto work = std::make_shared<internal::Work>(std::move(lease),
+                                               grant_or_reject,
+                                               is_selected_based_on_locality,
+                                               reply,
+                                               std::move(send_reply_callback));
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   auto infeasible_leases_iter = infeasible_leases_.find(scheduling_class);
@@ -77,11 +74,10 @@ void ReplyCancelled(const internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
   auto reply = work.reply_;
-  auto callback = work.callback_;
   reply->set_canceled(true);
   reply->set_failure_type(failure_type);
   reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
+  work.send_reply_callback_(Status::OK(), nullptr, nullptr);
 }
 }  // namespace
 
@@ -429,11 +425,11 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
     return;
   }
 
-  auto send_reply_callback = work->callback_;
+  auto send_reply_callback = work->send_reply_callback_;
 
   if (work->grant_or_reject_) {
     work->reply_->set_rejected(true);
-    send_reply_callback();
+    send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
 
@@ -451,17 +447,15 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_ptr)
-      << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
+  auto node_info = get_node_info_(spillback_to);
+  RAY_CHECK(node_info.has_value());
   auto reply = work->reply_;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
+      (*node_info).node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port((*node_info).node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
 
-  send_reply_callback();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 ClusterResourceScheduler &ClusterLeaseManager::GetClusterResourceScheduler() const {

@@ -25,6 +25,17 @@ class NodeProvider:
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
     appear immediately once started by `create_node`, and transition
     immediately to terminated when `terminate_node` is called.
+
+    Threading and concurrency:
+    - The autoscaler calls the following methods from multiple threads
+      (NodeLauncher, NodeUpdaterThread, autoscaler main loop, and
+       NodeProviderAdapter executors).
+    - These methods MUST be thread-safe:
+      non_terminated_nodes, is_running, is_terminated, node_tags, internal_ip,
+      external_ip, get_node_id, create_node/create_node_with_resources_and_labels,
+      set_node_tags, terminate_node/terminate_nodes.
+
+    TODO (rueian): make sure all the existing implementations are thread-safe.
     """
 
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:

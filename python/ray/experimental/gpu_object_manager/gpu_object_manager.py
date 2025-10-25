@@ -54,22 +54,28 @@ class TransferMetadata(NamedTuple):
 # @PublicAPI(stability="alpha")
 def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
-    Wait for the tensor to be freed from this actor's GPU object store.
+    Wait for the tensor to be freed.
 
     This function is useful for cases where an actor keeps a reference to a
     tensor after returning the tensor from a task annotated with
-    `@ray.method(tensor_transport=...)`. Tensors that are returned by these
-    tasks may be sent to other actors while the corresponding `ray.ObjectRef` is
-    still in scope. If the actor modifies the tensor while it is still in the
-    actor's GPU object store, then Ray may end up sending invalid data to other
-    tasks. Call this function to ensure that the `ray.ObjectRef` has gone out of
-    scope and therefore the tensor is safe to write to again.
+    `@ray.method(tensor_transport=...)`. In this case, Ray will store a
+    *reference* to the tensor, so any in-place modifications made by the actor
+    that returned the tensor could be seen by other actors. See
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` for more details.
+
+    Call this function for RDT objects to ensure that all corresponding
+    `ray.ObjectRefs` have gone out of scope and therefore the tensor is safe to
+    write to again.
 
     Args:
-        tensor: The tensor to wait to be freed.
-        timeout: The timeout in seconds. Set to None to wait indefinitely. Note
-            that this function could then hang if the `ray.ObjectRef` that
-            refers to this tensor never goes out of scope.
+        tensor: The tensor to wait to be freed. This should be a tensor that was
+            previously returned by a task annotated with
+            `@ray.method(tensor_transport=...)` or stored via
+            `ray.put(_tensor_transport="...")`.
+        timeout: The timeout in seconds to wait for all references to the tensor
+            to go out of scope. Set to None to wait indefinitely. Note that if
+            None is used, this function could hang if the `ray.ObjectRefs` that
+            refer to this tensor never go out of scope.
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)
@@ -283,7 +289,7 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def fetch_object(
+    def _fetch_object(
         self,
         obj_id: str,
         tensor_transport: TensorTransportEnum = TensorTransportEnum.OBJECT_STORE,
@@ -506,7 +512,7 @@ class GPUObjectManager:
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self.fetch_object(object_id, tensor_transport)
+            self._fetch_object(object_id, tensor_transport)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
@@ -522,6 +528,32 @@ class GPUObjectManager:
                 object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
             )
         return gpu_object
+
+    def free_object_primary_copy(self, object_id: str):
+        """
+        Free the RDT object on the primary copy holder and free metadata
+        on the owner.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_free__,
+        )
+
+        try:
+            gpu_object_meta = self.managed_gpu_object_metadata[object_id]
+            src_actor = gpu_object_meta.src_actor
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__, object_id, tensor_transport_backend, tensor_transport_meta
+            )
+            # NOTE: This may have to change if we support lineage reconstruction for RDT
+            # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
+            # the NIXL ray.put / ray.get
+            self.managed_gpu_object_metadata.pop(object_id, None)
+        except Exception as e:
+            logger.error(
+                "Something went wrong while freeing the RDT object!", exc_info=e
+            )
 
     def actor_has_tensor_transport(
         self, actor: "ray.actor.ActorHandle", tensor_transport: TensorTransportEnum

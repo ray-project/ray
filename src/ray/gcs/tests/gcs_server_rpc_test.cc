@@ -21,6 +21,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
+#include "ray/gcs/metrics.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
 
@@ -29,7 +30,26 @@ namespace ray {
 class GcsServerTest : public ::testing::Test {
  public:
   GcsServerTest()
-      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+      : fake_metrics_{
+            /*actor_by_state_gauge=*/actor_by_state_gauge_,
+            /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge_,
+            /*running_job_gauge=*/running_job_gauge_,
+            /*finished_job_counter=*/finished_job_counter_,
+            /*job_duration_in_seconds_gauge=*/job_duration_in_seconds_gauge_,
+            /*placement_group_gauge=*/placement_group_gauge_,
+            /*placement_group_creation_latency_in_ms_histogram=*/
+            placement_group_creation_latency_in_ms_histogram_,
+            /*placement_group_scheduling_latency_in_ms_histogram=*/
+            placement_group_scheduling_latency_in_ms_histogram_,
+            /*placement_group_count_gauge=*/placement_group_count_gauge_,
+            /*task_events_reported_gauge=*/task_events_reported_gauge_,
+            /*task_events_dropped_gauge=*/task_events_dropped_gauge_,
+            /*task_events_stored_gauge=*/task_events_stored_gauge_,
+            /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
+            /*storage_operation_latency_in_ms_histogram=*/
+            storage_operation_latency_in_ms_histogram_,
+            /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        } {
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -44,8 +64,8 @@ class GcsServerTest : public ::testing::Test {
     config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_ = std::make_unique<gcs::GcsServer>(
-        config, io_service_, *fake_dropped_events_counter_);
+
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config, fake_metrics_, io_service_);
     gcs_server_->Start();
 
     thread_io_service_ = std::make_unique<std::thread>([this] {
@@ -60,7 +80,8 @@ class GcsServerTest : public ::testing::Test {
     }
 
     // Create gcs rpc client
-    client_call_manager_.reset(new rpc::ClientCallManager(io_service_, false));
+    client_call_manager_.reset(new rpc::ClientCallManager(
+        io_service_, /*record_stats=*/false, /*local_address=*/""));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
   }
@@ -228,11 +249,28 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // Fake metric for testing
-  std::unique_ptr<observability::FakeCounter> fake_dropped_events_counter_;
-
   // Timeout waiting for gcs server reply, default is 5s
   const std::chrono::milliseconds timeout_ms_{5000};
+
+  // Fake metrics for testing
+  observability::FakeGauge actor_by_state_gauge_;
+  observability::FakeGauge gcs_actor_by_state_gauge_;
+  observability::FakeGauge running_job_gauge_;
+  observability::FakeCounter finished_job_counter_;
+  observability::FakeGauge job_duration_in_seconds_gauge_;
+  observability::FakeGauge placement_group_gauge_;
+  observability::FakeHistogram placement_group_creation_latency_in_ms_histogram_;
+  observability::FakeHistogram placement_group_scheduling_latency_in_ms_histogram_;
+  observability::FakeGauge placement_group_count_gauge_;
+  observability::FakeGauge task_events_reported_gauge_;
+  observability::FakeGauge task_events_dropped_gauge_;
+  observability::FakeGauge task_events_stored_gauge_;
+  observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
+  observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter fake_dropped_events_counter_;
+
+  // Fake metrics struct
+  gcs::GcsServerMetrics fake_metrics_;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {

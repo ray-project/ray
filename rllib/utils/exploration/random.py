@@ -1,14 +1,15 @@
-from gymnasium.spaces import Discrete, Box, MultiDiscrete, Space
+from typing import Optional, Union
+
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Union, Optional
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, Space
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils import force_tuple
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils import force_tuple
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, TensorType
+from ray.rllib.utils.framework import TensorType, try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import zero_logps_from_actions

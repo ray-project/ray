@@ -16,7 +16,7 @@ py_test(
     tags = [
         "cgroup",
         "exclusive",
-        "manual",
+        "no_windows",
         "team:core",
     ],
     target_compatible_with = [
@@ -33,8 +33,9 @@ py_test(
     size = "medium",
     srcs = ["test_resource_isolation_config.py"],
     tags = [
+        "cgroup",
         "exclusive",
-        "manual",
+        "no_windows",
         "team:core",
     ],
     deps = [

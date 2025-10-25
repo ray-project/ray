@@ -93,8 +93,8 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                 CancelTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRemoteCancelTask(RemoteCancelTaskRequest request,
-                                      RemoteCancelTaskReply *reply,
+  virtual void HandleCancelRemoteTask(CancelRemoteTaskRequest request,
+                                      CancelRemoteTaskReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObjectReader(
@@ -140,10 +140,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
 
   virtual void HandleNumPendingTasks(NumPendingTasksRequest request,
                                      NumPendingTasksReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleFreeActorObject(FreeActorObjectRequest request,
-                                     FreeActorObjectReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 };
 

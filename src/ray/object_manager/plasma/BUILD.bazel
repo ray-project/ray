@@ -181,6 +181,8 @@ ray_cc_library(
     hdrs = ["stats_collector.h"],
     deps = [
         ":object_manager_plasma_common",
+        "//src/ray/common:metrics",
+        "//src/ray/object_manager:metrics",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
     ],

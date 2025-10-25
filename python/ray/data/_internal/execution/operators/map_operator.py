@@ -179,6 +179,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        per_block_limit: Optional[int] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -208,9 +209,16 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            per_block_limit: Maximum number of rows to process per block, for early termination.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
+
+        # Apply per-block limit to the map transformer if set
+        if per_block_limit is not None:
+            map_transformer = _wrap_transformer_with_limit(
+                map_transformer, per_block_limit
+            )
 
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -336,10 +344,13 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             # queue
             self._add_bundled_input(bundled_input)
 
-    def _get_runtime_ray_remote_args(
+    def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
+
+        # max_calls isn't supported in `.options()`, so we remove it when generating dynamic ray_remote_args
+        ray_remote_args.pop("max_calls", None)
 
         # Override parameters from user provided remote args function.
         if self._ray_remote_args_fn:
@@ -806,5 +817,67 @@ def _split_blocks(blocks: Iterable[Block], split_factor: float) -> Iterable[Bloc
         offset = 0
         split_sizes = _splitrange(block.num_rows(), split_factor)
         for size in split_sizes:
+            if size <= 0:
+                continue
             yield block.slice(offset, offset + size, copy=False)
             offset += size
+
+
+def _wrap_transformer_with_limit(
+    map_transformer: MapTransformer, per_block_limit: int
+) -> MapTransformer:
+    """Wrap a MapTransformer with per-block limit functionality."""
+
+    # Create a new limit transform function that goes at the end
+    limit_transform_fn = _create_per_block_limit_transform_fn(per_block_limit)
+
+    # Add the limit transform as the last step
+    # Appending at the end so that the cap applies to the final output
+    # blocks after all prior transforms.
+    existing_transform_fns = map_transformer.get_transform_fns()
+    new_transform_fns = existing_transform_fns + [limit_transform_fn]
+
+    # Create new transformer with the limit added
+    # TODO: Modify `add_transform_fns` to do this operation internally instead of modifying in place.
+    new_transformer = MapTransformer(
+        new_transform_fns,
+        init_fn=map_transformer._init_fn,
+        output_block_size_option_override=map_transformer._output_block_size_option_override,
+    )
+
+    return new_transformer
+
+
+def _per_block_limit_fn(
+    input: Iterable[Block], ctx: TaskContext, per_block_limit: int
+) -> Iterable[Block]:
+    """Apply per-block limit to the input blocks."""
+    from ray.data.block import BlockAccessor
+
+    # This is used to track the number of rows processed within this task.
+    processed_rows = 0
+
+    for block in input:
+        if processed_rows >= per_block_limit:
+            # We've hit the limit, stop processing
+            break
+
+        block_accessor = BlockAccessor.for_block(block)
+        block_rows = block_accessor.num_rows()
+
+        if processed_rows + block_rows <= per_block_limit:
+            # Entire block fits within limit
+            processed_rows += block_rows
+            yield block
+        else:
+            # Need to truncate this block
+            remaining_rows = per_block_limit - processed_rows
+            truncated_block = block_accessor.slice(0, remaining_rows, copy=False)
+            processed_rows += remaining_rows
+            yield truncated_block
+
+
+def _create_per_block_limit_transform_fn(per_block_limit: int) -> BlockMapTransformFn:
+    """Create a transform function that applies per-block row limits."""
+    limit_fn = functools.partial(_per_block_limit_fn, per_block_limit=per_block_limit)
+    return BlockMapTransformFn(limit_fn)

@@ -332,23 +332,9 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
 }
 
 Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
-                                        const std::string &controller,
                                         const std::string &constraint,
                                         const std::string &constraint_value) {
   RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
-  // Check if the required controller for the constraint is enabled.
-  StatusOr<std::unordered_set<std::string>> available_controllers_s =
-      GetEnabledControllers(cgroup_path);
-  RAY_RETURN_NOT_OK(available_controllers_s.status());
-  const auto &controllers = available_controllers_s.value();
-  if (controllers.find(controller) == controllers.end()) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply %s to cgroup %s. To use %s, enable the %s controller.",
-        constraint,
-        cgroup_path,
-        constraint,
-        controller));
-  }
 
   // Try to apply the constraint and propagate the appropriate failure error.
   std::string file_path =

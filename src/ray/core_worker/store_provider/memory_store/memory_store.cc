@@ -137,7 +137,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    ReferenceCounter *counter,
+    ReferenceCounterInterface *counter,
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
@@ -349,7 +349,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerBlocked());
   }
 
   bool done = false;
@@ -380,7 +380,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
 
   {
@@ -597,8 +597,8 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  stats::STATS_object_store_memory.Record(num_local_objects_bytes_,
-                                          {{stats::LocationKey, "WORKER_HEAP"}});
+  object_store_memory_gauge_.Record(num_local_objects_bytes_,
+                                    {{stats::LocationKey, "WORKER_HEAP"}});
 }
 
 }  // namespace core

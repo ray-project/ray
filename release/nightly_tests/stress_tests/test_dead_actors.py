@@ -60,7 +60,7 @@ def parse_script_args():
 
 if __name__ == "__main__":
     args, unknown = parse_script_args()
-    result = {"success": 0}
+    result = {}
     # These numbers need to correspond with the autoscaler config file.
     # The number of remote nodes in the autoscaler should upper bound
     # these because sometimes nodes fail to update.
@@ -106,7 +106,6 @@ if __name__ == "__main__":
     result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
     result["max_iteration_time"] = max(loop_times)
     result["min_iteration_time"] = min(loop_times)
-    result["success"] = 1
     if os.environ.get("IS_SMOKE_TEST") != "1":
         result["perf_metrics"] = [
             {

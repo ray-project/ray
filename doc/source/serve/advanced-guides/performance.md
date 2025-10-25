@@ -17,7 +17,7 @@ This section offers some tips and tricks to improve your Ray Serve application's
 
 Ray Serve is built on top of Ray, so its scalability is bounded by Ray’s scalability. See Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md) to learn more about the maximum number of nodes and other limitations.
 
-## Debugging performance issues
+## Debugging performance issues in request path
 
 The performance issue you're most likely to encounter is high latency or low throughput for requests.
 
@@ -75,7 +75,86 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
 
-### Give the Serve Controller more time to process requests
+### Enable throughput-optimized serving
+
+:::{note}
+In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+:::
+
+This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
+
+- Reducing overhead associated with frequent logging.
+- Disabling behavior that allowed Serve applications to include blocking operations.
+
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
+
+<table>
+<tr>
+<th>Blocking operation (❌)</th>
+<th>Non-blocking operation (✅)</th>
+</tr>
+<tr>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import time
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class BlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ❌ Blocking operation
+        time.sleep(2)
+        return {"message": "Processed (blocking)"}
+
+serve.run(BlockingDeployment.bind())
+```
+
+</td>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import asyncio
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class NonBlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ✅ Non-blocking operation
+        await asyncio.sleep(2)
+        return {"message": "Processed (non-blocking)"}
+
+serve.run(NonBlockingDeployment.bind())
+```
+
+</td>
+</tr>
+</table>
+
+To configure all options to the recommended settings, set the environment variable `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`.
+
+You can also configure each option individually. The following table details the recommended configurations and their impact:
+
+| Configured value | Impact |
+| --- | --- |
+| `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0` | Your code runs in the same event loop as the replica's main event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run your code in a separate event loop, which protects the replica's ability to communicate with the Serve Controller if your code has blocking operations. |
+| `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`| The request router runs in the same event loop as the your code's event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run the router in a separate event loop, which protect Ray Serve's request routing ability when your code has blocking operations |
+| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level ERROR.  Set the buffer size to `1` to disable buffering and write logs immediately. |
+| `RAY_SERVE_LOG_TO_STDERR=0` | Only write logs to files under the `logs/serve/` directory. Proxy, Controller, and Replica logs no longer appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Set this property to `1` to enable additional logging. |
+
+You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
+
+## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
 including receiving autoscaling metrics from other Ray Serve components.

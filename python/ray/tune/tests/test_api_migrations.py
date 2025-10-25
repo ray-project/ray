@@ -1,3 +1,5 @@
+import functools
+import importlib
 import sys
 import warnings
 
@@ -10,30 +12,47 @@ from ray.util.annotations import RayDeprecationWarning
 
 
 @pytest.fixture(autouse=True)
+def enable_v2(monkeypatch):
+    monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", "1")
+    importlib.reload(ray.train)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def enable_v2_migration_deprecation_messages(monkeypatch):
     monkeypatch.setenv(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, "1")
     yield
     monkeypatch.delenv(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR)
 
 
-def test_trainable_fn_utils(tmp_path):
+@pytest.mark.parametrize("v2_enabled", [False, True])
+def test_trainable_fn_utils(tmp_path, monkeypatch, v2_enabled):
+    monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", str(int(v2_enabled)))
+    importlib.reload(ray.train)
+
     dummy_checkpoint_dir = tmp_path.joinpath("dummy")
     dummy_checkpoint_dir.mkdir()
 
+    asserting_context = (
+        functools.partial(pytest.raises, DeprecationWarning)
+        if v2_enabled
+        else functools.partial(pytest.warns, RayDeprecationWarning)
+    )
+
     def tune_fn(config):
-        with pytest.warns(RayDeprecationWarning, match="ray.tune.get_checkpoint"):
+        with asserting_context(match="get_checkpoint"):
             ray.train.get_checkpoint()
 
         with warnings.catch_warnings():
             ray.tune.get_checkpoint()
 
-        with pytest.warns(RayDeprecationWarning, match="ray.tune.get_context"):
+        with asserting_context(match="get_context"):
             ray.train.get_context()
 
         with warnings.catch_warnings():
             ray.tune.get_context()
 
-        with pytest.warns(RayDeprecationWarning, match="ray.tune.report"):
+        with asserting_context(match="report"):
             ray.train.report({"a": 1})
 
         with warnings.catch_warnings():

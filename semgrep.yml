@@ -27,3 +27,29 @@ rules:
     message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html."
     pattern: "code-block:: python"
     severity: ERROR
+
+  - id: missing-pytest-main
+    paths:
+      include:
+        - "python/ray/data/tests/**/test_*.py"
+      exclude:
+        # FIXME: These tests weren't run in CI, and now they're failing.
+        - "python/ray/data/tests/test_arrow_serialization.py"
+        - "python/ray/data/tests/test_hash_shuffle.py"
+    languages:
+      - python
+    message: |
+      Add the following snippet to the end of the file so that the tests run
+      in CI.
+
+      if __name__ == "__main__":
+          import sys
+
+          import pytest
+
+          sys.exit(pytest.main(["-v", __file__]))
+    patterns:
+      - pattern-regex: |
+          (?s)(.*)
+      - pattern-not-regex: pytest.main
+    severity: ERROR

@@ -23,7 +23,12 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
     BackpressurePolicy,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    TaskDurationStats,
+    histogram_bucket_rows,
+    histogram_buckets_bytes,
+    histogram_buckets_s,
+)
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (
     DatasetStats,
@@ -65,13 +70,36 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
+def gen_histogram_metrics_value_str(histogram_buckets: List[float], *vals):
+    """
+    For a histogram with 5 buckets, generate a string like:
+    [Z, Z, Z, Z, Z, Z]
+    (The extra element is for the +Inf bucket)
+
+    *vals can be used to prefill the elements in the list starting from the first element.
+    For example, if *vals is [N, N, N, N, N], the string will be:
+    [N, N, N, N, N, Z]
+
+    """
+    return f"[{', '.join([*vals, *['Z' for _ in range(len(histogram_buckets) + 1 - len(vals))]])}]"
+
+
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
+    canonicalize_histogram_values: bool = False,
 ):
+    # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
+    # Otherwise, we generate a list of values that we expect to see in the metrics.
+    gen_histogram_values = (
+        gen_histogram_metrics_value_str
+        if not canonicalize_histogram_values
+        else lambda *args: "HB"
+    )
+
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
@@ -105,6 +133,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': N",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -119,10 +149,25 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            (
+                "'block_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'block_size_bytes': "
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
+            ),
+            (
+                "'block_size_rows': "
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -168,6 +213,8 @@ def gen_expected_metrics(
             "'rows_outputs_of_finished_tasks': Z",
             "'num_external_inqueue_blocks': Z",
             "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -182,10 +229,25 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            (
+                "'block_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
             (
                 "'task_completion_time_without_backpressure': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'block_size_bytes': "
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
+            ),
+            (
+                "'block_size_rows': "
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -231,6 +293,18 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = (
+    gen_expected_metrics(
+        is_map=True,
+        spilled=False,
+        task_backpressure=True,
+        canonicalize_histogram_values=True,
+        extra_metrics=[
+            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+        ],
+    )
 )
 
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
@@ -283,9 +357,19 @@ Dataset memory:
 EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
+def canonicalize(
+    stats: str,
+    filter_global_stats: bool = True,
+    canonicalize_histogram_values: bool = False,
+) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+
+    if canonicalize_histogram_values:
+        # Replace the histogram entire histogram bucket values list with HB since it's
+        # hard to predict which buckets will have values vs which will have zeroes.
+        canonicalized_stats = re.sub(r": \[.*?\]", ": HB", canonicalized_stats)
+
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -712,6 +796,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -720,8 +806,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time: N,\n"
+        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "      task_completion_time_without_backpressure: N,\n"
+        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -844,6 +933,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      rows_outputs_of_finished_tasks: N,\n"
         "      num_external_inqueue_blocks: Z,\n"
         "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -852,8 +943,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time: N,\n"
+        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "      task_completion_time_without_backpressure: N,\n"
+        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -931,6 +1025,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            rows_outputs_of_finished_tasks: N,\n"
         "            num_external_inqueue_blocks: Z,\n"
         "            num_external_inqueue_bytes: Z,\n"
+        "            num_external_outqueue_blocks: Z,\n"
+        "            num_external_outqueue_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -939,8 +1035,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
-        "            task_completion_time: N,\n"
+        f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         "            task_completion_time_without_backpressure: N,\n"
+        f"            block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"            block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
@@ -1159,7 +1258,10 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
     )
 
 
-def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(100, override_num_blocks=10).map(
         column_udf("id", lambda x: x + 1)
     )
@@ -1975,39 +2077,21 @@ for epoch in range({num_epochs}):
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 
-def test_op_metrics_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-        input_str = (
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
-        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
-        # InputDataBuffer has no inqueue, manually set to 0
-        map_str = (
-            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+def test_executor_logs_metrics_on_operator_completion(caplog, propagate_logs):
+    """Test that operator completion metrics are logged exactly once per operator."""
+    EXPECTED_COMPLETION_MESSAGE = (
+        "Operator TaskPoolMapOperator[ReadRange] completed. Operator Metrics:"
+    )
 
-        # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
-        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
+    with caplog.at_level(logging.DEBUG):
+        ray.data.range(1).take_all()
 
-
-def test_op_state_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-
-        times_asserted = 0
-        for i, log in enumerate(logs):
-            if log == "Execution Progress:":
-                times_asserted += 1
-                assert "Input" in logs[i + 1]
-                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
-        assert times_asserted > 0
+    log_messages = [record.message for record in caplog.records]
+    actual_count = sum(EXPECTED_COMPLETION_MESSAGE in msg for msg in log_messages)
+    assert actual_count == 1, (
+        f"Expected operator completion message to appear exactly once, "
+        f"but found {actual_count} occurrences"
+    )
 
 
 def test_stats_actor_datasets(ray_start_cluster):

@@ -118,18 +118,19 @@ uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
 TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   auto object_id = ObjectID::FromRandom();
 
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_map_;
-  rpc::GcsNodeInfo self_node_info;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_map_;
+  rpc::GcsNodeAddressAndLiveness self_node_info;
   self_node_info.set_node_id(local_node_id_.Binary());
   node_info_map_[local_node_id_] = self_node_info;
   NodeID remote_node_id_ = NodeID::FromRandom();
-  rpc::GcsNodeInfo remote_node_info;
+  rpc::GcsNodeAddressAndLiveness remote_node_info;
   remote_node_info.set_node_id(remote_node_id_.Binary());
   node_info_map_[remote_node_id_] = remote_node_info;
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAll())
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness())
       .WillOnce(::testing::ReturnRef(node_info_map_));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(remote_node_id_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(remote_node_id_, _))
       .WillOnce(::testing::Return(&remote_node_info));
 
   fake_plasma_client_->objects_in_plasma_[object_id] =

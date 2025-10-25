@@ -59,6 +59,5 @@ ray_cc_library(
         "//src/ray/rpc:retryable_grpc_client",
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:network_util",
-        "@com_google_absl//absl/container:btree",
     ],
 )
