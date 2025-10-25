@@ -2,7 +2,9 @@ import asyncio
 import json
 import sys
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import (
+    Annotated,
     Any,
     AsyncGenerator,
     Awaitable,
@@ -16,7 +18,7 @@ from typing import (
     Union,
 )
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -45,11 +47,15 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
     LLMScoreResponse,
+    LLMTranscriptionResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+    TranscriptionStreamResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
@@ -83,6 +89,19 @@ DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
 }
 
+# These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
+class CallMethod(Enum):
+    CHAT = "chat"
+    COMPLETIONS = "completions"
+    TRANSCRIPTIONS = "transcriptions"
+
+
+NON_STREAMING_RESPONSE_TYPES = (
+    ChatCompletionResponse,
+    CompletionResponse,
+    TranscriptionResponse,
+)
+
 
 def _sanitize_chat_completion_request(
     request: ChatCompletionRequest,
@@ -108,8 +127,7 @@ def _sanitize_chat_completion_request(
 
 
 StreamResponseType = Union[
-    ChatCompletionStreamResponse,
-    CompletionStreamResponse,
+    ChatCompletionStreamResponse, CompletionStreamResponse, TranscriptionStreamResponse
 ]
 BatchedStreamResponseType = List[StreamResponseType]
 
@@ -122,6 +140,9 @@ DEFAULT_ENDPOINTS = {
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
+    "transcriptions": lambda app: app.post(
+        "/v1/audio/transcriptions",
+    ),
     "score": lambda app: app.post("/v1/score"),
 }
 
@@ -227,7 +248,7 @@ def make_fastapi_ingress(
 
 
 def _apply_openai_json_format(
-    response: Union[StreamResponseType, BatchedStreamResponseType]
+    response: Union[StreamResponseType, BatchedStreamResponseType],
 ) -> str:
     """Converts the stream response to OpenAI format.
 
@@ -256,7 +277,7 @@ def _apply_openai_json_format(
 
 
 async def _peek_at_generator(
-    gen: AsyncGenerator[T, None]
+    gen: AsyncGenerator[T, None],
 ) -> Tuple[T, AsyncGenerator[T, None]]:
     # Peek at the first element
     first_item = await gen.__anext__()
@@ -403,7 +424,11 @@ class OpenAiIngress(DeploymentProtocol):
         self,
         *,
         body: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+            CompletionRequest,
+            ChatCompletionRequest,
+            EmbeddingRequest,
+            TranscriptionRequest,
+            ScoreRequest,
         ],
         call_method: str,
     ) -> AsyncGenerator[
@@ -411,6 +436,7 @@ class OpenAiIngress(DeploymentProtocol):
             LLMChatResponse,
             LLMCompletionsResponse,
             LLMEmbeddingsResponse,
+            LLMTranscriptionResponse,
             LLMScoreResponse,
         ],
         None,
@@ -497,12 +523,10 @@ class OpenAiIngress(DeploymentProtocol):
         return model_data
 
     async def _process_llm_request(
-        self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
+        self,
+        body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
+        call_method: str,
     ) -> Response:
-        NoneStreamingResponseType = (
-            ChatCompletionResponse if is_chat else CompletionResponse
-        )
-        call_method = "chat" if is_chat else "completions"
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
@@ -523,7 +547,7 @@ class OpenAiIngress(DeploymentProtocol):
                     type=first_chunk.error.type,
                 )
 
-            if isinstance(first_chunk, NoneStreamingResponseType):
+            if isinstance(first_chunk, NON_STREAMING_RESPONSE_TYPES):
                 # Not streaming, first chunk should be a single response
                 return JSONResponse(content=first_chunk.model_dump())
 
@@ -544,7 +568,9 @@ class OpenAiIngress(DeploymentProtocol):
         Returns:
             A response object with completions.
         """
-        return await self._process_llm_request(body, is_chat=False)
+        return await self._process_llm_request(
+            body, call_method=CallMethod.COMPLETIONS.value
+        )
 
     async def chat(self, body: ChatCompletionRequest) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
@@ -557,7 +583,7 @@ class OpenAiIngress(DeploymentProtocol):
             A response object with completions.
         """
 
-        return await self._process_llm_request(body, is_chat=True)
+        return await self._process_llm_request(body, call_method=CallMethod.CHAT.value)
 
     async def embeddings(self, body: EmbeddingRequest) -> Response:
         """Create embeddings for the provided input.
@@ -580,6 +606,24 @@ class OpenAiIngress(DeploymentProtocol):
 
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
+
+    # Annotated[..., Form()] is wrapper that is used to handle multiple form data, which is how audio is sent in transcription requests.
+    # vLLM implementation for handling transcription requests: https://github.com/vllm-project/vllm/blob/0825197bee8dea547f2ab25f48afd8aea0cd2578/vllm/entrypoints/openai/api_server.py#L839.
+    async def transcriptions(
+        self, body: Annotated[TranscriptionRequest, Form()]
+    ) -> Response:
+        """Create transcription for the provided audio input.
+
+        Args:
+            body: The TranscriptionRequest object.
+
+        Returns:
+            A response object with transcriptions.
+        """
+
+        return await self._process_llm_request(
+            body, call_method=CallMethod.TRANSCRIPTIONS.value
+        )
 
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.
