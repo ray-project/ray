@@ -295,7 +295,12 @@ class LLMConfig(BaseModelExtended):
 
         engine_config = self.get_engine_config()
         assert engine_config is not None
-        pg = engine_config.get_or_create_pg()
+        
+        # For Ray DP backend, create temporary PG for initialization
+        dp_size = self.engine_kwargs.get("data_parallel_size", 1)
+        using_ray_dp = dp_size > 1 and self.engine_kwargs.get("data_parallel_backend") == "ray"
+        pg = engine_config.get_or_create_pg(temporary_for_init=using_ray_dp)
+        
         runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
         # Create new instance
