@@ -268,9 +268,7 @@ For explicit control over cross-node placement, you can specify a custom
 - The default ``PACK`` strategy provides good performance for most use cases
 - Use ``SPREAD`` or ``STRICT_SPREAD`` only when you specifically need cross-node distribution
 
-You can also horizontally scale the LLM stage to multiple nodes by increasing 
-the ``concurrency`` argument in :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
-Each replica will run independently with its own TP/PP configuration.
+In addition to parallelizing a single model instance with TP/PP, you can also run multiple independent model replicas to increase data parallelism. This is controlled by the ``concurrency`` argument in :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`. Each replica will run independently with its own TP/PP configuration.
 
 .. _gpu_memory_management:
 
