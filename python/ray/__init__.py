@@ -3,6 +3,8 @@ from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
+from types import ModuleType
+import importlib
 from typing import TYPE_CHECKING
 
 log.generate_logging_config()
@@ -77,12 +79,83 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
+_IS_DOC_BUILD = os.environ.get("RAY_DOC_BUILD") == "1"
+
+
+class _RayletStubModule(ModuleType):
+    """Fallback stub module used when native ray._raylet bindings are unavailable."""
+
+    def __getattr__(self, name: str):
+        placeholder = type(name, (), {})
+        setattr(self, name, placeholder)
+        return placeholder
+
+
+def _install_raylet_stub() -> ModuleType:
+    stub = _RayletStubModule("ray._raylet")
+
+    # Known classes/identifiers expected during import.
+    for attr in [
+        "ActorClassID",
+        "ActorID",
+        "NodeID",
+        "JobID",
+        "WorkerID",
+        "FunctionID",
+        "ObjectID",
+        "ObjectRef",
+        "ObjectRefGenerator",
+        "DynamicObjectRefGenerator",
+        "TaskID",
+        "UniqueID",
+        "Language",
+        "PlacementGroupID",
+        "ClusterID",
+    ]:
+        setattr(stub, attr, type(attr, (), {}))
+
+    class _ConfigStub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name):
+            def _stub(*args, **kwargs):
+                return 0
+
+            return _stub
+
+    stub.Config = _ConfigStub
+    stub.STREAMING_GENERATOR_RETURN = object()
+    stub.PythonFunctionDescriptor = type("PythonFunctionDescriptor", (), {})
+
+    def _stub_function(*args, **kwargs):
+        raise RuntimeError(
+            "ray._raylet functionality is unavailable during documentation builds."
+        )
+
+    stub.raise_sys_exit_with_custom_error_message = _stub_function
+
+    sys.modules["ray._raylet"] = stub
+    return stub
+
+
+if _IS_DOC_BUILD and "ray._raylet" not in sys.modules:
+    _install_raylet_stub()
+
 from ray import _version  # noqa: E402
 
 __commit__ = _version.commit
 __version__ = _version.version
 
-import ray._raylet  # noqa: E402
+try:
+    import ray._raylet  # noqa: E402
+except ModuleNotFoundError:
+    if _IS_DOC_BUILD:
+        _install_raylet_stub()
+        importlib.invalidate_caches()
+        import ray._raylet  # noqa: E402
+    else:
+        raise
 
 from ray._raylet import (  # noqa: E402,F401
     ActorClassID,

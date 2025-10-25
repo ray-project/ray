@@ -6,8 +6,6 @@ from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
-import importlib.machinery
-import types
 
 import sphinx
 from docutils import nodes
@@ -34,10 +32,6 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-assert not os.path.exists("../../python/ray/_raylet.so"), (
-    "_raylet.so should not be imported for the purpose for doc build, "
-    "please rename the file to _raylet.so.bak and try again."
-)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -754,12 +748,3 @@ assert (
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
-
-ray_pkg_path = os.path.abspath("../../python/ray")
-if "ray" not in sys.modules:
-    ray_module = types.ModuleType("ray")
-    ray_module.__path__ = [ray_pkg_path]
-    ray_module.__spec__ = importlib.machinery.ModuleSpec(
-        "ray", loader=None, is_package=True
-    )
-    sys.modules["ray"] = ray_module

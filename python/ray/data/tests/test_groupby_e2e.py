@@ -1167,49 +1167,6 @@ def test_groupby_with_columns_multiple_groups_per_block(
     ]
 
 
-def test_groupby_with_columns_multiple_groups_per_block(
-    ray_start_regular_shared_2_cpus, configure_shuffle_method
-):
-    """Ensure grouped expressions evaluate per group even within one block."""
-
-    ds = ray.data.from_items(
-        [
-            {"group": 1, "value": 1},
-            {"group": 1, "value": 2},
-            {"group": 2, "value": 3},
-            {"group": 2, "value": 4},
-        ],
-        parallelism=1,
-    )
-
-    @udf(DataType.int64())
-    def min_value(arr: pa.ChunkedArray) -> pa.Array:
-        combined = arr.combine_chunks()
-        return pa.array([pc.min(combined).as_py()], type=pa.int64())
-
-    @udf(DataType.int64())
-    def max_value(arr: pa.ChunkedArray) -> pa.Array:
-        combined = arr.combine_chunks()
-        return pa.array([pc.max(combined).as_py()], type=pa.int64())
-
-    result = (
-        ds.groupby("group", num_partitions=1)
-        .with_columns(
-            {
-                "group": min_value(col("group")),
-                "max_value": max_value(col("value")),
-            }
-        )
-        .sort("group")
-        .take_all()
-    )
-
-    assert result == [
-        {"group": 1, "max_value": 2},
-        {"group": 2, "max_value": 4},
-    ]
-
-
 def test_groupby_with_columns_expression_invalid_args(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
