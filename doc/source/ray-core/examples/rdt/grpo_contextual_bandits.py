@@ -206,12 +206,6 @@ class Learner:
     def __init__(self, replay_buffer, scheduler_kwargs: dict) -> None:
         self.model = ResidualMLP().to("cuda")
 
-        # Maintain a frozen EMA teacher of the policy for KL computation.
-        self.ref_model = copy.deepcopy(self.model)
-        for p in self.ref_model.parameters():
-            p.requires_grad = False
-        self.ref_model.eval()
-
         # Use smaller betas to favor recent momentum history.
         self.optim = optim.AdamW(
             self.model.parameters(),
