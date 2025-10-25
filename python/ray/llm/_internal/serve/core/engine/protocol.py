@@ -15,6 +15,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        TranscriptionRequest,
+        TranscriptionResponse,
     )
 
 
@@ -115,6 +117,35 @@ class LLMEngine(abc.ABC):
 
         Returns:
             An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
+        """
+        pass
+
+    @abc.abstractmethod
+    async def transcriptions(
+        self, request: "TranscriptionRequest"
+    ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
+        """Run a Transcription with the engine.
+
+        Similar to chat and completion, this method is an async generator,
+        so it yields chunks of response and when it is done, it returns None.
+        We have the following convention:
+
+        * In case of streaming, yield a string representing data:
+        <json_str>\n\n for each chunk. This should be already openAI compatible,
+        so the higher level can just yield it to the client.
+        * In case of non-streaming, yield a single object of type TranscriptionResponse.
+        * In case of error, yield a single object of type ErrorResponse.
+
+        Args:
+            request: The transcription request.
+
+        Yields:
+            Union[str, TranscriptionResponse, ErrorResponse]: A string
+            representing a chunk of the response, a TranscriptionResponse object,
+            or an ErrorResponse object.
+
+        Returns:
+            None when the generator is done.
         """
         pass
 

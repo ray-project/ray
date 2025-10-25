@@ -291,6 +291,13 @@ For collective-based tensor transports (Gloo and NCCL):
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
 
+Due to a known issue, we currently do not support repeated transfers of tensors that share the same memory space but simultaneously belong to different objects. To support this pattern, ensure that Ray frees the first object before storing the same tensor again in a second object.
+
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_limitations_start__
+   :end-before: __nixl_limitations_end__
+
 Error handling
 ===========================
 

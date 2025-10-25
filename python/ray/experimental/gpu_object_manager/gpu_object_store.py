@@ -234,6 +234,11 @@ class GPUObjectStore:
                 )
             else:
                 for tensor in gpu_object:
+                    if tensor in self._tensor_to_object_ids:
+                        raise ValueError(
+                            f"Tensor already exists in the RDT object store. Free all references to ObjectRef({obj_id}) before storing the tensor again."
+                        )
+                for tensor in gpu_object:
                     self._tensor_to_object_ids[tensor].add(obj_id)
                 # Append to the queue instead of overwriting
                 self._gpu_object_store[obj_id].append(
