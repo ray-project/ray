@@ -2,8 +2,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
+from ray.data.expressions import col
 
 if TYPE_CHECKING:
+    from ray.data._internal.logical.operators.map_operator import Project
     from ray.data.block import Schema
 
 
@@ -104,3 +106,59 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class SupportsPushThrough(LogicalOperatorSupportsProjectionPushdown):
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        return True
+
+    def _rename_projection(
+        self,
+        column_rename_map: Optional[Dict[str, str]],
+        columns_to_rename: Optional[List[str]] = None,
+    ) -> Optional[List[str]]:
+        old_keys = columns_to_rename or self.get_current_projection()
+        if old_keys is None:
+            return None
+        new_keys = []
+        for old_key in old_keys:
+            if old_key in column_rename_map:
+                new_key = column_rename_map[old_key]
+                new_keys.append(new_key)
+            else:
+                new_keys.append(old_key)
+        return new_keys
+
+    def _create_upstream_project(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+        input_op: LogicalOperator,
+    ) -> "Project":
+        from ray.data._internal.logical.operators.map_operator import Project
+
+        input_op.output_dependencies.remove(self)
+
+        new_exprs = []
+        for old_col in columns:
+            if old_col in column_rename_map:
+                new_col = column_rename_map[old_col]
+                new_exprs.append(col(old_col).alias(new_col))
+            else:
+                new_exprs.append(col(old_col))
+
+        return Project(
+            input_op=input_op,
+            exprs=new_exprs,
+            compute=None,
+            ray_remote_args=None,
+        )
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> LogicalOperator:
+        raise NotImplementedError
