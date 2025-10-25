@@ -47,7 +47,7 @@ You can arrange queues hierarchically for organizations with multiple teams, for
 
 ## Step 1: Install KAI Scheduler
 
-Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command.
+Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command. (It's recommended to choose v0.10.0 or higher version.)
 
 ```bash
 # Install KAI Scheduler
