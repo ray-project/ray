@@ -5,7 +5,7 @@ ray_cc_test(
     size = "small",
     srcs = ["metric_with_open_telemetry_test.cc"],
     env = {
-        "RAY_enable_open_telemetry": "1",
+        "RAY_enable_open_telemetry": "true",
     },
     tags = ["team:core"],
     deps = [
