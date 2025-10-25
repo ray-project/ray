@@ -198,7 +198,8 @@ class TaskSpecBuilder {
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const ActorID root_detached_actor_id) {
+      const ActorID root_detached_actor_id,
+      int32_t priority = 0) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
     message_->set_serialized_retry_exception_allowlist(
@@ -207,6 +208,7 @@ class TaskSpecBuilder {
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
     }
+    message_->set_priority(priority);
     return *this;
   }
 

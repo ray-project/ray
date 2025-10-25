@@ -35,11 +35,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               CancelLeasesWithoutReply,
               (std::function<bool(const std::shared_ptr<internal::Work> &)> predicate),
               (override));
-  MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,
-                                         std::deque<std::shared_ptr<internal::Work>>> &),
-              GetLeasesToGrant,
-              (),
-              (const, override));
+  MOCK_METHOD((const internal::WorkQueueMap &), GetLeasesToGrant, (), (const, override));
   MOCK_METHOD((const absl::flat_hash_map<SchedulingClass,
                                          absl::flat_hash_map<WorkerID, int64_t>> &),
               GetBackLogTracker,

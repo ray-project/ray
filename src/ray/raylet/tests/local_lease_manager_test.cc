@@ -486,6 +486,8 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
   // Out of the leases in the second batch, only lease g is granted due to fair scheduling
   ASSERT_EQ(leases_to_grant_.size(), 1);
+  ASSERT_EQ(leases_to_grant_.begin()->second.size(), 1);
+  ASSERT_EQ(leases_to_grant_.begin()->second.begin()->second.size(), 3);
 }
 
 TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {

@@ -73,7 +73,8 @@ struct TaskOptions {
       bool enable_task_events_p = kDefaultTaskEventEnabled,
       std::unordered_map<std::string, std::string> labels_p = {},
       std::unordered_map<std::string, std::string> label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
+      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
+      int priority_p = 0)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -83,7 +84,8 @@ struct TaskOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
-        tensor_transport(tensor_transport_p) {}
+        tensor_transport(tensor_transport_p),
+        priority(priority_p) {}
 
   /// The name of this task.
   std::string name;
@@ -109,6 +111,8 @@ struct TaskOptions {
   std::unordered_map<std::string, std::string> label_selector;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
+  /// The priority of this task.
+  int32_t priority = 0;
 };
 
 /// Options for actor creation tasks.

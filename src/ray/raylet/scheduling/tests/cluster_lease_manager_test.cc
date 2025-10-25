@@ -486,10 +486,12 @@ class ClusterLeaseManagerTest : public ::testing::Test {
 
   int NumLeasesToDispatchWithStatus(internal::WorkStatus status) {
     int count = 0;
-    for (const auto &pair : local_lease_manager_->leases_to_grant_) {
-      for (const auto &work : pair.second) {
-        if (work->GetState() == status) {
-          count++;
+    for (const auto &[_, priority_map] : local_lease_manager_->leases_to_grant_) {
+      for (const auto &[__, work_queue] : priority_map) {
+        for (const auto &work : work_queue) {
+          if (work->GetState() == status) {
+            count++;
+          }
         }
       }
     }

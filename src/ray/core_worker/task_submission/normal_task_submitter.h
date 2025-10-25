@@ -16,6 +16,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>
@@ -299,9 +300,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
     LeaseSpecification lease_spec;
-    // Tasks that are queued for execution. We keep an individual queue per
-    // scheduling class to ensure fairness.
-    std::deque<TaskSpecification> task_queue;
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
     absl::flat_hash_set<rpc::Address> active_workers;
@@ -309,10 +307,17 @@ class NormalTaskSubmitter {
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
+    // Keep track of the number of tasks that are queued for execution.
+    size_t num_tasks_queued = 0;
+
+    // Map of priority -> tasks queued for execution. We keep an individual map
+    // per scheduling class to ensure fairness.
+    absl::btree_map<int32_t, std::deque<TaskSpecification>> task_queue_map;
+
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     bool CanDelete() const {
-      if (pending_lease_requests.empty() && task_queue.empty() &&
+      if (pending_lease_requests.empty() && task_queue_map.empty() &&
           active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
       }
@@ -328,13 +333,14 @@ class NormalTaskSubmitter {
 
     // Get the current backlog size for this scheduling key
     int64_t BacklogSize() const {
-      if (task_queue.size() < pending_lease_requests.size()) {
+      if (num_tasks_queued < pending_lease_requests.size()) {
         // This can happen if worker is reused.
         return 0;
       }
 
       // Subtract tasks with pending lease requests so we don't double count them.
-      return task_queue.size() - pending_lease_requests.size();
+      // Make sure we don't return negative if a worker is reused.
+      return std::max(num_tasks_queued - pending_lease_requests.size(), 0ul);
     }
   };
 
