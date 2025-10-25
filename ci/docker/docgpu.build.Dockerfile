@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
-
+ARG PYTHON
+ENV PYTHON=$PYTHON
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
