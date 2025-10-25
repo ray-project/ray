@@ -41,7 +41,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   /**
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
+  explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
       : mount_file_path_(std::move(mount_file_path)) {}
 
   ~SysFsCgroupDriver() override = default;
@@ -287,6 +287,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   // Used for unit testing through the constructor.
   std::string mount_file_path_;
 
+  static inline std::string kMountFilePath = "/proc/mounts";
   static constexpr std::string_view kCgroupProcsFilename = "cgroup.procs";
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
