@@ -95,6 +95,17 @@ def _install_raylet_stub() -> ModuleType:
     stub = _RayletStubModule("ray._raylet")
 
     # Known classes/identifiers expected during import.
+    def _make_id_type(name: str):
+        def _repr(self):
+            return f"<{name} stub>"
+
+        cls_dict = {
+            "__repr__": _repr,
+            "from_random": classmethod(lambda cls, *a, **k: cls()),
+            "from_hex": classmethod(lambda cls, *a, **k: cls()),
+        }
+        return type(name, (), cls_dict)
+
     for attr in [
         "ActorClassID",
         "ActorID",
@@ -112,11 +123,17 @@ def _install_raylet_stub() -> ModuleType:
         "PlacementGroupID",
         "ClusterID",
     ]:
-        setattr(stub, attr, type(attr, (), {}))
+        setattr(stub, attr, _make_id_type(attr))
 
     class _ConfigStub:
         def __init__(self, *args, **kwargs):
             pass
+
+        def __getattr__(self, name: str):
+            def _stub(*a, **k):
+                return 0
+
+            return _stub
 
         def __getattr__(self, name):
             def _stub(*args, **kwargs):
