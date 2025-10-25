@@ -6,6 +6,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from packaging.version import parse as parse_version
 
@@ -31,6 +32,8 @@ from ray.data.aggregate import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.datatype import DataType
+from ray.data.expressions import col, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -1051,6 +1054,139 @@ def test_groupby_map_groups_multicolumn(
         {"A": 1, "B": 1, "count": 17},
         {"A": 1, "B": 2, "count": 16},
     ]
+
+
+def test_groupby_with_columns_expression_inputs(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    """Expression inputs: single expr, list/tuple, and dict outputs."""
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(DataType.int64())
+    def min_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.min(combined).as_py()], type=pa.int64())
+
+    @udf(DataType.int64())
+    def max_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.max(combined).as_py()], type=pa.int64())
+
+    # Single expression (auto alias).
+    single_result = (
+        ds.groupby("group").with_column("min_value", min_value(col("value"))).take_all()
+    )
+    assert sorted(single_result, key=lambda row: row["min_value"]) == [
+        {"min_value": 1},
+        {"min_value": 3},
+    ]
+
+    # List of expressions with explicit aliases.
+    list_result = (
+        ds.groupby("group")
+        .with_columns(
+            {
+                "group": min_value(col("group")),
+                "max_value": max_value(col("value")),
+            }
+        )
+        .sort("group")
+        .take_all()
+    )
+    assert list_result == [
+        {"group": 1, "max_value": 2},
+        {"group": 2, "max_value": 4},
+    ]
+
+    # Dict of expressions using keys for output names.
+    dict_result = (
+        ds.groupby("group")
+        .with_columns(
+            {
+                "group": min_value(col("group")),
+                "range": max_value(col("value")),
+            }
+        )
+        .sort("group")
+        .take_all()
+    )
+    assert dict_result == [
+        {"group": 1, "range": 2},
+        {"group": 2, "range": 4},
+    ]
+
+
+def test_groupby_with_columns_multiple_groups_per_block(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    """Ensure grouped expressions evaluate per group even within one block."""
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ],
+        parallelism=1,
+    )
+
+    @udf(DataType.int64())
+    def min_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.min(combined).as_py()], type=pa.int64())
+
+    @udf(DataType.int64())
+    def max_value(arr: pa.ChunkedArray) -> pa.Array:
+        combined = arr.combine_chunks()
+        return pa.array([pc.max(combined).as_py()], type=pa.int64())
+
+    result = (
+        ds.groupby("group", num_partitions=1)
+        .with_columns(
+            {
+                "group": min_value(col("group")),
+                "max_value": max_value(col("value")),
+            }
+        )
+        .sort("group")
+        .take_all()
+    )
+
+    assert result == [
+        {"group": 1, "max_value": 2},
+        {"group": 2, "max_value": 4},
+    ]
+
+
+def test_groupby_with_columns_expression_invalid_args(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(DataType.int64())
+    def first_value(arr: pa.ChunkedArray) -> pa.Array:
+        return pc.take(arr.combine_chunks(), [0])
+
+    with pytest.raises(ValueError):
+        ds.groupby("group").with_columns({"value": first_value(col("value"))}, fn_args=["unused"])  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

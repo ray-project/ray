@@ -1,9 +1,25 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+import numpy as np
+import pandas as pd
+import pyarrow as pa
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -14,6 +30,7 @@ from ray.data.block import (
 )
 from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset
+from ray.data.expressions import Expr
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
@@ -301,7 +318,89 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            udf_modifying_row_count=True,
+            ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=FA_API_GROUP)
+    def with_column(
+        self,
+        column_name: str,
+        expr: Expr,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Evaluate an expression for each group and return a dataset.
+
+        Args:
+            column_name: Name of the output column.
+            expr: Expression evaluated on each group.
+            **ray_remote_args: Additional Ray remote arguments to pass to the
+                underlying map tasks (for example, `num_gpus=1`).
+        """
+
+        return self.with_columns({column_name: expr}, **ray_remote_args)
+
+    @PublicAPI(api_group=FA_API_GROUP)
+    def with_columns(
+        self,
+        column_map: Dict[str, Expr],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Evaluate expressions against each group and return the results.
+
+        Args:
+            column_map: Mapping of output column names to expressions. Include
+                existing columns by referencing them inside the expression,
+                e.g., `{ "group": col("group"), "min_value": min(col("value")) }`.
+            compute: Optional compute strategy for the map tasks.
+            num_cpus/num_gpus/memory/concurrency: Resource hints for each map
+                worker.
+            ray_remote_args_fn: Optional callable that supplies dynamic Ray
+                remote args per worker.
+            **ray_remote_args: Additional Ray remote args forwarded to the map
+                tasks.
+        """
+
+        if not column_map:
+            raise ValueError("column_map must contain at least one expression.")
+
+        unsupported_args = {
+            "fn_args",
+            "fn_kwargs",
+            "fn_constructor_args",
+            "fn_constructor_kwargs",
+        }
+        invalid = unsupported_args.intersection(ray_remote_args.keys())
+        if invalid:
+            raise ValueError(
+                "GroupedData.with_columns expressions do not support the "
+                f"following arguments: {sorted(invalid)}."
+            )
+
+        exprs = _normalize_grouped_expressions(column_map)
+
+        def _evaluate_group(batch: DataBatch) -> DataBatch:
+            block = BlockAccessor.batch_to_block(batch)
+            result_block = _evaluate_grouped_exprs(block, exprs, keys=[])
+            accessor = BlockAccessor.for_block(result_block)
+            return accessor.to_batch_format("pyarrow")
+
+        return self.map_groups(
+            _evaluate_group,
+            zero_copy_batch=False,
+            compute=compute,
+            batch_format="pyarrow",
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -565,3 +664,108 @@ def _apply_udf_to_groups(
 
 # Backwards compatibility alias.
 GroupedDataset = GroupedData
+
+def _normalize_grouped_expressions(column_map: Dict[str, Expr]) -> List[Expr]:
+    exprs: List[Expr] = []
+    for name, expr in column_map.items():
+        if not isinstance(expr, Expr):
+            raise TypeError(
+                "GroupedData.with_columns expects expressions, but received "
+                f"{type(expr)!r} for column '{name}'."
+            )
+        if expr.name == name:
+            exprs.append(expr)
+        else:
+            exprs.append(expr.alias(name))
+    return exprs
+
+
+def _evaluate_grouped_exprs(
+    block: Block, exprs: List[Expr], keys: List[str]
+) -> Block:
+    import pyarrow as pa
+
+    block_accessor = BlockAccessor.for_block(block)
+
+    if block_accessor.num_rows() == 0:
+        return BlockAccessor.batch_to_block(
+            {expr.name: pa.array([], type=pa.null()) for expr in exprs}
+        )
+
+    # Fast path when there is a single global group.
+    if not keys:
+        columns = {}
+        expected_length: Optional[int] = None
+        for expr in exprs:
+            value = eval_expr(expr, block)
+            array = _expr_value_to_arrow_array(value)
+            length = len(array)
+            if expected_length is None:
+                expected_length = length
+            elif length != expected_length:
+                raise ValueError(
+                    "All expressions passed to with_columns must produce the same "
+                    f"number of rows, but got outputs of length {expected_length} and "
+                    f"{length} for expression '{expr.name}'."
+                )
+            columns[expr.name] = array
+        return BlockAccessor.batch_to_block(columns)
+
+    boundaries = block_accessor._get_group_boundaries_sorted(keys)
+    if len(boundaries) <= 1:
+        # Only a single group is present in this block; fall back to the global path.
+        return _evaluate_grouped_exprs(block, exprs, [])
+
+    grouped_columns: Dict[str, List[pa.Array]] = {expr.name: [] for expr in exprs}
+
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        group_block = block_accessor.slice(start, end, copy=False)
+        group_length: Optional[int] = None
+        group_values: Dict[str, pa.Array] = {}
+
+        for expr in exprs:
+            value = eval_expr(expr, group_block)
+            array = _expr_value_to_arrow_array(value)
+            length = len(array)
+            if group_length is None:
+                group_length = length
+            elif length != group_length:
+                raise ValueError(
+                    "All expressions passed to with_columns must produce the same "
+                    "number of rows within a group. "
+                    f"Got {length} rows for expression '{expr.name}' but expected "
+                    f"{group_length}."
+                )
+            group_values[expr.name] = array
+
+        for name, array in group_values.items():
+            grouped_columns[name].append(array)
+
+    columns = {}
+    for name, arrays in grouped_columns.items():
+        if arrays:
+            columns[name] = pa.concat_arrays(arrays)
+        else:
+            columns[name] = pa.array([], type=pa.null())
+
+    return BlockAccessor.batch_to_block(columns)
+
+
+def _expr_value_to_arrow_array(value: Any) -> "pyarrow.Array":
+    if isinstance(value, pa.ChunkedArray):
+        value = value.combine_chunks()
+    if isinstance(value, pa.Array):
+        return value
+    if isinstance(value, pa.Scalar):
+        return pa.array([value.as_py()])
+    if isinstance(value, pd.Series):
+        return pa.array(value.to_list())
+    if isinstance(value, np.ndarray):
+        return pa.array(value.tolist())
+    if isinstance(value, (list, tuple)):
+        return pa.array(list(value))
+    if np.isscalar(value) or isinstance(value, (str, bytes, bool)):
+        return pa.array([value])
+    raise TypeError(
+        f"Unsupported expression result type {type(value)!r} returned from grouped expression."
+    )
