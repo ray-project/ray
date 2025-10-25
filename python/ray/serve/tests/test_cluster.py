@@ -270,9 +270,6 @@ def test_replica_spread(ray_cluster):
 
     worker_node = cluster.add_node(num_cpus=2)
 
-    cluster.wait_for_nodes()
-    time.sleep(1)  # Wait for resource view to propagate.
-
     @serve.deployment(
         num_replicas=2,
         health_check_period_s=1,

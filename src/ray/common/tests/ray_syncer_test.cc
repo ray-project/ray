@@ -66,6 +66,24 @@ InnerRaySyncMessage MakeInnerMessage(MessageType cid, int64_t version, const Nod
   return inner_msg;
 }
 
+bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
+  int wait_time = 0;
+  while (true) {
+    if (condition()) {
+      return true;
+    }
+
+    // sleep 10ms.
+    const int wait_interval_ms = 10;
+    std::this_thread::sleep_for(std::chrono::milliseconds(wait_interval_ms));
+    wait_time += wait_interval_ms;
+    if (wait_time > timeout_ms) {
+      break;
+    }
+  }
+  return false;
+}
+
 class RaySyncerTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -198,7 +216,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   // First push will succeed and the second one will be deduplicated.
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr1));
   ASSERT_FALSE(sync_reactor.PushToSendingQueue(inner_msg_ptr1));
-  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr2));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());

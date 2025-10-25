@@ -48,7 +48,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
-        message_processor_(std::move(message_processor)) {}
+        message_processor_(std::move(message_processor)),
+        batch_size_(RayConfig::instance().syncer_batch_size()),
+        batch_delay_ms_(
+            std::chrono::milliseconds(RayConfig::instance().syncer_batch_delay_ms())),
+        batch_timer_(io_context),
+        batch_timer_active_(false) {}
 
   bool PushToSendingQueue(std::shared_ptr<const InnerRaySyncMessage> message) override {
     if (*IsDisconnected()) {
@@ -69,7 +74,24 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions[message->message_type()] = message->version();
       sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
           std::move(message);
-      StartSend();
+      if (sending_buffer_.size() >= batch_size_ || batch_delay_ms_.count() == 0) {
+        // Send immediately if batch size limit is reached or delay is 0
+        StartSend();
+      } else {
+        // Start or restart the batch timer
+        if (!batch_timer_active_) {
+          batch_timer_active_ = true;
+          batch_timer_.expires_after(batch_delay_ms_);
+          batch_timer_.async_wait([this](const boost::system::error_code &ec) {
+            if (!ec && !*IsDisconnected()) {
+              batch_timer_active_ = false;
+              StartSend();
+            } else if (ec != boost::asio::error::operation_aborted) {
+              RAY_LOG(ERROR) << "Batch timer error: " << ec.message();
+            }
+          });
+        }
+      }
       return true;
     }
     return false;
@@ -148,6 +170,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     if (!sending_buffer_.empty()) {
+      // Cancel any pending batch timer since we're sending now
+      if (batch_timer_active_) {
+        batch_timer_.cancel();
+        batch_timer_active_ = false;
+      }
+
       RAY_LOG(DEBUG) << "Start sending to " << NodeID::FromBinary(GetRemoteNodeID())
                      << ", pending messages: " << sending_buffer_.size();
 
@@ -276,6 +304,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions_;
 
   bool sending_ = false;
+
+  /// Batch configuration
+  const size_t batch_size_;
+  const std::chrono::milliseconds batch_delay_ms_;
+
+  /// Batch timer for delayed sending
+  boost::asio::steady_timer batch_timer_;
+  bool batch_timer_active_ = false;
 };
 
 }  // namespace ray::syncer
