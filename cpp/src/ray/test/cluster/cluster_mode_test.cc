@@ -71,7 +71,7 @@ TEST(RayClusterModeTest, FullTest) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string username = absl::GetFlag<std::string>(FLAGS_redis_username);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
-    std::string local_ip = ray::internal::GetNodeIpAddress();
+    std::string local_ip = ray::GetNodeIpAddressFromPerspective();
     ray::internal::ProcessHelper::GetInstance().StartRayNode(
         local_ip, port, username, password);
     config.address = ray::BuildAddress(local_ip, port);
