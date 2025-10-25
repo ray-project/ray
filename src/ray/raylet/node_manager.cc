@@ -452,7 +452,7 @@ void NodeManager::RegisterGcs() {
                     << "GCS consider this node to be dead. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB.";
-              } else if (status.IsAuthError()) {
+              } else if (status.IsUnauthenticated()) {
                 RAY_LOG(FATAL)
                     << "GCS returned an authentication error. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "

@@ -263,7 +263,7 @@ enum class StatusCode : char {
   RpcError = 30,
   OutOfResource = 31,
   ObjectRefEndOfStream = 32,
-  AuthError = 33,
+  Unauthenticated = 33,
   // Indicates the input value is not valid.
   InvalidArgument = 34,
   // Indicates that a channel (a mutable plasma object) is closed and cannot be
@@ -415,8 +415,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfResource, msg);
   }
 
-  static Status AuthError(const std::string &msg) {
-    return Status(StatusCode::AuthError, msg);
+  static Status Unauthenticated(const std::string &msg) {
+    return Status(StatusCode::Unauthenticated, msg);
   }
 
   static Status ChannelError(const std::string &msg) {
@@ -475,7 +475,7 @@ class RAY_EXPORT Status {
 
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
 
-  bool IsAuthError() const { return code() == StatusCode::AuthError; }
+  bool IsUnauthenticated() const { return code() == StatusCode::Unauthenticated; }
 
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
