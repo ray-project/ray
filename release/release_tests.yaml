@@ -3368,6 +3368,7 @@
     - __suffix__: aws
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
@@ -3398,6 +3399,7 @@
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
