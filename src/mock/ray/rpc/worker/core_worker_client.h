@@ -53,7 +53,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               WaitForActorRefDeleted,
-              (const WaitForActorRefDeletedRequest &request,
+              (WaitForActorRefDeletedRequest && request,
                const ClientCallback<WaitForActorRefDeletedReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -87,9 +87,9 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
                const ClientCallback<CancelTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
-              RemoteCancelTask,
-              (const RemoteCancelTaskRequest &request,
-               const ClientCallback<RemoteCancelTaskReply> &callback),
+              CancelRemoteTask,
+              (CancelRemoteTaskRequest && request,
+               const ClientCallback<CancelRemoteTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
               GetCoreWorkerStats,

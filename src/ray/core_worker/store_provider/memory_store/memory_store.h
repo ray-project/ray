@@ -24,9 +24,10 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
+#include "ray/common/metrics.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/rpc/utils.h"
 
@@ -54,7 +55,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      ReferenceCounter *counter = nullptr,
+      ReferenceCounterInterface *counter = nullptr,
       std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
@@ -208,7 +209,7 @@ class CoreWorkerMemoryStore {
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
-  ReferenceCounter *ref_counter_;
+  ReferenceCounterInterface *ref_counter_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
@@ -253,6 +254,8 @@ class CoreWorkerMemoryStore {
   std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                            const ObjectID &object_id)>
       object_allocator_;
+
+  ray::stats::Gauge object_store_memory_gauge_{ray::GetObjectStoreMemoryGaugeMetric()};
 };
 
 }  // namespace core

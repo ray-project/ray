@@ -26,6 +26,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/pubsub/fake_subscriber.h"
@@ -37,11 +38,11 @@ namespace ray {
 namespace core {
 
 static const rpc::Address empty_borrower;
-static const ReferenceCounter::ReferenceTableProto empty_refs;
+static const ReferenceCounterInterface::ReferenceTableProto empty_refs;
 
 class ReferenceCountTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
@@ -67,7 +68,7 @@ class ReferenceCountTest : public ::testing::Test {
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> rc;
+  std::unique_ptr<ReferenceCounterInterface> rc;
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
@@ -190,11 +191,9 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     failure_callback_it->second.emplace(oid, subscription_failure_callback);
   }
 
-  bool Unsubscribe(rpc::ChannelType channel_type,
+  void Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::optional<std::string> &key_id_binary) override {
-    return true;
-  }
+                   const std::optional<std::string> &key_id_binary) override {}
 
   bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
@@ -406,7 +405,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     return return_id;
   }
 
-  ReferenceCounter::ReferenceTableProto FinishExecutingTask(
+  ReferenceCounterInterface::ReferenceTableProto FinishExecutingTask(
       const ObjectID &arg_id,
       const ObjectID &return_id,
       const ObjectID *return_wrapped_id = nullptr,
@@ -415,7 +414,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       rc_.AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
 
-    ReferenceCounter::ReferenceTableProto refs;
+    ReferenceCounterInterface::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
       rc_.PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
     }
@@ -427,7 +426,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       const ObjectID &arg_id,
       const absl::flat_hash_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
       const rpc::Address &borrower_address = empty_borrower,
-      const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
+      const ReferenceCounterInterface::ReferenceTableProto &borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
     for (const auto &pair : nested_return_ids) {
       // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
@@ -2735,7 +2734,7 @@ TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   ASSERT_TRUE(rc->HasReference(outer_id));
   // Task finishes and our local ref to the outer ObjectRef is deleted. We
   // return borrower information to the owner.
-  ReferenceCounter::ReferenceTableProto refs_proto;
+  ReferenceCounterInterface::ReferenceTableProto refs_proto;
   rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
   ASSERT_FALSE(rc->HasReference(outer_id));
   // Future resolution is async, so we may receive information about the inner
@@ -2987,6 +2986,65 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   rc->OwnDynamicStreamingTaskReturnRef(object_id_2, generator_id);
   ASSERT_FALSE(rc->GetOwner(object_id_2, &added_address));
   ASSERT_FALSE(rc->HasReference(object_id_2));
+}
+
+TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto executor = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return caller; });
+
+  {
+    // Case 1: ray.put a nested object
+    // object_id_1 = ray.put([object_id_2])
+    auto object_id_1 = ObjectID::FromRandom();
+    auto object_id_2 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_1, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_1));
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_2));
+    executor->rc_.RemoveLocalReference(object_id_1, nullptr);
+    executor->rc_.RemoveLocalReference(object_id_2, nullptr);
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_1));
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_2));
+  }
+
+  {
+    // Case 2: task returns an owned nested object
+    auto object_id_3 = ObjectID::FromRandom();
+    auto object_id_4 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_3, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // There should be one WaitForRefRemoved call due to idempotency.
+    ASSERT_EQ(caller->num_requests_, 1);
+    executor->rc_.RemoveLocalReference(object_id_3, nullptr);
+    // Caller is still borrowing
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // Caller is no longer borrowing
+    caller->FlushBorrowerCallbacks();
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_3));
+  }
+
+  {
+    // Case 3: task returns a borrowed nested object
+    auto object_id_5 = ObjectID::FromRandom();
+    auto object_id_6 = ObjectID::FromRandom();
+    executor->rc_.AddBorrowedObject(object_id_5, ObjectID::Nil(), caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_5));
+    // Task finishes and we return the borrower info to the owner.
+    ReferenceCounterInterface::ReferenceTableProto refs;
+    executor->rc_.PopAndClearLocalBorrowers({object_id_5}, &refs, nullptr);
+    ASSERT_EQ(refs.size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects().size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects()[0].object_id(), object_id_6.Binary());
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_5));
+  }
 }
 
 }  // namespace core

@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, UserDefinedFunction
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,16 @@ class ComputeStrategy:
     pass
 
 
-@DeveloperAPI
+@PublicAPI
 class TaskPoolStrategy(ComputeStrategy):
+    """Specify the task-based compute strategy for a Dataset transform.
+
+    TaskPoolStrategy executes dataset transformations using Ray tasks that are
+    scheduled through a pool. Provide ``size`` to cap the number of concurrent
+    tasks; leave it unset to allow Ray Data to scale the task count
+    automatically.
+    """
+
     def __init__(
         self,
         size: Optional[int] = None,
@@ -53,16 +61,21 @@ class TaskPoolStrategy(ComputeStrategy):
         return f"TaskPoolStrategy(size={self.size})"
 
 
+@PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Dataset transform.
+    """Specify the actor-based compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
     for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
-    To autoscale from ``m`` to ``n`` actors, specify
+    For a fixed-sized pool of size ``n``, use ``ActorPoolStrategy(size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, use
     ``ActorPoolStrategy(min_size=m, max_size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, with an initial size of ``initial``, use
+    ``ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)``.
 
     To increase opportunities for pipelining task dependency prefetching with
     computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
