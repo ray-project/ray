@@ -299,7 +299,7 @@ Due to a known issue, we currently do not support repeated transfers of tensors 
    :end-before: __nixl_limitations_end__
 
 Error handling
-===========================
+==============
 
 * Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
 
