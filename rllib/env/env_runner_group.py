@@ -517,13 +517,8 @@ class EnvRunnerGroup:
                 )
 
         # Update the global number of environment steps, if necessary.
-        # Make sure to divide by the number of env runners (such that each EnvRunner
-        # knows (roughly) its own(!) lifetime count and can infer the global lifetime
-        # count from it).
         if env_steps_sampled is not None:
-            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (
-                config.num_env_runners or 1
-            )
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components, except the model

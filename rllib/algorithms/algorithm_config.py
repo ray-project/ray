@@ -34,6 +34,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.utils.metrics.stats import StatsBase
 from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -56,6 +57,7 @@ from ray._common.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -568,6 +570,7 @@ class AlgorithmConfig(_Config):
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
         self.log_gradients = False
+        self.stats_cls_lookup = DEFAULT_STATS_CLS_LOOKUP
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -3617,6 +3620,7 @@ class AlgorithmConfig(_Config):
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
         log_gradients: Optional[bool] = NotProvided,
+        custom_stats_cls_lookup: Optional[Dict[str, Type[StatsBase]]] = NotProvided,
     ) -> Self:
         """Sets the config's reporting settings.
 
@@ -3660,6 +3664,10 @@ class AlgorithmConfig(_Config):
             log_gradients: Log gradients to results. If this is `True` the global norm
                 of the gradients dictionariy for each optimizer is logged to results.
                 The default is `False`.
+            custom_stats_cls_lookup: A dictionary mapping stat names to their corresponding Stats classes.
+                This allows you to use your own Stats classes for logging metrics.
+                The keys of the dictionary are the stat names, and the values are the corresponding Stats classes.
+                The Stats classes must be subclasses of rllib.utils.metrics.StatsBase.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3680,6 +3688,8 @@ class AlgorithmConfig(_Config):
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
         if log_gradients is not NotProvided:
             self.log_gradients = log_gradients
+        if custom_stats_cls_lookup is not NotProvided:
+            self.stats_cls_lookup = custom_stats_cls_lookup
 
         return self
 
