@@ -235,7 +235,7 @@ How to configure LLM stage to parallelize across multiple nodes?
 
 Ray Data LLM now supports cross-node parallelism for both tensor parallelism (TP) 
 and pipeline parallelism (PP). By default, Ray Data uses the 
-`PACK strategy <https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy>`_, 
+:ref:`PACK strategy <pgroup-strategy>`, 
 which attempts to place all resources on a single node when possible, but 
 allows cross-node placement if a single node doesn't have enough resources.
 
