@@ -127,7 +127,7 @@ class ReplayBuffer:
     This allows the learner to sample and learn from the same experiences multiple times
     by comparing the latest model with previous models.
 
-    The sampler weights the trajectories by the policy version, such trajectories produced
+    The sampler weights the trajectories by the policy version, such that trajectories produced
     by more recent versions of the model are more likely to be sampled.
     """
 
