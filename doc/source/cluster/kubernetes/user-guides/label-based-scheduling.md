@@ -106,12 +106,12 @@ The RayCluster has one head Pod and 1 worker Pod already scaled. The head Pod ha
 
 * `example_task.py` is a Python script that creates a simple Task requiring a node with the labels `ray.io/market-type: on-demand` and `cpu-family: in(intel,amd)`. The `in` operator expresses that the cpu-family can be either Intel or AMD.
 ```py
-  import ray
-  @ray.remote(num_cpus=1, label_selector={"ray.io/market-type": "on-demand", "cpu-family": "in(intel,amd)"})
-  def test_task():
-    pass
-  ray.init()
-  ray.get(test_task.remote())
+import ray
+@ray.remote(num_cpus=1, label_selector={"ray.io/market-type": "on-demand", "cpu-family": "in(intel,amd)"})
+def test_task():
+  pass
+ray.init()
+ray.get(test_task.remote())
 ```
 
 * `example_actor.py` is a Python script that creates a simple task requiring a node with the labels `ray.io/accelerator-type: A100`. The `ray.io/accelerator-type` label is set by default by Ray when the underlying compute can be detected.
