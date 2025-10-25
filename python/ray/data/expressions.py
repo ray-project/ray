@@ -242,6 +242,29 @@ class Expr(ABC):
         """
         return _PyArrowExpressionVisitor().visit(self)
 
+    def __repr__(self) -> str:
+        """Return a tree-structured string representation of the expression.
+
+        Returns:
+            A multi-line string showing the expression tree structure using
+            box-drawing characters for visual clarity.
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> expr = (col("x") + lit(5)) * col("y")
+            >>> print(expr)
+            MUL
+                ├── left: ADD
+                │   ├── left: COL('x')
+                │   └── right: LIT(5)
+                └── right: COL('y')
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _TreeReprVisitor,
+        )
+
+        return _TreeReprVisitor().visit(self)
+
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
 
@@ -387,7 +410,7 @@ class Expr(ABC):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class ColumnExpr(Expr):
     """Expression that references a column by name.
 
@@ -420,7 +443,7 @@ class ColumnExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class LiteralExpr(Expr):
     """Expression that represents a constant scalar value.
 
@@ -458,7 +481,7 @@ class LiteralExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class BinaryExpr(Expr):
     """Expression that represents a binary operation between two expressions.
 
@@ -494,7 +517,7 @@ class BinaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UnaryExpr(Expr):
     """Expression that represents a unary operation on a single expression.
 
@@ -530,7 +553,7 @@ class UnaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -672,7 +695,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
@@ -687,7 +710,7 @@ class DownloadExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class AliasExpr(Expr):
     """Expression that represents an alias for an expression."""
 
@@ -719,7 +742,7 @@ class AliasExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class StarExpr(Expr):
     """Expression that represents all columns from the input.
 
