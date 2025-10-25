@@ -132,6 +132,7 @@ RAY_PROCESSES = [
     [os.path.join("dashboard", "dashboard.py"), False],
     [os.path.join("runtime_env", "agent", "main.py"), False],
     ["ray_process_reaper.py", False],
+    ["datasystem", True],
     ["gcs_server", True],
 ]
 
