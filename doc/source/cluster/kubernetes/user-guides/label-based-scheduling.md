@@ -62,7 +62,7 @@ If you do not already have a Kubernetes cluster, create a new cluster with Kind 
 ```bash
 kind create cluster --image=kindest/node:v1.26.0
 
-# Mock underlying nodes having GKE related labels. this is so that the `nodeSelector` is able to schedule.
+# Mock underlying nodes with GKE-related labels. This is necessary for the `nodeSelector` to be able to schedule Pods.
 kubectl label node kind-control-plane \
   cloud.google.com/machine-family="N4" \
   cloud.google.com/gke-spot="true" \
