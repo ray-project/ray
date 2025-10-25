@@ -6,6 +6,7 @@ Based on: https://github.com/meta-pytorch/monarch/blob/0de4e6b4ad7da37e5dbb00a0e
 
 import argparse
 import copy
+from math import floor
 import time
 from typing import Any
 
@@ -417,9 +418,9 @@ def train(total_steps: int) -> None:
     """Run one end-to-end training session."""
     # Calculate the number of steps for the warmup, hold, and cooldown phases.
     scheduler_kwargs = {
-        "warmup_steps": WARMUP_FRAC * total_steps,
-        "hold_steps": (1 - WARMUP_FRAC - COOLDOWN_FRAC) * total_steps,
-        "cooldown_steps": COOLDOWN_FRAC * total_steps,
+        "warmup_steps": floor(WARMUP_FRAC * total_steps),
+        "hold_steps": floor((1 - WARMUP_FRAC - COOLDOWN_FRAC) * total_steps),
+        "cooldown_steps": floor(COOLDOWN_FRAC * total_steps),
     }
 
     # Instantiate one instance of each actor.
