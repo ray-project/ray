@@ -143,7 +143,7 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
                 "upscale_delay_s": 0,
-                "downscale_delay_s": 5,
+                "downscale_delay_s": 1,
                 "look_back_period_s": 1,
                 "aggregation_function": aggregation_function,
             },
