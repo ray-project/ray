@@ -1,6 +1,9 @@
 """
 Reinforcement learning example using GPU-to-GPU Ray Direct Transport (RDT) and GRPO algorithm.
+
+Based on: https://github.com/meta-pytorch/monarch/blob/0de4e6b4ad7da37e5dbb00a0e6fb61ef8105eac5/examples/presentation/demo.py
 """
+
 import argparse
 import copy
 import time
@@ -11,42 +14,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions import Categorical, kl_divergence
-from tqdm.auto import trange
+from torch.distributions import Categorical
 
-
-# Environment configuration
-STATE_DIM = 2  # The contextual bandit operates in 2D.
-ACTION_DIM = 8  # Eight compass directions: [W, NW, N, NE, E, SE, S, SW].
-
-# Training hyperparameters
-BATCH_SIZE = 16
-BASE_LR = 5e-6
-ADAM_EPS = 1e-8
-GRAD_CLIP_NORM = 1.0
-
-# GRPO algorithm parameters
-GROUP_SIZE = 8
-PPO_CLIP_EPS = 0.5
-MAX_BUFFER_SIZE = 10000
-
-# Action space definition
-# Unit direction vectors for the eight compass actions (W, NW, N, NE, E, SE, S, SW).
-diag = 2**0.5 / 2.0
-ACTION_DIRECTIONS = torch.tensor(
-    [
-        [-1.0, 0.0],  # W
-        [-diag, diag],  # NW
-        [0.0, 1.0],  # N
-        [diag, diag],  # NE
-        [1.0, 0.0],  # E
-        [diag, -diag],  # SE
-        [0.0, -1.0],  # S
-        [-diag, -diag],  # SW
-    ],
-    dtype=torch.float32,
-)
-
+# -- TrajectorySlice --
 # TrajectorySlice holds one state's sampled actions and associated metadata:
 # - state: The 2D input vector fed to the generator model.
 # - actions: The generator model's predictions for this state.
@@ -56,35 +26,97 @@ ACTION_DIRECTIONS = torch.tensor(
 TrajectorySlice = dict[str, torch.Tensor | int]
 
 
-class MLP(torch.nn.Sequential):  # Sized to ~50 MB of parameters.
-    def __init__(self):
-        layers = []
-        in_dim = STATE_DIM
-        for _ in range(50):
-            layers.append(torch.nn.Linear(in_dim, 512, bias=True))
-            layers.append(torch.nn.LayerNorm(512))
-            layers.append(torch.nn.ReLU())
-            layers.append(torch.nn.Dropout(0.1))
-            in_dim = 512
+# -- Training --
+BATCH_SIZE = 32
+# Keep learning rate low so that the model does not jump outside
+# the trust policy region.
+MAX_LR = 1e-6
+WEIGHT_DECAY = 1e-10
+# Adaptively reduces the learning rate to prevent large updates in a single step.
+GRAD_CLIP_NORM = 1.0
+# Adds a warmup and cooldown to the learning rate schedule.
+WARMUP_FRAC = 0.2
+COOLDOWN_FRAC = 0.15
 
-        # Produce logits for each action.
-        layers.append(torch.nn.Linear(in_dim, ACTION_DIM, bias=True))
-        layers.append(torch.nn.Dropout(0.1))
+# -- GRPO algorithm --
+# Number of actions to sample for each state.
+GROUP_SIZE = 10
+# How far the new policy is allowed to stray from the older policies
+# AKA the "trust region".
+GRPO_CLIP_EPS = 0.1
+# Discard old experiences, so that the new model can gradually explore
+# further from the initial random policy.
+MAX_BUFFER_SIZE = BATCH_SIZE * GROUP_SIZE * 5
 
-        super().__init__(*layers)
+# -- Environment --
+STATE_DIM = 2  # The contextual bandit operates in 2D.
+ACTION_DIM = 8  # Eight compass directions: [W, NW, N, NE, E, SE, S, SW].
+# Unit direction vectors for the eight compass actions (W, NW, N, NE, E, SE, S, SW).
+DIAGONAL_MAGNITUDE = 2**0.5 / 2.0
+ACTION_DIRECTIONS = torch.tensor(
+    [
+        [-1.0, 0.0],  # W
+        [-DIAGONAL_MAGNITUDE, DIAGONAL_MAGNITUDE],  # NW
+        [0.0, 1.0],  # N
+        [DIAGONAL_MAGNITUDE, DIAGONAL_MAGNITUDE],  # NE
+        [1.0, 0.0],  # E
+        [DIAGONAL_MAGNITUDE, -DIAGONAL_MAGNITUDE],  # SE
+        [0.0, -1.0],  # S
+        [-DIAGONAL_MAGNITUDE, -DIAGONAL_MAGNITUDE],  # SW
+    ],
+    dtype=torch.float32,
+)
 
 
-def sample_unit_vector(dim: int = STATE_DIM, batch_size: int = 1) -> torch.Tensor:
-    """Sample unit vector(s) by normalizing Gaussian draws."""
+
+# -- Model --
+# To demonstrate speed-ups from RDT, we use an oversized model.
+# Residual connections prevent vanishing gradients for deep models.
+class ResidualBlock(torch.nn.Module):
+    def __init__(self, hidden_dim: int) -> None:
+        super().__init__()
+        self.norm = torch.nn.LayerNorm(hidden_dim)
+        self.activation = torch.nn.ReLU()
+        self.linear = torch.nn.Linear(hidden_dim, hidden_dim, bias=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = self.norm(x)
+        out = self.activation(out)
+        out = self.linear(out)
+        return residual + out
+
+
+class ResidualMLP(torch.nn.Module):  # Sized to ~50 MB of parameters.
+    """Model used for Generator and Learner.
+
+
+    It takes a 2D state vector as input and produces logits for each action.
+    """
+    def __init__(self, hidden_dim: int = 512, depth: int = 50):
+        super().__init__()
+        self.input = torch.nn.Linear(STATE_DIM, hidden_dim, bias=True)
+        self.backbone = torch.nn.ModuleList(
+            ResidualBlock(hidden_dim) for _ in range(depth - 1)
+        )
+        self.head = torch.nn.Linear(hidden_dim, ACTION_DIM, bias=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.input(x)
+        for block in self.backbone:
+            x = block(x)
+        x = self.head(x)
+        return x
+
+# -- Utilities --
+def sample_unit_vector(batch_size: int, dim: int = STATE_DIM) -> torch.Tensor:
+    """Sample unit vectors of shape [batch_size, dim] by normalizing Gaussian draws."""
+    assert batch_size > 1, "Batch size must be greater than 1"
     v = torch.randn(batch_size, dim)
     norms = v.norm(dim=-1, keepdim=True) + 1e-8
-    unit_vectors = v / norms  # [batch_size, STATE_DIM]
+    return v / norms
 
-    if batch_size == 1:
-        return unit_vectors.squeeze(0)
-    return unit_vectors
-
-
+# -- Actors --
 @ray.remote
 class ReplayBuffer:
     """Storage for scored trajectory slices.
@@ -92,38 +124,40 @@ class ReplayBuffer:
     This class stores the past experiences (AKA trajectories, or slices) of the model.
     This allows the learner to sample and learn from the same experiences multiple times
     by comparing the latest model with previous models.
-    
+
     The sampler weights the trajectories by the policy version, such trajectories produced
     by more recent versions of the model are more likely to be sampled.
     """
 
     def __init__(self) -> None:
-        # Each entry stores (policy_version, TrajectorySlice with CPU tensors).
-        self.storage: list[tuple[int, TrajectorySlice]] = []
+        # Each entry stores a TrajectorySlice with CPU tensors.
+        self.storage: list[TrajectorySlice] = []
 
     def put(self, slice: TrajectorySlice) -> None:
         """Add a new slice to the buffer.
-        
-        The buffer discards the oldest slices if the buffer gets too large to prevent memory leaks.
+
+        The buffer discards the oldest slices if the buffer gets too large to prevent memory leaks,
+        and so that the latest model can gradually explore further from the initial random policy.
         """
-        self.storage.append((slice["policy_version"], slice))
+        self.storage.append(slice)
         if len(self.storage) > MAX_BUFFER_SIZE:
             self.storage = self.storage[-MAX_BUFFER_SIZE:]
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
         """Sample n scored trajectory slices."""
-        if len(self.storage) < n:
-            print(f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices...")
+        if self.size() < n:
+            print(
+                f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices..."
+            )
             while len(self.storage) < n:
                 time.sleep(0.05)
         # The probability of sampling a slice is proportional to its policy version.
-        total = sum(version for version, _ in self.storage)
-        probs = [version / total for version, _ in self.storage]
-        indices = list(range(len(self.storage)))
+        total = sum(slice["policy_version"] for slice in self.storage)
+        probs = [slice["policy_version"] / total for slice in self.storage]
         # Sample with replacement without exceeding the buffer's size.
-        n = min(n, len(self.storage))  
-        chosen = np.random.choice(indices, size=n, p=probs, replace=True)
-        return [self.storage[i][1] for i in chosen]
+        n = min(n, self.size())
+        chosen = np.random.choice(self.size(), size=n, p=probs, replace=True)
+        return [self.storage[i] for i in chosen]
 
     def size(self) -> int:
         return len(self.storage)
@@ -169,8 +203,8 @@ class Scorer:
 class Learner:
     """Updates policy based on collected experiences using GRPO algorithm."""
 
-    def __init__(self, replay_buffer) -> None:
-        self.model = MLP().to("cuda")
+    def __init__(self, replay_buffer, scheduler_kwargs: dict) -> None:
+        self.model = ResidualMLP().to("cuda")
 
         # Maintain a frozen EMA teacher of the policy for KL computation.
         self.ref_model = copy.deepcopy(self.model)
@@ -178,7 +212,39 @@ class Learner:
             p.requires_grad = False
         self.ref_model.eval()
 
-        self.optim = optim.Adam(self.model.parameters(), lr=BASE_LR, eps=ADAM_EPS)
+        # Use smaller betas to favor recent momentum history.
+        self.optim = optim.AdamW(
+            self.model.parameters(),
+            lr=MAX_LR,
+            weight_decay=WEIGHT_DECAY,
+            betas=(0.9, 0.9),
+        )
+
+        # Learning rate scheduler with warmup and cooldown.
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            self.optim,
+            start_factor=0.001,
+            end_factor=1.0,
+            total_iters=scheduler_kwargs["warmup_steps"],
+        )
+        constant = torch.optim.lr_scheduler.ConstantLR(
+            self.optim, factor=1.0, total_iters=scheduler_kwargs["hold_steps"]
+        )
+        cooldown = torch.optim.lr_scheduler.LinearLR(
+            self.optim,
+            start_factor=1.0,
+            end_factor=0.001,
+            total_iters=scheduler_kwargs["cooldown_steps"],
+        )
+
+        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+            self.optim,
+            [warmup, constant, cooldown],
+            milestones=[
+                scheduler_kwargs["warmup_steps"],
+                scheduler_kwargs["warmup_steps"] + scheduler_kwargs["hold_steps"],
+            ],
+        )
 
         self.policy_version = 1
         self.replay_buffer = replay_buffer
@@ -186,33 +252,25 @@ class Learner:
     def _compute_advantages(self, rewards: torch.Tensor) -> torch.Tensor:
         """Compute advantages from rewards.
 
-        In PPO, advantages represent how much better an action is compared to the average.
-        Here we compute advantages by subtracting a baseline (mean reward) from the rewards
-        and then normalizing to stabilize training.
-
-        Args:
-            rewards: Raw rewards tensor [batch_size * GROUP_SIZE]
-
-        Returns:
-            Advantages tensor [batch_size * GROUP_SIZE]
+        In GRPO, advantages represent how much better a reward is compared to the mean reward for the group of actions
+        Normalizing the advantages stabilizes training by maintaining a consistent scale of updates.
         """
         # Unflatten rewards into [batch_size, GROUP_SIZE] in order to
         # compute per-state mean baselines.
         batch_size = rewards.shape[0] // GROUP_SIZE
         rewards_reshaped = rewards.view(batch_size, GROUP_SIZE)
 
-        # Compute the baseline (mean reward) for each state.
+        # Compute the mean reward for each state's group of actions.
         baselines = rewards_reshaped.mean(dim=1, keepdim=True)  # [batch_size, 1]
 
-        # Subtract the baseline from rewards to get advantages.
+        # Subtract the mean reward from each action's reward to get advantages.
         advantages = rewards_reshaped - baselines  # [batch_size, GROUP_SIZE]
 
-        # Reshape the advantages back to the original shape.
+        # Flatten the advantages back to the original shape.
         advantages = advantages.reshape(-1)  # [batch_size * GROUP_SIZE]
 
         # Normalize the advantages for training stability.
-        if advantages.numel() > 1:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         return advantages
 
@@ -222,67 +280,86 @@ class Learner:
         actions: torch.Tensor,
         old_logps: torch.Tensor,
         advantages: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> dict[str, float]:
         """Apply GRPO update to the model."""
-        # Compute new log probabilities and their ratio to the reference.
+        # Compute the new policy's action log-probabilities.
         dist_new = Categorical(logits=self.model(states))
         new_logps = dist_new.log_prob(actions)
+        # Compare the new log-probabilities to the old log-probabilities to get the probability ratios.
+        # This is a proxy for how different the new policy is from the old policy.
         ratio = (new_logps - old_logps).exp()
         unclipped = ratio * advantages
-        clipped = torch.clamp(ratio, 1 - PPO_CLIP_EPS, 1 + PPO_CLIP_EPS) * advantages
-        grpo_loss = -torch.min(unclipped, clipped).mean()
+        # The 1 ± ε ratio defines the trust region. If the new policy's probability for an action is more than 1 ± ε times the old policy, clip the ratio.
+        # The clamp() operation causes the gradients to be zero outside the trust region. Therefore, any element which is outside the trust region will
+        # not contribute to a gradient update (but it still contributes to the loss value)
+        clipped = torch.clamp(ratio, 1 - GRPO_CLIP_EPS, 1 + GRPO_CLIP_EPS) * advantages
+        # Inside the trust region (ratio is 1 ± ε), both clamp() and min() are no-ops, so you get the normal policy gradient signal (positive for advantages > 0, negative for advantages < 0).
+        # For advantages > 0 (good action):
+        #   ratio > 1 + ε: the min() selects the clipped branch. This prevents a too-large update, even though the model chose a better action.
+        #   ratio < 1 - ε: the min() selects the unclipped branch. The model is penalized for reducing the probabily of a better action.
 
+        # For advantages < 0 (bad action):
+        #   ratio > 1 + ε: the min() selects the unclipped branch. The model is penalized for increasing the probabily of a bad action.
+        #   ratio < 1 - ε: the min() selects the clipped branch. This prevents the
+        #     policy from decreasing the probability for a bad action "too much".
+        loss = -torch.min(unclipped, clipped).mean()
+        # Fraction of actions which did not contribute to the gradient update.
+        clip_fraction = (
+            ((ratio < 1 - GRPO_CLIP_EPS) | (ratio > 1 + GRPO_CLIP_EPS)).float().mean()
+        )
 
         # Update the policy network.
         self.optim.zero_grad()
-        grpo_loss.backward()
+        loss.backward()
+        # Clip the gradients to prevent exploding gradients and stabilize training.
         nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP_NORM)
         self.optim.step()
+        self.scheduler.step()
         self.policy_version += 1
-        return grpo_loss.detach()
+
+        return {
+            "loss": loss.detach().item(),
+            "clip_fraction": clip_fraction.detach().item()
+        }
 
     def step(self) -> dict[str, Any]:
-        """Perform one training step and return metrics."""
+        """Perform one training step and return metrics.
+
+        Each step samples a batch of trajectory slices from the replay buffer, computes the advantages, and updates the policy using the GRPO algorithm.
+        """
         slices: list[TrajectorySlice] = ray.get(
             self.replay_buffer.sample_from.remote(BATCH_SIZE)
         )
-        raw_states = torch.stack([s["state"] for s in slices])
-        actions = torch.cat([s["actions"] for s in slices])
-        old_logps = torch.cat([s["old_logps"] for s in slices])
-        rewards = torch.cat([s["rewards"] for s in slices])
-
-        # Compute the cosine gap between the best possible action and the model prediction.
-        first_state = raw_states[0]
-        first_reward = float(rewards[0].item())
-        cosine_values = torch.mv(ACTION_DIRECTIONS, first_state)
-        best_first_reward = float(torch.max(cosine_values).item())
-        cosine_gap = abs(best_first_reward - first_reward)
-
         # Prepare the tensors for the policy update.
-        states = raw_states.repeat_interleave(GROUP_SIZE, 0).to("cuda")
-        actions = actions.to("cuda")
-        old_logps = old_logps.to("cuda")
-        rewards = rewards.to("cuda")
+        actions = torch.cat([s["actions"] for s in slices]).to("cuda")
+        old_logps = torch.cat([s["old_logps"] for s in slices]).to("cuda")
+        rewards = torch.cat([s["rewards"] for s in slices]).to("cuda")
+        mean_rewards = torch.mean(rewards).item()
+        states = torch.stack([s["state"] for s in slices])
+        states = states.repeat_interleave(GROUP_SIZE, 0).to("cuda")
 
-        # Compute advantages and update the policy.
-        advs = self._compute_advantages(rewards)
-        loss = self._apply_policy_update(states, actions, old_logps, advs)
+        # Compute advantages and update the policy network using GRPO.
+        advantages = self._compute_advantages(rewards)
+        results = self._apply_policy_update(states, actions, old_logps, advantages)
+        results["rewards"] = mean_rewards
 
-        return {
-            "loss": float(loss.item()),
-            "cosine_gap": float(cosine_gap),
-        }
+        return results
 
     @ray.method(tensor_transport="nixl")
     def get_weights(self) -> dict[str, torch.Tensor]:
-        """Get the current model weights as a state_dict.
-        
-        The tensor_transport="nixl" option uses NIXL via RDT to transfer model weight tensors. Removing it will default to the Ray object store."""
-        state_dict = self.model.state_dict()
-        assert (
-            next(iter(state_dict.values())).device.type == "cuda"
-            ), "Expected tensors to be on cuda on sender"
-        return self.model.state_dict()
+        """Get the current model weights.
+
+        The tensor_transport="nixl" option enables NIXL via RDT to transfer model weight
+        tensors. Without it, the weights will be transferred using the Ray object store.
+        """
+        # Note: deepcopy() is needed because RDT does not support pointers to tensors yet.
+        # This will not be needed in the future.
+        state_dict = copy.deepcopy(self.model.state_dict())
+        assert next(iter(state_dict.values())).device.type == "cuda", (
+            "Expected tensors in the sender's cuda memory to demonstrate RDT."
+        )
+
+        return state_dict
 
     def get_version(self) -> int:
         return self.policy_version
@@ -290,28 +367,30 @@ class Learner:
 
 @ray.remote(num_gpus=1)
 class Generator:
-    """Generates actions using the current policy and sends them to scoring."""
+    """Holds the current policy network and generates unscored trajectory slices."""
 
     def __init__(self, scorer) -> None:
-        self.model = MLP().to("cuda").eval()
+        self.model = ResidualMLP().to("cuda").eval()
         self.scorer = scorer
         self.policy_version = 1
 
     @ray.method(tensor_transport="nixl")
     def generate(self, states: torch.Tensor):
-        """Generate actions using the current policy and send them to the Scorer."""
+        """Generate actions using the current policy and send them and their metadata
+         to the Scorer.
+         
+         Note: GRPO requires *sampling* from the current policy (not just the most probable "greedy" action).
+         """
         with torch.no_grad():
             states = states.to("cuda")
             logits = self.model(states)  # [batch_size, ACTION_DIM]
 
-            # GRPO requires sampling from the current policy (not just the greedy action).
 
-            # This creates a distribution for each state (batch_size distributions over ACTION_DIM actions each).
             dist = Categorical(logits=logits)
-            # Sample GROUP_SIZE actions from each state's distribution.
+            # Sample GROUP_SIZE actions for each state.
             actions = dist.sample((GROUP_SIZE,))  # [GROUP_SIZE, batch_size]
             logps = dist.log_prob(actions)  # [GROUP_SIZE, batch_size]
-            # Transpose actions and logprobs for compatibility with the state tensor.
+            # Transpose actions and logprobs for compatibility with the states tensor.
             actions = actions.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
             logps = logps.transpose(0, 1).contiguous()  # [batch_size, GROUP_SIZE]
 
@@ -324,25 +403,32 @@ class Generator:
         }
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
 
-    def update_weights(self, cuda_weights, version: int) -> bool:
-        """Update the generator's weights from the learner's weights."""
-        # The actor is single-threaded, so weight loads do not overlap with generation.
+    def update_weights(self, cuda_weights, version: int):
+        """Update the generator's weights from the learner's weights.
+        
+        Note: the actor is single-threaded, so weight loads do not overlap with generation.
+        """
         first_tensor = next(iter(cuda_weights.values()))
-        if first_tensor.device.type != "cuda":
-            raise RuntimeError(
-                "Expected CUDA tensors after GPU-to-GPU direct transfer"
-            )
+        assert first_tensor.device.type == "cuda", (
+            "Expected CUDA tensors after GPU-to-GPU direct transfer"
+        )
         self.model.load_state_dict(cuda_weights)
         self.model.eval()
         self.policy_version = version
-        return True
 
-
+# -- Control loop --
 def train(total_steps: int) -> None:
     """Run one end-to-end training session."""
+    # Calculate the number of steps for the warmup, hold, and cooldown phases.
+    scheduler_kwargs = {
+        "warmup_steps": WARMUP_FRAC * total_steps,
+        "hold_steps": (1 - WARMUP_FRAC - COOLDOWN_FRAC) * total_steps,
+        "cooldown_steps": COOLDOWN_FRAC * total_steps,
+    }
+
     # Instantiate one instance of each actor.
     replay_buf = ReplayBuffer.remote()
-    learner = Learner.remote(replay_buf)
+    learner = Learner.remote(replay_buf, scheduler_kwargs)
     scorer = Scorer.remote(replay_buf)
     generator = Generator.remote(scorer)
 
@@ -354,18 +440,20 @@ def train(total_steps: int) -> None:
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
-    # The ReplayBuffer waits for scored trajectories when there aren't enough slices to sample a batch.
+    # Training will block until until enough scored trajectories are available.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
-
-    for i in trange(total_steps, desc="Training", unit="step"):
-        states = sample_unit_vector(
-            batch_size=BATCH_SIZE
-        )  # [BATCH_SIZE, STATE_DIM]
+    losses, rewards, clip_fractions = [], [], []
+    for i in range(total_steps):
+        states = sample_unit_vector(batch_size=BATCH_SIZE)
         generator.generate.remote(states)
         step_result = ray.get(learner.step.remote())
-
-        if i % 100 == 0:
-            print(f"Loss: {step_result['loss']:.3f}, Cosine gap: {step_result['cosine_gap']:.3f}")
+        losses.append(step_result["loss"])
+        rewards.append(step_result["rewards"])
+        clip_fractions.append(step_result["clip_fraction"])
+        if i % 20 == 0 and i > 0:
+            print(
+                f"Step {i}/{total_steps} | Loss: {sum(losses[-20:]) / 20} | Rewards: {sum(rewards[-20:]) / 20:.3f} | Fraction clipped: {sum(clip_fractions[-20:]) / 20:.3f}"
+            )
 
         # Update the generator with new weights and version.
         weights_ref = learner.get_weights.remote()
@@ -378,7 +466,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--steps",
         type=int,
-        default=2000,
+        default=450,
     )
 
     args = parser.parse_args()
