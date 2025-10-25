@@ -26,7 +26,7 @@ steps:
   - name: servetracingbuild
     wanda: ci/docker/servetracing.build.wanda.yaml
 
-  - name: minbuild-multipy
+  - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
@@ -152,7 +152,7 @@ steps:
         --build-name minbuild-default-py3.10
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-multipy
+    depends_on: minbuild-serve
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
@@ -165,7 +165,7 @@ steps:
         --build-name minbuild-serve-py3.9
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-multipy
+    depends_on: minbuild-serve
 
   - label: ":ray-serve: serve: dashboard tests"
     tags:
