@@ -31,9 +31,9 @@ class TensorTransportManager(ABC):
             bool: True if the backend is one-sided, False otherwise.
         """
 
+    @staticmethod
     @abstractmethod
-    @abstractmethod
-    def can_abort_transport(self) -> bool:
+    def can_abort_transport() -> bool:
         """
         Whether the backend can abort the transport.
         If this returns False, then Ray will kill involved actors upon system errors to avoid hanging.
