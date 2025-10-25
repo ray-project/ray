@@ -227,26 +227,50 @@ to turn it off.
 Frequently Asked Questions (FAQs)
 --------------------------------------------------
 
-.. TODO(#55491): Rewrite this section once the restriction is lifted.
-.. TODO(#55405): Cross-node TP in progress.
+
 .. _cross_node_parallelism:
 
 How to configure LLM stage to parallelize across multiple nodes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-At the moment, Ray Data LLM doesn't support cross-node parallelism (either
-tensor parallelism or pipeline parallelism).
+Ray Data LLM now supports cross-node parallelism for both tensor parallelism (TP) 
+and pipeline parallelism (PP). By default, Ray Data uses the 
+`PACK strategy <https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy>`_, 
+which attempts to place all resources on a single node when possible, but 
+allows cross-node placement if a single node doesn't have enough resources.
 
-The processing pipeline is designed to run on a single node. The number of
-GPUs is calculated as the product of the tensor parallel size and the pipeline
-parallel size, and apply
-[`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
-to ensure that each replica of the LLM stage is executed on a single node.
+For explicit control over cross-node placement, you can specify a custom 
+``placement_group_config`` with a ``SPREAD`` or ``STRICT_SPREAD`` strategy:
 
-Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
-as long as each replica (TP * PP) fits into a single node. The number of
-replicas is configured by the `concurrency` argument in
-:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+.. code-block:: python
+
+    from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+
+    # Example: Force cross-node TP with SPREAD strategy
+    config = vLLMEngineProcessorConfig(
+        model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+        concurrency=1,
+        engine_kwargs={
+            "tensor_parallel_size": 8,
+            "distributed_executor_backend": "ray",  # Required for cross-node TP/PP
+        },
+        placement_group_config={
+            "bundles": [{"GPU": 1, "CPU": 1}] * 8,  # 8 bundles for TP=8
+            "strategy": "SPREAD",  # Spread across nodes
+        },
+    )
+    processor = build_llm_processor(config)
+
+**Important notes:**
+
+- Cross-node TP/PP requires setting ``distributed_executor_backend="ray"`` in ``engine_kwargs``
+- Each bundle in ``placement_group_config`` must specify at most one GPU for the ray executor backend
+- The default ``PACK`` strategy provides good performance for most use cases
+- Use ``SPREAD`` or ``STRICT_SPREAD`` only when you specifically need cross-node distribution
+
+You can also horizontally scale the LLM stage to multiple nodes by increasing 
+the ``concurrency`` argument in :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+Each replica will run independently with its own TP/PP configuration.
 
 .. _gpu_memory_management:
 
