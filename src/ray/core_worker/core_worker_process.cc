@@ -354,7 +354,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
-      *reference_counter,
       options.check_signals,
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
@@ -367,7 +366,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter.get(),
+      /*reference_counting=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
       [this](const RayObject &obj) {

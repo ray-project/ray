@@ -27,7 +27,6 @@
 #include "ray/common/metrics.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/rpc/utils.h"
 
@@ -50,12 +49,10 @@ class CoreWorkerMemoryStore {
   /// Create a memory store.
   ///
   /// \param[in] io_context Posts async callbacks to this context.
-  /// \param[in] counter If not null, this enables ref counting for local objects,
-  ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      ReferenceCounterInterface *counter = nullptr,
+      bool reference_counting_enabled = true,
       std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
@@ -69,7 +66,9 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  void Put(const RayObject &object, const ObjectID &object_id);
+  /// \param[in] has_reference Whether the object has a reference in the reference
+  /// counter.
+  void Put(const RayObject &object, const ObjectID &object_id, const bool has_reference);
 
   /// Get a list of objects from the object store.
   ///
@@ -77,15 +76,12 @@ class CoreWorkerMemoryStore {
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] ctx The current worker context.
-  /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids,
              int num_objects,
              int64_t timeout_ms,
              const WorkerContext &ctx,
-             bool remove_after_get,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
@@ -187,7 +183,6 @@ class CoreWorkerMemoryStore {
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
-                 bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception,
                  bool at_most_num_objects);
@@ -207,9 +202,8 @@ class CoreWorkerMemoryStore {
 
   instrumented_io_context &io_context_;
 
-  /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
-  /// mandatory once Java is supported.
-  ReferenceCounterInterface *ref_counter_;
+  /// Set to true if reference counting is enabled (i.e. not local mode).
+  bool reference_counting_enabled_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
