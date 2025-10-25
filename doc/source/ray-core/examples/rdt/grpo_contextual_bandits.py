@@ -68,7 +68,6 @@ ACTION_DIRECTIONS = torch.tensor(
 )
 
 
-
 # -- Model --
 # To demonstrate speed-ups from RDT, we use an oversized model.
 # Residual connections prevent vanishing gradients for deep models.
@@ -90,9 +89,9 @@ class ResidualBlock(torch.nn.Module):
 class ResidualMLP(torch.nn.Module):  # Sized to ~50 MB of parameters.
     """Model used for Generator and Learner.
 
-
     It takes a 2D state vector as input and produces logits for each action.
     """
+
     def __init__(self, hidden_dim: int = 512, depth: int = 50):
         super().__init__()
         self.input = torch.nn.Linear(STATE_DIM, hidden_dim, bias=True)
@@ -108,6 +107,7 @@ class ResidualMLP(torch.nn.Module):  # Sized to ~50 MB of parameters.
         x = self.head(x)
         return x
 
+
 # -- Utilities --
 def sample_unit_vector(batch_size: int, dim: int = STATE_DIM) -> torch.Tensor:
     """Sample unit vectors of shape [batch_size, dim] by normalizing Gaussian draws."""
@@ -115,6 +115,7 @@ def sample_unit_vector(batch_size: int, dim: int = STATE_DIM) -> torch.Tensor:
     v = torch.randn(batch_size, dim)
     norms = v.norm(dim=-1, keepdim=True) + 1e-8
     return v / norms
+
 
 # -- Actors --
 @ray.remote
@@ -313,7 +314,7 @@ class Learner:
 
         return {
             "loss": loss.detach().item(),
-            "clip_fraction": clip_fraction.detach().item()
+            "clip_fraction": clip_fraction.detach().item(),
         }
 
     def step(self) -> dict[str, Any]:
@@ -349,9 +350,9 @@ class Learner:
         # Note: deepcopy() is needed because RDT does not support pointers to tensors yet.
         # This will not be needed in the future.
         state_dict = copy.deepcopy(self.model.state_dict())
-        assert next(iter(state_dict.values())).device.type == "cuda", (
-            "Expected tensors in the sender's cuda memory to demonstrate RDT."
-        )
+        assert next(
+            iter(state_dict.values())).device.type == "cuda"
+            ), "Expected tensors in the sender's cuda memory to demonstrate RDT."
 
         return state_dict
 
@@ -371,10 +372,10 @@ class Generator:
     @ray.method(tensor_transport="nixl")
     def generate(self, states: torch.Tensor):
         """Generate actions using the current policy and send them and their metadata
-         to the Scorer.
-         
-         Note: GRPO requires *sampling* from the current policy (not just the most probable "greedy" action).
-         """
+        to the Scorer.
+
+        Note: GRPO requires *sampling* from the current policy (not just the most probable "greedy" action).
+        """
         with torch.no_grad():
             states = states.to("cuda")
             logits = self.model(states)  # [batch_size, ACTION_DIM]
@@ -399,16 +400,17 @@ class Generator:
 
     def update_weights(self, cuda_weights, version: int):
         """Update the generator's weights from the learner's weights.
-        
+
         Note: the actor is single-threaded, so weight loads do not overlap with generation.
         """
         first_tensor = next(iter(cuda_weights.values()))
-        assert first_tensor.device.type == "cuda", (
-            "Expected CUDA tensors after GPU-to-GPU direct transfer"
-        )
+        assert (
+            first_tensor.device.type == "cuda"
+            ), "Expected CUDA tensors after GPU-to-GPU direct transfer"
         self.model.load_state_dict(cuda_weights)
         self.model.eval()
         self.policy_version = version
+
 
 # -- Control loop --
 def train(total_steps: int) -> None:
