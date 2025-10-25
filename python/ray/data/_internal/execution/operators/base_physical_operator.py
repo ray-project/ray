@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+import abc
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -14,10 +14,15 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
-class InternalQueueOperatorMixin(PhysicalOperator, ABC):
-    @abstractmethod
-    def internal_queue_size(self) -> int:
-        """Returns Operator's internal queue size"""
+class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @abc.abstractmethod
+    def internal_input_queue_size(self) -> int:
+        """Returns Operator's internal input queue size"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_size(self) -> int:
+        """Returns Operator's internal output queue size"""
         ...
 
 
@@ -110,8 +115,11 @@ class AllToAllOperator(
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
 
-    def internal_queue_size(self) -> int:
+    def internal_input_queue_size(self) -> int:
         return len(self._input_buffer)
+
+    def internal_output_queue_size(self) -> int:
+        return len(self._output_buffer)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(

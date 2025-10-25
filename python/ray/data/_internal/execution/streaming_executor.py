@@ -21,6 +21,9 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
@@ -517,7 +520,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
-        for op in topology:
+        for op, state in topology.items():
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
@@ -525,6 +528,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
+                self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -552,6 +556,36 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _validate_operator_queues_empty(
+        self, op: PhysicalOperator, state: OpState
+    ) -> None:
+        """Validate that all queues are empty when an operator completes.
+
+        Args:
+            op: The completed operator to validate.
+            state: The operator's execution state.
+        """
+        error_msg = "Expected {} Queue for {} to be empty, but found {} bundles"
+
+        if isinstance(op, InternalQueueOperatorMixin):
+            # 1) Check Internal Input Queue is empty
+            assert op.internal_input_queue_size() == 0, error_msg.format(
+                "Internal Input", op.name, op.internal_input_queue_size()
+            )
+
+            # 2) Check Internal Output Queue is empty
+            assert op.internal_output_queue_size() == 0, error_msg.format(
+                "Internal Output",
+                op.name,
+                op.internal_output_queue_size(),
+            )
+
+        # 3) Check that External Input Queue is empty
+        for input_q in state.input_queues:
+            assert len(input_q) == 0, error_msg.format(
+                "External Input", op.name, len(input_q)
+            )
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but

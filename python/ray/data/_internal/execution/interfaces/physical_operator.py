@@ -419,16 +419,16 @@ class PhysicalOperator(Operator):
         """
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_queue_size = (
-            self.internal_queue_size()
-            if isinstance(self, InternalQueueOperatorMixin)
-            else 0
-        )
+        internal_input_queue_size = 0
+        internal_output_queue_size = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_input_queue_size = self.internal_input_queue_size()
+            internal_output_queue_size = self.internal_output_queue_size()
 
         if not self._execution_finished:
             if (
                 self._inputs_complete
-                and internal_queue_size == 0
+                and internal_input_queue_size == 0
                 and self.num_active_tasks() == 0
             ):
                 # NOTE: Operator is considered completed iff
@@ -437,7 +437,15 @@ class PhysicalOperator(Operator):
                 #   - There are no active or pending tasks
                 self._execution_finished = True
 
-        return self._execution_finished and not self.has_next()
+        # NOTE: We check for (internal_output_queue_size == 0) and
+        # (not self.has_next()) because _OrderedOutputQueue can
+        # return False for self.has_next(), but have a non-empty queue size.
+        # Draining the internal output queue is important to free object refs.
+        return (
+            self._execution_finished
+            and not self.has_next()
+            and internal_output_queue_size == 0
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
