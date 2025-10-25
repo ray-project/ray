@@ -62,6 +62,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
+from ray._private.authentication_token_setup import setup_and_verify_auth
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
@@ -1865,6 +1866,9 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
+        # Setup and verify authentication for new cluster
+        setup_and_verify_auth(_system_config, is_new_cluster=True)
+
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._common.usage import usage_lib
 
@@ -1951,6 +1955,9 @@ def init(
                 "_node_name cannot be configured when connecting to "
                 "an existing cluster."
             )
+
+        # Setup and verify authentication for connecting to existing cluster
+        setup_and_verify_auth(_system_config, is_new_cluster=False)
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
