@@ -8,7 +8,6 @@ steps:
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
       - "3.9"
-      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -24,7 +23,6 @@ steps:
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
       - "3.9"
-      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -85,7 +83,6 @@ steps:
       - ray-dashboard-build
     matrix:
       - "3.9"
-      - "3.10"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
