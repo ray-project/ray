@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
+import "src/ray/protobuf/common.proto";
+
 message ActorDefinitionEvent {
   // The ID of the actor that was created.
   bytes actor_id = 1;
@@ -39,5 +41,5 @@ message ActorDefinitionEvent {
   // Placement group ID if the actor requires a placement group.
   bytes placement_group_id = 9;
   // The label selector for the actor.
-  map<string, string> label_selector = 11;
+  LabelSelector label_selector = 11;
 }

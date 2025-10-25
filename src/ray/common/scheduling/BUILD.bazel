@@ -82,6 +82,7 @@ ray_cc_library(
     srcs = ["scheduling_class_util.cc"],
     hdrs = ["scheduling_class_util.h"],
     deps = [
+        ":fallback_strategy",
         ":label_selector",
         ":resource_set",
         "//src/ray/common:function_descriptor",
@@ -108,4 +109,10 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
+)
+
+ray_cc_library(
+    name = "fallback_strategy",
+    hdrs = ["fallback_strategy.h"],
+    visibility = ["//:__subpackages__"],
 )

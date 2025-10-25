@@ -230,6 +230,7 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common/scheduling:fallback_strategy",
         "//src/ray/common/scheduling:label_selector",
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
