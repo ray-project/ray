@@ -3,7 +3,7 @@ ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
 FROM $BASE_IMAGE
 
 ARG BUILDKITE_BAZEL_CACHE_URL
-ARG PYTHON=3.9
+ARG PYTHON=3.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles

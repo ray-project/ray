@@ -406,7 +406,7 @@ cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
     #   -r python/requirements/ml/dl-cpu-requirements.txt
 cycler==0.12.1
     # via matplotlib
-cython==0.29.37
+cython==3.0.12
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
