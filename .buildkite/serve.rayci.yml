@@ -13,7 +13,7 @@ steps:
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
-    matrix: ["3.10","3.12"]
+    matrix: ["3.12"]
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
@@ -30,12 +30,11 @@ steps:
     label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      setup:
-        app: [serve, default]
-        python: ["3.9", "3.10"]
+      - serve
+      - default
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      EXTRA_DEPENDENCY: "{{matrix.app}}"
+      PYTHON_VERSION: "3.9"
+      EXTRA_DEPENDENCY: "{{matrix}}"
     tags: cibase
 
   # tests
@@ -79,7 +78,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.9 --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -149,7 +148,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve
         --parallelism-per-worker 2
-        --build-name minbuild-default-py3.10
+        --build-name minbuild-default-py3.9
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve

@@ -6,14 +6,11 @@ depends_on:
 steps:
   # builds
   - name: minbuild-ml
-    label: "wanda: minbuild-ml-py{{matrix}}"
+    label: "wanda: minbuild-ml-py39"
     wanda: ci/docker/min.build.wanda.yaml
     depends_on: oss-ci-base_build
-    matrix:
-      - "3.9"
-      - "3.10"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "3.9"
       EXTRA_DEPENDENCY: ml
     tags: cibase
 
