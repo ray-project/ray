@@ -1,6 +1,6 @@
 import warnings
 
-from ray.util.accelerators import tpu
+from ray.util import tpu
 from ray.util.accelerators.accelerators import (
     AMD_INSTINCT_MI100,
     AMD_INSTINCT_MI210,
