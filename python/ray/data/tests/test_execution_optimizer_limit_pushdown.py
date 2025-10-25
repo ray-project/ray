@@ -1,9 +1,12 @@
 import sys
+from typing import Any, Dict, List
 
 import pandas as pd
 import pytest
 
 import ray
+from ray.data import Dataset
+from ray.data._internal.logical.interfaces import Plan
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -12,9 +15,9 @@ from ray.tests.conftest import *  # noqa
 
 
 def _check_valid_plan_and_result(
-    ds,
-    expected_plan,
-    expected_result,
+    ds: Dataset,
+    expected_plan: Plan,
+    expected_result: List[Dict[str, Any]],
     expected_physical_plan_ops=None,
 ):
     assert ds.take_all() == expected_result
