@@ -254,10 +254,10 @@ class Expr(ABC):
             >>> expr = (col("x") + lit(5)) * col("y")
             >>> print(expr)
             MUL
-            ├── left: ADD
-            │   ├── left: COL('x')
-            │   └── right: LIT(5)
-            └── right: COL('y')
+                ├── left: ADD
+                │   ├── left: COL('x')
+                │   └── right: LIT(5)
+                └── right: COL('y')
         """
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _TreeReprVisitor,

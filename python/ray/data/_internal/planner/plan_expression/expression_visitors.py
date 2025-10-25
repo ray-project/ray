@@ -241,6 +241,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
         """
         self.prefix = prefix
         self.is_last = is_last
+        self._max_length = 50  # Maximum length of the node label
 
     def _make_tree_lines(
         self,
@@ -259,9 +260,6 @@ class _TreeReprVisitor(_ExprVisitor[str]):
         Returns:
             Multi-line string representation of the tree
         """
-        # Add datatype annotation if expr is provided
-        if expr is not None:
-            node_label = f"{node_label}"
         lines = [node_label]
 
         if children:
@@ -296,16 +294,16 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_literal(self, expr: "LiteralExpr") -> str:
         # Truncate long values for readability
         value_repr = repr(expr.value)
-        if len(value_repr) > 50:
-            value_repr = value_repr[:47] + "..."
+        if len(value_repr) > self._max_length:
+            value_repr = value_repr[: self._max_length - 3] + "..."
         return self._make_tree_lines(f"LIT({value_repr})", expr=expr)
 
     def visit_binary(self, expr: "BinaryExpr") -> str:
         return self._make_tree_lines(
             f"{expr.op.name}",
             children=[
-                ("", expr.left),
-                ("", expr.right),
+                ("left", expr.left),
+                ("right", expr.right),
             ],
             expr=expr,
         )
@@ -313,7 +311,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_unary(self, expr: "UnaryExpr") -> str:
         return self._make_tree_lines(
             f"{expr.op.name}",
-            children=[("", expr.operand)],
+            children=[("operand", expr.operand)],
             expr=expr,
         )
 

@@ -469,16 +469,16 @@ class TestExpressionRepr:
         """Test repr for simple binary expressions."""
         expr = col("x") + lit(5)
         expected = """ADD
-    ├── COL('x')
-    └── LIT(5)"""
+    ├── left: COL('x')
+    └── right: LIT(5)"""
         assert repr(expr) == expected
 
     def test_binary_expr_multiplication_repr(self):
         """Test repr for multiplication."""
         expr = col("price") * lit(2)
         expected = """MUL
-    ├── COL('price')
-    └── LIT(2)"""
+    ├── left: COL('price')
+    └── right: LIT(2)"""
         assert repr(expr) == expected
 
     def test_nested_binary_expr_repr(self):
@@ -486,10 +486,10 @@ class TestExpressionRepr:
         # (col("x") + 5) * col("y")
         expr = (col("x") + lit(5)) * col("y")
         expected = """MUL
-    ├── ADD
-    │   ├── COL('x')
-    │   └── LIT(5)
-    └── COL('y')"""
+    ├── left: ADD
+    │   ├── left: COL('x')
+    │   └── right: LIT(5)
+    └── right: COL('y')"""
         assert repr(expr) == expected
 
     def test_deeply_nested_binary_expr_repr(self):
@@ -497,33 +497,33 @@ class TestExpressionRepr:
         # ((col("a") + 5) * col("b")) > 100
         expr = ((col("a") + lit(5)) * col("b")) > lit(100)
         expected = """GT
-    ├── MUL
-    │   ├── ADD
-    │   │   ├── COL('a')
-    │   │   └── LIT(5)
-    │   └── COL('b')
-    └── LIT(100)"""
+    ├── left: MUL
+    │   ├── left: ADD
+    │   │   ├── left: COL('a')
+    │   │   └── right: LIT(5)
+    │   └── right: COL('b')
+    └── right: LIT(100)"""
         assert repr(expr) == expected
 
     def test_unary_expr_not_repr(self):
         """Test repr for NOT operation."""
         expr = ~col("active")
         expected = """NOT
-    └── COL('active')"""
+    └── operand: COL('active')"""
         assert repr(expr) == expected
 
     def test_unary_expr_is_null_repr(self):
         """Test repr for IS_NULL operation."""
         expr = col("value").is_null()
         expected = """IS_NULL
-    └── COL('value')"""
+    └── operand: COL('value')"""
         assert repr(expr) == expected
 
     def test_unary_expr_is_not_null_repr(self):
         """Test repr for IS_NOT_NULL operation."""
         expr = col("value").is_not_null()
         expected = """IS_NOT_NULL
-    └── COL('value')"""
+    └── operand: COL('value')"""
         assert repr(expr) == expected
 
     def test_alias_simple_repr(self):
@@ -538,8 +538,8 @@ class TestExpressionRepr:
         expr = (col("x") + lit(5)).alias("result")
         expected = """ALIAS('result')
     └── ADD
-        ├── COL('x')
-        └── LIT(5)"""
+        ├── left: COL('x')
+        └── right: LIT(5)"""
         assert repr(expr) == expected
 
     def test_udf_expr_with_args_repr(self):
@@ -620,40 +620,40 @@ class TestExpressionRepr:
         """Test repr for AND operation."""
         expr = (col("age") > lit(18)) & (col("status") == lit("active"))
         expected = """AND
-    ├── GT
-    │   ├── COL('age')
-    │   └── LIT(18)
-    └── EQ
-        ├── COL('status')
-        └── LIT('active')"""
+    ├── left: GT
+    │   ├── left: COL('age')
+    │   └── right: LIT(18)
+    └── right: EQ
+        ├── left: COL('status')
+        └── right: LIT('active')"""
         assert repr(expr) == expected
 
     def test_boolean_or_repr(self):
         """Test repr for OR operation."""
         expr = (col("age") < lit(18)) | (col("age") > lit(65))
         expected = """OR
-    ├── LT
-    │   ├── COL('age')
-    │   └── LIT(18)
-    └── GT
-        ├── COL('age')
-        └── LIT(65)"""
+    ├── left: LT
+    │   ├── left: COL('age')
+    │   └── right: LIT(18)
+    └── right: GT
+        ├── left: COL('age')
+        └── right: LIT(65)"""
         assert repr(expr) == expected
 
     def test_is_in_operation_repr(self):
         """Test repr for is_in operations."""
         expr = col("status").is_in(["active", "pending"])
         expected = """IN
-    ├── COL('status')
-    └── LIT(['active', 'pending'])"""
+    ├── left: COL('status')
+    └── right: LIT(['active', 'pending'])"""
         assert repr(expr) == expected
 
     def test_not_in_operation_repr(self):
         """Test repr for not_in operations."""
         expr = col("status").not_in(["deleted", "archived"])
         expected = """NOT_IN
-    ├── COL('status')
-    └── LIT(['deleted', 'archived'])"""
+    ├── left: COL('status')
+    └── right: LIT(['deleted', 'archived'])"""
         assert repr(expr) == expected
 
     def test_all_binary_operations_repr(self):
@@ -676,8 +676,8 @@ class TestExpressionRepr:
 
         for expr, op_name in test_cases:
             expected = f"""{op_name}
-    ├── COL('a')
-    └── COL('b')"""
+    ├── left: COL('a')
+    └── right: COL('b')"""
             assert repr(expr) == expected, f"Failed for operation {op_name}"
 
     def test_complex_nested_with_unary_repr(self):
@@ -685,11 +685,11 @@ class TestExpressionRepr:
         # ~((col("age") > 18) & col("active"))
         expr = ~((col("age") > lit(18)) & col("active"))
         expected = """NOT
-    └── AND
-        ├── GT
-        │   ├── COL('age')
-        │   └── LIT(18)
-        └── COL('active')"""
+    └── operand: AND
+        ├── left: GT
+        │   ├── left: COL('age')
+        │   └── right: LIT(18)
+        └── right: COL('active')"""
         assert repr(expr) == expected
 
     def test_right_side_nested_repr(self):
@@ -697,10 +697,10 @@ class TestExpressionRepr:
         # col("x") + (col("y") * col("z"))
         expr = col("x") + (col("y") * col("z"))
         expected = """ADD
-    ├── COL('x')
-    └── MUL
-        ├── COL('y')
-        └── COL('z')"""
+    ├── left: COL('x')
+    └── right: MUL
+        ├── left: COL('y')
+        └── right: COL('z')"""
         assert repr(expr) == expected
 
     def test_multiple_levels_both_sides_repr(self):
@@ -708,12 +708,12 @@ class TestExpressionRepr:
         # (col("a") + col("b")) * (col("c") - col("d"))
         expr = (col("a") + col("b")) * (col("c") - col("d"))
         expected = """MUL
-    ├── ADD
-    │   ├── COL('a')
-    │   └── COL('b')
-    └── SUB
-        ├── COL('c')
-        └── COL('d')"""
+    ├── left: ADD
+    │   ├── left: COL('a')
+    │   └── right: COL('b')
+    └── right: SUB
+        ├── left: COL('c')
+        └── right: COL('d')"""
         assert repr(expr) == expected
 
     def test_print_expr(self, capsys):
@@ -722,8 +722,8 @@ class TestExpressionRepr:
         print(expr)
 
         expected = """ADD
-    ├── COL('x')
-    └── LIT(5)
+    ├── left: COL('x')
+    └── right: LIT(5)
 """
         captured = capsys.readouterr()
         assert captured.out == expected
