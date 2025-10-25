@@ -44,7 +44,7 @@ workerGroupSpecs:
       ray.io/market-type: on-demand
 ```
 
-3. **The Kubernetes Scheduler**: To ensure the Ray Pods land on the correct physical hardware, users add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how label selectors are treated in Ray, the Kubernetes scheduler filters the underling nodes in the K8s cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the above "intel-cpu-group" to ensure scheduling is constrained at both the Ray and K8s level:
+3. **The Kubernetes Scheduler**: To ensure the Ray Pods land on the correct physical hardware, users add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how label selectors are treated in Ray, the Kubernetes scheduler filters the underlying nodes in the K8s cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the above "intel-cpu-group" to ensure scheduling is constrained at both the Ray and K8s level:
 ```yaml
 nodeSelector:
     cloud.google.com/machine-family: "N4"
