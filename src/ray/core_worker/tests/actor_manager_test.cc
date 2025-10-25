@@ -246,8 +246,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       false);
   // Make sure the same actor id adding will return false.
   ASSERT_FALSE(actor_manager_->EmplaceNewActorHandle(
-                   std::move(actor_handle2), call_site, caller_address, true),
-               "Actor handle already exists for actor id");
+      std::move(actor_handle2), call_site, caller_address, true));
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure we can get an actor handle correctly.
