@@ -436,7 +436,7 @@ def train(total_steps: int) -> None:
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
-    # Sampling will block until until enough scored trajectories are available.
+    # Sampling will block until enough scored trajectories are available.
     ray.get(generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE)))
     losses, rewards, clip_fractions = [], [], []
     for i in range(total_steps):
