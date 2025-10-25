@@ -355,7 +355,7 @@ class Learner:
             next(iter(state_dict.values())).device.type == "cuda"
         ), "Expected tensors in the sender's cuda memory to demonstrate RDT."
 
-        return state_dict
+        return self.model.state_dict()
 
     def get_version(self) -> int:
         return self.policy_version
