@@ -29,12 +29,14 @@ from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
+    get_all_node_info_with_retry,
     is_in_test,
     open_log,
     try_to_symlink,
     validate_socket_filepath,
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
+from ray.core.generated import gcs_pb2
 
 import psutil
 
@@ -468,18 +470,23 @@ class Node:
         else:
             if self._temp_dir is None:
                 assert not self._default_worker
-                # fetch head node info using gcs client
-                all_nodes = self.get_gcs_client().get_all_node_info(timeout=30)
+                # fetch head node info
+                head_nodes = get_all_node_info_with_retry(
+                    self.get_gcs_client(),
+                    filters=[
+                        ("is_head_node", "=", True),
+                        ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
+                    ],
+                    timeout=3.0,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                )
                 head_node_id = None
                 node_info = None  # type: ignore
-                for node_id, node_info in all_nodes.items():
-                    if node_info.is_head_node:
-                        head_node_id = node_id
-                        node_info = node_info
-                        break
+                if head_nodes:
+                    head_node_id, node_info = next(iter(head_nodes.items()))
 
                 if head_node_id is None:
-                    logger.warning(
+                    logger.error(
                         "Head node ID not found in GCS. Using Ray's default temp dir."
                     )
                     self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
@@ -494,9 +501,11 @@ class Node:
                             "Using Ray's default temp dir."
                         )
                         self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+        logger.info(f"Setting temp dir to: {self._temp_dir}")
 
         try_to_create_directory(self._temp_dir)
 
+        # Assumes session_name is resolved before _init_temp is called
         self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
 

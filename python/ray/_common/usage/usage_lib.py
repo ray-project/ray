@@ -565,7 +565,8 @@ def get_total_num_alive_nodes_to_report(gcs_client, timeout=None) -> Optional[in
     """Return the total number of alive nodes in the cluster"""
     try:
         result = gcs_client.get_all_node_info(
-            timeout=timeout, state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE
+            timeout=timeout,
+            filters=[("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE)],
         )
         return len(result.items())
     except Exception as e:

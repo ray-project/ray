@@ -1022,10 +1022,11 @@ def timeline(filename=None, store_in_ray_temp=False):
     chrome://tracing in the Chrome web browser and load the dumped file.
 
     Args:
-        filename: If a filename is provided, the timeline is dumped to that
-            file.
-        store_in_ray_temp: If True, the timeline is dumped to the user's ray temp directory.
-            If False, the timeline is dumped to the default ray temp directory.
+        filename: If a filename is provided, the timeline is written to the
+            specified file name.
+        store_in_ray_temp: If True, the timeline is written to the user's ray temp directory.
+            If False, the timeline is written to the path specified by filename.
+
 
     Returns:
         If filename is not provided, this returns a list of profiling events.
@@ -1051,26 +1052,27 @@ def timeline(filename=None, store_in_ray_temp=False):
     return timeline_internal(resolved_filename)
 
 
-def timeline_internal(filename: str = None):
+def timeline_internal(file_path: str = None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
     variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
-    passing in "filename" or using json.dump, and then load go to
+    passing in "file_path" or using json.dump, and then load go to
     chrome://tracing in the Chrome web browser and load the dumped file.
 
     Args:
-        filename: If a filename is provided, the timeline is dumped to that
-            file.
+        file_path: The exact file path to write the timeline to.
+            If a file path is provided, the timeline is dumped to that
+            file path.
 
     Returns:
         If filename is not provided, this returns a list of profiling events.
             Each profile event is a dictionary.
     """
 
-    return state.chrome_tracing_dump(filename=filename)
+    return state.chrome_tracing_dump(file_path)
 
 
 def object_transfer_timeline(filename=None):
