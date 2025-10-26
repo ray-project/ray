@@ -93,9 +93,11 @@ class RaySyncer {
   /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
   /// \param on_rpc_completion A callback which invokes after a sync rpc succeeds.
+  /// \param batching_enabled Whether to enable message batching when sending sync
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
-            RpcCompletionCallback on_rpc_completion = {});
+            RpcCompletionCallback on_rpc_completion = {},
+            bool batching_enabled = false);
   ~RaySyncer();
 
   /// Connect to a node.
@@ -180,6 +182,9 @@ class RaySyncer {
   /// Sync message observer, which is a callback on received message response for
   /// [RaySyncerBidiReactor], so should be passed to each of them.
   RpcCompletionCallback on_rpc_completion_;
+
+  // Whether batching of resource view messages is enabled.
+  bool batching_enabled_;
 
   friend class RaySyncerService;
   /// Test purpose

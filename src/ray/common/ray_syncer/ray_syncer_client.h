@@ -34,7 +34,8 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
       instrumented_io_context &io_context,
       std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
+      bool batching_enabled = false);
 
   ~RayClientBidiReactor() override = default;
 

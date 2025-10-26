@@ -30,12 +30,14 @@ namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
-                     RpcCompletionCallback on_rpc_completion)
+                     RpcCompletionCallback on_rpc_completion,
+                     bool batching_enabled)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       timer_(PeriodicalRunner::Create(io_context)),
-      on_rpc_completion_(std::move(on_rpc_completion)) {
+      on_rpc_completion_(std::move(on_rpc_completion)),
+      batching_enabled_(batching_enabled) {
   stopped_ = std::make_shared<bool>(false);
 }
 
@@ -109,7 +111,8 @@ void RaySyncer::Connect(const std::string &node_id,
                 node_state_->RemoveNode(remote_node_id);
               }
             },
-            /* stub */ std::move(stub));
+            /* stub */ std::move(stub),
+            /* batching_enabled */ batching_enabled_);
         Connect(reactor);
         reactor->StartCall();
       }))

@@ -45,13 +45,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
-      std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor)
+      std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor,
+      bool batching_enabled = false,
+      size_t batch_size = RayConfig::instance().syncer_batch_size(),
+      int64_t batch_delay_ms = RayConfig::instance().syncer_batch_delay_ms())
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)),
-        batch_size_(RayConfig::instance().syncer_batch_size()),
-        batch_delay_ms_(
-            std::chrono::milliseconds(RayConfig::instance().syncer_batch_delay_ms())),
+        batch_size_(batching_enabled ? batch_size : 1),
+        batch_delay_ms_(batching_enabled ? std::chrono::milliseconds(batch_delay_ms)
+                                         : std::chrono::milliseconds(0)),
         batch_timer_(io_context),
         batch_timer_active_(false) {}
 
@@ -273,7 +276,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   // For testing
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
-  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseMultipleInnerMessages);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatching);
   friend struct SyncerServerTest;
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(

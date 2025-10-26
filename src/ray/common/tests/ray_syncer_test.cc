@@ -202,9 +202,13 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
-      io_context_,
-      node_id.Binary(),
-      [](std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage>) {});
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage>) {},
+      /* batching_enabled */ false,
+      /* batch_size */ 1,
+      /* batch_delay_ms */ 0);
   auto from_node_id = NodeID::FromRandom();
   auto inner_msg = MakeInnerMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto inner_msg_ptr1 = std::make_shared<InnerRaySyncMessage>(inner_msg);
@@ -232,6 +236,45 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatching) {
+  auto node_id = NodeID::FromRandom();
+
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::InnerRaySyncMessage>) {},
+      /* batching_enabled */ true,
+      /* batch_size */ 3,
+      /* batch_delay_ms */ 100);
+  auto from_node_id1 = NodeID::FromRandom();
+  auto from_node_id2 = NodeID::FromRandom();
+  auto inner_msg1 = MakeInnerMessage(MessageType::RESOURCE_VIEW, 0, from_node_id1);
+  auto inner_msg2 = MakeInnerMessage(MessageType::RESOURCE_VIEW, 0, from_node_id2);
+  auto inner_msg3 = MakeInnerMessage(MessageType::COMMANDS, 0, from_node_id2);
+  auto inner_msg_ptr1 = std::make_shared<InnerRaySyncMessage>(inner_msg1);
+  auto inner_msg_ptr2 = std::make_shared<InnerRaySyncMessage>(inner_msg2);
+  auto inner_msg_ptr3 = std::make_shared<InnerRaySyncMessage>(inner_msg3);
+
+  // First message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr1));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+
+  // Second message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr2));
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
+
+  // Third message will trigger sending
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(inner_msg_ptr3));
+  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+
+  // Wait for sending to complete
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+
+  ASSERT_EQ(2, sync_reactor.node_versions_.size());
 }
 
 struct SyncerServerTest {

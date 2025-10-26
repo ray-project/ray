@@ -574,7 +574,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       kGCSNodeID.Binary(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
-      });
+      },
+      RayConfig::instance().gcs_ray_syncer_batching_enabled());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
