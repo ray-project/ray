@@ -172,8 +172,17 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
 
+        # When pushing projections through repartition, we must ensure partition key columns
+        # are preserved, even if they're not in the output projection.
+        # This is necessary because the repartition operation needs these columns to partition by.
+
+        # Collect all required columns (output columns + partition keys)
+        required_columns = set(columns) if columns is not None else set()
+        if self._keys is not None:
+            required_columns.update(self._keys)
+
         upstream_project = self._create_upstream_project(
-            columns, column_rename_map, self.input_dependencies[0]
+            list(required_columns), column_rename_map, self.input_dependencies[0]
         )
 
         new_keys = self._rename_projection(column_rename_map)
@@ -226,8 +235,16 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
 
+        # When pushing projections through sort, we must ensure sort key columns
+        # are preserved, even if they're not in the output projection.
+        # This is necessary because the sort operation needs these columns to sort by.
+
+        # Collect all required columns (output columns + sort keys)
+        required_columns = set(columns) if columns is not None else set()
+        required_columns.update(self._sort_key.get_columns())
+
         upstream_project = self._create_upstream_project(
-            columns, column_rename_map, self.input_dependencies[0]
+            list(required_columns), column_rename_map, self.input_dependencies[0]
         )
         new_columns = self._rename_projection(column_rename_map)
         new_sort_key = SortKey(
@@ -281,8 +298,20 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
 
+        # When pushing projections through aggregate, we must ensure groupby key columns
+        # are preserved, even if they're not in the output projection.
+        # This is necessary because the aggregate operation needs these columns to group by.
+
+        # Collect all required columns (output columns + groupby keys)
+        required_columns = set(columns) if columns is not None else set()
+        if self._key is not None:
+            if isinstance(self._key, str):
+                required_columns.add(self._key)
+            else:
+                required_columns.update(self._key)
+
         upstream_project = self._create_upstream_project(
-            columns, column_rename_map, self.input_dependencies[0]
+            list(required_columns), column_rename_map, self.input_dependencies[0]
         )
         new_columns = self._rename_projection(column_rename_map)
         return Aggregate(

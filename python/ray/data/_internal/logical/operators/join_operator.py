@@ -128,15 +128,27 @@ class Join(NAry, SupportsPushThrough):
 
         left_op, right_op = self.input_dependencies
 
+        # When pushing projections through join, we must ensure join key columns
+        # are preserved on both sides, even if they're not in the output projection.
+        # This is necessary because the join operation needs these columns to perform the join.
+
+        # Collect all required columns for left side (output columns + join keys)
+        left_required_columns = set(columns) if columns is not None else set()
+        left_required_columns.update(self._left_key_columns)
+
+        # Collect all required columns for right side (output columns + join keys)
+        right_required_columns = set(columns) if columns is not None else set()
+        right_required_columns.update(self._right_key_columns)
+
         left_upstream_project = self._create_upstream_project(
-            columns, column_rename_map, left_op
+            list(left_required_columns), column_rename_map, left_op
         )
         left_new_columns = self._rename_projection(
             column_rename_map, columns_to_rename=self._left_key_columns
         )
 
         right_upstream_project = self._create_upstream_project(
-            columns, column_rename_map, right_op
+            list(right_required_columns), column_rename_map, right_op
         )
         right_new_columns = self._rename_projection(
             column_rename_map, columns_to_rename=self._right_key_columns

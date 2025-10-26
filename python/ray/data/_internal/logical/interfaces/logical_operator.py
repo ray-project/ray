@@ -139,7 +139,14 @@ class SupportsPushThrough(LogicalOperatorSupportsProjectionPushdown):
     ) -> "Project":
         from ray.data._internal.logical.operators.map_operator import Project
 
-        input_op.output_dependencies.remove(self)
+        if columns is None:
+            columns = []
+
+        # NOTE: This can happen when we union the same dataset. The same
+        # dataset is only shallowed copied, so we safeguard removing
+        # output dependencies more than once.
+        if self in input_op.output_dependencies:
+            input_op.output_dependencies.remove(self)
 
         new_exprs = []
         for old_col in columns:
