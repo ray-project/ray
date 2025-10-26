@@ -102,8 +102,8 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         return self
 
 
-class LogicalOperatorContainsPartitionKeys(LogicalOperator):
-    """Mixin for operators containing partition keys"""
+class LogicalOperatorHasShuffleKeys(LogicalOperator):
+    """Mixin for operators containing shuffle keys"""
 
     def get_partition_keys(self) -> Optional[List[str]]:
         return None

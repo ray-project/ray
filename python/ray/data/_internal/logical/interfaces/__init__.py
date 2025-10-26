@@ -1,6 +1,6 @@
 from .logical_operator import (
     LogicalOperator,
-    LogicalOperatorContainsPartitionKeys,
+    LogicalOperatorHasShuffleKeys,
     LogicalOperatorSupportsProjectionPushdown,
 )
 from .logical_plan import LogicalPlan
@@ -20,5 +20,5 @@ __all__ = [
     "Rule",
     "SourceOperator",
     "LogicalOperatorSupportsProjectionPushdown",
-    "LogicalOperatorContainsPartitionKeys",
+    "LogicalOperatorHasShuffleKeys",
 ]

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    LogicalOperatorContainsPartitionKeys,
+    LogicalOperatorHasShuffleKeys,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
@@ -106,7 +106,7 @@ class RandomShuffle(AbstractAllToAll):
         return self._input_dependencies[0].infer_schema()
 
 
-class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
+class Repartition(AbstractAllToAll, LogicalOperatorHasShuffleKeys):
     """Logical operator for repartition."""
 
     def __init__(
@@ -158,7 +158,7 @@ class Repartition(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         return self._input_dependencies[0].infer_schema()
 
 
-class Sort(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
+class Sort(AbstractAllToAll):
     """Logical operator for sort."""
 
     def __init__(
@@ -197,7 +197,7 @@ class Sort(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
         return self._input_dependencies[0].infer_schema()
 
 
-class Aggregate(AbstractAllToAll, LogicalOperatorContainsPartitionKeys):
+class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
     def __init__(

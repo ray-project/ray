@@ -2,7 +2,7 @@ import logging
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    LogicalOperatorContainsPartitionKeys,
+    LogicalOperatorHasShuffleKeys,
     LogicalPlan,
     Operator,
     Rule,
@@ -37,7 +37,7 @@ class ShuffleFusion(Rule):
 
             # NOTE: This str contains outer brackets to show
             # that it's logical fusion. TODO(justin): Please confirm
-            # with team if that's ok with team.
+            # with team if ok.
             fused_name = truncate_operator_name(f"[{prev_op.name}->{op.name}]", 100)
 
             # Only fuse if the ops' remote arguments are compatible.
@@ -58,7 +58,7 @@ class ShuffleFusion(Rule):
         return op
 
 
-def _disconnect_op_from_dag(op: Operator):
+def _disconnect_op_from_dag(curr_op: Operator):
     """Disconnect an operator from the DAG by connecting
     its prev_ops directly to its next_ops.
 
@@ -69,23 +69,23 @@ def _disconnect_op_from_dag(op: Operator):
     Args:
         op: The operator to remove from the DAG
     """
-    next_ops = op.output_dependencies
-    prev_ops = op.input_dependencies
+    next_ops = curr_op.output_dependencies
+    prev_ops = curr_op.input_dependencies
 
     for next_op in next_ops:
-        next_op.input_dependencies.remove(op)
+        next_op.input_dependencies.remove(curr_op)
         next_op.input_dependencies.extend(prev_ops)
 
     for prev_op in prev_ops:
-        prev_op.output_dependencies.remove(op)
+        prev_op.output_dependencies.remove(curr_op)
         prev_op.output_dependencies.extend(next_ops)
 
-    # the op is now disconnected
+    # curr_op is now disconnected
 
 
 def _keys_can_fuse(
-    prev_op: LogicalOperatorContainsPartitionKeys,
-    op: LogicalOperatorContainsPartitionKeys,
+    prev_op: LogicalOperatorHasShuffleKeys,
+    op: LogicalOperatorHasShuffleKeys,
 ) -> bool:
     """Check if prev and curr operators can fuse based on key matching.
     This helper function is used to compare if two shuffle operators
