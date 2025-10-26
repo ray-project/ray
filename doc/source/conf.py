@@ -32,6 +32,10 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -521,18 +525,10 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
     """
-    print("DEBUG: starting autosummary generation", flush=True)
-    try:
-        generate.generate_autosummary_docs(
-            [os.path.join(app.srcdir, file) for file in autogen_files],
-            app=app,
-        )
-    except Exception:  # pragma: no cover - diagnostic path
-        print("DEBUG: autosummary generation failed", flush=True)
-        import traceback
-
-        traceback.print_exc()
-        raise
+    generate.generate_autosummary_docs(
+        [os.path.join(app.srcdir, file) for file in autogen_files],
+        app=app,
+    )
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):

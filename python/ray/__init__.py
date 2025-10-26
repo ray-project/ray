@@ -1,304 +1,183 @@
-# isort: skip_file
-from ray._private import log  # isort: skip # noqa: F401
-import logging
-import os
-import sys
-from typing import TYPE_CHECKING
+# Short term workaround for https://github.com/ray-project/ray/issues/32435
+# Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
+import pandas  # noqa
+from packaging.version import parse as parse_version
 
-log.generate_logging_config()
-logger = logging.getLogger(__name__)
+from ray._private.arrow_utils import get_pyarrow_version
 
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    NodeIdStr,
+)
+from ray.data._internal.logging import configure_logging
+from ray.data.context import DataContext, DatasetContext
+from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.grouped_data import GroupedData
+from ray.data.datasource import (
+    BlockBasedFileDatasink,
+    Datasink,
+    Datasource,
+    FileShuffleConfig,
+    ReadTask,
+    RowBasedFileDatasink,
+)
+from ray.data.iterator import DataIterator, DatasetIterator
+from ray.data.preprocessor import Preprocessor
+from ray.data.read_api import (  # noqa: F401
+    from_arrow,
+    from_arrow_refs,
+    from_blocks,
+    from_daft,
+    from_dask,
+    from_huggingface,
+    from_items,
+    from_mars,
+    from_modin,
+    from_numpy,
+    from_numpy_refs,
+    from_pandas,
+    from_pandas_refs,
+    from_spark,
+    from_tf,
+    from_torch,
+    range,
+    range_tensor,
+    read_audio,
+    read_avro,
+    read_bigquery,
+    read_binary_files,
+    read_clickhouse,
+    read_csv,
+    read_databricks_tables,
+    read_datasource,
+    read_delta,
+    read_delta_sharing_tables,
+    read_hudi,
+    read_iceberg,
+    read_images,
+    read_json,
+    read_lance,
+    read_mcap,
+    read_mongo,
+    read_numpy,
+    read_parquet,
+    read_parquet_bulk,
+    read_snowflake,
+    read_sql,
+    read_text,
+    read_tfrecords,
+    read_unity_catalog,
+    read_videos,
+    read_webdataset,
+)
 
-def _configure_system():
-    import os
-    import platform
-    import sys
+# Module-level cached global functions for callable classes. It needs to be defined here
+# since it has to be process-global across cloudpickled funcs.
+_map_actor_context = None
 
-    """Wraps system configuration to avoid 'leaking' variables into ray."""
+configure_logging()
 
-    # Sanity check pickle5 if it has been installed.
-    if "pickle5" in sys.modules:
-        if sys.version_info >= (3, 8):
-            logger.warning(
-                "Package pickle5 becomes unnecessary in Python 3.8 and above. "
-                "Its presence may confuse libraries including Ray. "
-                "Please uninstall the package."
-            )
+try:
+    import pyarrow as pa
 
-        import importlib.metadata
-
-        try:
-            version_str = importlib.metadata.version("pickle5")
-            version = tuple(int(n) for n in version_str.split("."))
-            if version < (0, 0, 10):
-                logger.warning(
-                    "Although not used by Ray, a version of pickle5 that leaks memory "
-                    "is found in the environment. Please run 'pip install pickle5 -U' "
-                    "to upgrade."
-                )
-        except importlib.metadata.PackageNotFoundError:
-            logger.warning(
-                "You are using the 'pickle5' module, but "
-                "the exact version is unknown (possibly carried as "
-                "an internal component by another module). Please "
-                "make sure you are using pickle5 >= 0.0.10 because "
-                "previous versions may leak memory."
-            )
-
-    # Importing psutil. Must be before ray._raylet is
-    # initialized.
-    thirdparty_files = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
+    # Import these arrow extension types to ensure that they are registered.
+    from ray.air.util.tensor_extensions.arrow import (  # noqa
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
     )
-    sys.path.insert(0, thirdparty_files)
 
-    if (
-        platform.system() == "Linux"
-        and "Microsoft".lower() in platform.release().lower()
-    ):
-        from ray._private import compat  # noqa: E402
+    # https://github.com/apache/arrow/pull/38608 deprecated `PyExtensionType`, and
+    # disabled it's deserialization by default. To ensure that users can load data
+    # written with earlier version of Ray Data, we enable auto-loading of serialized
+    # tensor extensions.
+    #
+    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
+        pass
+    else:
+        from ray._private.ray_constants import env_bool
 
-        compat.patch_psutil()
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
+        )
 
-    # Expose ray ABI symbols which may be dependent by other shared
-    # libraries such as _streaming.so. See BUILD.bazel:_raylet
-    python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
-    so_path = os.path.join(
-        os.path.dirname(__file__), "_raylet" + python_shared_lib_suffix
-    )
-    if os.path.exists(so_path):
-        import ctypes
-        from ctypes import CDLL
+        if (
+            pyarrow_version >= parse_version("14.0.1")
+            and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
+        ):
+            pa.PyExtensionType.set_auto_load(True)
 
-        CDLL(so_path, ctypes.RTLD_GLOBAL)
-
-
-_configure_system()
-# Delete configuration function.
-del _configure_system
-
-from ray import _version  # noqa: E402
-
-__commit__ = _version.commit
-__version__ = _version.version
-
-import ray._raylet  # noqa: E402
-
-from ray._raylet import (  # noqa: E402,F401
-    ActorClassID,
-    ActorID,
-    NodeID,
-    Config as _Config,
-    JobID,
-    WorkerID,
-    FunctionID,
-    ObjectID,
-    ObjectRef,
-    ObjectRefGenerator,
-    DynamicObjectRefGenerator,
-    TaskID,
-    UniqueID,
-    Language,
-    PlacementGroupID,
-    ClusterID,
-)
-
-_config = _Config()
-
-from ray._private.state import (  # noqa: E402,F401
-    nodes,
-    timeline,
-    cluster_resources,
-    available_resources,
-)
-from ray._private.worker import (  # noqa: E402,F401
-    LOCAL_MODE,
-    SCRIPT_MODE,
-    WORKER_MODE,
-    RESTORE_WORKER_MODE,
-    SPILL_WORKER_MODE,
-    cancel,
-    get,
-    get_actor,
-    get_gpu_ids,
-    init,
-    is_initialized,
-    put,
-    kill,
-    remote,
-    shutdown,
-    wait,
-)
-
-from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
-
-# We import ray.actor because some code is run in actor.py which initializes
-# some functions in the worker.
-import ray.actor  # noqa: E402,F401
-from ray.actor import method  # noqa: E402,F401
-
-# TODO(qwang): We should remove this exporting in Ray2.0.
-from ray.cross_language import java_function, java_actor_class  # noqa: E402,F401
-from ray.runtime_context import get_runtime_context  # noqa: E402,F401
-from ray import internal  # noqa: E402,F401
-from ray import util  # noqa: E402,F401
-from ray import _private  # noqa: E402,F401
-
-# We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
-from ray.client_builder import client, ClientBuilder  # noqa: E402,F401
+except ModuleNotFoundError:
+    pass
 
 
-class _DeprecationWrapper:
-    def __init__(self, name, real_worker):
-        self._name = name
-        self._real_worker = real_worker
-        self._warned = set()
-
-    def __getattr__(self, attr):
-        value = getattr(self._real_worker, attr)
-        if attr not in self._warned:
-            self._warned.add(attr)
-            logger.warning(
-                f"DeprecationWarning: `ray.{self._name}.{attr}` is a private "
-                "attribute and access will be removed in a future Ray version."
-            )
-        return value
-
-
-# TODO(ekl) remove this entirely after 3rd party libraries are all migrated.
-worker = _DeprecationWrapper("worker", ray._private.worker)
-ray_constants = _DeprecationWrapper("ray_constants", ray._private.ray_constants)
-serialization = _DeprecationWrapper("serialization", ray._private.serialization)
-state = _DeprecationWrapper("state", ray._private.state)
-
-
-# Pulic Ray APIs
 __all__ = [
-    "__version__",
-    "_config",
-    "get_runtime_context",
-    "autoscaler",
-    "available_resources",
-    "cancel",
-    "client",
-    "ClientBuilder",
-    "cluster_resources",
-    "get",
-    "get_actor",
-    "get_gpu_ids",
-    "init",
-    "is_initialized",
-    "java_actor_class",
-    "java_function",
-    "cpp_function",
-    "kill",
-    "Language",
-    "method",
-    "nodes",
-    "put",
-    "remote",
-    "shutdown",
-    "show_in_dashboard",
-    "timeline",
-    "wait",
-    "LOCAL_MODE",
-    "SCRIPT_MODE",
-    "WORKER_MODE",
-    "LoggingConfig",
+    "ActorPoolStrategy",
+    "BlockBasedFileDatasink",
+    "ClickHouseTableSettings",
+    "Dataset",
+    "DataContext",
+    "DatasetContext",  # Backwards compatibility alias.
+    "DataIterator",
+    "DatasetIterator",  # Backwards compatibility alias.
+    "GroupedData",
+    "Datasink",
+    "Datasource",
+    "ExecutionOptions",
+    "ExecutionResources",
+    "FileShuffleConfig",
+    "NodeIdStr",
+    "ReadTask",
+    "RowBasedFileDatasink",
+    "Schema",
+    "SinkMode",
+    "TaskPoolStrategy",
+    "from_daft",
+    "from_dask",
+    "from_items",
+    "from_arrow",
+    "from_arrow_refs",
+    "from_mars",
+    "from_modin",
+    "from_numpy",
+    "from_numpy_refs",
+    "from_pandas",
+    "from_pandas_refs",
+    "from_spark",
+    "from_tf",
+    "from_torch",
+    "from_huggingface",
+    "range",
+    "range_tensor",
+    "read_audio",
+    "read_avro",
+    "read_text",
+    "read_binary_files",
+    "read_clickhouse",
+    "read_csv",
+    "read_datasource",
+    "read_delta",
+    "read_delta_sharing_tables",
+    "read_hudi",
+    "read_iceberg",
+    "read_images",
+    "read_json",
+    "read_lance",
+    "read_mcap",
+    "read_numpy",
+    "read_mongo",
+    "read_parquet",
+    "read_parquet_bulk",
+    "read_snowflake",
+    "read_sql",
+    "read_tfrecords",
+    "read_unity_catalog",
+    "read_videos",
+    "read_webdataset",
+    "Preprocessor",
+    "TFXReadOptions",
 ]
-
-# Public APIs that should automatically trigger ray.init().
-AUTO_INIT_APIS = {
-    "cancel",
-    "get",
-    "get_actor",
-    "get_gpu_ids",
-    "kill",
-    "put",
-    "wait",
-    "get_runtime_context",
-}
-
-# Public APIs that should not automatically trigger ray.init().
-NON_AUTO_INIT_APIS = {
-    "ClientBuilder",
-    "LOCAL_MODE",
-    "Language",
-    "SCRIPT_MODE",
-    "WORKER_MODE",
-    "__version__",
-    "_config",
-    "autoscaler",
-    "available_resources",
-    "client",
-    "cluster_resources",
-    "cpp_function",
-    "init",
-    "is_initialized",
-    "java_actor_class",
-    "java_function",
-    "method",
-    "nodes",
-    "remote",
-    "show_in_dashboard",
-    "shutdown",
-    "timeline",
-    "LoggingConfig",
-}
-
-assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
-from ray._private.auto_init_hook import wrap_auto_init_for_all_apis  # noqa: E402
-
-wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
-del wrap_auto_init_for_all_apis
-
-# Subpackages
-__all__ += [
-    "actor",
-    "autoscaler",
-    "data",
-    "internal",
-    "util",
-    "widgets",
-    "workflow",
-]
-
-# ID types
-__all__ += [
-    "ActorClassID",
-    "ActorID",
-    "NodeID",
-    "JobID",
-    "WorkerID",
-    "FunctionID",
-    "ObjectID",
-    "ObjectRef",
-    "ObjectRefGenerator",
-    "DynamicObjectRefGenerator",
-    "TaskID",
-    "UniqueID",
-    "PlacementGroupID",
-]
-
-
-# Delay importing of expensive, isolated subpackages. Note that for proper type
-# checking support these imports must be kept in sync between type checking and
-# runtime behavior.
-if TYPE_CHECKING:
-    from ray import autoscaler
-    from ray import data
-    from ray import workflow
-else:
-
-    def __getattr__(name: str):
-        import importlib
-
-        if name in ["data", "workflow", "autoscaler"]:
-            return importlib.import_module("." + name, __name__)
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-del os
-del logging
-del sys
-del TYPE_CHECKING

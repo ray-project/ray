@@ -18,6 +18,6 @@
     DataIterator
     Dataset
     Schema
-    grouped_data.GroupedData
+    GroupedData
     aggregate.AggregateFn
     aggregate.AggregateFnV2

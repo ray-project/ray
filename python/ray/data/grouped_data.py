@@ -318,6 +318,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=True,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -751,7 +752,7 @@ def _evaluate_grouped_exprs(
     return BlockAccessor.batch_to_block(columns)
 
 
-def _expr_value_to_arrow_array(value: Any) -> "pyarrow.Array":
+def _expr_value_to_arrow_array(value: Any) -> pa.Array:
     if isinstance(value, pa.ChunkedArray):
         value = value.combine_chunks()
     if isinstance(value, pa.Array):

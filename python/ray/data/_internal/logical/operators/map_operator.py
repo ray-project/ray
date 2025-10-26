@@ -298,15 +298,8 @@ class Project(AbstractMap):
                 )
 
     def has_star_expr(self) -> bool:
-        return self.get_star_expr() is not None
-
-    def get_star_expr(self) -> Optional[StarExpr]:
         """Check if this projection contains a star() expression."""
-        for expr in self._exprs:
-            if isinstance(expr, StarExpr):
-                return expr
-
-        return None
+        return any(isinstance(expr, StarExpr) for expr in self._exprs)
 
     @property
     def exprs(self) -> List["Expr"]:
