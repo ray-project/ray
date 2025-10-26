@@ -2,7 +2,6 @@ import os
 import unittest
 
 import ray
-import ray.train
 from ray.tune import (
     CheckpointConfig,
     Trainable,

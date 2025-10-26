@@ -55,18 +55,27 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
 
 def build_sglang_engine_processor(
     config: SGLangEngineProcessorConfig,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
+
     Args:
         config: The configuration for the processor.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
         telemetry_agent: An optional telemetry agent for collecting usage telemetry.
 
     Returns:
@@ -82,6 +91,7 @@ def build_sglang_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=config.model_source,
                     chat_template=config.chat_template,
+                    chat_template_kwargs=chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -133,7 +143,6 @@ def build_sglang_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
-                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
@@ -177,6 +186,8 @@ def build_sglang_engine_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

@@ -101,7 +101,6 @@ static inline void Init(
         StatsConfig::instance().GetHarvestInterval());
     OpenCensusProtoExporter::Register(metrics_agent_port,
                                       (*metrics_io_service),
-                                      "127.0.0.1",
                                       worker_id,
                                       metrics_report_batch_size,
                                       max_grpc_payload_size);
@@ -114,15 +113,8 @@ static inline void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
-static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
-                                             const Status &metrics_agent_server_status) {
+static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
-    return;
-  }
-  if (!metrics_agent_server_status.ok()) {
-    RAY_LOG(ERROR) << "Failed to initialize OpenTelemetry exporter. Data will not be "
-                      "exported to the "
-                   << "metrics agent. Server status: " << metrics_agent_server_status;
     return;
   }
   OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
@@ -130,9 +122,10 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=*/
+      /*timeout=, set the timeout to be half of the interval to avoid potential request
+         queueing.*/
       std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
 }
 
 /// Shutdown the initialized stats library.

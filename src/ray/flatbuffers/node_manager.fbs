@@ -39,15 +39,16 @@ enum MessageType:int {
   // The client should block until it receives this message before closing the socket.
   DisconnectClientReply,
   // Request the Raylet to pull a set of objects to the local node.
-  // a raylet.
   AsyncGetObjectsRequest,
-  // Cancel outstanding get requests from the worker.
+  // Reply contains the request id that will be used to clean up the request.
+  AsyncGetObjectsReply,
+  // Cleanup a given get request on the raylet.
   CancelGetRequest,
-  // Notify the current worker is blocked. This is only used by direct task calls;
-  // otherwise the block command is piggybacked on other messages.
-  NotifyDirectCallTaskBlocked,
-  // Notify the current worker is unblocked. This is only used by direct task calls.
-  NotifyDirectCallTaskUnblocked,
+  // Notify the current worker is blocked for objects to become available. The raylet
+  // will release the worker's resources.
+  NotifyWorkerBlocked,
+  // Notify the current worker is unblocked.
+  NotifyWorkerUnblocked,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -135,13 +136,18 @@ table AsyncGetObjectsRequest {
   owner_addresses: [Address];
 }
 
+table AsyncGetObjectsReply {
+  request_id: long;
+}
+
 table CancelGetRequest {
+  request_id: long;
 }
 
-table NotifyDirectCallTaskBlocked {
+table NotifyWorkerBlocked {
 }
 
-table NotifyDirectCallTaskUnblocked {
+table NotifyWorkerUnblocked {
 }
 
 table WaitRequest {

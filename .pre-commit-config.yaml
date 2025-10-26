@@ -175,11 +175,11 @@ repos:
           # 1091: Not following {file} due to some error
           # 2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting). -- these aren't compatible with macOS's old Bash
 
-  - repo: https://github.com/pocc/pre-commit-hooks
-    rev: v1.3.5
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    # `rev` specifies a tag on the above repo that mirrors the corresponding clang-format version.
+    rev: v12.0.1
     hooks:
       - id: clang-format
-        args: [--version=12.0.1]
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
     rev: v2.11.0
@@ -201,6 +201,12 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: semgrep
+        args: [--config=semgrep.yml, --error]
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
@@ -226,3 +232,33 @@ repos:
         language: python
         files: '^src/ray/'
         types: [c++]
+
+  - repo: local
+    hooks:
+    - id: check-train-circular-imports
+      name: Check Ray Train circular imports
+      entry: python python/ray/train/lint/check_circular_imports.py
+      language: system
+      types: [python]
+      files: '^python/ray/train/.*\.py$'
+      pass_filenames: false
+      args: ["--patch_dir", "ray/train/v2"]
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.26.0
+    hooks:
+      - id: eslint
+        files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
+        types: [file]
+        args:
+          - --max-warnings=0
+        additional_dependencies:
+          - eslint@8.26.0
+          - eslint-plugin-react@7.31.10
+          - eslint-plugin-import@2.26.0
+          - eslint-config-react-app@7.0.1
+          - eslint-plugin-prefer-arrow@1.2.3
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'

@@ -60,6 +60,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
@@ -928,7 +929,7 @@ class Worker:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport == chosen_tensor_transport
+                    object_id, tensor_transport=chosen_tensor_transport
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -1141,6 +1142,10 @@ class Worker:
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
+
+    def shutdown_gpu_object_manager(self):
+        if self._gpu_object_manager:
+            self._gpu_object_manager.shutdown()
 
 
 _connect_or_shutdown_lock = threading.RLock()
@@ -1554,19 +1559,18 @@ def init(
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
-        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
-            fractional i.e. 0.5 means half a cpu core.
-            By default, the min of 20% and 1 core will be reserved.
-            Must be >= 0.5 cores and < total number of available cores.
-            Cannot be less than 0.5 cores.
+        system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
+            Cores can be fractional i.e. 1.5 means one and a half a cpu core.
+            By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
+            is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system))
             This option only works if enable_resource_isolation is True.
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
-            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
-            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
+            By default, the value will be atleast 500MB, and at most 10GB. The default value is
+            calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system))
             This option only works if enable_resource_isolation is True.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
-            The raylet must have read/write permissions to this path.
+            The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
@@ -1830,10 +1834,10 @@ def init(
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
-            "DeprecationWarning: local mode is an experimental feature that is no "
-            "longer maintained and will be removed in the future."
-            " For debugging consider using Ray Distributed Debugger. ",
-            DeprecationWarning,
+            "`local_mode` is an experimental feature that is no "
+            "longer maintained and will be removed in the near future. "
+            "For debugging consider using the Ray distributed debugger.",
+            FutureWarning,
             stacklevel=2,
         )
     else:
@@ -2086,6 +2090,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
@@ -2619,7 +2624,7 @@ def connect(
         # We also want to skip adding script directory when running from dashboard.
         code_paths = []
         if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+            namespace and namespace == ray._raylet.RAY_INTERNAL_DASHBOARD_NAMESPACE
         ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2907,13 +2912,17 @@ def get(
     if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
         global blocking_get_inside_async_warned
         if not blocking_get_inside_async_warned:
-            logger.warning(
-                "Using blocking ray.get inside async actor. "
-                "This blocks the event loop. Please use `await` "
-                "on object ref with asyncio.gather if you want to "
-                "yield execution to the event loop instead."
-            )
-            blocking_get_inside_async_warned = True
+            if ray_constants.env_bool(
+                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+                True,
+            ):
+                logger.warning(
+                    "Using blocking ray.get inside async actor. "
+                    "This blocks the event loop. Please use `await` "
+                    "on object ref with asyncio.gather if you want to "
+                    "yield execution to the event loop instead."
+                )
+                blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
         # TODO(sang): Should make ObjectRefGenerator
@@ -3535,6 +3544,7 @@ def remote(
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
     label_selector: Dict[str, str] = Undefined,
+    fallback_strategy: List[Dict[str, Any]] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3690,10 +3700,14 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
-        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+        label_selector: [Experimental] If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+        fallback_strategy: [Experimental] If specified, expresses soft constraints for scheduling
+                through a list of dicts of decorator options to fall back on when scheduling on a node.
+                Decorator options are evaluated together during scheduling. The first satisfied
+                dict of options is used. Currently only `label_selector` is a supported option.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.
@@ -3759,8 +3773,6 @@ def remote(
             node id based affinity scheduling.
             See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
             for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
         _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.

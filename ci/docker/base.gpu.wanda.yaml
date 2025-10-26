@@ -10,7 +10,7 @@ srcs:
   - ci/env/install-miniforge.sh
   - ci/suppress_output
 build_args:
-  - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
+  - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
 tags:
   - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON

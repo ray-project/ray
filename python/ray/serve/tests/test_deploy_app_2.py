@@ -310,7 +310,8 @@ def test_deploy_with_no_applications(serve_instance):
             ]
         )
         actor_names = [actor["class_name"] for actor in actors]
-        return "ServeController" in actor_names and "ProxyActor" in actor_names
+        has_proxy = any("Proxy" in name for name in actor_names)
+        return "ServeController" in actor_names and has_proxy
 
     wait_for_condition(serve_running)
 
@@ -323,8 +324,8 @@ def test_deployments_not_listed_in_config(serve_instance):
     config = {
         "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
     }
-    client.deploy_apps(ServeDeploySchema(**config))
-    wait_for_condition(check_running, timeout=15)
+    client.deploy_apps(ServeDeploySchema(**config), _blocking=True)
+    check_running()
     pid1, _ = httpx.get("http://localhost:8000/").json()
 
     # Redeploy the same config (with no deployments listed)
@@ -408,8 +409,8 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             ),
         ],
     )
-    client.deploy_apps(config)
-    wait_for_condition(check_running, app_name="declarative-app-1")
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-1")
     url = get_application_url(app_name="declarative-app-1")
     assert httpx.post(url).text == "wonderful world"
 
@@ -433,8 +434,8 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     )
-    client.deploy_apps(config)
-    wait_for_condition(check_running, app_name="declarative-app-2")
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-2")
     url = get_application_url(app_name="declarative-app-2")
     assert httpx.post(url).text == "wonderful world"
 
@@ -471,8 +472,8 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     ]
-    client.deploy_apps(config)
-    wait_for_condition(check_running, app_name="declarative-app-1")
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-1")
     url = get_application_url(app_name="declarative-app-1")
     assert httpx.post(url).text == "wonderful world"
 
@@ -517,8 +518,8 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     ]
-    client.deploy_apps(config)
-    wait_for_condition(check_running, app_name="declarative-app-2")
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-2")
     url = get_application_url(app_name="declarative-app-2")
     assert httpx.post(url).text == "wonderful world"
 
@@ -536,8 +537,10 @@ def test_change_route_prefix(serve_instance):
         "route_prefix": "/old",
         "import_path": "ray.serve.tests.test_config_files.pid.node",
     }
-    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_running)
+    client.deploy_apps(
+        ServeDeploySchema(**{"applications": [app_config]}), _blocking=True
+    )
+    check_running()
     url = get_application_url()
     pid1 = httpx.get(url).json()[0]
     # Redeploy application with route prefix /new.
@@ -588,13 +591,17 @@ def test_num_replicas_auto_api(serve_instance):
         "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
 
@@ -641,13 +648,17 @@ def test_num_replicas_auto_basic(serve_instance):
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
-        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -702,7 +713,7 @@ def test_deploy_one_app_failed(serve_instance):
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
     r = httpx.post("http://localhost:8000/app2", timeout=10)
-    assert r.status_code == 503 and "unavailable" in r.text
+    assert r.status_code == 503 and "unavailable" in r.text.lower()
 
 
 def test_deploy_with_route_prefix_conflict(serve_instance):

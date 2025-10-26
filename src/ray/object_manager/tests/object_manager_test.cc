@@ -19,17 +19,18 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/rpc/object_manager/fake_object_manager_client.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
+#include "ray/object_manager_rpc_client/fake_object_manager_client.h"
 
 namespace ray {
 
@@ -45,8 +46,15 @@ class ObjectManagerTest : public ::testing::Test {
     ObjectManagerConfig config_;
     config_.object_manager_address = "127.0.0.1";
     config_.object_manager_port = 0;
+    config_.timer_freq_ms = RayConfig::instance().object_manager_timer_freq_ms();
+    config_.pull_timeout_ms = RayConfig::instance().object_manager_pull_timeout_ms();
+    config_.object_chunk_size = RayConfig::instance().object_manager_default_chunk_size();
+    config_.max_bytes_in_flight =
+        RayConfig::instance().object_manager_max_bytes_in_flight();
     config_.store_socket_name = "test_store_socket";
+    config_.push_timeout_ms = RayConfig::instance().object_manager_push_timeout_ms();
     config_.rpc_service_threads_number = 1;
+    config_.huge_pages = false;
 
     local_node_id_ = NodeID::FromRandom();
     mock_gcs_client_ = std::make_unique<gcs::MockGcsClient>();
@@ -110,18 +118,19 @@ uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
 TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   auto object_id = ObjectID::FromRandom();
 
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_map_;
-  rpc::GcsNodeInfo self_node_info;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_map_;
+  rpc::GcsNodeAddressAndLiveness self_node_info;
   self_node_info.set_node_id(local_node_id_.Binary());
   node_info_map_[local_node_id_] = self_node_info;
   NodeID remote_node_id_ = NodeID::FromRandom();
-  rpc::GcsNodeInfo remote_node_info;
+  rpc::GcsNodeAddressAndLiveness remote_node_info;
   remote_node_info.set_node_id(remote_node_id_.Binary());
   node_info_map_[remote_node_id_] = remote_node_info;
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAll())
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness())
       .WillOnce(::testing::ReturnRef(node_info_map_));
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(remote_node_id_, _))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(remote_node_id_, _))
       .WillOnce(::testing::Return(&remote_node_info));
 
   fake_plasma_client_->objects_in_plasma_[object_id] =

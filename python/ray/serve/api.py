@@ -10,7 +10,7 @@ from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
-from ray._private.serialization import pickle_dumps
+from ray._common.serialization import pickle_dumps
 from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -352,6 +352,7 @@ def deployment(
     request_router_config: Default[
         Union[Dict, RequestRouterConfig, None]
     ] = DEFAULT.VALUE,
+    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -417,6 +418,8 @@ def deployment(
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
         request_router_config: Config for the request router used for this deployment.
+        max_constructor_retry_count: Maximum number of times to retry the deployment
+            constructor. Defaults to 20.
     Returns:
         `Deployment`
     """
@@ -482,6 +485,7 @@ def deployment(
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
         request_router_config=request_router_config,
+        max_constructor_retry_count=max_constructor_retry_count,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -604,11 +608,16 @@ def _run_many(
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
 
-        return client.deploy_applications(
+        handles = client.deploy_applications(
             built_apps,
             wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
             wait_for_applications_running=wait_for_applications_running,
         )
+
+        client.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+        return handles
 
 
 @PublicAPI(stability="stable")
