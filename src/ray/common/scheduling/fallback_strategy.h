@@ -41,11 +41,7 @@ struct FallbackOptions {
       : label_selector(std::move(selector)) {}
 
   // Return a FallbackOptions proto message.
-  void ToProto(rpc::FallbackOptions *proto) const {
-    RAY_CHECK(proto != nullptr);
-    proto->mutable_label_selector()->CopyFrom(label_selector.ToProto());
-    // When a new option is added, add its serialization here.
-  }
+  void ToProto(rpc::FallbackOptions *proto) const;
 };
 
 inline bool operator==(const FallbackOptions &lhs, const FallbackOptions &rhs) {
@@ -58,27 +54,11 @@ H AbslHashValue(H h, const FallbackOptions &opts) {
 }
 
 // Parse FallbackStrategy from FallbackOptions vector.
-inline std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
-    const google::protobuf::RepeatedPtrField<rpc::FallbackOptions> &strategy_proto_list) {
-  auto strategy_list = std::make_shared<std::vector<FallbackOptions>>();
-  strategy_list->reserve(strategy_proto_list.size());
-
-  for (const auto &strategy_proto : strategy_proto_list) {
-    strategy_list->emplace_back(strategy_proto.label_selector());
-  }
-
-  return strategy_list;
-}
+std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
+    const google::protobuf::RepeatedPtrField<rpc::FallbackOptions> &strategy_proto_list);
 
 // Return a FallbackStrategy message, which is a repeated FallbackOptions proto.
-inline std::unique_ptr<rpc::FallbackStrategy> SerializeFallbackStrategy(
-    const std::vector<FallbackOptions> &strategy_list) {
-  auto strategy_proto = std::make_unique<rpc::FallbackStrategy>();
-  for (const auto &options : strategy_list) {
-    options.ToProto(strategy_proto->add_options());
-  }
-
-  return strategy_proto;
-}
+std::unique_ptr<rpc::FallbackStrategy> SerializeFallbackStrategy(
+    const std::vector<FallbackOptions> &strategy_list);
 
 }  // namespace ray
