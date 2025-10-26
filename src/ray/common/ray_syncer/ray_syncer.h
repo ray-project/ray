@@ -197,7 +197,10 @@ class RaySyncer {
 /// like tree-based one.
 class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
-  explicit RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
+  explicit RaySyncerService(
+      RaySyncer &syncer,
+      std::optional<ray::rpc::AuthenticationToken> auth_token = std::nullopt)
+      : syncer_(syncer), auth_token_(std::move(auth_token)) {}
 
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override;
@@ -205,6 +208,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  private:
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
+  // Authentication token for validation, will be empty if token authentication is disabled
+  std::optional<ray::rpc::AuthenticationToken> auth_token_;
 };
 
 }  // namespace ray::syncer

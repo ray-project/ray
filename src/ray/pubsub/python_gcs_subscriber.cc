@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/gcs_rpc_client/rpc_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray {
 namespace pubsub {
@@ -51,6 +52,11 @@ Status PythonGcsSubscriber::Subscribe() {
   }
 
   grpc::ClientContext context;
+  // Add authentication token
+  auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
+  if (auth_token.has_value() && !auth_token->empty()) {
+    auth_token->SetMetadata(context);
+  }
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
@@ -78,6 +84,11 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       return Status::OK();
     }
     current_polling_context_ = std::make_shared<grpc::ClientContext>();
+    // Add authentication token
+    auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
+    if (auth_token.has_value() && !auth_token->empty()) {
+      auth_token->SetMetadata(*current_polling_context_);
+    }
     if (timeout_ms != -1) {
       current_polling_context_->set_deadline(std::chrono::system_clock::now() +
                                              std::chrono::milliseconds(timeout_ms));

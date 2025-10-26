@@ -16,11 +16,13 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <optional>
 #include <string>
 
 #include "ray/common/ray_syncer/common.h"
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
+#include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray::syncer {
 
@@ -35,7 +37,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       instrumented_io_context &io_context,
       const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb);
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
+      const std::optional<ray::rpc::AuthenticationToken> &auth_token);
 
   ~RayServerBidiReactor() override = default;
 
@@ -49,6 +52,10 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
+
+  /// Authentication token for validation, will be empty if token authentication is disabled
+  std::optional<ray::rpc::AuthenticationToken> auth_token_;
+
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 

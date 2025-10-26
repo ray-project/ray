@@ -614,7 +614,9 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(*ray_syncer_));
+  // Pass auth token from the RPC server to the syncer service
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, rpc_server_.GetAuthToken()));
 }
 
 void GcsServer::InitFunctionManager() {

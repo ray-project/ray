@@ -151,6 +151,8 @@ class GrpcServer {
     cluster_id_ = cluster_id;
   }
 
+  const std::optional<AuthenticationToken> &GetAuthToken() const { return auth_token_; }
+
  protected:
   /// Initialize this server.
   void Init();

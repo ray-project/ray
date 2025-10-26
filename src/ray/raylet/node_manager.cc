@@ -254,8 +254,9 @@ NodeManager::NodeManager(
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
-  node_manager_server_.RegisterService(
-      std::make_unique<syncer::RaySyncerService>(ray_syncer_));
+  // Pass auth token from the RPC server to the syncer service
+  node_manager_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      ray_syncer_, node_manager_server_.GetAuthToken()));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
