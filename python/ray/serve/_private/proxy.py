@@ -375,14 +375,17 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
-            # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
-            # for logs & metrics to avoid high cardinality.
-            # See: https://github.com/ray-project/ray/issues/47999
-            logs_and_metrics_route = (
-                route_prefix
-                if self.protocol == RequestProtocol.HTTP
-                else handle.deployment_id.app_name
-            )
+            # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
+            # for logs & metrics when available. If no pattern matches, we fall back to the
+            # route_prefix to avoid high cardinality.
+            # See: https://github.com/ray-project/ray/issues/47999 and
+            # https://github.com/ray-project/ray/issues/52212
+            if self.protocol == RequestProtocol.HTTP:
+                logs_and_metrics_route = self.proxy_router.match_route_pattern(
+                    route_prefix, proxy_request.scope
+                )
+            else:
+                logs_and_metrics_route = handle.deployment_id.app_name
             internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
