@@ -180,7 +180,8 @@ void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) 
 
 void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
                                  bool cluster_id_auth_enabled) {
-  RAY_CHECK(cluster_id_auth_enabled && cluster_id_.IsNil()) << "Expected cluster ID for cluster ID authentication!";
+  RAY_CHECK(cluster_id_auth_enabled && cluster_id_.IsNil())
+      << "Expected cluster ID for cluster ID authentication!";
   for (int i = 0; i < num_threads_; i++) {
     service->InitServerCallFactories(
         cqs_[i], &server_call_factories_, cluster_id_, auth_token_);
