@@ -342,9 +342,6 @@ class Learner:
         """
         return self.model.state_dict()
 
-    def get_version(self) -> int:
-        return self.policy_version
-
 
 @ray.remote(num_gpus=1)
 class Generator:
@@ -353,7 +350,8 @@ class Generator:
     def __init__(self, scorer) -> None:
         self.model = ResidualMLP().to("cuda").eval()
         self.scorer = scorer
-        self.policy_version = 1
+        # Weights are initialized randomly so not yet synced with the trainer (which starts on version 1).
+        self.policy_version = 0
 
     @ray.method(tensor_transport="nixl")
     def generate(self, states: torch.Tensor):
@@ -383,7 +381,7 @@ class Generator:
         }
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
 
-    def update_weights(self, cuda_weights, version: int):
+    def update_weights(self, cuda_weights):
         """Update the generator's weights from the learner's weights.
 
         Note: the actor is single-threaded, so weight loads do not overlap with generation.
@@ -394,7 +392,7 @@ class Generator:
         ), "Expected CUDA tensors after GPU-to-GPU direct transfer"
         self.model.load_state_dict(cuda_weights)
         self.model.eval()
-        self.policy_version = version
+        self.policy_version += 1
 
 
 # -- Control loop --
@@ -415,8 +413,7 @@ def train(total_steps: int) -> None:
 
     # Asynchronously initialize the generator with current learner weights.
     weights_updated_ref = generator.update_weights.remote(
-            learner.get_weights.remote(), learner.get_version.remote()
-        )
+        learner.get_weights.remote()
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
@@ -445,8 +442,8 @@ def train(total_steps: int) -> None:
 
         step_results.append(learner.step.remote())    
 
-        # Update the generator with new weights and version.
-        weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote(), learner.get_version.remote())
+        # Update the generator with new weights.
+        weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote())
 
 
 if __name__ == "__main__":
