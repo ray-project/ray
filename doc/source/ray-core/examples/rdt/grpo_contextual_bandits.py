@@ -421,6 +421,7 @@ def train(total_steps: int) -> None:
 
     # Pre-fill the ReplayBuffer before starting GRPO.
     generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE))
+    step_results = []
     losses, rewards, clip_fractions = [], [], []
     for i in range(total_steps):
         states = sample_unit_vector(batch_size=BATCH_SIZE)
@@ -428,17 +429,21 @@ def train(total_steps: int) -> None:
 
         # Wait until the generator has been updated before launching the next learner step.
         # Otherwise, the weights transfer could still be in progress during the next learner
-        # update, and the generator may receive inconsistent weights.
+        # update, and the generator may receive partially updated weights.
         ray.wait([weights_updated_ref])
 
-        step_result = ray.get(learner.step.remote())
-        losses.append(step_result["loss"])
-        rewards.append(step_result["rewards"])
-        clip_fractions.append(step_result["clip_fraction"])
-        if i % 20 == 0 and i > 0:
-            print(
-                f"Step {i}/{total_steps} | Loss: {sum(losses[-20:]) / 20} | Rewards: {sum(rewards[-20:]) / 20:.3f} | Fraction clipped: {sum(clip_fractions[-20:]) / 20:.3f}"
-            )
+        # Asynchronously log every 20 steps.
+        if len(step_results) >= 20:
+            for step_result in ray.get(step_results):
+                losses.append(step_result["loss"])
+                rewards.append(step_result["rewards"])
+                clip_fractions.append(step_result["clip_fraction"])
+                print(
+                    f"Step {i}/{total_steps} | Loss: {sum(losses[-20:]) / 20} | Rewards: {sum(rewards[-20:]) / 20:.3f} | Fraction clipped: {sum(clip_fractions[-20:]) / 20:.3f}"
+                )
+            step_results.clear()
+
+        step_results.append(learner.step.remote())    
 
         # Update the generator with new weights and version.
         weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote(), learner.get_version.remote())
