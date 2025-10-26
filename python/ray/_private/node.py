@@ -471,15 +471,20 @@ class Node:
             if self._temp_dir is None:
                 assert not self._default_worker
                 # fetch head node info
-                head_nodes = get_all_node_info_with_retry(
-                    self.get_gcs_client(),
-                    filters=[
-                        ("is_head_node", "=", True),
-                        ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
-                    ],
-                    timeout=3.0,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                )
+                try:
+                    head_nodes = get_all_node_info_with_retry(
+                        self.get_gcs_client(),
+                        filters=[
+                            ("is_head_node", "=", True),
+                            ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
+                        ],
+                        timeout=3.0,
+                        num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to get head node info: {e}")
+                    head_nodes = None
+
                 head_node_id = None
                 node_info = None  # type: ignore
                 if head_nodes:
@@ -501,7 +506,7 @@ class Node:
                             "Using Ray's default temp dir."
                         )
                         self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
-        logger.info(f"Setting temp dir to: {self._temp_dir}")
+        logger.debug(f"Setting temp dir to: {self._temp_dir}")
 
         try_to_create_directory(self._temp_dir)
 

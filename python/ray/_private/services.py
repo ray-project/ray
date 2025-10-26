@@ -2107,7 +2107,7 @@ def determine_plasma_store_config(
 
     Args:
         object_store_memory: The object store memory to use.
-        temp_dir: The user-specified temp directory parameter. (defaults to <system_temp_dir>/ray)
+        temp_dir: The user-specified temp directory parameter (defaults to <system_temp_dir>/ray).
         plasma_directory: The user-specified plasma directory parameter.
         fallback_directory: The path extracted from the object_spilling_config when the
                             object spilling config is set and the spilling type is to
