@@ -202,7 +202,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  if (event.has_profile_events()) {
+    *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  }
   return task_event;
 }
 
