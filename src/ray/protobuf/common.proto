@@ -479,7 +479,7 @@ message LeaseSpec {
   int32 max_retries = 20;
   uint64 attempt_number = 21;
   string task_name = 22;
-  repeated FallbackStrategyOptions fallback_strategy = 23;
+  FallbackStrategy fallback_strategy = 23;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -1087,8 +1087,12 @@ message LabelSelector {
   repeated LabelSelectorConstraint label_constraints = 1;
 }
 
-message FallbackStrategyOptions {
+message FallbackOptions {
   LabelSelector label_selector = 1;
+}
+
+message FallbackStrategy {
+  repeated FallbackOptions options = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

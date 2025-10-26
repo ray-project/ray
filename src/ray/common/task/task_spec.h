@@ -233,7 +233,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Return the list of fallback strategies for scheduling.
   ///
   /// \return Fallback strategies to fall back on when scheduling a task on a node.
-  const std::vector<FallbackStrategyOptions> &GetFallbackStrategy() const;
+  const std::vector<FallbackOptions> &GetFallbackStrategy() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
@@ -390,7 +390,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<LabelSelector> label_selector_;
   // Field storing the fallback scheduling strategy. This is a list of
   // strategies to try in-order.
-  std::shared_ptr<std::vector<FallbackStrategyOptions>> fallback_strategy_;
+  std::shared_ptr<std::vector<FallbackOptions>> fallback_strategy_;
 };
 
 }  // namespace ray

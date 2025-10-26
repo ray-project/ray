@@ -157,8 +157,8 @@ class TaskSpecBuilder {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackStrategyOptions> &fallback_strategy =
-          std::vector<FallbackStrategyOptions>(),
+      const std::vector<FallbackOptions> &fallback_strategy =
+          std::vector<FallbackOptions>(),
       const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
@@ -192,10 +192,8 @@ class TaskSpecBuilder {
     message_->set_enable_task_events(enable_task_events);
     message_->mutable_labels()->insert(labels.begin(), labels.end());
     *message_->mutable_label_selector() = label_selector.ToProto();
-    for (const auto &strategy_map : fallback_strategy) {
-      *message_->add_fallback_strategy()->mutable_label_selector() =
-          strategy_map.label_selector.ToProto();
-    }
+    message_->mutable_fallback_strategy()->CopyFrom(
+        *SerializeFallbackStrategy(fallback_strategy));
     message_->set_tensor_transport(tensor_transport);
     return *this;
   }

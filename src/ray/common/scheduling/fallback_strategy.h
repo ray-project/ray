@@ -14,9 +14,11 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/hash/hash.h"
 #include "ray/common/scheduling/label_selector.h"
@@ -26,27 +28,57 @@ namespace ray {
 
 /// This struct holds all the information for a single fallback option in the fallback strategy list.
 /// It is designed to be extensible.
-struct FallbackStrategyOptions {
-  FallbackStrategyOptions() = default;
+struct FallbackOptions {
+  FallbackOptions() = default;
 
   LabelSelector label_selector;
   // To add a new option, add a new field here.
 
-  explicit FallbackStrategyOptions(const rpc::LabelSelector &proto_selector)
+  explicit FallbackOptions(const rpc::LabelSelector &proto_selector)
       : label_selector(proto_selector) {}
 
-  explicit FallbackStrategyOptions(LabelSelector selector)
+  explicit FallbackOptions(LabelSelector selector)
       : label_selector(std::move(selector)) {}
+
+  // Return a FallbackOptions proto message.
+  void ToProto(rpc::FallbackOptions *proto) const {
+    RAY_CHECK(proto != nullptr);
+    proto->mutable_label_selector()->CopyFrom(label_selector.ToProto());
+    // When a new option is added, add its serialization here.
+  }
 };
 
-inline bool operator==(const FallbackStrategyOptions &lhs,
-                       const FallbackStrategyOptions &rhs) {
+inline bool operator==(const FallbackOptions &lhs, const FallbackOptions &rhs) {
   return lhs.label_selector == rhs.label_selector;
 }
 
 template <typename H>
-H AbslHashValue(H h, const FallbackStrategyOptions &opts) {
+H AbslHashValue(H h, const FallbackOptions &opts) {
   return H::combine(std::move(h), opts.label_selector);
+}
+
+// Parse FallbackStrategy from FallbackOptions vector.
+inline std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
+    const google::protobuf::RepeatedPtrField<rpc::FallbackOptions> &strategy_proto_list) {
+  auto strategy_list = std::make_shared<std::vector<FallbackOptions>>();
+  strategy_list->reserve(strategy_proto_list.size());
+
+  for (const auto &strategy_proto : strategy_proto_list) {
+    strategy_list->emplace_back(strategy_proto.label_selector());
+  }
+
+  return strategy_list;
+}
+
+// Return a FallbackStrategy message, which is a repeated FallbackOptions proto.
+inline std::unique_ptr<rpc::FallbackStrategy> SerializeFallbackStrategy(
+    const std::vector<FallbackOptions> &strategy_list) {
+  auto strategy_proto = std::make_unique<rpc::FallbackStrategy>();
+  for (const auto &options : strategy_list) {
+    options.ToProto(strategy_proto->add_options());
+  }
+
+  return strategy_proto;
 }
 
 }  // namespace ray

@@ -83,12 +83,8 @@ void TaskSpecification::ComputeResources() {
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
   // Parse fallback strategy from proto to list of fallback options if specified.
-  // FallbackStrategyOptions parse the map of label selectors to the LabelSelector type.
-  auto strategy_list = std::make_shared<std::vector<FallbackStrategyOptions>>();
-  for (const auto &strategy_proto : message_->fallback_strategy()) {
-    strategy_list->emplace_back(strategy_proto.label_selector());
-  }
-  fallback_strategy_ = std::move(strategy_list);
+  // FallbackOptions parse the map of label selectors to the LabelSelector type.
+  fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
 
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
@@ -331,8 +327,7 @@ const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
-const std::vector<FallbackStrategyOptions> &TaskSpecification::GetFallbackStrategy()
-    const {
+const std::vector<FallbackOptions> &TaskSpecification::GetFallbackStrategy() const {
   return *fallback_strategy_;
 }
 

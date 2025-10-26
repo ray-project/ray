@@ -1867,7 +1867,7 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
-    const std::vector<FallbackStrategyOptions> &fallback_strategy,
+    const std::vector<FallbackOptions> &fallback_strategy,
     const rpc::TensorTransport &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
@@ -2000,8 +2000,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector,
-                      task_options.fallback_strategy,
-                      task_options.tensor_transport);
+                      task_options.fallback_strategy);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();

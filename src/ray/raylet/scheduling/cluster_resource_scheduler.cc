@@ -301,8 +301,10 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     label_selectors.push_back(std::cref(fallback.label_selector));
   }
 
+  scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
+  bool any_selector_is_feasible = false;
+
   // Try each label selector in order until a node is found.
-  scheduling::NodeID best_node = scheduling::NodeID::Nil();
   for (const auto &selector_ref : label_selectors) {
     const auto &label_selector = selector_ref.get();
 
@@ -317,7 +319,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       return local_node_id_;
     }
 
-    best_node = GetBestSchedulableNode(
+    // Find the best feasible node.
+    bool current_selector_is_infeasible = false;
+    scheduling::NodeID best_feasible_node = GetBestSchedulableNode(
         lease_spec.GetRequiredPlacementResources().GetResourceMap(),
         label_selector,
         lease_spec.GetMessage().scheduling_strategy(),
@@ -326,40 +330,57 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         exclude_local_node,
         preferred_node_id,
         &_unused,
-        is_infeasible);
+        &current_selector_is_infeasible);
 
-    // There are no other available nodes.
-    if (!best_node.IsNil() &&
-        !IsSchedulableOnNode(best_node,
-                             lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                             label_selector,
-                             requires_object_store_memory)) {
-      // Prefer waiting on the local node if possible
-      // since the local node is chosen for a reason (e.g. spread).
-      if ((preferred_node_id == local_node_id_.Binary()) &&
-          NodeAvailable(local_node_id_)) {
-        auto resource_request = ResourceMapToResourceRequest(
-            lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-            requires_object_store_memory);
-        resource_request.SetLabelSelector(label_selector);
-        if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
-                                                            resource_request)) {
-          *is_infeasible = false;
-          return local_node_id_;
-        }
+    if (!best_feasible_node.IsNil()) {
+      // A feasible node was found.
+      any_selector_is_feasible = true;
+
+      if (IsSchedulableOnNode(best_feasible_node,
+                              lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+                              label_selector,
+                              requires_object_store_memory)) {
+        // The node is feasible and available, directly return it.
+        *is_infeasible = false;
+        return best_feasible_node;
       }
-      // If the task is being scheduled by gcs, return nil to make it stay in the
-      // `cluster_lease_manager`'s queue.
-      if (!is_local_node_with_raylet_) {
-        return scheduling::NodeID::Nil();
+
+      // If the node is feasible but not available, save it but continue to
+      // check for the next fallback.
+      if (highest_priority_unavailable_node.IsNil()) {
+        highest_priority_unavailable_node = best_feasible_node;
       }
-    }
-    if (!best_node.IsNil()) {
-      return best_node;
     }
   }
 
-  return scheduling::NodeID::Nil();
+  // No feasible nodes were found for scheduling constraints.
+  if (!any_selector_is_feasible) {
+    *is_infeasible = true;
+    return scheduling::NodeID::Nil();
+  }
+
+  // If the best node is not available but the local node is feasible,
+  // wait on the local node.
+  *is_infeasible = false;
+  if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
+    auto resource_request = ResourceMapToResourceRequest(
+        lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+        requires_object_store_memory);
+    resource_request.SetLabelSelector(lease_spec.GetLabelSelector());
+
+    if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
+                                                        resource_request)) {
+      return local_node_id_;
+    }
+  }
+
+  // If the task is being scheduled by gcs, return nil to make it stay in the
+  // `cluster_lease_manager`'s queue.
+  if (!is_local_node_with_raylet_) {
+    return scheduling::NodeID::Nil();
+  }
+
+  return highest_priority_unavailable_node;
 }
 
 SchedulingResult ClusterResourceScheduler::Schedule(

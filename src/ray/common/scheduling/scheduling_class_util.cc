@@ -31,7 +31,7 @@ SchedulingClassDescriptor::SchedulingClassDescriptor(
     FunctionDescriptor fd,
     int64_t d,
     rpc::SchedulingStrategy sched_strategy,
-    std::vector<FallbackStrategyOptions> fallback_strat)
+    std::vector<FallbackOptions> fallback_strat)
     : resource_set(std::move(rs)),
       label_selector(std::move(ls)),
       function_descriptor(std::move(fd)),
