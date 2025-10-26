@@ -1010,7 +1010,11 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
+    def get_target_groups(
+        self,
+        app_name: Optional[str] = None,
+        from_proxy_manager: bool = False,
+    ) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 

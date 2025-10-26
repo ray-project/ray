@@ -42,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -251,8 +252,10 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -408,13 +411,24 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            try:
+                worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except Exception as e:
+                training_failed_error = ControllerError(e)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=training_failed_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision, training_failed_error=training_failed_error
+                )
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(),
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
+                    ),
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
@@ -452,6 +466,14 @@ class TrainController:
                     scaling_decision=controller_state.scaling_decision
                 ),
             )
+        elif isinstance(controller_state, ShuttingDownState):
+            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
+            self._shutdown()
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=controller_state.next_state,
+            )
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
@@ -488,9 +510,6 @@ class TrainController:
         """Run the main control loop. Exits when training is finished or errored."""
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
-
-        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-        self._shutdown()
 
         # Call after_controller_finish with the final result
         result = self._build_result()

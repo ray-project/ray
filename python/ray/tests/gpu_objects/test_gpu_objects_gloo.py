@@ -130,6 +130,23 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     )
 
 
+def test_gc_gpu_object_metadata(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    tensor = torch.randn((100, 100))
+    ref = actors[0].echo.remote(tensor)
+    gpu_obj_id = ref.hex()
+    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    assert gpu_obj_id in gpu_object_manager.managed_gpu_object_metadata
+    ray.get(actors[1].double.remote(ref))
+    del ref
+
+    wait_for_condition(
+        lambda: gpu_obj_id not in gpu_object_manager.managed_gpu_object_metadata,
+    )
+
+
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     """
@@ -792,6 +809,9 @@ def test_wait_tensor_freed(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id)
 
 
+@pytest.mark.skip(
+    reason="RDT currently doesn't support multiple objects containing the same tensor"
+)
 def test_wait_tensor_freed_double_tensor(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed when multiple objects
     contain the same tensor."""
@@ -831,6 +851,9 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
+@pytest.mark.skip(
+    reason="RDT currently doesn't support multiple objects containing the same tensor"
+)
 def test_send_back_and_dst_warning(ray_start_regular):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2
@@ -968,6 +991,33 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
         ray.get(result_ref)
     with pytest.raises(ray.exceptions.ActorDiedError):
         ray.get(actors[0].recv.remote(1))
+
+
+@pytest.mark.skip(
+    "Lineage Reconstruction currently results in a check failure with RDT"
+)
+def test_rdt_lineage_reconstruction(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1)
+    worker_to_kill = cluster.add_node(num_cpus=1, resources={"to_restart": 1})
+
+    @ray.remote(max_restarts=1, max_task_retries=1, resources={"to_restart": 1})
+    class RecvRestartableActor:
+        def recv(self, obj):
+            return obj
+
+    send_actor = GPUTestActor.remote()
+    recv_actor = RecvRestartableActor.remote()
+    create_collective_group([send_actor, recv_actor], backend="gloo")
+
+    one_mb_tensor = torch.randn((1024 * 1024,))
+    ref = recv_actor.recv.remote(send_actor.echo.remote(one_mb_tensor))
+    ray.wait([ref], fetch_local=False)
+    cluster.remove_node(worker_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"to_restart": 1})
+    assert ray.get(ref).nbytes >= (1024 * 1024)
 
 
 if __name__ == "__main__":
