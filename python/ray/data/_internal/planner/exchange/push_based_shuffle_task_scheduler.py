@@ -9,7 +9,6 @@ from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
 )
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
@@ -30,7 +29,7 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-
+    from ray.data._internal.progress.base_progress import BaseProgressBar
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -189,7 +188,7 @@ class _PipelinedStageExecutor:
         stage_iter,
         num_tasks_per_round: int,
         max_concurrent_rounds: int = 1,
-        progress_bar: Optional[ProgressBar] = None,
+        progress_bar: Optional["BaseProgressBar"] = None,
     ):
         self._stage_iter = stage_iter
         self._num_tasks_per_round = num_tasks_per_round

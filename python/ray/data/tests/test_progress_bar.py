@@ -6,7 +6,7 @@ import pytest
 from pytest import fixture
 
 import ray
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 
 
 @fixture(params=[True, False])

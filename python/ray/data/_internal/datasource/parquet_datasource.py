@@ -28,7 +28,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
 )
 from ray.data._internal.collections import collapse_transitive_map
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     RetryingPyFileSystem,
