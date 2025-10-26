@@ -42,6 +42,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   /// \param message_processor The callback for the message received.
   /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
   ///     the environment.
+  /// \param batching_enabled Whether to enable batching.
+  /// \param batch_size The maximum number of messages in a batch.
+  /// \param batch_delay_ms The maximum delay time to wait before sending a batch.
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
