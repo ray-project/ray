@@ -38,14 +38,16 @@ class Zip(NAry, SupportsPushThrough):
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         new_input_ops = []
         for input_op in self.input_dependencies:
             upstream_project = self._create_upstream_project(
-                columns, column_rename_map, input_op
+                columns=columns,
+                column_rename_map=column_rename_map,
+                input_op=input_op,
             )
             new_input_ops.append(upstream_project)
 
@@ -72,14 +74,16 @@ class Union(NAry, SupportsPushThrough):
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         new_input_ops = []
         for input_op in self.input_dependencies:
             upstream_project = self._create_upstream_project(
-                columns, column_rename_map, input_op
+                columns=columns,
+                column_rename_map=column_rename_map,
+                input_op=input_op,
             )
             new_input_ops.append(upstream_project)
 

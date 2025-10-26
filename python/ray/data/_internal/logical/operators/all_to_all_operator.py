@@ -105,12 +105,14 @@ class RandomShuffle(AbstractAllToAll, SupportsPushThrough):
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         upstream_project = self._create_upstream_project(
-            columns, column_rename_map, self.input_dependencies[0]
+            columns=columns,
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
         )
 
         return RandomShuffle(
@@ -163,13 +165,13 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_current_projection(self) -> Optional[List[str]]:
+    def get_current_keys(self) -> Optional[List[str]]:
         return self._keys
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         # When pushing projections through repartition, we must ensure partition key columns
@@ -177,15 +179,19 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the repartition operation needs these columns to partition by.
 
         # Collect all required columns (output columns + partition keys)
-        required_columns = set(columns) if columns is not None else set()
-        if self._keys is not None:
-            required_columns.update(self._keys)
+        current_keys: List[str] = self.get_current_keys or []
+        required_columns = set(columns) | set(current_keys)
 
         upstream_project = self._create_upstream_project(
-            list(required_columns), column_rename_map, self.input_dependencies[0]
+            columns=list(required_columns),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
         )
 
-        new_keys = self._rename_projection(column_rename_map)
+        new_keys: List[str] = self._rename_projection(
+            old_keys=current_keys,
+            column_rename_map=column_rename_map,
+        )
 
         return Repartition(
             input_op=upstream_project,
@@ -229,10 +235,13 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def get_current_keys(self) -> Optional[List[str]]:
+        return self._sort_key.get_columns()
+
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         # When pushing projections through sort, we must ensure sort key columns
@@ -240,13 +249,17 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the sort operation needs these columns to sort by.
 
         # Collect all required columns (output columns + sort keys)
-        required_columns = set(columns) if columns is not None else set()
-        required_columns.update(self._sort_key.get_columns())
+        required_columns = set(columns) | set(self.get_current_keys())
 
         upstream_project = self._create_upstream_project(
-            list(required_columns), column_rename_map, self.input_dependencies[0]
+            columns=list(required_columns),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
         )
-        new_columns = self._rename_projection(column_rename_map)
+        new_columns: List[str] = self._rename_projection(
+            old_keys=self.get_current_keys(),
+            column_rename_map=column_rename_map,
+        )
         new_sort_key = SortKey(
             key=new_columns,
             descending=self._sort_key._descending,
@@ -284,7 +297,7 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         self._num_partitions = num_partitions
         self._batch_format = batch_format
 
-    def get_current_projection(self) -> Optional[List[str]]:
+    def get_current_keys(self) -> Optional[List[str]]:
         if self._key is None:
             return None
         elif isinstance(self._key, str):
@@ -294,8 +307,8 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         # When pushing projections through aggregate, we must ensure groupby key columns
@@ -303,17 +316,16 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the aggregate operation needs these columns to group by.
 
         # Collect all required columns (output columns + groupby keys)
-        required_columns = set(columns) if columns is not None else set()
-        if self._key is not None:
-            if isinstance(self._key, str):
-                required_columns.add(self._key)
-            else:
-                required_columns.update(self._key)
-
+        required_columns = set(columns) | set(self.get_current_keys())
         upstream_project = self._create_upstream_project(
-            list(required_columns), column_rename_map, self.input_dependencies[0]
+            columns=list(required_columns),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
         )
-        new_columns = self._rename_projection(column_rename_map)
+        new_columns = self._rename_projection(
+            old_keys=self.get_current_keys(),
+            column_rename_map=column_rename_map,
+        )
         return Aggregate(
             input_op=upstream_project,
             key=new_columns,

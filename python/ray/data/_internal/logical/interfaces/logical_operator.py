@@ -108,20 +108,22 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         return self
 
 
-class SupportsPushThrough(LogicalOperatorSupportsProjectionPushdown):
-    """Mixin for reading operators supporting projection pushdown"""
+class SupportsPushThrough(LogicalOperator):
+    """Mixin for operators supporting projection pushthrough"""
 
-    def supports_projection_pushdown(self) -> bool:
+    def supports_projection_pushthrough(self) -> bool:
         return True
+
+    # TODO(justin): this will be replaced by LogicalOperatorContainsPartitionKeys
+    def get_current_keys(self) -> Optional[List[str]]:
+        return None
 
     def _rename_projection(
         self,
-        column_rename_map: Optional[Dict[str, str]],
-        columns_to_rename: Optional[List[str]] = None,
-    ) -> Optional[List[str]]:
-        old_keys = columns_to_rename or self.get_current_projection()
-        if old_keys is None:
-            return None
+        old_keys: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> List[str]:
+
         new_keys = []
         for old_key in old_keys:
             if old_key in column_rename_map:
@@ -133,14 +135,11 @@ class SupportsPushThrough(LogicalOperatorSupportsProjectionPushdown):
 
     def _create_upstream_project(
         self,
-        columns: Optional[List[str]],
+        columns: List[str],
         column_rename_map: Optional[Dict[str, str]],
         input_op: LogicalOperator,
     ) -> "Project":
         from ray.data._internal.logical.operators.map_operator import Project
-
-        if columns is None:
-            columns = []
 
         # NOTE: This can happen when we union the same dataset. The same
         # dataset is only shallowed copied, so we safeguard removing
@@ -165,7 +164,7 @@ class SupportsPushThrough(LogicalOperatorSupportsProjectionPushdown):
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        columns: List[str],
+        column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
         raise NotImplementedError
