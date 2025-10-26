@@ -115,7 +115,7 @@ class SupportsPushThrough(LogicalOperator):
         return True
 
     # TODO(justin): this will be replaced by LogicalOperatorContainsPartitionKeys
-    def get_current_keys(self) -> Optional[List[str]]:
+    def get_referenced_columns(self) -> Optional[List[str]]:
         return None
 
     def _rename_projection(

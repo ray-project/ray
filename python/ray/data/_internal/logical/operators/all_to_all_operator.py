@@ -165,7 +165,7 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_current_keys(self) -> Optional[List[str]]:
+    def get_referenced_columns(self) -> Optional[List[str]]:
         return self._keys
 
     def apply_projection(
@@ -179,7 +179,7 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the repartition operation needs these columns to partition by.
 
         # Collect all required columns (output columns + partition keys)
-        current_keys: List[str] = self.get_current_keys or []
+        current_keys: List[str] = self.get_referenced_columns() or []
         required_columns = set(columns) | set(current_keys)
 
         upstream_project = self._create_upstream_project(
@@ -235,7 +235,7 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_current_keys(self) -> Optional[List[str]]:
+    def get_referenced_columns(self) -> Optional[List[str]]:
         return self._sort_key.get_columns()
 
     def apply_projection(
@@ -249,7 +249,7 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the sort operation needs these columns to sort by.
 
         # Collect all required columns (output columns + sort keys)
-        required_columns = set(columns) | set(self.get_current_keys())
+        required_columns = set(columns) | set(self.get_referenced_columns())
 
         upstream_project = self._create_upstream_project(
             columns=list(required_columns),
@@ -257,7 +257,7 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
             input_op=self.input_dependencies[0],
         )
         new_columns: List[str] = self._rename_projection(
-            old_keys=self.get_current_keys(),
+            old_keys=self.get_referenced_columns(),
             column_rename_map=column_rename_map,
         )
         new_sort_key = SortKey(
@@ -297,7 +297,7 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         self._num_partitions = num_partitions
         self._batch_format = batch_format
 
-    def get_current_keys(self) -> Optional[List[str]]:
+    def get_referenced_columns(self) -> Optional[List[str]]:
         if self._key is None:
             return None
         elif isinstance(self._key, str):
@@ -316,14 +316,14 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the aggregate operation needs these columns to group by.
 
         # Collect all required columns (output columns + groupby keys)
-        required_columns = set(columns) | set(self.get_current_keys())
+        required_columns = set(columns) | set(self.get_referenced_columns() or [])
         upstream_project = self._create_upstream_project(
             columns=list(required_columns),
             column_rename_map=column_rename_map,
             input_op=self.input_dependencies[0],
         )
         new_columns = self._rename_projection(
-            old_keys=self.get_current_keys(),
+            old_keys=self.get_referenced_columns(),
             column_rename_map=column_rename_map,
         )
         return Aggregate(
