@@ -70,9 +70,8 @@ class RayletIpcClient : public RayletIpcClientInterface {
 
   Status ActorCreationTaskDone() override;
 
-  StatusOr<ScopedResponse> AsyncGetObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) override;
+  Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
+                         const std::vector<rpc::Address> &owner_addresses) override;
 
   StatusOr<absl::flat_hash_set<ObjectID>> Wait(
       const std::vector<ObjectID> &object_ids,
@@ -80,7 +79,7 @@ class RayletIpcClient : public RayletIpcClientInterface {
       int num_returns,
       int64_t timeout_milliseconds) override;
 
-  Status CancelGetRequest(int64_t request_id) override;
+  Status CancelGetRequest() override;
 
   /// Notify the raylet that the worker is currently blocked waiting for an object
   /// to be pulled. The raylet will release the resources used by this worker.
@@ -89,7 +88,8 @@ class RayletIpcClient : public RayletIpcClientInterface {
   /// \return Status::IOError if any error occurs.
   Status NotifyWorkerBlocked() override;
 
-  /// Notify the raylet that the worker is unblocked.
+  /// Notify the raylet that the worker is unblocked. The raylet will cancel inflight
+  /// pull requests for the worker.
   ///
   /// \return Status::OK if no error occurs.
   /// \return Status::IOError if any error occurs.
