@@ -138,9 +138,12 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
     def update_operator_progress(
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ):
-        pg = self._op_display[opstate.progress_manager_uuid]
+        if self._show_op_progress:
+            pg = self._op_display[opstate.progress_manager_uuid]
 
-        # progress
-        pg.update_absolute(opstate.output_row_count, opstate.op.num_output_rows_total())
-        # stats
-        pg.set_description(opstate.summary_str(resource_manager))
+            # progress
+            pg.update_absolute(
+                opstate.output_row_count, opstate.op.num_output_rows_total()
+            )
+            # stats
+            pg.set_description(opstate.summary_str(resource_manager))
