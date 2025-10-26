@@ -230,7 +230,7 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
         pass
 
     def close_with_finishing_description(self, desc: str, success: bool) -> None:
-        logger.info(desc)
+        pass
 
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]) -> None:
         pass

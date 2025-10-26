@@ -269,7 +269,6 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             self.refresh()
             time.sleep(0.02)
             self._live.stop()
-            logger.info(desc)
 
     # Total Progress
     def _can_update_total(self) -> bool:
