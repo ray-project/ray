@@ -98,7 +98,6 @@ class BaseProgressBar(ABC):
 
     @abstractmethod
     def update(self, new_rows: int = 0, total_rows: Optional[int] = None) -> None:
-        # TODO (kyuds): update progressbar usage to use new_rows and total_rows
         ...
 
     def refresh(self):
