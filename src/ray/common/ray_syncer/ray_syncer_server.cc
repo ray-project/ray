@@ -46,7 +46,6 @@ RayServerBidiReactor::RayServerBidiReactor(
       cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context),
       auth_token_(auth_token) {
-
   if (auth_token_.has_value() && !auth_token_->empty()) {
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();

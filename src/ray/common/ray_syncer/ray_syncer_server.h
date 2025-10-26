@@ -53,7 +53,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
 
-  /// Authentication token for validation, will be empty if token authentication is disabled
+  /// Authentication token for validation, will be empty if token authentication is
+  /// disabled
   std::optional<ray::rpc::AuthenticationToken> auth_token_;
 
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);

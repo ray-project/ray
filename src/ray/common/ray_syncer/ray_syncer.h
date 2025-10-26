@@ -208,7 +208,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  private:
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
-  // Authentication token for validation, will be empty if token authentication is disabled
+  // Authentication token for validation, will be empty if token authentication is
+  // disabled
   std::optional<ray::rpc::AuthenticationToken> auth_token_;
 };
 
