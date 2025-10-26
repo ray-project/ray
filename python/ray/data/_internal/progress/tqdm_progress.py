@@ -32,8 +32,8 @@ class TqdmSubProgressBar(ProgressBar):
         max_name_length: int = 100,
     ):
         # patch to make max_name_length configurable from ProgressManager.
-        super().__init__(name, total, unit, position, enabled)
         self.MAX_NAME_LENGTH = max_name_length
+        super().__init__(name, total, unit, position, enabled)
 
     def update_absolute(self, completed: int, total_rows: Optional[int] = None) -> None:
         if self._bar:
