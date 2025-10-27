@@ -407,9 +407,7 @@ cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
 cycler==0.12.1
     # via matplotlib
 cython==3.0.12
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   gpy
+    # via gpy
 dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
