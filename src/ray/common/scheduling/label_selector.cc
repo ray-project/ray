@@ -57,7 +57,11 @@ google::protobuf::Map<std::string, std::string> LabelSelector::ToStringMap() con
         value_str = "in(" + absl::StrJoin(sorted_values, ",") + ")";
       }
     } else if (constraint.GetOperator() == LabelSelectorOperator::LABEL_NOT_IN) {
-      value_str = "!in(" + absl::StrJoin(sorted_values, ",") + ")";
+      if (sorted_values.size() == 1) {
+        value_str = "!" + sorted_values[0];
+      } else {
+        value_str = "!in(" + absl::StrJoin(sorted_values, ",") + ")";
+      }
     }
 
     if (!value_str.empty()) {
