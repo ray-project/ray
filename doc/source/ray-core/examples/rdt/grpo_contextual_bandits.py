@@ -206,7 +206,6 @@ class Learner:
             weight_decay=WEIGHT_DECAY,
             betas=(0.9, 0.9),
         )
-        self.policy_version = 1
         self.replay_buffer = replay_buffer
 
     def _compute_advantages(self, rewards: torch.Tensor) -> torch.Tensor:
@@ -319,8 +318,7 @@ class Generator:
     def __init__(self, scorer) -> None:
         self.model = ResidualMLP().to("cuda").eval()
         self.scorer = scorer
-        # Weights are initialized randomly so not yet synced with the trainer (which starts on version 1).
-        self.policy_version = 0
+        self.policy_version = 1
 
     @ray.method(tensor_transport="nixl")  # CPU-CPU RDT
     def generate(self, states: torch.Tensor):
