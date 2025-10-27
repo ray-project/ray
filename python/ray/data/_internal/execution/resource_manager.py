@@ -488,9 +488,6 @@ class OpResourceAllocator(ABC):
         self,
         *,
         limits: ExecutionResources,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        internal_object_store_usage: Dict[PhysicalOperator, int],
-        outputs_object_store_usage: Dict[PhysicalOperator, int],
     ):
         """Callback to update resource usages."""
         ...
@@ -628,6 +625,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
         super().__init__(resource_manager._topology)
+        self._resource_manager = resource_manager
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
@@ -806,13 +804,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self,
         *,
         limits: ExecutionResources,
-        task_resource_usage: Dict[PhysicalOperator, ExecutionResources],
-        internal_object_store_usage: Dict[PhysicalOperator, int],
-        outputs_object_store_usage: Dict[PhysicalOperator, int],
     ):
         op_to_exclude_from_reservation = self._get_ineligible_ops_with_usage()
         for completed_op in op_to_exclude_from_reservation:
-            limits = limits.subtract(task_resource_usage[completed_op])
+            completed_op_usage = self._resource_manager.get_op_usage(completed_op)
+
+            limits = limits.subtract(completed_op_usage)
             limits = limits.max(ExecutionResources.zero())
 
         # Remaining resources to be distributed across operators
@@ -830,14 +827,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += internal_object_store_usage[op]
+            op_mem_usage += self._resource_manager.get_op_internal_object_store_usage(op)
             # Add the portion of op outputs usage that has
             # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
-                op, task_resource_usage, outputs_object_store_usage
-            )
+            op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-            op_usage = task_resource_usage[op].copy(object_store_memory=op_mem_usage)
+
+            op_usage = self._resource_manager.get_op_usage(op).copy(
+                object_store_memory=op_mem_usage
+            )
+
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
             op_reserved_remaining = op_reserved.subtract(op_usage).max(
@@ -888,7 +887,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 #    available num of GPUs.
                 # 2. The cluster scales down, and the global limit decreases.
                 target_num_gpu = max(
-                    limits.gpu - task_resource_usage[op].gpu,
+                    limits.gpu - self._resource_manager.get_op_usage(op).gpu,
                     0,
                 )
             else:
