@@ -316,7 +316,7 @@ class OpState:
     def has_pending_bundles(self) -> bool:
         return any(len(q) > 0 for q in self.input_queues)
 
-    def total_enqueued_input_bundles_bytes(self) -> int:
+    def total_enqueued_input_blocks_bytes(self) -> int:
         """Total number of bytes occupied by input bundles currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
@@ -408,7 +408,7 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_bundles_bytes())})"
+        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
         desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         # Any additional operator specific information.
