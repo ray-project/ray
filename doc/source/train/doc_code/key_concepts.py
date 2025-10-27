@@ -57,22 +57,6 @@ run_config = RunConfig(
 )
 # __checkpoint_config_end__
 
-# __checkpoint_config_ckpt_freq_start__
-from ray.train import RunConfig, CheckpointConfig
-
-run_config = RunConfig(
-    checkpoint_config=CheckpointConfig(
-        # Checkpoint every iteration.
-        checkpoint_frequency=1,
-        # Only keep the latest checkpoint and delete the others.
-        num_to_keep=1,
-    )
-)
-
-# from ray.train.xgboost import XGBoostTrainer
-# trainer = XGBoostTrainer(..., run_config=run_config)
-# __checkpoint_config_ckpt_freq_end__
-
 
 # __result_metrics_start__
 result = trainer.fit()
