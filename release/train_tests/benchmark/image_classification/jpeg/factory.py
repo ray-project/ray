@@ -103,6 +103,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             partitioning=train_partitioning,
             filesystem=filesystem,
         ).map(get_preprocess_map_fn(random_transforms=True))
+        train_ds = train_ds.repartition(target_num_rows_per_block=self.get_dataloader_config().train_batch_size)
 
         if self.get_dataloader_config().limit_training_rows > 0:
             train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
@@ -116,6 +117,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             partitioning=val_partitioning,
             filesystem=filesystem,
         ).map(get_preprocess_map_fn(random_transforms=False))
+        val_ds = val_ds.repartition(target_num_rows_per_block=self.get_dataloader_config().validation_batch_size)
 
         if self.get_dataloader_config().limit_validation_rows > 0:
             val_ds = val_ds.limit(self.get_dataloader_config().limit_validation_rows)
