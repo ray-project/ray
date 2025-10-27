@@ -16,7 +16,6 @@ cloudpickle==2.2.0 ; python_version < "3.12"
 cloudpickle==3.0.0 ; python_version >= "3.12"
 tornado==6.1 ; python_version < "3.12"
 tornado==6.2.0 ; python_version >= "3.12"
-cython==3.0.12
 fastapi>=0.115.12
 feather-format==0.4.1
 # Keep compatible with Werkzeug
