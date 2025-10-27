@@ -155,7 +155,7 @@ class ReplayBuffer:
         return len(self.storage)
 
 
-@ray.remote(num_gpus=1)
+@ray.remote
 class Scorer:
     """Evaluates actions and assigns rewards to trajectory slices.
 
@@ -166,8 +166,9 @@ class Scorer:
 
     def __init__(self, replay_buffer) -> None:
         self.replay_buffer = replay_buffer
-        self.action_dirs = ACTION_DIRECTIONS.to("cuda")  # [ACTION_DIM, STATE_DIM]
+        self.action_dirs = ACTION_DIRECTIONS  # [ACTION_DIM, STATE_DIM]
 
+    @ray.method(tensor_transport="nixl")  # CPU-CPU RDT
     def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
         """Score a batch of trajectory slices."""
         states = batched_slices["state"]
@@ -176,16 +177,16 @@ class Scorer:
         policy_version = batched_slices["policy_version"]
 
         for i in range(states.shape[0]):
-            # Compute rewards on the GPU: rewards = dot(state, unit_dir).
-            dirs = self.action_dirs[actions[i]]  # [GROUP_SIZE, STATE_DIM]
-            rewards = torch.mv(dirs, states[i])
+            # Compute rewards on the CPU: rewards = dot(state, unit_dir).
+            directions = self.action_dirs[actions[i]]  # [GROUP_SIZE, STATE_DIM]
+            rewards = torch.mv(directions, states[i])
 
             scored = TrajectorySlice(
                 policy_version=policy_version,
-                state=states[i].detach().cpu(),
-                actions=actions[i].detach().cpu(),
-                old_logps=old_logps[i].detach().cpu(),
-                rewards=rewards.detach().cpu(),
+                state=states[i],
+                actions=actions[i],
+                old_logps=old_logps[i],
+                rewards=rewards,
             )
 
             self.replay_buffer.put.remote(scored)
@@ -321,7 +322,7 @@ class Generator:
         # Weights are initialized randomly so not yet synced with the trainer (which starts on version 1).
         self.policy_version = 0
 
-    @ray.method(tensor_transport="nixl")
+    @ray.method(tensor_transport="nixl")  # CPU-CPU RDT
     def generate(self, states: torch.Tensor):
         """Generate actions using the current policy and send them and their metadata
         to the Scorer.
@@ -343,9 +344,9 @@ class Generator:
         # Create trajectory slices and enqueue them for scoring.
         slice_batch = {
             "policy_version": self.policy_version,
-            "state": states,
-            "actions": actions,
-            "old_logps": logps,
+            "state": states.detach().cpu(),
+            "actions": actions.detach().cpu(),
+            "old_logps": logps.detach().cpu(),
         }
         self.scorer.enqueue_trajectory_batch.remote(slice_batch)
 
