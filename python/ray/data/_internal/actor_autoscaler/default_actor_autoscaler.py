@@ -51,7 +51,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
     ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
         if op.completed() or (
-            op._inputs_complete and op_state.total_enqueued_num_blocks() == 0
+            op._inputs_complete and op_state.total_enqueued_blocks() == 0
         ):
             return ActorPoolScalingRequest.downscale(
                 delta=-1, force=True, reason="consumed all inputs"
