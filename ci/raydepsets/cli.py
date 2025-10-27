@@ -266,6 +266,7 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                remove_flags=depset.remove_flags,
                 packages=depset.packages,
             )
         elif depset.operation == "subset":
@@ -284,6 +285,7 @@ class DependencySetManager:
                 constraints=depset.constraints,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                remove_flags=depset.remove_flags,
                 name=depset.name,
                 output=depset.output,
             )
@@ -296,6 +298,7 @@ class DependencySetManager:
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        remove_flags: Optional[List[str]] = None,
         packages: Optional[List[str]] = None,
         requirements: Optional[List[str]] = None,
     ):
@@ -308,6 +311,8 @@ class DependencySetManager:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
             args.extend(_flatten_flags(append_flags))
+        if remove_flags:
+            args = _remove_flags(args, remove_flags)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -330,6 +335,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        remove_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
         source_depset = _get_depset(self.config.depsets, source_depset)
@@ -341,6 +347,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            remove_flags=remove_flags,
         )
 
     def expand(
@@ -352,6 +359,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        remove_flags: Optional[List[str]] = None,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
@@ -369,6 +377,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            remove_flags=remove_flags,
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:
@@ -448,6 +457,15 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def _remove_flags(args: List[str], flags: List[str]) -> List[str]:
+    for flag in flags:
+        if flag in args:
+            args.remove(flag)
+        else:
+            raise ValueError(f"Remove flag {flag} not found in args: {args}")
+    return args
 
 
 def _uv_binary():

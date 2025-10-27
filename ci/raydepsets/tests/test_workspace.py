@@ -163,11 +163,34 @@ def test_invalid_build_arg_set_in_config():
         workspace = Workspace(dir=tmpdir)
         with unittest.TestCase().assertRaises(KeyError) as e:
             workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
-        print(str(e.exception))
         assert (
             "Build arg set invalid_build_arg_set not found in config test.depsets.yaml"
             in str(e.exception)
         )
+
+
+def test_parse_remove_flags():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        depset = Depset(
+            name="remove_flag_test_depset",
+            operation="compile",
+            requirements=["requirements_test.txt"],
+            output="requirements_compiled_remove_flag_test_depset.txt",
+            remove_flags=["--remove-flag-test"],
+            config_name="test.depsets.yaml",
+        )
+        write_to_config_file(
+            tmpdir,
+            depset,
+            "test.depsets.yaml",
+        )
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_configs(config_path=Path(tmpdir) / "test.depsets.yaml")
+        remove_flag_depset = get_depset_by_name(
+            config.depsets, "remove_flag_test_depset"
+        )
+        assert remove_flag_depset.remove_flags == ["--remove-flag-test"]
 
 
 if __name__ == "__main__":
