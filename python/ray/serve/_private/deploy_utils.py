@@ -22,7 +22,6 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
-    external_scaler_enabled: bool = False,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -45,7 +44,6 @@ def get_deploy_args(
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
-        "external_scaler_enabled": external_scaler_enabled,
     }
 
     return controller_deploy_args

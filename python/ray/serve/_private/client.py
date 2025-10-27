@@ -32,6 +32,7 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
+    ApplicationArgs,
     DeploymentArgs,
     DeploymentRoute,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -297,6 +298,7 @@ class ServeControllerClient:
         wait_for_applications_running: bool = True,
     ) -> List[DeploymentHandle]:
         name_to_deployment_args_list = {}
+        name_to_application_args_list = {}
         for app in built_apps:
             deployment_args_list = []
             for deployment in app.deployments:
@@ -311,7 +313,6 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
-                    external_scaler_enabled=app.external_scaler_enabled,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -330,19 +331,24 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
-                deployment_args_proto.external_scaler_enabled = deployment_args[
-                    "external_scaler_enabled"
-                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
+            application_args_proto = ApplicationArgs()
+            application_args_proto.external_scaler_enabled = app.external_scaler_enabled
+
             name_to_deployment_args_list[app.name] = deployment_args_list
+            name_to_application_args_list[
+                app.name
+            ] = application_args_proto.SerializeToString()
 
         # Validate applications before sending to controller
         self._check_ingress_deployments(built_apps)
 
         ray.get(
-            self._controller.deploy_applications.remote(name_to_deployment_args_list)
+            self._controller.deploy_applications.remote(
+                name_to_deployment_args_list, name_to_application_args_list
+            )
         )
 
         handles = []

@@ -1019,7 +1019,11 @@ class ApplicationStateManager:
             return
         self._application_states[name].delete()
 
-    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+    def deploy_apps(
+        self,
+        name_to_deployment_args: Dict[str, List[Dict]],
+        name_to_application_args: Dict[str, Dict],
+    ) -> None:
         live_route_prefixes: Dict[str, str] = {
             app_state.route_prefix: app_name
             for app_name, app_state in self._application_states.items()
@@ -1028,7 +1032,6 @@ class ApplicationStateManager:
         }
 
         for name, deployment_args in name_to_deployment_args.items():
-            external_scaler_enabled = False
             for deploy_param in deployment_args:
                 # Make sure route_prefix is not being used by other application.
                 deploy_app_prefix = deploy_param.get("route_prefix")
@@ -1050,9 +1053,10 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
-                external_scaler_enabled = external_scaler_enabled or deploy_param.get(
-                    "external_scaler_enabled", False
-                )
+            application_args = name_to_application_args.get(name, {})
+            external_scaler_enabled = application_args.get(
+                "external_scaler_enabled", False
+            )
 
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(
@@ -1192,10 +1196,10 @@ class ApplicationStateManager:
         Returns:
             True if external_scaler_enabled is set for the application, False otherwise.
         """
-        if app_name not in self._application_states:
-            return False
+        if self.does_app_exist(app_name):
+            return self._application_states[app_name].external_scaler_enabled
 
-        return self._application_states[app_name].external_scaler_enabled
+        return False
 
     def list_app_statuses(
         self, source: Optional[APIType] = None

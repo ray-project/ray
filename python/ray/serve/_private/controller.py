@@ -70,6 +70,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    ApplicationArgs,
     DeploymentArgs,
     DeploymentRoute,
     EndpointInfo as EndpointInfoProto,
@@ -767,7 +768,9 @@ class ServeController:
                 )
 
     def deploy_applications(
-        self, name_to_deployment_args_list: Dict[str, List[bytes]]
+        self,
+        name_to_deployment_args_list: Dict[str, List[bytes]],
+        name_to_application_args_list: Dict[str, bytes],
     ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
@@ -779,6 +782,10 @@ class ServeController:
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
+            name_to_application_args_list: Dictionary mapping application names to serialized
+                application arguments, where each item is bytes representing the serialized
+                protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
+                for the application.
         """
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
@@ -795,12 +802,20 @@ class ServeController:
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
-                        "external_scaler_enabled": args.external_scaler_enabled,
                     }
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
 
-        self.application_state_manager.deploy_apps(name_to_deployment_args)
+        name_to_application_args = {}
+        for name, application_args_bytes in name_to_application_args_list.items():
+            args = ApplicationArgs.FromString(application_args_bytes)
+            name_to_application_args[name] = {
+                "external_scaler_enabled": bool(args.external_scaler_enabled)
+            }
+
+        self.application_state_manager.deploy_apps(
+            name_to_deployment_args, name_to_application_args
+        )
 
         self.application_state_manager.save_checkpoint()
 
