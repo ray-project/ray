@@ -716,48 +716,64 @@ The request body must conform to the [`ScaleDeploymentRequest`](https://docs.ray
 
 ### Example: Predictive scaling
 
-Implement predictive scaling based on historical patterns or forecasts. For instance, you can preemptively scale up before anticipated traffic spikes:
+This example shows how to implement predictive scaling based on historical patterns or forecasts. You can preemptively scale up before anticipated traffic spikes by running an external script that adjusts replica counts based on time of day.
 
-```python
-import requests
-from datetime import datetime
+#### Define the deployment
 
-def predictive_scale(
-    application_name: str,
-    deployment_name: str,
-    auth_token: str,
-    serve_endpoint: str = "http://localhost:8000"
-) -> bool:
-    """Scale based on time of day and historical patterns."""
-    hour = datetime.now().hour
-    
-    # Define scaling profile based on historical traffic patterns
-    if 9 <= hour < 17:  # Business hours
-        target_replicas = 10
-    elif 17 <= hour < 22:  # Evening peak
-        target_replicas = 15
-    else:  # Off-peak hours
-        target_replicas = 3
-    
-    url = (
-        f"{serve_endpoint}/api/v1/applications/{application_name}"
-        f"/deployments/{deployment_name}/scale"
-    )
-    
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json"
-    }
-    
-    response = requests.post(
-        url,
-        headers=headers,
-        json={"target_num_replicas": target_replicas},
-        timeout=10
-    )
-    
-    return response.status_code == 200
+The following example creates a simple text processing deployment that you can scale externally:
+
+```{literalinclude} ../doc_code/external_scaler_predictive.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
 ```
+
+#### Configure external scaling
+
+Create a configuration file with `external_scaler_enabled: true`:
+
+```{literalinclude} ../doc_code/external_scaler_predictive.yaml
+:language: yaml
+:start-after: __config_begin__
+:end-before: __config_end__
+```
+
+#### Implement the scaling logic
+
+The following script implements predictive scaling based on time of day and historical traffic patterns:
+
+```{literalinclude} ../doc_code/external_scaler_predictive_client.py
+:language: python
+:start-after: __client_script_begin__
+:end-before: __client_script_end__
+```
+
+#### Run the example
+
+Follow these steps to run the complete example:
+
+1. Start the Ray Serve application:
+
+```bash
+serve run external_scaler_predictive:app
+```
+
+2. Get the authentication token from the Ray dashboard at `http://localhost:8265`. Navigate to the Serve section and copy the token.
+
+3. Edit `external_scaler_predictive_client.py` and update the `AUTH_TOKEN` value with your token from step 2.
+
+4. Run the predictive scaling client in a separate terminal:
+
+```bash
+python external_scaler_predictive_client.py
+```
+
+The scaling client continuously adjusts the number of replicas based on the time of day:
+- Business hours (9 AM - 5 PM): 10 replicas
+- Evening peak (5 PM - 10 PM): 15 replicas  
+- Off-peak hours: 3 replicas
+
+By default, the script checks and updates scaling every 5 minutes. You can modify the `SCALING_INTERVAL` variable in the script to change this frequency.
 
 ### Application level autoscaling
 
