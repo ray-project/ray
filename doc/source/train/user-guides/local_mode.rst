@@ -7,33 +7,23 @@ Local Mode
     This user guide shows how to use local mode with Ray Train V2 only.
     For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: https://github.com/ray-project/ray/issues/49454
 
-Local mode in Ray Train allows you to run your training function directly in the local process.
-This is useful for development, testing, and rapid iteration.
-
-When to use local mode
-----------------------
-
-Local mode is particularly useful in the following scenarios:
-
-* **Isolated testing**: Test your training function without the distributed complexity of Ray Train, making it easier to locate issues in your training logic.
-* **Unit testing**: Test your training logic quickly without the overhead of launching a Ray cluster.
-* **Development**: Iterate rapidly on your training function before scaling to distributed training.
-* **Multi-worker training with torchrun**: Launch multi-GPU training jobs using torchrun directly, making it easier to migrate from other frameworks.
-
-You can easily switch between Ray Train and local mode for debugging purposes with minimal code changes.
-Because every ``ray.train`` function has a local analogue, all you need to do is set ``num_workers=0`` 
-in your :class:`~ray.train.ScalingConfig` and your code runs without any other changes. This makes it 
-simple to debug your training logic locally before scaling to distributed training.
-
-.. note::
-    In local mode, Ray Train itself doesn't launch any Ray actors, but your code may still launch
-    other Ray actors if needed. Local mode works with both single-process and multi-process training
-    (through torchrun).
-
-Enabling local mode
+What is local mode?
 -------------------
 
-To enable local mode, set ``num_workers=0`` in your :class:`~ray.train.ScalingConfig`:
+Local mode in Ray Train runs your training function without launching Ray Train worker actors.
+Instead of distributing your training code across multiple Ray actors, local mode executes your 
+training function directly in the current process. This provides a simplified debugging environment 
+where you can iterate quickly on your training logic.
+
+Local mode supports two execution modes:
+
+* **Single-process mode**: Runs your training function in a single process, ideal for rapid iteration and debugging.
+* **Multi-process mode with ``torchrun``**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
+
+How to enable local mode
+-------------------------
+
+You can enable local mode by setting ``num_workers=0`` in your :class:`~ray.train.ScalingConfig`:
 
 .. testcode::
     :skipif: True
@@ -51,7 +41,28 @@ To enable local mode, set ``num_workers=0`` in your :class:`~ray.train.ScalingCo
     )
     result = trainer.fit()
 
-This runs your training function in the main process without launching Ray Train worker actors.
+Local mode provides the same ``ray.train`` APIs you use in distributed training, so your 
+training code runs without any other modifications. This makes it simple to verify your 
+training logic locally before scaling to distributed training.
+
+When to use local mode
+----------------------
+
+Use single-process local mode to:
+
+* **Develop and iterate quickly**: Test changes to your training function locally.
+* **Write unit tests**: Verify your training logic works correctly in a simplified environment.
+* **Debug training logic**: Use standard Python debugging tools to step through your training code and identify issues.
+
+Use multi-process local mode with ``torchrun`` to:
+
+* **Test multi-GPU logic**: Verify your distributed training code works correctly across multiple GPUs using familiar ``torchrun`` commands.
+* **Migrate existing code**: Bring existing ``torchrun`` based training scripts into Ray Train while preserving your development workflow.
+* **Debug distributed behavior**: Isolate issues in your distributed training logic using ``torchrun``'s process management.
+
+.. note::
+    In local mode, Ray Train doesn't launch worker actors, but your training code can still 
+    use other Ray features such as Ray Data (in single-process mode) or launch Ray actors if needed.
 
 Single-process local mode
 -------------------------
