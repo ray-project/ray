@@ -1483,7 +1483,8 @@
 # Serve tests
 ########################
 
-- name: serve_scale_replicas
+- name: pytest_serve_scale_replicas
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1506,7 +1507,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_multi_deployment_1k_noop_replica
+- name: pytest_serve_multi_deployment_1k_noop_replica
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1536,7 +1538,8 @@
       cluster:
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
-- name: serve_autoscaling_load_test
+- name: pytest_serve_autoscaling_load_test
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1560,7 +1563,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_microbenchmarks
+- name: pytest_serve_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1588,7 +1592,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_throughput_optimized_microbenchmarks
+- name: pytest_serve_throughput_optimized_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1619,7 +1624,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_resnet_benchmark
+- name: pytest_serve_resnet_benchmark
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
