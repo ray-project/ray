@@ -3643,7 +3643,8 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector):
+                    label_selector,
+                    int32_t priority):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
@@ -3690,7 +3691,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE)
+                TENSOR_TRANSPORT_OBJECT_STORE,
+                priority)
 
             current_c_task_id = current_task.native()
 
@@ -3952,7 +3954,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val),
+                        c_tensor_transport_val,
+                        0), # priority
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

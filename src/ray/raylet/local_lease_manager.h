@@ -169,8 +169,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeasesToGrant() const override {
+  const internal::WorkQueueMap &GetLeasesToGrant() const override {
     return leases_to_grant_;
   }
 
@@ -310,8 +309,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// the dependency manager, in case a dependency gets evicted while the lease
   /// is still queued.
   /// Note that if a queue exists, it should be guaranteed to be non-empty.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      leases_to_grant_;
+  internal::WorkQueueMap leases_to_grant_;
 
   /// Leases waiting for arguments to be transferred locally.
   /// Leases move from waiting -> granting.
@@ -330,6 +328,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// leases. This also means that the PullManager may request dependencies for
   /// these leases in a different order than the waiting lease queue.
   /// Note that if a queue exists, it should be guaranteed to be non-empty.
+  /// Note: This queue currently doesn't take priority into account since the only time
+  /// its order matters is when spilling tasks to other nodes.
   std::list<std::shared_ptr<internal::Work>> waiting_lease_queue_;
 
   /// An index for the above queue.

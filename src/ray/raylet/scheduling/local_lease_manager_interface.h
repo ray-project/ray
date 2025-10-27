@@ -59,9 +59,7 @@ class LocalLeaseManagerInterface {
   virtual std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) = 0;
 
-  virtual const absl::flat_hash_map<SchedulingClass,
-                                    std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeasesToGrant() const = 0;
+  virtual const internal::WorkQueueMap &GetLeasesToGrant() const = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
@@ -125,11 +123,8 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
     return {};
   }
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetLeasesToGrant() const override {
-    static const absl::flat_hash_map<SchedulingClass,
-                                     std::deque<std::shared_ptr<internal::Work>>>
-        leases_to_grant;
+  const internal::WorkQueueMap &GetLeasesToGrant() const override {
+    static const internal::WorkQueueMap leases_to_grant;
     return leases_to_grant;
   }
 

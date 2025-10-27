@@ -67,8 +67,10 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                        task_spec.GetRuntimeEnvHash());
     // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    int priority = task_spec.GetMessage().priority();
     scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    scheduling_key_entry.task_queue.push_back(std::move(task_spec));
+    scheduling_key_entry.task_queue_map[priority].push_back(std::move(task_spec));
+    scheduling_key_entry.num_tasks_queued++;
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
       // There are idle workers, so we don't need more
@@ -149,13 +151,12 @@ void NormalTaskSubmitter::OnWorkerIdle(
   auto &lease_entry = worker_to_lease_entry_[addr];
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &current_queue = scheduling_key_entry.task_queue;
+  auto &task_queue_map = scheduling_key_entry.task_queue_map;
   // Return the worker if there was an error executing the previous task,
   // the lease is expired; Return the worker if there are no more applicable
   // queued tasks.
-  if ((was_error || worker_exiting ||
-       current_time_ms() > lease_entry.lease_expiration_time) ||
-      current_queue.empty()) {
+  if (was_error || worker_exiting ||
+      current_time_ms() > lease_entry.lease_expiration_time || task_queue_map.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
     // Return the worker only if there are no tasks to do.
@@ -164,10 +165,15 @@ void NormalTaskSubmitter::OnWorkerIdle(
     }
   } else {
     auto client = core_worker_client_pool_->GetOrConnect(addr);
-
-    if (!current_queue.empty() && !lease_entry.is_busy) {
-      auto task_spec = std::move(current_queue.front());
-      current_queue.pop_front();
+    if (!task_queue_map.empty() && !lease_entry.is_busy) {
+      auto highest_priority_iter = task_queue_map.begin();
+      auto &task_queue = highest_priority_iter->second;
+      auto task_spec = std::move(task_queue.front());
+      scheduling_key_entry.num_tasks_queued--;
+      task_queue.pop_front();
+      if (task_queue.empty()) {
+        task_queue_map.erase(highest_priority_iter);
+      }
 
       lease_entry.is_busy = true;
 
@@ -191,8 +197,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &task_queue = scheduling_key_entry.task_queue;
-  if (!task_queue.empty()) {
+  if (!scheduling_key_entry.task_queue_map.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
     return;
   }
@@ -288,16 +293,17 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
 
-  const auto &task_queue = scheduling_key_entry.task_queue;
-  if (task_queue.empty()) {
+  if (scheduling_key_entry.task_queue_map.empty()) {
     if (scheduling_key_entry.CanDelete()) {
       // We can safely remove the entry keyed by scheduling_key from the
       // scheduling_key_entries_ hashmap.
       scheduling_key_entries_.erase(scheduling_key);
     }
     return;
-  } else if (scheduling_key_entry.task_queue.size() <=
-             scheduling_key_entry.pending_lease_requests.size()) {
+  }
+
+  if (scheduling_key_entry.num_tasks_queued <=
+      scheduling_key_entry.pending_lease_requests.size()) {
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
@@ -333,7 +339,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
        is_spillback,
        raylet_address = *raylet_address](const Status &status,
                                          const rpc::RequestWorkerLeaseReply &reply) {
-        std::deque<TaskSpecification> tasks_to_fail;
+        absl::btree_map<int32_t, std::deque<TaskSpecification>> tasks_to_fail;
         rpc::RayErrorInfo error_info;
         ray::Status error_status;
         rpc::ErrorType error_type = rpc::ErrorType::WORKER_DIED;
@@ -385,8 +391,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                                  ", name=",
                                  function_or_actor_name));
 
-                tasks_to_fail = std::move(sched_entry.task_queue);
-                sched_entry.task_queue.clear();
+                tasks_to_fail = std::move(sched_entry.task_queue_map);
+                sched_entry.task_queue_map.clear();
+                sched_entry.num_tasks_queued = 0;
                 if (sched_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
@@ -466,29 +473,31 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                << "because the raylet is "
                   "unavailable (crashed).";
             error_info.set_error_message(ss.str());
-            tasks_to_fail = std::move(sched_entry.task_queue);
-            sched_entry.task_queue.clear();
+            tasks_to_fail = std::move(sched_entry.task_queue_map);
+            sched_entry.task_queue_map.clear();
+            sched_entry.num_tasks_queued = 0;
             if (sched_entry.CanDelete()) {
               scheduling_key_entries_.erase(scheduling_key);
             }
           }
         }
         error_info.set_error_type(error_type);
-        while (!tasks_to_fail.empty()) {
-          auto &task_spec = tasks_to_fail.front();
-          task_manager_.FailPendingTask(
-              task_spec.TaskId(), error_type, &error_status, &error_info);
-          tasks_to_fail.pop_front();
+        for (const auto &[_, task_queue] : tasks_to_fail) {
+          for (const auto &task_spec : task_queue) {
+            task_manager_.FailPendingTask(
+                task_spec.TaskId(), error_type, &error_status, &error_info);
+          }
         }
+        tasks_to_fail.clear();
       },
-      task_queue.size(),
+      scheduling_key_entry.num_tasks_queued,
       is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.
-  if (scheduling_key_entry.task_queue.size() >
+  if (scheduling_key_entry.num_tasks_queued >
           scheduling_key_entry.pending_lease_requests.size() &&
       scheduling_key_entry.pending_lease_requests.size() <
           kMaxPendingLeaseRequestsPerSchedulingCategory) {
@@ -683,13 +692,19 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     }
 
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    auto &scheduling_tasks = scheduling_key_entry.task_queue;
+    auto priority_iter =
+        scheduling_key_entry.task_queue_map.find(task_spec.GetMessage().priority());
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
-    if (!scheduling_tasks.empty()) {
+    if (priority_iter != scheduling_key_entry.task_queue_map.end()) {
+      auto &scheduling_tasks = priority_iter->second;
       for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
         if (spec->TaskId() == task_id) {
           scheduling_tasks.erase(spec);
+          --scheduling_key_entry.num_tasks_queued;
+          if (scheduling_tasks.empty()) {
+            scheduling_key_entry.task_queue_map.erase(priority_iter);
+          }
           CancelWorkerLeaseIfNeeded(scheduling_key);
           task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           return;
