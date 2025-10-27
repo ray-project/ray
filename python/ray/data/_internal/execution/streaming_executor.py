@@ -618,7 +618,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": op_state.total_enqueued_input_bundles(),
+                    "queued_blocks": op_state.total_enqueued_input_blocks(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
