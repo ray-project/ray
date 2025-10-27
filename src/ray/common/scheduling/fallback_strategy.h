@@ -26,8 +26,8 @@
 
 namespace ray {
 
-/// This struct holds all the information for a single fallback option in the fallback strategy list.
-/// It is designed to be extensible.
+/// This struct holds all the information for a single fallback option in the fallback
+/// strategy list. It is designed to be extensible.
 struct FallbackOptions {
   FallbackOptions() = default;
 
