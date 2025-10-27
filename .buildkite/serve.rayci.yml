@@ -29,15 +29,14 @@ steps:
     wanda: ci/docker/servetracing.build.wanda.yaml
 
   - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
+    label: "wanda: minbuild-{{matrix}}-py3.10"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      setup:
-        app: [serve, default]
-        python: ["3.9", "3.10"]
+      - serve
+      - default
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      EXTRA_DEPENDENCY: "{{matrix.app}}"
+      PYTHON_VERSION: "3.10"
+      EXTRA_DEPENDENCY: "{{matrix}}"
     tags: cibase
 
   # tests
