@@ -189,7 +189,7 @@ class SynchronizationActor:
                         self._wait_with_logging(
                             self._condition, world_rank, caller_method_name
                         ),
-                        timeout=self._timeout_s if self._timeout_s > 0 else None,
+                        timeout=self._timeout_s if self._timeout_s >= 0 else None,
                     )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:
