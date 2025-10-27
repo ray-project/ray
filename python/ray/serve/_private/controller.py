@@ -820,7 +820,7 @@ class ServeController:
         and could be removed if the Java code was refactored
         to use the new bulk deploy_applications API.
         """
-        self.deploy_applications({name: deployment_args_list})
+        self.deploy_applications({name: deployment_args_list}, {name: {}})
 
     def apply_config(
         self,
