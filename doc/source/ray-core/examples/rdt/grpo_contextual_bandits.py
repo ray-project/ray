@@ -284,9 +284,7 @@ class Learner:
                 f"Not enough slices in the buffer to sample {BATCH_SIZE} slices. Waiting for more slices..."
             )
             time.sleep(0.05)
-            slices = ray.get(
-              self.replay_buffer.sample_from.remote(BATCH_SIZE)
-            )
+            slices = ray.get(self.replay_buffer.sample_from.remote(BATCH_SIZE))
         # Prepare the tensors for the policy update.
         actions = torch.cat([s["actions"] for s in slices]).to("cuda")
         old_logps = torch.cat([s["old_logps"] for s in slices]).to("cuda")
