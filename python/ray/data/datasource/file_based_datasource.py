@@ -349,7 +349,7 @@ class FileBasedDatasource(Datasource):
         return buffer_size
 
     def _file_to_snappy_stream(
-        self, 
+        self,
         file: "pyarrow.NativeFile",
         filesystem: "RetryingPyFileSystem",
     ) -> "pyarrow.PythonFile":
