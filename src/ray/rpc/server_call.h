@@ -205,7 +205,7 @@ class ServerCallImpl : public ServerCall {
     bool cluster_id_auth_failed = false;
 
     // Token authentication
-    if (!ValidateBearerToken()) {
+    if (!ValidateAuthenticationToken()) {
       auth_success = false;
       token_auth_failed = true;
     }
@@ -341,7 +341,7 @@ class ServerCallImpl : public ServerCall {
   /// Validates token-based authentication.
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
-  bool ValidateBearerToken() {
+  bool ValidateAuthenticationToken() {
     if (!auth_token_.has_value() || auth_token_->empty()) {
       return true;  // No auth required
     }

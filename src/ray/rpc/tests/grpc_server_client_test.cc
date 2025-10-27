@@ -17,10 +17,10 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-#include "ray/protobuf/test_service.grpc.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/tests/grpc_test_common.h"
+#include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
