@@ -106,7 +106,6 @@
 #/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI
-/ci/lint/format.sh @ray-project/ray-ci
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 

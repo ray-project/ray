@@ -361,6 +361,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         return transform_pyarrow.take_table(self._table, indices)
 
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns)
+
     def select(self, columns: List[str]) -> "pyarrow.Table":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
@@ -572,9 +575,13 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         return self._column.to_pylist()
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
-        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
         if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
-            return self._column.to_numpy()
+            if isinstance(
+                self._column, pyarrow.ChunkedArray
+            ):  # NOTE: ChunkedArray in Pyarrow < 13.0.0 does not support ``zero_copy_only``
+                return self._column.to_numpy()
+            else:
+                return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 

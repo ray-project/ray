@@ -378,7 +378,12 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
+        return AliasExpr(
+            data_type=self.data_type, expr=self, _name=name, _is_rename=False
+        )
+
+    def _unalias(self) -> "Expr":
+        return self
 
 
 @DeveloperAPI(stability="alpha")
@@ -406,6 +411,9 @@ class ColumnExpr(Expr):
     def name(self) -> str:
         """Get the column name."""
         return self._name
+
+    def _rename(self, name: str):
+        return AliasExpr(self.data_type, self, name, _is_rename=True)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -685,17 +693,28 @@ class AliasExpr(Expr):
 
     expr: Expr
     _name: str
+    _is_rename: bool
 
     @property
     def name(self) -> str:
         """Get the alias name."""
         return self._name
 
+    def alias(self, name: str) -> "Expr":
+        # Always unalias before creating new one
+        return AliasExpr(
+            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
+        )
+
+    def _unalias(self) -> "Expr":
+        return self.expr
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
+            and self._is_rename == self._is_rename
         )
 
 
@@ -785,7 +804,8 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
-@PublicAPI(stability="beta")
+# TODO remove
+@DeveloperAPI(stability="alpha")
 def star() -> StarExpr:
     """
     References all input columns from the input.
@@ -800,7 +820,7 @@ def star() -> StarExpr:
     return StarExpr()
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
