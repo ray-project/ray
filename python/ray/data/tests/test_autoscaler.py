@@ -68,7 +68,9 @@ def test_actor_pool_scaling():
         input_dependencies=[MagicMock()],
         internal_queue_num_blocks=MagicMock(return_value=1),
     )
-    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)])
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager
