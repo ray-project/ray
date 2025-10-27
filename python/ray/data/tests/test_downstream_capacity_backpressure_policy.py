@@ -38,7 +38,7 @@ class TestDownstreamCapacityBackpressurePolicy:
 
     def _mock_actor_pool_map_operator(
         self,
-        num_enqueued_input_bundles: int,
+        num_enqueued_blocks: int,
         num_task_inputs_processed: int,
         num_tasks_finished: int,
         max_concurrent_tasks: int = 100,
@@ -46,7 +46,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         """Helper method to create mock actor pool map operator."""
         op, op_state = self._mock_operator(
             ActorPoolMapOperator,
-            num_enqueued_input_bundles,
+            num_enqueued_blocks,
             num_task_inputs_processed,
             num_tasks_finished,
             max_concurrent_tasks,
