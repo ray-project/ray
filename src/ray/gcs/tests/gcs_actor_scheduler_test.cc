@@ -149,7 +149,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
-        fake_scheduler_placement_time_s_histogram_,
+        fake_scheduler_placement_time_ms_histogram_,
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
@@ -223,7 +223,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
-  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   NodeID local_node_id_;
 };
 

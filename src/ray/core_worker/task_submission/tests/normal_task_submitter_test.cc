@@ -496,7 +496,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         boost::asio::steady_timer(io_context),
-        fake_scheduler_placement_time_s_histogram_);
+        fake_scheduler_placement_time_ms_histogram_);
   }
 
   NodeID local_node_id;
@@ -513,7 +513,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::unique_ptr<MockLeasePolicy> lease_policy;
   MockLeasePolicy *lease_policy_ptr = nullptr;
   instrumented_io_context io_context;
-  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
 };
 
 TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
@@ -1433,7 +1433,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                        const TaskSpecification &same2,
                        const TaskSpecification &different) {
   rpc::Address address;
-  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   auto local_node_id = NodeID::FromRandom();
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
@@ -1462,7 +1462,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
       boost::asio::steady_timer(io_context),
-      fake_scheduler_placement_time_s_histogram_);
+      fake_scheduler_placement_time_ms_histogram_);
 
   submitter.SubmitTask(same1);
   submitter.SubmitTask(same2);

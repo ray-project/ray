@@ -117,13 +117,6 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ("Reason"),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(scheduler_placement_time_s,
-             "The time it takes for a worklod (task, actor, placement group) to "
-             "be placed. This is the time from when the tasks dependencies are "
-             "resolved to when it actually reserves resources on a node to run.",
-             ("WorkloadType"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
 
 /// Local Object Manager
 DEFINE_stats(
