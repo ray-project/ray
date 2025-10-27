@@ -373,6 +373,8 @@ class ReferenceCounterInterface {
   /// and we are processing the worker's reply. In this case, we own the task's
   /// return objects and are borrowing the nested IDs.
   ///
+  /// This method is idempotent.
+  ///
   /// \param[in] object_id The ID of the object that contains other ObjectIDs.
   /// \param[in] inner_ids The object IDs are nested in object_id's value.
   /// \param[in] owner_address The owner address of the outer object_id. If
