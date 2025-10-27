@@ -275,17 +275,16 @@ class Learner:
 
         Each step samples a batch of trajectory slices from the replay buffer, computes the advantages, and updates the policy using the GRPO algorithm.
         """
+        if ray.get(self.replay_buffer.size.remote()) < BATCH_SIZE:
+            print(
+                f"Not enough slices in the buffer to sample {BATCH_SIZE} slices. Waiting for more slices..."
+            )
+            while ray.get(self.replay_buffer.size.remote()) < BATCH_SIZE:
+                time.sleep(0.05)
+
         slices: list[TrajectorySlice] = ray.get(
             self.replay_buffer.sample_from.remote(BATCH_SIZE)
         )
-        while len(slices) < BATCH_SIZE:
-            print(
-                f"Not enough slices in the buffer to sample {n} slices. Waiting for more slices..."
-            )
-            time.sleep(0.05)
-            slices = ray.get(
-              self.replay_buffer.sample_from.remote(BATCH_SIZE)
-            )
         # Prepare the tensors for the policy update.
         actions = torch.cat([s["actions"] for s in slices]).to("cuda")
         old_logps = torch.cat([s["old_logps"] for s in slices]).to("cuda")
