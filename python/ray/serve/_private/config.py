@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import AggregationFunction, AutoscalingConfig, RequestRouterConfig
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     DeploymentConfig as DeploymentConfigProto,
@@ -166,7 +166,7 @@ class DeploymentConfig(BaseModel):
     )
 
     request_router_config: RequestRouterConfig = Field(
-        default=RequestRouterConfig(),
+        default_factory=RequestRouterConfig,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 
@@ -248,6 +248,11 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
+            # By setting the serialized policy def, on the protobuf level, AutoscalingConfig constructor will not
+            # try to import the policy from the string import path when the protobuf is deserialized on the controller side
+            data["autoscaling_config"]["policy"][
+                "_serialized_policy_def"
+            ] = self.autoscaling_config.policy._serialized_policy_def
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -266,6 +271,11 @@ class DeploymentConfig(BaseModel):
                         "Non-empty request_router_kwargs not supported"
                         f"for cross-language deployments. Got: {router_kwargs}"
                     )
+            # By setting the serialized request router cls, on the protobuf level, RequestRouterConfig constructor will not
+            # try to import the request router cls from the string import path when the protobuf is deserialized on the controller side
+            data["request_router_config"][
+                "_serialized_request_router_cls"
+            ] = self.request_router_config._serialized_request_router_cls
             data["request_router_config"] = RequestRouterConfigProto(
                 **data["request_router_config"]
             )
@@ -336,6 +346,10 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["downscaling_factor"] = None
             if not data["autoscaling_config"].get("target_ongoing_requests"):
                 data["autoscaling_config"]["target_ongoing_requests"] = None
+            if not data["autoscaling_config"].get("aggregation_function"):
+                data["autoscaling_config"][
+                    "aggregation_function"
+                ] = AggregationFunction.MEAN
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
