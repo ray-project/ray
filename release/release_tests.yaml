@@ -528,6 +528,7 @@
 ########################
 
 - name: tune_scalability_bookkeeping_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -558,6 +559,7 @@
         cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -591,6 +593,7 @@
 
 
 - name: tune_scalability_durable_multifile_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -623,6 +626,7 @@
   alert: tune_tests
 
 - name: tune_scalability_long_running_large_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -657,6 +661,7 @@
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -695,6 +700,7 @@
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -723,6 +729,7 @@
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
