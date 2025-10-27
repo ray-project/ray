@@ -153,8 +153,11 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_queue_size(self) -> int:
-        return self._block_ref_bundler.num_bundles()
+    def internal_queue_num_blocks(self) -> int:
+        return self._block_ref_bundler.num_blocks()
+
+    def internal_queue_num_bytes(self) -> int:
+        return self._block_ref_bundler.size_bytes()
 
     @property
     def name(self) -> str:
@@ -607,15 +610,17 @@ class _BlockRefBundler:
         self._min_rows_per_bundle = min_rows_per_bundle
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0
+        self._bundle_buffer_size_bytes = 0
         self._finalized = False
 
-    def num_bundles(self):
-        return len(self._bundle_buffer)
+    def num_blocks(self):
+        return sum(len(b.block_refs) for b in self._bundle_buffer)
 
     def add_bundle(self, bundle: RefBundle):
         """Add a bundle to the bundler."""
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
+        self._bundle_buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
         """Returns whether the bundler has a bundle."""
@@ -624,6 +629,9 @@ class _BlockRefBundler:
             or self._bundle_buffer_size >= self._min_rows_per_bundle
             or (self._finalized and self._bundle_buffer_size >= 0)
         )
+
+    def size_bytes(self) -> int:
+        return self._bundle_buffer_size_bytes
 
     def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
         """Gets the next bundle.
@@ -640,6 +648,7 @@ class _BlockRefBundler:
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
+            self._bundle_buffer_size_bytes = 0
             return [bundle], bundle
 
         remainder = []
@@ -664,6 +673,9 @@ class _BlockRefBundler:
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in remainder
+        )
+        self._bundle_buffer_size_bytes = sum(
+            bundle.size_bytes() for bundle in remainder
         )
 
         return list(output_buffer), _merge_ref_bundles(*output_buffer)

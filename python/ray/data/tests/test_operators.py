@@ -1155,7 +1155,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Assert expected output
     assert out_bundles == expected_bundles
     # Assert that all bundles have been ingested
-    assert bundler.num_bundles() == 0
+    assert bundler.num_blocks() == 0
 
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
