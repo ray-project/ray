@@ -1,3 +1,5 @@
+# This test launches an Azure VM cluster from an AWS instance.
+# The test script runs on AWS while the actual cluster is created in Azure.
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
