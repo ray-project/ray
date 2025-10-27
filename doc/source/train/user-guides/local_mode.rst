@@ -111,28 +111,24 @@ The following example shows how to write a unit test with local mode:
 .. testcode::
     :skipif: True
 
-    import unittest
+    import pytest
     import ray
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
-    class TestTraining(unittest.TestCase):
-        def test_training_runs(self):
-            def train_func(config):
-                # Minimal training logic
-                ray.train.report({"loss": 0.5})
+    def test_training_runs():
+        def train_func(config):
+            # Report minimal training result
+            ray.train.report({"loss": 0.5})
 
-            trainer = TorchTrainer(
-                train_loop_per_worker=train_func,
-                scaling_config=ScalingConfig(num_workers=0),
-            )
-            result = trainer.fit()
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=ScalingConfig(num_workers=0),
+        )
+        result = trainer.fit()
 
-            self.assertIsNone(result.error)
-            self.assertEqual(result.metrics["loss"], 0.5)
-
-    if __name__ == "__main__":
-        unittest.main()
+        assert result.error is None
+        assert result.metrics["loss"] == 0.5
 
 Using local mode with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -384,10 +380,8 @@ The following table summarizes how ``ray.train`` APIs behave differently in loca
    * - :func:`ray.train.get_all_reported_checkpoints`
      - Always returns an empty list. Doesn't track checkpoint history.
    * - :func:`ray.train.collective.barrier`
-     - **Single-process**: No-op. 
-       **Multi-process**: Uses PyTorch's distributed primitives.
+     -  No-op. 
    * - :func:`ray.train.collective.broadcast_from_rank_zero`
-     - **Single-process**: Returns data as-is. 
-      **Multi-process**: Uses PyTorch's distributed primitives.
+     - Returns data as-is. 
    * - :meth:`ray.train.get_context().get_storage() <ray.train.TrainContext.get_storage>`
      - Raises ``NotImplementedError``
