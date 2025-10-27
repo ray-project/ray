@@ -235,7 +235,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 target_max_block_size_override=target_max_block_size_override,
                 min_rows_per_bundle=min_rows_per_bundle,
-                concurrency=compute_strategy.size,
+                max_concurrency=compute_strategy.size,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -517,12 +517,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     @abstractmethod
     def pending_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
-
-    @abstractmethod
-    def min_max_resource_requirements(
-        self,
-    ) -> Tuple[ExecutionResources, ExecutionResources]:
-        ...
 
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
