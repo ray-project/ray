@@ -244,6 +244,7 @@ ray_cc_library(
         ":worker",
         ":worker_killing_policy",
         ":worker_pool",
+        "//src/ray/authentication:authentication_token_loader",
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
