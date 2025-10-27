@@ -6,6 +6,7 @@ How-to guides for deploying and configuring Ray Serve LLM features.
 :maxdepth: 1
 
 Deployment Initialization <deployment-initialization>
+Data parallel deployment (WIP) <data-parallel-deployment>
 Prefill/decode disaggregation <prefill-decode>
 KV cache offloading <kv-cache-offloading>
 Prefix-aware routing <prefix-aware-routing>

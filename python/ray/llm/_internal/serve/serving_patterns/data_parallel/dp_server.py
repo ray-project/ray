@@ -4,6 +4,7 @@ from typing import Optional
 
 from ray import serve
 from ray.experimental.collective.util import get_address_and_port
+from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
@@ -137,10 +138,25 @@ def build_dp_deployment(
     )
 
 
-def build_openai_dp_app(llm_config: LLMConfig) -> Application:
+def build_openai_dp_app(
+    llm_config: LLMConfig,
+    ingress_deployment_config: Optional[dict] = None,
+) -> Application:
+    """Build an OpenAI compatible app with data parallel deployment.
 
+    Args:
+        llm_config: The LLM configuration for the data parallel deployment.
+        ingress_deployment_config: Optional Ray @serve.deployment options for the ingress.
+            If provided, these will be merged with the default ingress options.
+
+    Returns:
+        The configured Ray Serve Application.
+    """
     dp_deployment = build_dp_deployment(llm_config)
     ingress_options = OpenAiIngress.get_deployment_options([llm_config])
+
+    if ingress_deployment_config:
+        ingress_options = deep_merge_dicts(ingress_options, ingress_deployment_config)
 
     ingress_cls = make_fastapi_ingress(OpenAiIngress)
     ingress_app = serve.deployment(ingress_cls, **ingress_options).bind(
