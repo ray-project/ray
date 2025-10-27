@@ -325,6 +325,7 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
+                _labels={self._OPERATOR_ID_LABEL_KEY: self.id},
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,
