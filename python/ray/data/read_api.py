@@ -54,7 +54,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
+from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -3157,7 +3157,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3287,12 +3287,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()
@@ -4219,73 +4218,45 @@ def read_unity_catalog(
     *,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
-    reader_kwargs: Optional[dict],
+    reader_kwargs: Optional[dict] = None,
 ) -> Dataset:
-    """
-    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    """Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
     with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
     .. note::
 
-       This ``read_unity_catalog`` function is currently experimental and under active development
-
-    .. warning::
-
-        The Databricks Unity Catalog credential vending feature is currently in Public Preview and there are important requirements and limitations.
-        You must read these docs carefully and ensure your workspace and principal are properly configured.
-
-    Features:
-        - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
-        - **Format Support**: Supports reading `delta` and `parquet` formats via supported Ray Dataset readers (iceberg coming soon).
-        - **Cloud Support**: AWS, Azure, and GCP supported, with automatic environment setup for the vended credentials per session.
-        - **Auto-Infer**: Data format is auto-inferred from table metadata, but can be explicitly specified.
+       This function is experimental and under active development.
 
     Examples:
-        Read a Unity Catalog managed Delta table with credential vending:
+        Read a Unity Catalog Delta table:
 
-            >>> import ray
-            >>> ds = read_unity_catalog( # doctest: +SKIP
-            ...     table="main.sales.transactions",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
-            ...     token="XXXXXXXXXXX" # noqa: E501
-            ... )
-            >>> ds.show(3) # doctest: +SKIP
-
-        Explicitly specify the format, and pass reader options:
-
-            >>> ds = read_unity_catalog( # doctest: +SKIP
-            ...     table="main.catalog.images",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
-            ...     token="XXXXXXXXXXX", # noqa: E501
-            ...     data_format="delta",
-            ...     region="us-west-2",
-            ...     # Reader kwargs come from the associated reader (ray.data.read_delta in this example)
-            ...     reader_kwargs={"override_num_blocks": 1000}
-            ... )
+        >>> import ray
+        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
+        ...     table="main.sales.transactions",
+        ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+        ...     token="dapi...",
+        ...     region="us-west-2"
+        ... )
+        >>> ds.show(3)  # doctest: +SKIP
 
     Args:
-        table: Unity Catalog table name as `<catalog>.<schema>.<table>`. Must be a managed or external table supporting credential vending.
-        url: Databricks workspace URL, e.g. `"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"`
-        token: Databricks PAT (Personal Access Token) with `EXTERNAL USE SCHEMA` on the schema containing the table, and with access to the workspace API.
-        data_format: (Optional) Data format override. If not specified, inferred from Unity Catalog metadata and file extension. Supported: `"delta"`, `"parquet"`
-        region: (Optional) For S3: AWS region for cloud credential environment setup.
-        reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
+        table: Unity Catalog table path in format ``catalog.schema.table``.
+        url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+        token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+        data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
+        region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
+        reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
-        A :class:`ray.data.Dataset` containing the data from the external Unity Catalog table.
-
-    References:
-        - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-        - API Reference for temporary credentials: https://docs.databricks.com/api/workspace/unity-catalog/temporary-table-credentials
-
+        A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """
-    reader = UnityCatalogConnector(
+    connector = UnityCatalogConnector(
         base_url=url,
         token=token,
         table_full_name=table,
@@ -4293,7 +4264,7 @@ def read_unity_catalog(
         region=region,
         reader_kwargs=reader_kwargs,
     )
-    return reader.read()
+    return connector.read()
 
 
 @PublicAPI(stability="alpha")

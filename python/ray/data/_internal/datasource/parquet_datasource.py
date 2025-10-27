@@ -26,6 +26,7 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.collections import collapse_transitive_map
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -273,6 +274,7 @@ class ParquetDatasource(Datasource):
         self._block_udf = _block_udf
         self._to_batches_kwargs = to_batch_kwargs
         self._data_columns = data_columns
+        self._data_columns_rename_map = {}
         self._partition_columns = partition_columns
         self._read_schema = schema
         self._file_schema = pq_ds.schema
@@ -369,6 +371,7 @@ class ParquetDatasource(Datasource):
                 to_batches_kwargs,
                 default_read_batch_size_rows,
                 data_columns,
+                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
@@ -378,6 +381,7 @@ class ParquetDatasource(Datasource):
                 self._to_batches_kwargs,
                 self._default_batch_size,
                 self._data_columns,
+                self._data_columns_rename_map,
                 self._partition_columns,
                 self._read_schema,
                 self._include_paths,
@@ -391,6 +395,7 @@ class ParquetDatasource(Datasource):
                         to_batches_kwargs,
                         default_read_batch_size_rows,
                         data_columns,
+                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
@@ -427,9 +432,18 @@ class ParquetDatasource(Datasource):
 
         return (self._data_columns or []) + (self._partition_columns or [])
 
-    def apply_projection(self, columns: List[str]) -> "ParquetDatasource":
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "ParquetDatasource":
         clone = copy.copy(self)
-        clone._data_columns = columns
+
+        clone._data_columns = _combine_projection(self._data_columns, columns)
+        clone._data_columns_rename_map = _combine_rename_map(
+            self._data_columns_rename_map, column_rename_map
+        )
+
         return clone
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
@@ -443,6 +457,7 @@ def read_fragments(
     to_batches_kwargs: Dict[str, Any],
     default_read_batch_size_rows: Optional[int],
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
@@ -465,6 +480,7 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
+                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
@@ -487,6 +503,7 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -550,6 +567,14 @@ def _read_batches_from(
             if table.num_columns == 0 and table.num_rows > 0:
                 table = table.append_column(
                     _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
+                )
+
+            if data_columns_rename_map is not None:
+                table = table.rename_columns(
+                    [
+                        data_columns_rename_map.get(col, col)
+                        for col in table.schema.names
+                    ]
                 )
 
             yield table
@@ -813,6 +838,43 @@ def _add_partitions_to_table(
             )
 
     return table
+
+
+def _combine_projection(
+    prev_projected_cols: Optional[List[str]], new_projected_cols: Optional[List[str]]
+) -> Optional[List[str]]:
+    # NOTE: Null projection carries special meaning of all columns being selected
+    if prev_projected_cols is None:
+        return new_projected_cols
+    elif new_projected_cols is None:
+        # Retain original projection
+        return prev_projected_cols
+    else:
+        illegal_refs = [
+            col for col in new_projected_cols if col not in prev_projected_cols
+        ]
+
+        if illegal_refs:
+            raise ValueError(
+                f"New projection {new_projected_cols} references non-existent columns "
+                f"(existing projection {prev_projected_cols})"
+            )
+
+        return new_projected_cols
+
+
+def _combine_rename_map(
+    prev_column_rename_map: Optional[Dict[str, str]],
+    new_column_rename_map: Optional[Dict[str, str]],
+):
+    if not prev_column_rename_map:
+        combined = new_column_rename_map
+    elif not new_column_rename_map:
+        combined = prev_column_rename_map
+    else:
+        combined = prev_column_rename_map | new_column_rename_map
+
+    return collapse_transitive_map(combined)
 
 
 def _get_partition_columns_schema(
