@@ -714,6 +714,33 @@ Replace `{application_name}` and `{deployment_name}` with your application and d
 
 The request body must conform to the [`ScaleDeploymentRequest`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ScaleDeploymentRequest.html) schema. The `target_num_replicas` field (integer, required) specifies the target number of replicas for the deployment and must be a non-negative integer.
 
+### Important considerations
+
+Understanding how the external scaler interacts with your deployments helps you build reliable scaling logic:
+
+#### Idempotent API calls
+
+The scaling API is idempotent. You can safely call it multiple times with the same `target_num_replicas` value without side effects. This makes it safe to run your scaling logic on a schedule or in response to repeated metric updates.
+
+#### Interaction with serve deploy
+
+When you upgrade your service with `serve deploy`, the number of replicas you set through the external scaler API stays intact. This behavior matches what you'd expect from Ray Serve's built-in autoscaler—deployment updates don't reset replica counts.
+
+#### Query current replica count
+
+You can get the current number of replicas for any deployment by querying the GET `/applications` API:
+
+```bash
+curl -X GET http://localhost:8000/api/v1/applications \
+  -H "Authorization: Bearer <your_token>"
+```
+
+The response follows the [`ServeInstanceDetails`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeInstanceDetails.html) schema, which includes an `applications` field containing a dictionary with application names as keys. Each application includes detailed information about all its deployments, including current replica counts. Use this information to make informed scaling decisions. For example, you might scale up gradually by adding a percentage of existing replicas rather than jumping to a fixed number.
+
+#### Initial replica count
+
+When you deploy an application for the first time, Ray Serve creates the number of replicas specified in the `num_replicas` field of your deployment configuration. The external scaler can then adjust this count dynamically based on your scaling logic.
+
 ### Example: Predictive scaling
 
 This example shows how to implement predictive scaling based on historical patterns or forecasts. You can preemptively scale up before anticipated traffic spikes by running an external script that adjusts replica counts based on time of day.
@@ -770,10 +797,7 @@ python external_scaler_predictive_client.py
 
 The scaling client continuously adjusts the number of replicas based on the time of day:
 - Business hours (9 AM - 5 PM): 10 replicas
-- Evening peak (5 PM - 10 PM): 15 replicas  
 - Off-peak hours: 3 replicas
-
-By default, the script checks and updates scaling every 5 minutes. You can modify the `SCALING_INTERVAL` variable in the script to change this frequency.
 
 ### Application level autoscaling
 

@@ -4,80 +4,78 @@ import time
 from datetime import datetime
 import requests
 
-
 APPLICATION_NAME = "text-processor-app"
-DEPLOYMENT_NAME = "TextProcessor" 
-AUTH_TOKEN = "YOUR_TOKEN_HERE" # Get your auth token from the Ray dashboard at http://localhost:8265
+DEPLOYMENT_NAME = "TextProcessor"
+AUTH_TOKEN = "YOUR_TOKEN_HERE"  # Get from Ray dashboard at http://localhost:8265
 SERVE_ENDPOINT = "http://localhost:8000"
-SCALING_INTERVAL = 300 # How often to check and update scaling (in seconds)
+SCALING_INTERVAL = 300  # Check every 5 minutes
 
 logger = logging.getLogger(__name__)
 
 
-def predictive_scale(
-    application_name: str,
-    deployment_name: str,
-    auth_token: str,
-    serve_endpoint: str = "http://localhost:8000"
-) -> bool:
-    """Scale based on time of day and historical patterns."""
-    hour = datetime.now().hour
+def get_current_replicas(app_name: str, deployment_name: str, token: str) -> int:
+    """Get current replica count. Returns -1 on error.
     
-    # Define scaling profile based on historical traffic patterns
-    if 9 <= hour < 17:  # Business hours
-        target_replicas = 10
-    elif 17 <= hour < 22:  # Evening peak
-        target_replicas = 15
-    else:  # Off-peak hours
-        target_replicas = 3
-    
-    url = (
-        f"{serve_endpoint}/api/v1/applications/{application_name}"
-        f"/deployments/{deployment_name}/scale"
-    )
-    
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json"
-    }
-    
+    Response schema: https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeInstanceDetails.html
+    """
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json={"target_num_replicas": target_replicas},
+        resp = requests.get(
+            f"{SERVE_ENDPOINT}/api/v1/applications",
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10
         )
-        
-        if response.status_code == 200:
-            logger.info(f"Successfully scaled {deployment_name} to {target_replicas} replicas, (hour: {hour})")
-            return True
-        else:
-            logger.error(f"Failed to scale deployment: {response.status_code} - {response.text}")
-            return False
+        if resp.status_code != 200:
+            logger.error(f"Failed to get applications: {resp.status_code}")
+            return -1
             
+        apps = resp.json().get("applications", {})
+        if app_name not in apps:
+            logger.error(f"Application {app_name} not found")
+            return -1
+            
+        for deployment in apps[app_name].get("deployments", []):
+            if deployment["name"] == deployment_name:
+                return deployment["target_num_replicas"]
+                
+        logger.error(f"Deployment {deployment_name} not found")
+        return -1
     except requests.exceptions.RequestException as e:
         logger.error(f"Request failed: {e}")
-        return False
+        return -1
 
 
-def main():
-    logger.info(
-        f"Starting predictive scaling for {APPLICATION_NAME}/{DEPLOYMENT_NAME}"
-    )
+def scale_deployment(app_name: str, deployment_name: str, token: str):
+    """Scale deployment based on time of day."""
+    hour = datetime.now().hour
+    current = get_current_replicas(app_name, deployment_name, token)
+    target = 10 if 9 <= hour < 17 else 3  # Peak hours: 9am-5pm
     
-    # Continuous loop - scales based on time of day
-    while True:
-        predictive_scale(
-            APPLICATION_NAME,
-            DEPLOYMENT_NAME,
-            AUTH_TOKEN,
-            SERVE_ENDPOINT
+    delta = target - current
+    if delta == 0:
+        logger.info(f"Already at target ({current} replicas)")
+        return
+    
+    action = "Adding" if delta > 0 else "Removing"
+    logger.info(f"{action} {abs(delta)} replicas ({current} -> {target})")
+    
+    try:
+        resp = requests.post(
+            f"{SERVE_ENDPOINT}/api/v1/applications/{app_name}/deployments/{deployment_name}/scale",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"target_num_replicas": target},
+            timeout=10
         )
-        time.sleep(SCALING_INTERVAL)
+        if resp.status_code == 200:
+            logger.info("Successfully scaled deployment")
+        else:
+            logger.error(f"Scale failed: {resp.status_code} - {resp.text}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request failed: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    logger.info(f"Starting predictive scaling for {APPLICATION_NAME}/{DEPLOYMENT_NAME}")
+    while True:
+        scale_deployment(APPLICATION_NAME, DEPLOYMENT_NAME, AUTH_TOKEN)
+        time.sleep(SCALING_INTERVAL)
 # __client_script_end__
-
