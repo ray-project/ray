@@ -602,7 +602,7 @@ message TaskSpec {
   // The tensor transport type for this task.
   TensorTransport tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
-  repeated FallbackStrategyOptions fallback_strategy = 45;
+  FallbackStrategy fallback_strategy = 45;
 }
 
 message TaskInfoEntry {

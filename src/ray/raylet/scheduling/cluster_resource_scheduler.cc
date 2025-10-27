@@ -302,6 +302,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   }
 
   scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
+  std::optional<std::reference_wrapper<const LabelSelector>>
+      highest_priority_unavailable_label_selector = std::nullopt;
   bool any_selector_is_feasible = false;
 
   // Try each label selector in order until a node is found.
@@ -345,10 +347,11 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         return best_feasible_node;
       }
 
-      // If the node is feasible but not available, save it but continue to
-      // check for the next fallback.
+      // If the node is feasible but not available, save the node and label selector
+      // but continue to check for the next fallback.
       if (highest_priority_unavailable_node.IsNil()) {
         highest_priority_unavailable_node = best_feasible_node;
+        highest_priority_unavailable_selector_ref = selector_ref;
       }
     }
   }
@@ -366,7 +369,13 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     auto resource_request = ResourceMapToResourceRequest(
         lease_spec.GetRequiredPlacementResources().GetResourceMap(),
         requires_object_store_memory);
-    resource_request.SetLabelSelector(lease_spec.GetLabelSelector());
+
+    // Use the label selector from the highest-priority fallback that was feasible.
+    const auto &selector_for_local_check =
+        highest_priority_unavailable_selector_ref.has_value()
+            ? highest_priority_unavailable_selector_ref.value().get()
+            : lease_spec.GetLabelSelector();
+    resource_request.SetLabelSelector(selector_for_local_check);
 
     if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
                                                         resource_request)) {
