@@ -372,12 +372,10 @@ def train(total_steps: int) -> None:
     generator = Generator.remote(scorer)
 
     # Asynchronously initialize the generator with current learner weights.
-    weights_updated_ref = generator.update_weights.remote(
-        learner.get_weights.remote()
-    )
+    weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote())
 
     # Pre-fill the ReplayBuffer before starting GRPO.
-    # Generator is a single-threaded actor, so this generate call won't execute until after the 
+    # Generator is a single-threaded actor, so this generate call won't execute until after the
     # above update_weights call has completed.
     generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE))
     step_results = []
@@ -402,10 +400,12 @@ def train(total_steps: int) -> None:
                 )
             step_results.clear()
 
-        step_results.append(learner.step.remote())    
+        step_results.append(learner.step.remote())
 
         # Update the generator with new weights.
-        weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote())
+        weights_updated_ref = generator.update_weights.remote(
+            learner.get_weights.remote()
+        )
 
 
 if __name__ == "__main__":
