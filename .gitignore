@@ -186,6 +186,8 @@ java/**/pom.xml
 # python virtual env
 venv
 .venv
+env
+.env
 .conda
 
 # pyenv version file

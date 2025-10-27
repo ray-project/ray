@@ -1,0 +1,2 @@
+class HcclTensorTransport():
+    pass

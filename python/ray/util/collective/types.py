@@ -44,6 +44,7 @@ class Backend(object):
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
     NIXL = "nixl"
+    HCCL = "hccl"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
