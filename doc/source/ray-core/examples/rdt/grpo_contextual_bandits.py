@@ -5,9 +5,8 @@ Based on: https://github.com/meta-pytorch/monarch/blob/0de4e6b4ad7da37e5dbb00a0e
 """
 
 import argparse
-import copy
-from math import floor
 import time
+import copy
 from typing import Any
 
 import ray
@@ -31,13 +30,10 @@ TrajectorySlice = dict[str, torch.Tensor | int]
 BATCH_SIZE = 32
 # Keep learning rate low so that the model does not jump outside
 # the trust policy region.
-MAX_LR = 1e-6
+LEARNING_RATE = 1e-6
 WEIGHT_DECAY = 1e-10
 # Adaptively reduces the learning rate to prevent large updates in a single step.
 GRAD_CLIP_NORM = 1.0
-# Adds a warmup and cooldown to the learning rate schedule.
-WARMUP_FRAC = 0.2
-COOLDOWN_FRAC = 0.15
 
 # -- GRPO algorithm --
 # Number of actions to sample for each state.
@@ -199,43 +195,16 @@ class Scorer:
 class Learner:
     """Updates policy based on collected experiences using GRPO algorithm."""
 
-    def __init__(self, replay_buffer, scheduler_kwargs: dict) -> None:
+    def __init__(self, replay_buffer) -> None:
         self.model = ResidualMLP().to("cuda")
 
         # Use smaller betas to favor recent momentum history.
         self.optim = optim.AdamW(
             self.model.parameters(),
-            lr=MAX_LR,
+            lr=LEARNING_RATE,
             weight_decay=WEIGHT_DECAY,
             betas=(0.9, 0.9),
         )
-
-        # Learning rate scheduler with warmup and cooldown.
-        warmup = torch.optim.lr_scheduler.LinearLR(
-            self.optim,
-            start_factor=0.001,
-            end_factor=1.0,
-            total_iters=scheduler_kwargs["warmup_steps"],
-        )
-        constant = torch.optim.lr_scheduler.ConstantLR(
-            self.optim, factor=1.0, total_iters=scheduler_kwargs["hold_steps"]
-        )
-        cooldown = torch.optim.lr_scheduler.LinearLR(
-            self.optim,
-            start_factor=1.0,
-            end_factor=0.001,
-            total_iters=scheduler_kwargs["cooldown_steps"],
-        )
-
-        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
-            self.optim,
-            [warmup, constant, cooldown],
-            milestones=[
-                scheduler_kwargs["warmup_steps"],
-                scheduler_kwargs["warmup_steps"] + scheduler_kwargs["hold_steps"],
-            ],
-        )
-
         self.policy_version = 1
         self.replay_buffer = replay_buffer
 
@@ -294,7 +263,6 @@ class Learner:
         # Clip the gradients to prevent exploding gradients and stabilize training.
         nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP_NORM)
         self.optim.step()
-        self.scheduler.step()
         self.policy_version += 1
 
         return {
@@ -398,16 +366,10 @@ class Generator:
 # -- Control loop --
 def train(total_steps: int) -> None:
     """Run one end-to-end training session."""
-    # Calculate the number of steps for the warmup, hold, and cooldown phases.
-    scheduler_kwargs = {
-        "warmup_steps": floor(WARMUP_FRAC * total_steps),
-        "hold_steps": floor((1 - WARMUP_FRAC - COOLDOWN_FRAC) * total_steps),
-        "cooldown_steps": floor(COOLDOWN_FRAC * total_steps),
-    }
 
     # Instantiate one instance of each actor.
     replay_buf = ReplayBuffer.remote()
-    learner = Learner.remote(replay_buf, scheduler_kwargs)
+    learner = Learner.remote(replay_buf)
     scorer = Scorer.remote(replay_buf)
     generator = Generator.remote(scorer)
 
