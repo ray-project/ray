@@ -158,10 +158,16 @@ class Read(AbstractMap, SourceOperator, LogicalOperatorSupportsProjectionPushdow
     def get_current_projection(self) -> Optional[List[str]]:
         return self._datasource.get_current_projection()
 
-    def apply_projection(self, columns: List[str]):
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "Read":
         clone = copy.copy(self)
 
-        projected_datasource = self._datasource.apply_projection(columns)
+        projected_datasource = self._datasource.apply_projection(
+            columns, column_rename_map
+        )
         clone._datasource = projected_datasource
         clone._datasource_or_legacy_reader = projected_datasource
 
