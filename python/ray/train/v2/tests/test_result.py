@@ -233,7 +233,7 @@ def test_result_from_path_validation(
     folder_path = (
         Path(nonexistent_folder) if path_type == "PathLike" else nonexistent_folder
     )
-    with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist!"):
+    with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist."):
         Result.from_path(folder_path)
 
     # Test 2: Folder exists but snapshot file doesn't exist
