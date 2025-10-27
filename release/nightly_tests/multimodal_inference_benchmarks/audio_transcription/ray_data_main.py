@@ -95,6 +95,7 @@ def decoder(batch):
 start_time = time.time()
 
 ds = ray.data.read_parquet(INPUT_PATH)
+ds = ds.repartition(target_num_rows_per_block=BATCH_SIZE)
 ds = ds.map(resample)
 ds = ds.map_batches(whisper_preprocess, batch_size=BATCH_SIZE)
 ds = ds.map_batches(
