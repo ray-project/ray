@@ -3,6 +3,8 @@ import math
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
+from python.ray._private.ray_constants import env_float
+
 from .backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -38,15 +40,15 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """
 
     # Smoothing factor for the asymmetric EWMA (slow fall, faster rise).
-    EWMA_ALPHA = 0.2
+    EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.2)
     # Deadband width in units of the EWMA absolute deviation estimate.
-    K_DEV = 2.0
+    K_DEV = env_float("RAY_DATA_CONCURRENCY_CAP_K_DEV", 2.0)
     # Factor to back off when the queue is too large.
-    BACKOFF_FACTOR = 1
+    BACKOFF_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_BACKOFF_FACTOR", 1)
     # Factor to ramp up when the queue is too small.
-    RAMPUP_FACTOR = 1
+    RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
     # Threshold for object store memory usage ratio to enable dynamic output queue size backpressure.
-    OBJECT_STORE_MEMORY_USAGE_RATIO_THRESHOLD = 0.1
+    OBJECT_STORE_USAGE_RATIO = env_float("RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -142,7 +144,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         ):
             if (
                 op_budget.object_store_memory / op_usage.object_store_memory
-                > self.OBJECT_STORE_MEMORY_USAGE_RATIO_THRESHOLD
+                > self.OBJECT_STORE_USAGE_RATIO
             ):
                 return running < self._concurrency_caps[op]
 
