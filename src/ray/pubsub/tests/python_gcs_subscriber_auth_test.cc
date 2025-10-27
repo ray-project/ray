@@ -288,8 +288,8 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
 
   // Close should succeed with matching tokens
-  ASSERT_TRUE(subscriber->Close().ok()) << "Close should succeed with matching tokens: "
-                           << status.ToString();
+  ASSERT_TRUE(subscriber->Close().ok())
+      << "Close should succeed with matching tokens: " << status.ToString();
   // This assertion will fail until auth is added to `Close()` and the mock is updated.
   EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
 }
