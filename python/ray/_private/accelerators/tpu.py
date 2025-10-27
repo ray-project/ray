@@ -604,8 +604,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         @ray.remote(resources={"TPU-v4-16-head"})
         def run_jax_fn(executable):
             # Note this will execute on worker 0
-            tpu_name = ray.util.accelerators.tpu.get_tpu_pod_name()
-            num_workers = ray.util.accelerators.tpu.get_tpu_num_workers()
+            tpu_name = ray.util.tpu.get_tpu_pod_name()
+            num_workers = ray.util.tpu.get_tpu_num_workers()
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
             return [tpu_executable.remote() for _ in range(num_workers)]
 
