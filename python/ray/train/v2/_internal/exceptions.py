@@ -130,17 +130,12 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
         self._missing_ranks = missing_ranks
         self._timeout_s = timeout_s
 
-        if timeout_s < 0:
-            timeout_str = "no timeout"
-        else:
-            timeout_str = f"{timeout_s:.2f} seconds"
-
         message = (
             f"The collective operation timed out after {time_elapsed:.2f} seconds. "
             f"The following ranks have not joined the collective operation: {missing_ranks}\n"
             f"You can set the timeout with the {COLLECTIVE_TIMEOUT_S_ENV_VAR} "
-            f"environment variable (current value: {timeout_str})."
-            "To disable the timeout, set the environment variable to -1."
+            f"environment variable (current value: {timeout_s:.2f} seconds)."
+            "Disable the timeout by setting the environment variable to -1."
         )
         super().__init__(message)
 
