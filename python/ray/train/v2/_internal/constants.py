@@ -43,13 +43,13 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
 DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
 
-# Timeout in seconds for `ray.train.report` to block on synchronization barriers,
-# after which a timeout error will be raised.
-REPORT_BARRIER_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_TIMEOUT_S"
-DEFAULT_REPORT_BARRIER_TIMEOUT_S: float = 60 * 30
-# Time in seconds for `ray.train.report` to log a warning if it is waiting for sync
-# actor notification of releasing.
-REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_WARN_INTERVAL_S"
+# Time in seconds for collective operations before raising a timeout error.
+REPORT_BARRIER_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"
+# NOTE: Default to no timeout to avoid introducing more timeouts for users to configure.
+# For example, users can already configure timeouts in torch distributed.
+DEFAULT_REPORT_BARRIER_TIMEOUT_S: float = -1
+# Interval in seconds to log a warning when waiting for a collective operation to complete.
+REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_WARN_INTERVAL_S"
 DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S: float = 60
 
 # Environment variable to enable the print function patching.

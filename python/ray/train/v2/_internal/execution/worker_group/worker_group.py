@@ -177,10 +177,10 @@ class WorkerGroup(BaseWorkerGroup):
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
-        self._report_barrier_timeout_s = env_float(
+        self._collective_timeout_s = env_float(
             REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
         )
-        self._report_barrier_warn_interval_s = env_float(
+        self._collective_warn_interval_s = env_float(
             REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
             DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
         )
@@ -309,8 +309,8 @@ class WorkerGroup(BaseWorkerGroup):
                     soft=False,
                 )
             ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
+                timeout_s=self._collective_timeout_s,
+                warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
