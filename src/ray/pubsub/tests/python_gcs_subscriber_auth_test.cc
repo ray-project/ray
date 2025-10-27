@@ -258,7 +258,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
   auto subscriber = CreateSubscriber();
 
   // Subscribe will fail, but let's try anyway
-  ASSERT_TRUE(subscriber->Subscribe().ok());
+  ASSERT_FALSE(subscriber->Subscribe().ok());
 
   // Test polling with mismatched tokens - use very short timeout
   std::string key_id;
@@ -288,8 +288,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
 
   // Close should succeed with matching tokens
-  ASSERT_TRUE(subscriber->Close().ok());
-  ASSERT_TRUE(status.ok()) << "Close should succeed with matching tokens: "
+  ASSERT_TRUE(subscriber->Close().ok()) << "Close should succeed with matching tokens: "
                            << status.ToString();
   // This assertion will fail until auth is added to `Close()` and the mock is updated.
   EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
