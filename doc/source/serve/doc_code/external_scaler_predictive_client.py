@@ -4,24 +4,19 @@ import time
 from datetime import datetime
 import requests
 
-APPLICATION_NAME = "text-processor-app"
+APPLICATION_NAME = "my-app"
 DEPLOYMENT_NAME = "TextProcessor"
-AUTH_TOKEN = "YOUR_TOKEN_HERE"  # Get from Ray dashboard at http://localhost:8265
-SERVE_ENDPOINT = "http://localhost:8000"
+SERVE_ENDPOINT = "http://localhost:8265"
 SCALING_INTERVAL = 300  # Check every 5 minutes
 
 logger = logging.getLogger(__name__)
 
 
-def get_current_replicas(app_name: str, deployment_name: str, token: str) -> int:
-    """Get current replica count. Returns -1 on error.
-    
-    Response schema: https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeInstanceDetails.html
-    """
+def get_current_replicas(app_name: str, deployment_name: str) -> int:
+    """Get current replica count. Returns -1 on error."""
     try:
         resp = requests.get(
-            f"{SERVE_ENDPOINT}/api/v1/applications",
-            headers={"Authorization": f"Bearer {token}"},
+            f"{SERVE_ENDPOINT}/api/serve/applications/",
             timeout=10
         )
         if resp.status_code != 200:
@@ -32,10 +27,10 @@ def get_current_replicas(app_name: str, deployment_name: str, token: str) -> int
         if app_name not in apps:
             logger.error(f"Application {app_name} not found")
             return -1
-            
-        for deployment in apps[app_name].get("deployments", []):
-            if deployment["name"] == deployment_name:
-                return deployment["target_num_replicas"]
+
+        deployments = apps[app_name].get("deployments", {})
+        if deployment_name in deployments:
+            return deployments[deployment_name]["target_num_replicas"]
                 
         logger.error(f"Deployment {deployment_name} not found")
         return -1
@@ -44,10 +39,10 @@ def get_current_replicas(app_name: str, deployment_name: str, token: str) -> int
         return -1
 
 
-def scale_deployment(app_name: str, deployment_name: str, token: str):
+def scale_deployment(app_name: str, deployment_name: str):
     """Scale deployment based on time of day."""
     hour = datetime.now().hour
-    current = get_current_replicas(app_name, deployment_name, token)
+    current = get_current_replicas(app_name, deployment_name)
     target = 10 if 9 <= hour < 17 else 3  # Peak hours: 9am-5pm
     
     delta = target - current
@@ -61,7 +56,7 @@ def scale_deployment(app_name: str, deployment_name: str, token: str):
     try:
         resp = requests.post(
             f"{SERVE_ENDPOINT}/api/v1/applications/{app_name}/deployments/{deployment_name}/scale",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers={"Content-Type": "application/json"},
             json={"target_num_replicas": target},
             timeout=10
         )
@@ -76,6 +71,6 @@ def scale_deployment(app_name: str, deployment_name: str, token: str):
 if __name__ == "__main__":
     logger.info(f"Starting predictive scaling for {APPLICATION_NAME}/{DEPLOYMENT_NAME}")
     while True:
-        scale_deployment(APPLICATION_NAME, DEPLOYMENT_NAME, AUTH_TOKEN)
+        scale_deployment(APPLICATION_NAME, DEPLOYMENT_NAME)
         time.sleep(SCALING_INTERVAL)
 # __client_script_end__
