@@ -433,6 +433,9 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
                       the group is null (for most data types, or follow type-specific
                       comparison rules with nulls).
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: float("+inf")`. Default is `lambda: float("+inf")`.
     """
 
     def __init__(
@@ -491,6 +494,9 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
                       the group is null (for most data types, or follow type-specific
                       comparison rules with nulls).
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: float("-inf")`. Default is `lambda: float("-inf")`.
     """
 
     def __init__(
@@ -732,6 +738,9 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
         on: The name of the column to calculate absolute maximum on. Must be provided.
         ignore_nulls: Whether to ignore null values. Default is True.
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: 0`. Default is `lambda: 0`.
     """
 
     def __init__(
