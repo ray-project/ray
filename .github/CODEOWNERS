@@ -66,19 +66,20 @@
 # Ray AIR
 /python/ray/air/ @ray-project/ray-train
 
-# LLM
-/python/ray/llm/ @ray-project/ray-llm
-/python/ray/data/llm.py @ray-project/ray-llm
-/python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
-/python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
-/doc/source/serve/llm/ @ray-project/ray-llm
-
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
 /java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /python/ray/dashboard/modules/serve/ @ray-project/ray-serve
 /doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
+
+# LLM
+/python/ray/llm/ @ray-project/ray-llm
+/python/ray/data/llm.py @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
+/python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
+/python/ray/serve/llm/ @ray-project/ray-llm
+/doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
@@ -105,7 +106,6 @@
 #/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI
-/ci/lint/format.sh @ray-project/ray-ci
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 

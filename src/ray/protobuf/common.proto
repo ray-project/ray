@@ -921,6 +921,9 @@ enum TaskStatus {
   FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
   FAILED = 12;
+  // The task is attempting to pin args and fetch them for execution, used for metrics
+  // only and is a sub state of RUNNING
+  GETTING_AND_PINNING_ARGS = 13;
 }
 
 // Debug info for a referenced object.
@@ -1003,6 +1006,10 @@ message CoreWorkerStats {
   int64 num_owned_actors = 21;
   // Number of running tasks
   int64 num_running_tasks = 22;
+  // Number of in flight arg pinning requests
+  int64 num_in_flight_arg_pinning_requests = 23;
+  // Number of failed arg pinning requests
+  int64 num_of_failed_arg_pinning_requests = 24;
 }
 
 // Resource usage reported by the node reporter.

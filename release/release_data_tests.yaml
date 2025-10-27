@@ -159,7 +159,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -182,7 +182,7 @@
       # too many objects references on the head node. So, we only run it on
       # autoscaling clusters.
       scaling: [autoscaling]
-      shuffle_strategy: [sort_shuffle_pull_based]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -491,6 +491,7 @@
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
+  python: "3.10"
   group: data-batch-inference
 
   cluster:
@@ -507,6 +508,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: image_classification_chaos
+  python: "3.10"
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
@@ -523,23 +525,9 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: image_classification_chaos_no_scale_back
-  stable: False
-  working_dir: nightly_tests
-  group: data-batch-inference
-
-  cluster:
-    cluster_compute: dataset/autoscaling_gpu_compute.yaml
-
-  run:
-    timeout: 1800
-    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
-    script: >
-      python dataset/gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
-
 
 - name: image_embedding_from_uris_{{case}}
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
 
@@ -609,6 +597,7 @@
     script: python image_embedding_from_jsonl/main.py {{args}}
 
 - name: text_embedding_{{case}}
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
 

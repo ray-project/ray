@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
 
@@ -467,62 +468,41 @@ bool ActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
-Status NodeInfoAccessor::RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                                      const StatusCallback &callback) {
+void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
+                                    const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id)
       << "Registering node info, address is = " << local_node_info.node_manager_address();
-  RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == rpc::GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(local_node_info);
+  *request.mutable_node_info() = std::move(local_node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
       std::move(request),
-      [this, node_id, local_node_info, callback](const Status &status,
-                                                 rpc::RegisterNodeReply &&reply) {
-        if (status.ok()) {
-          local_node_info_.CopyFrom(local_node_info);
-          local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
-        }
+      [node_id, callback](const Status &status, rpc::RegisterNodeReply &&) {
         if (callback) {
           callback(status);
         }
         RAY_LOG(DEBUG).WithField(node_id)
             << "Finished registering node info, status = " << status;
       });
-
-  return Status::OK();
 }
 
-void NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+void NodeInfoAccessor::UnregisterSelf(const NodeID &node_id,
+                                      const rpc::NodeDeathInfo &node_death_info,
                                       std::function<void()> unregister_done_callback) {
-  if (local_node_id_.IsNil()) {
-    RAY_LOG(INFO) << "The node is already unregistered.";
-    return;
-  }
-  auto node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO).WithField(node_id) << "Unregistering node";
-
   rpc::UnregisterNodeRequest request;
-  request.set_node_id(local_node_info_.node_id());
+  request.set_node_id(node_id.Binary());
   request.mutable_node_death_info()->CopyFrom(node_death_info);
   client_impl_->GetGcsRpcClient().UnregisterNode(
       std::move(request),
-      [this, node_id, unregister_done_callback](const Status &status,
-                                                rpc::UnregisterNodeReply &&reply) {
-        if (status.ok()) {
-          local_node_info_.set_state(rpc::GcsNodeInfo::DEAD);
-          local_node_id_ = NodeID::Nil();
-        }
+      [node_id, unregister_done_callback](const Status &status,
+                                          rpc::UnregisterNodeReply &&) {
         RAY_LOG(INFO).WithField(node_id)
             << "Finished unregistering node info, status = " << status;
         unregister_done_callback();
       });
 }
-
-const NodeID &NodeInfoAccessor::GetSelfId() const { return local_node_id_; }
-
-const rpc::GcsNodeInfo &NodeInfoAccessor::GetSelfInfo() const { return local_node_info_; }
 
 void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                      const StatusCallback &callback) {
@@ -539,23 +519,6 @@ void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
         RAY_LOG(DEBUG).WithField(node_id)
             << "Finished registering node info, status = " << status;
       });
-}
-
-void NodeInfoAccessor::AsyncCheckSelfAlive(
-    const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
-  std::vector<NodeID> node_ids = {local_node_id_};
-
-  AsyncCheckAlive(node_ids,
-                  timeout_ms,
-                  [callback](const Status &status, const std::vector<bool> &nodes_alive) {
-                    if (!status.ok()) {
-                      callback(status, false);
-                      return;
-                    } else {
-                      RAY_CHECK_EQ(nodes_alive.size(), static_cast<size_t>(1));
-                      callback(status, nodes_alive[0]);
-                    }
-                  });
 }
 
 void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
@@ -1547,6 +1510,7 @@ AutoscalerStateAccessor::AutoscalerStateAccessor(GcsClient *client_impl)
 Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     int64_t timeout_ms,
     const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<std::unordered_map<std::string, std::string>> &label_selectors,
     const std::vector<int64_t> &count_array) {
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
@@ -1561,6 +1525,14 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
         bundle.begin(), bundle.end());
     new_resource_requests_by_count->set_count(count);
+
+    if (i < label_selectors.size() && !label_selectors[i].empty()) {
+      RAY_CHECK_EQ(label_selectors.size(), count_array.size());
+      auto *ls = new_resource_requests_by_count->mutable_request()->add_label_selectors();
+      // Parse label_selector map to proto format.
+      ray::LabelSelector label_selector(label_selectors[i]);
+      *ls = label_selector.ToProto();
+    }
   }
 
   return client_impl_->GetGcsRpcClient().SyncRequestClusterResourceConstraint(

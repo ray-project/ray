@@ -177,7 +177,6 @@ repos:
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
     # `rev` specifies a tag on the above repo that mirrors the corresponding clang-format version.
-    # The version should be kept in sync with the version in `ci/lint/format.sh`.
     rev: v12.0.1
     hooks:
       - id: clang-format
@@ -202,6 +201,12 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: semgrep
+        args: [--config=semgrep.yml, --error]
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
@@ -238,3 +243,22 @@ repos:
       files: '^python/ray/train/.*\.py$'
       pass_filenames: false
       args: ["--patch_dir", "ray/train/v2"]
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.26.0
+    hooks:
+      - id: eslint
+        files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
+        types: [file]
+        args:
+          - --max-warnings=0
+        additional_dependencies:
+          - eslint@8.26.0
+          - eslint-plugin-react@7.31.10
+          - eslint-plugin-import@2.26.0
+          - eslint-config-react-app@7.0.1
+          - eslint-plugin-prefer-arrow@1.2.3
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
