@@ -385,11 +385,11 @@ Type hints and static typing for actors
 
 Ray supports Python type hints for both remote functions and actors, enabling better IDE support and static type checking. To get the best type inference and pass type checkers when working with actors, follow these patterns:
 
-- **Prefer ``ray.remote(MyClass)`` over ``@ray.remote`` for actors**: Instead of decorating your class with ``@ray.remote``, use ``ActorClass = ray.remote(MyClass)``. This preserves the original class type and allows type checkers and IDEs to infer the correct types.
+- **Prefer** ``ray.remote(MyClass)`` **over** ``@ray.remote`` **for actors**: Instead of decorating your class with ``@ray.remote``, use ``ActorClass = ray.remote(MyClass)``. This preserves the original class type and allows type checkers and IDEs to infer the correct types.
 
-- **Use ``@ray.method`` for actor methods**: Decorate actor methods with ``@ray.method`` to enable type hints for remote method calls on actor handles.
+- **Use** ``@ray.method`` **for actor methods**: Decorate actor methods with ``@ray.method`` to enable type hints for remote method calls on actor handles.
 
-- **Use the ``ActorClass`` and ``ActorProxy`` types**: When you instantiate an actor, annotate the handle as ``ActorProxy[MyClass]`` to get type hints for remote methods.
+- **Use the** ``ActorClass`` **and** ``ActorProxy`` **types**: When you instantiate an actor, annotate the handle as ``ActorProxy[MyClass]`` to get type hints for remote methods.
 
 **Example:**
 
