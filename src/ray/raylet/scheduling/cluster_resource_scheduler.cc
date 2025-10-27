@@ -351,7 +351,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       // but continue to check for the next fallback.
       if (highest_priority_unavailable_node.IsNil()) {
         highest_priority_unavailable_node = best_feasible_node;
-        highest_priority_unavailable_selector_ref = selector_ref;
+        highest_priority_unavailable_label_selector = selector_ref;
       }
     }
   }
@@ -372,8 +372,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
     // Use the label selector from the highest-priority fallback that was feasible.
     const auto &selector_for_local_check =
-        highest_priority_unavailable_selector_ref.has_value()
-            ? highest_priority_unavailable_selector_ref.value().get()
+        highest_priority_unavailable_label_selector.has_value()
+            ? highest_priority_unavailable_label_selector.value().get()
             : lease_spec.GetLabelSelector();
     resource_request.SetLabelSelector(selector_for_local_check);
 
