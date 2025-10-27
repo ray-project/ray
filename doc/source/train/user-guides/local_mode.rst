@@ -18,7 +18,7 @@ where you can iterate quickly on your training logic.
 Local mode supports two execution modes:
 
 * **Single-process mode**: Runs your training function in a single process, ideal for rapid iteration and debugging.
-* **Multi-process mode with ``torchrun``**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
+* **Multi-process mode with torchrun**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
 
 How to enable local mode
 -------------------------
@@ -171,7 +171,7 @@ The following example shows how to use Ray Data with single-process local mode:
     with DistributedSampler.
 
 Multi-process local mode with ``torchrun``
----------------------------------------
+-------------------------------------------
 
 Local mode supports multi-GPU training  through ``torchrun``, allowing you to develop and debug using ``torchrun``'s process management.
 
@@ -297,8 +297,8 @@ training accordingly. You can access distributed training information through :f
     
 .. warning::
     Ray Data isn't supported when using ``torchrun`` for multi-process training in local mode. 
-    For multi-process training, use standard PyTorch data loading mechanisms such as ``DataLoader ``
-    with ``DistributedSampler``.
+    For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with
+    DistributedSampler.
 
 Multi-node multi-GPU training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -331,6 +331,7 @@ On the worker node:
         --rdzv_endpoint=192.168.1.1:29500 \
         --rdzv_id=job_id \
         train_script.py
+
 Transitioning from local mode to distributed training
 -----------------------------------------------------
 
