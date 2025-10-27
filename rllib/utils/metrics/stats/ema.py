@@ -74,27 +74,20 @@ class EmaStats(StatsBase):
         if tf and tf.is_tensor(value):
             value = value.numpy()
 
-        # Handle EMA calculation
-        if torch and isinstance(self._value, torch.Tensor):
-            # GPU tensor EMA
-            self._value = (
-                self._ema_coeff * value + (1.0 - self._ema_coeff) * self._value
-            )
-        elif (
-            torch
-            and isinstance(value, torch.Tensor)
-            and (isinstance(self._value, float) and np.isnan(self._value))
-        ):
-            # First value is GPU tensor
+        # If incoming value is NaN, do nothing
+        if (torch and torch.is_tensor(value) and torch.isnan(value)) or np.isnan(value):
+            return
+
+        # If internal value is NaN, replace it with the incoming value
+        if (
+            torch and torch.is_tensor(self._value) and torch.isnan(self._value)
+        ) or np.isnan(self._value):
             self._value = value
-        elif not (isinstance(self._value, float) and np.isnan(self._value)):
-            # CPU value EMA
-            self._value = (
-                self._ema_coeff * value + (1.0 - self._ema_coeff) * self._value
-            )
         else:
-            # First value
-            self._value = value
+            # Otherwise, update the internal value using the EMA formula
+            self._value = (
+                self._ema_coeff * value + (1.0 - self._ema_coeff) * self._value
+            )
 
     def _reduce_values_to_merge(self) -> float:
         """Reduces the internal values to merge."""

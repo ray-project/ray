@@ -3094,16 +3094,7 @@ py_test(
     size = "small",
     srcs = ["utils/metrics/tests/test_stats.py"],
     tags = [
-        "team:rllib",
-        "utils",
-    ],
-)
-
-py_test(
-    name = "test_stats_gpu",
-    size = "small",
-    srcs = ["utils/metrics/tests/test_stats_gpu.py"],
-    tags = [
+        "gpu",
         "team:rllib",
         "utils",
     ],

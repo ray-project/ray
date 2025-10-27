@@ -4,6 +4,7 @@ import time
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
+import numpy as np
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -119,6 +120,10 @@ class LifetimeSumStats(StatsBase):
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
             value = value.numpy()
+        if (torch and torch.is_tensor(value) and torch.isnan(value)) or (
+            isinstance(value, float) and np.isnan(value)
+        ):
+            return
 
         self._lifetime_sum += value
 
