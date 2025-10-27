@@ -114,9 +114,6 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CGrpcStatusCode,
     CLineageReconstructionTask,
-    CAuthenticationMode,
-    GetAuthenticationMode,
-    CAuthenticationTokenLoader,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -204,6 +201,7 @@ include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
+include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
@@ -4950,43 +4948,3 @@ def get_session_key_from_storage(host, port, username, password, use_ssl, config
     else:
         logger.info("Could not retrieve session key from storage.")
         return None
-
-
-# Authentication mode enum exposed to Python
-class AuthenticationMode:
-    DISABLED = CAuthenticationMode.DISABLED
-    TOKEN = CAuthenticationMode.TOKEN
-
-
-def get_authentication_mode():
-    """Get the current authentication mode.
-
-    Returns:
-        AuthenticationMode enum value (DISABLED or TOKEN)
-    """
-    return GetAuthenticationMode()
-
-
-class AuthenticationTokenLoader:
-    """Python wrapper for C++ AuthenticationTokenLoader singleton."""
-
-    @staticmethod
-    def instance():
-        """Get the singleton instance (returns a wrapper for convenience)."""
-        return AuthenticationTokenLoader()
-
-    def has_token(self):
-        """Check if an authentication token exists without crashing.
-
-        Returns:
-            bool: True if a token exists, False otherwise
-        """
-        return CAuthenticationTokenLoader.instance().HasToken()
-
-    def reset_cache(self):
-        """Reset the C++ authentication token cache.
-
-        This forces the token loader to reload the token from environment
-        variables or files on the next request.
-        """
-        CAuthenticationTokenLoader.instance().ResetCache()

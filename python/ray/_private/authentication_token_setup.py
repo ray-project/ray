@@ -6,10 +6,15 @@ handled by the C++ AuthenticationTokenLoader.
 """
 
 import logging
-import os
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from ray._raylet import (
+    AuthenticationMode,
+    AuthenticationTokenLoader,
+    get_authentication_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +36,9 @@ def generate_and_save_token() -> None:
         # Write token to file with explicit flush
         with open(token_path, "w") as f:
             f.write(token)
-            f.flush()
-            os.fsync(f.fileno())
 
         logger.info(f"Generated new authentication token and saved to {token_path}")
-    except Exception as e:
-        logger.warning(f"Failed to save generated token to {token_path}: {e}. ")
+    except Exception:
         raise
 
 
@@ -68,11 +70,6 @@ def setup_and_verify_auth(
         RuntimeError: Ray raises this error if authentication is enabled but no token is found when connecting
             to an existing cluster.
     """
-    from ray._raylet import (
-        AuthenticationMode,
-        AuthenticationTokenLoader,
-        get_authentication_mode,
-    )
 
     # Check if you enabled token authentication.
     if get_authentication_mode() != AuthenticationMode.TOKEN:
