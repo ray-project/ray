@@ -3050,7 +3050,7 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  frequency: nightly-3x
+  frequency: nightly
   team: core
   env: aws_perf
   cluster:
