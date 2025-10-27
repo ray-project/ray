@@ -168,6 +168,6 @@ When you provide a custom router, Ray Serve can fully support it as long as it's
 When your custom request router has complex dependencies or you want better control over versioning and deployment, you have several alternatives:
 
 - **Use built-in routers**: Consider using the routers shipped with Ray Serve—these are well-tested, production-ready, and guaranteed to work across different environments.
-- **Contribute to Ray Serve**: If your router is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in router by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues).
+- **Contribute to Ray Serve**: If your router is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in router by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/_private/request_router/`.
 - **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
 :::
