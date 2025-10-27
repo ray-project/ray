@@ -122,7 +122,7 @@ class ActorPoolMapOperator(MapOperator):
             self._ray_remote_args, self.data_context
         )
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
-            ray_actor_task_remote_args, self.data_context
+            ray_actor_task_remote_args, self.data_context, self.id
         )
 
         per_actor_resource_usage = ExecutionResources(
@@ -172,7 +172,9 @@ class ActorPoolMapOperator(MapOperator):
 
     @staticmethod
     def _apply_default_actor_task_remote_args(
-        ray_actor_task_remote_args: Optional[Dict[str, Any]], data_context: DataContext
+        ray_actor_task_remote_args: Optional[Dict[str, Any]],
+        data_context: DataContext,
+        operator_id: str,
     ) -> Dict[str, Any]:
         """Apply defaults to the actor task remote args."""
         if ray_actor_task_remote_args is None:
@@ -195,6 +197,10 @@ class ActorPoolMapOperator(MapOperator):
             ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
+
+        labels = ray_actor_task_remote_args.get("_labels", {})
+        labels[ActorPoolMapOperator._OPERATOR_ID_LABEL_KEY] = operator_id
+        ray_actor_task_remote_args["_labels"] = labels
 
         return ray_actor_task_remote_args
 
