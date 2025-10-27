@@ -1459,10 +1459,10 @@ class ApproximateTopK(AggregateFnV2):
     def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
         from datasketches import frequent_items_error_type
 
-        heavy_hitters = self._frequent_strings_sketch.deserialize(
+        frequent_items = self._frequent_strings_sketch.deserialize(
             accumulator
         ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
         return [
             {self.get_target_column(): str(item[0]), "count": int(item[1])}
-            for item in heavy_hitters[: self.top_k_items]
+            for item in frequent_items[: self.top_k_items]
         ]
