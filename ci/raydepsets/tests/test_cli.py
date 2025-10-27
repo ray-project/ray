@@ -364,7 +364,19 @@ class TestCli(unittest.TestCase):
 
     def test_remove_flags(self):
         assert _remove_flags(
-            ["--no-annotate", "--no-header", "--emit-index-url"], ["--emit-index-url"]
+            _flatten_flags(["--emit-index-url"]),
+            ["--no-annotate", "--no-header", "--emit-index-url"],
+        ) == ["--no-annotate", "--no-header"]
+
+    def test_remove_flags_key_value(self):
+        assert _remove_flags(
+            _flatten_flags(["--emit-index-url https://pypi.org/simple"]),
+            [
+                "--no-annotate",
+                "--no-header",
+                "--emit-index-url",
+                "https://pypi.org/simple",
+            ],
         ) == ["--no-annotate", "--no-header"]
 
     def test_remove_flags_integration(self):
@@ -395,12 +407,12 @@ class TestCli(unittest.TestCase):
                 Path(tmpdir) / "requirements_compiled_remove_flag_test_depset.txt"
             )
             output_text = output_file.read_text()
-            assert "--remove-flag-test" not in output_text
+            assert "--emit-index-url" not in output_text
 
     def test_remove_flags_doesnt_exist(self):
         with self.assertRaises(ValueError) as e:
             _remove_flags(
-                ["--no-annotate", "--no-header", "--emit-index-url"], ["--emit"]
+                ["--emit"], ["--no-annotate", "--no-header", "--emit-index-url"]
             )
         assert "Remove flag --emit not found in args" in str(e.exception)
 

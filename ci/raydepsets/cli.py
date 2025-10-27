@@ -312,7 +312,9 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if remove_flags:
-            args = _remove_flags(args, remove_flags)
+            print(f"Removing flags: {remove_flags}")
+            print(f"flattened flags: {_flatten_flags(remove_flags)}")
+            args = _remove_flags(_flatten_flags(remove_flags), args)
         if constraints:
             for constraint in constraints:
                 args.extend(["-c", constraint])
@@ -459,7 +461,7 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return new_args + _flatten_flags(flags)
 
 
-def _remove_flags(args: List[str], flags: List[str]) -> List[str]:
+def _remove_flags(flags: List[str], args: List[str]) -> List[str]:
     for flag in flags:
         if flag in args:
             args.remove(flag)
