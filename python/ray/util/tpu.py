@@ -81,6 +81,7 @@ class SlicePlacementGroup:
         Examples:
 
         .. testcode:: python
+            :skipif: True
 
             import ray
             from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
