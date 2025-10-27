@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import pyarrow
@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.storage import (
     StorageContext,
     _exists_at_fs_path,
+    get_fs_and_path,
 )
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated, PublicAPI
@@ -38,29 +39,35 @@ class Result(ResultV1):
     @classmethod
     def from_path(
         cls,
-        storage_path: str,
-        experiment_dir_name: str,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Result":
         """Restore a result from a persisted training run directory.
 
         Args:
-            storage_path: Path to the storage directory containing the experiment directory. The storage path can be uri from different filesystems.
-            experiment_dir_name: Name of the experiment directory
+            path: Path to the experiment directory containing checkpoint_manager_snapshot.json
+            storage_filesystem: Optional filesystem to use for accessing the path
 
         Returns:
             Result object with the checkpoints and their attached metrics of a Ray Train run
         """
-        # normalize the storage path
-        storage_filesystem, storage_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+        fs, fs_path = get_fs_and_path(str(path), storage_filesystem)
 
-        experiment_path = os.path.join(storage_path, experiment_dir_name)
-        if not _exists_at_fs_path(storage_filesystem, experiment_path):
-            raise RuntimeError(f"Experiment folder {experiment_path} doesn't exist!")
+        # Validate that the experiment directory exists
+        if not _exists_at_fs_path(fs, fs_path):
+            raise RuntimeError(f"Experiment folder {fs_path} doesn't exist!")
+
+        # Remove trailing slashes to handle paths correctly
+        # os.path.basename() returns empty string for paths with trailing slashes
+        fs_path = fs_path.rstrip("/")
+        storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
+            fs_path
+        )
 
         storage_context = StorageContext(
             storage_path=storage_path,
             experiment_dir_name=experiment_dir_name,
-            storage_filesystem=storage_filesystem,
+            storage_filesystem=fs,
         )
 
         # Validate that the checkpoint manager snapshot file exists
