@@ -27,7 +27,7 @@ steps:
     wanda: ci/docker/servetracing.build.wanda.yaml
 
   - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix.app}}-py{{matrix.python}}"
+    label: "wanda: minbuild-{{matrix}}-py39"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
       - serve
