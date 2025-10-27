@@ -161,7 +161,7 @@ replicas and use it in the routing policy.
 :::{warning}
 ## Gotchas and limitations
 
-When you provide a custom router, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. Once the router becomes more complex (such as depending on other custom modules or packages), you'll need to ensure those modules are bundled into the Docker image or environment. This is because Ray Serve uses `cloudpickle` to serialize custom routers, which doesn't vendor transitive dependencies—if your router inherits from a superclass in another module or imports custom packages, those must exist in the target environment. Additionally, environment parity matters: differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
+When you provide a custom router, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. Once the router becomes more complex, such as depending on other custom modules or packages, you need to ensure those modules are bundled into the Docker image or environment. This is because Ray Serve uses `cloudpickle` to serialize custom routers and it doesn't vendor transitive dependencies—if your router inherits from a superclass in another module or imports custom packages, those must exist in the target environment. Additionally, environment parity matters: differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
 
 ### Alternatives for complex routers
 
@@ -169,7 +169,5 @@ When your custom request router has complex dependencies or you want better cont
 
 - **Use built-in routers**: Consider using the routers shipped with Ray Serve—these are well-tested, production-ready, and guaranteed to work across different environments.
 - **Contribute to Ray Serve**: If your router is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in router by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues).
-- **Publish a Python package**: Package your router as a standalone Python package and publish to PyPI (or a private package index), then install the package in your Docker image or environment—this gives you version control and clear dependency management.
 - **Ensure dependencies in your environment**: Make sure that the external dependencies are present in your Docker image or environment.
-- **Use PYTHONPATH**: Place your router module in a location accessible through `PYTHONPATH`, which is simpler but requires careful environment management.
 :::
