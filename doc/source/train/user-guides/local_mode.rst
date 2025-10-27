@@ -65,9 +65,9 @@ Use multi-process local mode with ``torchrun`` to:
     use other Ray features such as Ray Data (in single-process mode) or launch Ray actors if needed.
 
 Single-process local mode
--------------------------
+--------------------------
 
-The following example demonstrates single-process local mode with PyTorch:
+The following example shows how to use single-process local mode with PyTorch:
 
 .. testcode::
     :skipif: True
@@ -103,18 +103,89 @@ The following example demonstrates single-process local mode with PyTorch:
     Local mode works with all Ray Train framework integrations, including PyTorch Lightning,
     Hugging Face Transformers, LightGBM, XGBoost, TensorFlow, and others.
 
-Multi-process local mode with torchrun
+Testing with local mode
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The following example shows how to write a unit test with local mode:
+
+.. testcode::
+    :skipif: True
+
+    import unittest
+    import ray
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+
+    class TestTraining(unittest.TestCase):
+        def test_training_runs(self):
+            def train_func(config):
+                # Minimal training logic
+                ray.train.report({"loss": 0.5})
+
+            trainer = TorchTrainer(
+                train_loop_per_worker=train_func,
+                scaling_config=ScalingConfig(num_workers=0),
+            )
+            result = trainer.fit()
+
+            self.assertIsNone(result.error)
+            self.assertEqual(result.metrics["loss"], 0.5)
+
+    if __name__ == "__main__":
+        unittest.main()
+
+Using local mode with Ray Data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Single-process local mode works seamlessly with Ray Data for data loading and preprocessing.
+When you use Ray Data with local mode, Ray Data processes your data and provides it back to your 
+training function in the local process.
+
+The following example shows how to use Ray Data with single-process local mode:
+
+.. testcode::
+    :skipif: True
+
+    import ray
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+
+    def train_func(config):
+        # Get the dataset shard
+        train_dataset = ray.train.get_dataset_shard("train")
+
+        # Iterate over batches
+        for batch in train_dataset.iter_batches(batch_size=32):
+            # Training logic
+            pass
+
+    # Create a Ray Dataset
+    dataset = ray.data.read_csv("s3://bucket/data.csv")
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(num_workers=0),
+        datasets={"train": dataset},
+    )
+    result = trainer.fit()
+
+.. warning::
+    Ray Data isn't supported when using ``torchrun`` for multi-process training in local mode. 
+    For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader 
+    with DistributedSampler.
+
+Multi-process local mode with ``torchrun``
 ---------------------------------------
 
-Local mode supports multi-GPU training through torchrun. This allows you to launch distributed training
-across multiple GPUs or nodes while still using Ray but not the Ray Train framework, isolating your
-training logic from the framework overhead.
+Local mode supports multi-GPU training  through ``torchrun``, allowing you to develop and debug using ``torchrun``'s process management.
 
 Single-node multi-GPU training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The following example shows how to use torchrun with local mode for multi-GPU training on a single node.
-This example uses the standard PyTorch DataLoader for data loading, making it easy to adapt existing PyTorch training code.
+The following example shows how to use ``torchrun`` with local mode for multi-GPU training on a single node.
+This approach is useful when migrating existing PyTorch training code or when you want to debug 
+distributed training logic using ``torchrun``'s familiar process management. The example uses standard 
+PyTorch ``DataLoader`` for data loading, making it easy to adapt your existing PyTorch training code.
 
 First, create your training script (``train_script.py``):
 
@@ -145,10 +216,10 @@ First, create your training script (``train_script.py``):
                 train_dataset = FashionMNIST(
                     root=data_dir, train=True, download=True, transform=transform
                 )
-        
+
         # Wait for rank 0 to finish downloading
         dist.barrier()
-        
+
         # Now all ranks can safely load the dataset
         train_dataset = FashionMNIST(
             root=data_dir, train=True, download=False, transform=transform
@@ -156,7 +227,7 @@ First, create your training script (``train_script.py``):
         train_loader = DataLoader(
             train_dataset, batch_size=config["batch_size"], shuffle=True
         )
-        
+
         # Prepare dataloader for distributed training
         train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
@@ -182,11 +253,11 @@ First, create your training script (``train_script.py``):
             for batch_idx, (images, labels) in enumerate(train_loader):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                
+
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(train_loader)
@@ -207,14 +278,15 @@ First, create your training script (``train_script.py``):
     )
     result = trainer.fit()
 
-Then, launch training with torchrun:
+
+Then, launch training with ``torchrun``:
 
 .. code-block:: bash
 
     # Train on 4 GPUs on a single node
-    RAY_TRAIN_V2_ENABLED=1 torchrun --nproc-per-node=4 train_script.py
+    torchrun --nproc-per-node=4 train_script.py
 
-Ray Train automatically detects the torchrun environment variables and configures the distributed
+Ray Train automatically detects the ``torchrun`` environment variables and configures the distributed
 training accordingly. You can access distributed training information through :func:`ray.train.get_context()`:
 
 .. testcode::
@@ -226,11 +298,16 @@ training accordingly. You can access distributed training information through :f
     print(f"World size: {context.get_world_size()}")
     print(f"World rank: {context.get_world_rank()}")
     print(f"Local rank: {context.get_local_rank()}")
+    
+.. warning::
+    Ray Data isn't supported when using ``torchrun`` for multi-process training in local mode. 
+    For multi-process training, use standard PyTorch data loading mechanisms such as ``DataLoader ``
+    with ``DistributedSampler``.
 
 Multi-node multi-GPU training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can also use torchrun to launch multi-node training with local mode. The following example shows
+You can also use ``torchrun`` to launch multi-node training with local mode. The following example shows
 how to launch training across 2 nodes with 4 GPUs each:
 
 On the master node (``192.168.1.1``):
@@ -258,76 +335,6 @@ On the worker node:
         --rdzv_endpoint=192.168.1.1:29500 \
         --rdzv_id=job_id \
         train_script.py
-
-Using local mode with Ray Data
--------------------------------
-
-Single-process local mode works seamlessly with Ray Data for data loading and preprocessing.
-Ray Data processes your data and provides it to your training function without distributed workers.
-
-The following example shows how to use Ray Data with single-process local mode:
-
-.. testcode::
-    :skipif: True
-
-    import ray
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    def train_func(config):
-        # Get the dataset shard
-        train_dataset = ray.train.get_dataset_shard("train")
-
-        # Iterate over batches
-        for batch in train_dataset.iter_batches(batch_size=32):
-            # Training logic
-            pass
-
-    # Create a Ray Dataset
-    dataset = ray.data.read_csv("s3://bucket/data.csv")
-
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(num_workers=0),
-        datasets={"train": dataset},
-    )
-    result = trainer.fit()
-
-.. note::
-    Ray Data isn't supported when using torchrun with local mode for multi-process training.
-
-Testing with local mode
------------------------
-
-Local mode is excellent for unit testing your training logic. The following example shows how to write
-a unit test with local mode:
-
-.. testcode::
-    :skipif: True
-
-    import unittest
-    import ray
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    class TestTraining(unittest.TestCase):
-        def test_training_runs(self):
-            def train_func(config):
-                # Minimal training logic
-                ray.train.report({"loss": 0.5})
-
-            trainer = TorchTrainer(
-                train_loop_per_worker=train_func,
-                scaling_config=ScalingConfig(num_workers=0),
-            )
-            result = trainer.fit()
-
-            self.assertIsNone(result.error)
-            self.assertEqual(result.metrics["loss"], 0.5)
-
-    if __name__ == "__main__":
-        unittest.main()
-
 Limitations and API differences
 --------------------------------
 
