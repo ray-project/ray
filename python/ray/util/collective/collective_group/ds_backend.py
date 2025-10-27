@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     import torch
 
 try:
-    from datasystem.DsTensorClient import DsTensorClient
+    from datasystem import DsTensorClient
 except ImportError as e:
     print(f"Import error: {e}")
 
