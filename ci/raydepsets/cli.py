@@ -312,8 +312,6 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if remove_flags:
-            print(f"Removing flags: {remove_flags}")
-            print(f"flattened flags: {_flatten_flags(remove_flags)}")
             args = _remove_flags(_flatten_flags(remove_flags), args)
         if constraints:
             for constraint in constraints:
