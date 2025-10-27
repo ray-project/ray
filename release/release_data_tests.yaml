@@ -491,6 +491,7 @@
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
+  python: "3.10"
   group: data-batch-inference
 
   cluster:
@@ -507,6 +508,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: image_classification_chaos
+  python: "3.10"
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
@@ -525,6 +527,7 @@
 
 
 - name: image_embedding_from_uris_{{case}}
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
 
@@ -594,6 +597,7 @@
     script: python image_embedding_from_jsonl/main.py {{args}}
 
 - name: text_embedding_{{case}}
+  python: "3.10"
   frequency: weekly
   group: data-batch-inference
 
