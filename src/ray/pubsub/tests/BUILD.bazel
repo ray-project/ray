@@ -40,3 +40,20 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "python_gcs_subscriber_auth_test",
+    size = "small",
+    srcs = ["python_gcs_subscriber_auth_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/pubsub:python_gcs_subscriber",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
