@@ -335,56 +335,6 @@ On the worker node:
         --rdzv_endpoint=192.168.1.1:29500 \
         --rdzv_id=job_id \
         train_script.py
-Limitations and API differences
---------------------------------
-
-Local mode provides simplified implementations of Ray Train APIs to enable rapid debugging without distributed overhead. However, this means some features behave differently or aren't available.
-
-Ray Train features not available in local mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* **Worker-level fault tolerance**: Ray Train's automatic fault tolerance features, such as worker restart on failure, aren't available. If you configured :class:`~ray.train.FailureConfig`, the settings don't apply in local mode.
-* **Callbacks**: User-defined callbacks specified in :class:`~ray.train.RunConfig` aren't invoked in local mode.
-* **Ray Data with multi-process training**: Ray Data isn't supported when using torchrun with local mode for multi-process training. Use standard PyTorch data loading mechanisms instead.
-
-API behavior differences in local mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The following ``ray.train`` APIs have different behavior in local mode:
-
-* :func:`ray.train.report`:
-
-  * Checkpoints aren't persisted to storage. They're only stored in memory.
-  * The ``checkpoint_upload_mode``, ``checkpoint_upload_fn``, ``validate_fn``, and ``delete_local_checkpoint_after_upload`` parameters have no effect.
-  * Metrics are logged locally instead of being sent through the reporting pipeline.
-  * No synchronization barrier across workers.
-
-* :func:`ray.train.get_checkpoint`:
-
-  * Returns the last checkpoint stored in memory from the current run.
-  * Doesn't load checkpoints from persistent storage.
-
-* :func:`ray.train.get_all_reported_checkpoints`:
-
-  * Always returns an empty list.
-  * Historical checkpoint tracking isn't available.
-
-* :func:`ray.train.collective.barrier`:
-
-  * No-op in single-process mode.
-  * In multi-process mode with torchrun, relies on PyTorch's distributed primitives.
-
-* :func:`ray.train.collective.broadcast_from_rank_zero`:
-
-  * Returns the data as-is in single-process mode without broadcasting.
-  * In multi-process mode with torchrun, relies on PyTorch's distributed primitives.
-
-* :meth:`ray.train.get_context().get_storage() <ray.train.TrainContext.get_storage>`:
-
-  * Raises ``NotImplementedError``.
-
-
-
 Transitioning from local mode to distributed training
 -----------------------------------------------------
 
@@ -401,3 +351,43 @@ to a value greater than 0:
      )
 
 Your training function code remains the same, and Ray Train handles the distributed coordination automatically.
+
+Limitations and API differences
+--------------------------------
+
+Local mode provides simplified implementations of Ray Train APIs to enable rapid debugging without distributed orchestration. However, this means some features behave differently or aren't available.
+
+Features not available in local mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following Ray Train features aren't available in local mode:
+
+* **Worker-level fault tolerance**: Ray Train's automatic fault tolerance features, such as worker restart on failure, aren't available. If you configured :class:`~ray.train.FailureConfig`, the settings don't apply in local mode.
+* **Callbacks**: User-defined callbacks specified in :class:`~ray.train.RunConfig` aren't invoked in local mode.
+* **Ray Data with multi-process training**: Ray Data isn't supported when using ``torchrun`` with local mode for multi-process training. Use standard PyTorch data loading mechanisms instead.
+
+API behavior differences
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following table summarizes how ``ray.train`` APIs behave differently in local mode:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - API
+     - Behavior in local mode
+   * - :func:`ray.train.report`
+     - Stores checkpoints in memory only (not persisted to storage). Ignores ``checkpoint_upload_mode``, ``checkpoint_upload_fn``, ``validate_fn``, and ``delete_local_checkpoint_after_upload`` parameters. Logs metrics locally instead of through the reporting pipeline. Doesn't invoke a synchronization barrier across workers.
+   * - :func:`ray.train.get_checkpoint`
+     - Returns the last checkpoint from memory. Doesn't load checkpoints from persistent storage.
+   * - :func:`ray.train.get_all_reported_checkpoints`
+     - Always returns an empty list. Doesn't track checkpoint history.
+   * - :func:`ray.train.collective.barrier`
+     - **Single-process**: No-op. 
+       **Multi-process**: Uses PyTorch's distributed primitives.
+   * - :func:`ray.train.collective.broadcast_from_rank_zero`
+     - **Single-process**: Returns data as-is. 
+      **Multi-process**: Uses PyTorch's distributed primitives.
+   * - :meth:`ray.train.get_context().get_storage() <ray.train.TrainContext.get_storage>`
+     - Raises ``NotImplementedError``
