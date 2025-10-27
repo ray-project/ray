@@ -781,8 +781,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
-            op
+        op_outputs_usage = (
+            self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
         )
 
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
@@ -824,10 +824,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_mem_usage = 0
             # Add the memory usage of the operator itself,
             # excluding `_reserved_for_op_outputs`.
-            op_mem_usage += self._resource_manager.get_op_internal_object_store_usage(op)
+            op_mem_usage += self._resource_manager.get_op_internal_object_store_usage(
+                op
+            )
             # Add the portion of op outputs usage that has
             # exceeded `_reserved_for_op_outputs`.
-            op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+            op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
+                op
+            )
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
 
             op_usage = self._resource_manager.get_op_usage(op).copy(

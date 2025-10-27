@@ -604,9 +604,6 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4, o5]}
-        op_internal_usage = dict.fromkeys([o1, o2, o3, o4, o5], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4, o5], 0)
         allocator.update_budgets(
             limits=global_limits,
         )
@@ -663,9 +660,6 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2]}
-        op_internal_usage = dict.fromkeys([o1, o2], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2], 0)
         allocator.update_budgets(
             limits=global_limits,
         )
@@ -698,9 +692,6 @@ class TestReservationOpResourceAllocator:
         )
         allocator = resource_manager._op_resource_allocator
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2]}
-        op_internal_usage = dict.fromkeys([o1, o2], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2], 0)
         global_limits = resource_manager.get_global_limits()
         allocator.update_budgets(
             limits=global_limits,
@@ -736,9 +727,6 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3]}
-        op_internal_usage = dict.fromkeys([o1, o2, o3], 0)
-        op_outputs_usages = dict.fromkeys([o1, o2, o3], 0)
         global_limits = resource_manager.get_global_limits()
         allocator.update_budgets(
             limits=global_limits,

@@ -239,10 +239,7 @@ def gen_expected_metrics(
                 "'block_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
-            (
-                "'task_completion_time_s': "
-                f"{'N' if task_backpressure else 'Z'}"
-            ),
+            ("'task_completion_time_s': " f"{'N' if task_backpressure else 'Z'}"),
             (
                 "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
