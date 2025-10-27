@@ -421,7 +421,8 @@
 #######################
 # Tune tests
 #######################
-- name: tune_with_frequent_pausing
+- name: pytest_tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -451,7 +452,8 @@
   alert: default
 
 
-- name: tune_rllib_connect_test
+- name: pytest_tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -483,7 +485,8 @@
 
   alert: default
 
-- name: tune_cloud_long_running_cloud_storage
+- name: pytest_tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
