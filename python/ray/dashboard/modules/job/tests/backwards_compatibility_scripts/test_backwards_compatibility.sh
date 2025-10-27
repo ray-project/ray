@@ -11,7 +11,7 @@ else
     echo "conda exists"
 fi
 
-pip install --upgrade pip
+pip install pip==25.2.0
 
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"

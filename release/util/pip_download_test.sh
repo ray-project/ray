@@ -26,7 +26,7 @@ fi
 
 echo "Start downloading Ray version ${RAY_VERSION} of commit ${RAY_HASH}"
 
-pip install --upgrade pip
+pip install pip==25.2.0
 
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"

@@ -133,7 +133,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade pip
+    "${python}" -m pip install pip==25.2.0
 
     # If we're in a CI environment, do some configuration
     if [[ "${CI-}" == "true" ]]; then

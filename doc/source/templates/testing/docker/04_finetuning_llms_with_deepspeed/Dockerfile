@@ -6,7 +6,7 @@ COPY requirements.txt ./
 RUN sudo apt-get update
 RUN sudo apt-get install -y libaio1
 
-RUN pip install --upgrade pip
+RUN pip install pip==25.2.0
 # We need pydantic at this version to install deepspeed 0.10.2 (as part of the requirements.txt)
 RUN pip install pydantic==1.10.7
 RUN pip install -U -r requirements.txt
