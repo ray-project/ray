@@ -721,5 +721,5 @@ When you provide a custom policy, Ray Serve can fully support it as long as it's
 When your custom autoscaling policy has complex dependencies or you want better control over versioning and deployment, you have several alternatives:
 
 - **Contribute to Ray Serve**: If your policy is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in policy by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues).
-- **Ensure dependencies in your environment**: Make sure that the external dependencies are present in your Docker image or environment.
+- **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
 :::
