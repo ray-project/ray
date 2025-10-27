@@ -15,6 +15,9 @@ class OpenAiIngress(_OpenAiIngress):
       - /v1/completions: Text completion
       - /v1/models: List available models
       - /v1/models/{model}: Model information
+      - /v1/embeddings: Text embeddings
+      - /v1/audio/transcriptions: Audio transcription
+      - /v1/score: Text scoring
 
 
     Examples:
