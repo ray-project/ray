@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
