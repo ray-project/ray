@@ -349,7 +349,9 @@ class FileBasedDatasource(Datasource):
         return buffer_size
 
     def _file_to_snappy_stream(
-        self, file: "pyarrow.NativeFile"
+        self, 
+        file: "pyarrow.NativeFile",
+        filesystem: "RetryingPyFileSystem",
     ) -> "pyarrow.PythonFile":
         import pyarrow as pa
         import snappy
@@ -390,7 +392,7 @@ class FileBasedDatasource(Datasource):
             file = filesystem.open_input_stream(
                 path, buffer_size=buffer_size, **open_args
             )
-            return self._file_to_snappy_stream(file)
+            return self._file_to_snappy_stream(file, filesystem)
 
         open_args["compression"] = compression
         return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
