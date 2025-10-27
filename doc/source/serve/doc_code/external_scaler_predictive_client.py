@@ -43,6 +43,12 @@ def scale_deployment(app_name: str, deployment_name: str):
     """Scale deployment based on time of day."""
     hour = datetime.now().hour
     current = get_current_replicas(app_name, deployment_name)
+    
+    # Check if we successfully retrieved the current replica count
+    if current == -1:
+        logger.error("Failed to get current replicas, skipping scaling decision")
+        return
+    
     target = 10 if 9 <= hour < 17 else 3  # Peak hours: 9am-5pm
     
     delta = target - current
