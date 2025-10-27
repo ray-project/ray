@@ -66,9 +66,11 @@ def test_actor_pool_scaling():
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
-        internal_queue_size=MagicMock(return_value=1),
+        internal_queue_num_blocks=MagicMock(return_value=1),
     )
-    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10))])
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager
@@ -148,8 +150,8 @@ def test_actor_pool_scaling():
 
     # Should scale down only once all inputs have been already dispatched AND
     # no new inputs ar expected
-    with patch(op_state.input_queues[0], "__len__", 0):
-        with patch(op, "internal_queue_size", 0):
+    with patch(op_state.input_queues[0], "num_blocks", 0, is_method=False):
+        with patch(op, "internal_queue_num_blocks", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
