@@ -119,6 +119,16 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
+    const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actor_handles_.find(actor_id);
+  if (it != actor_handles_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,

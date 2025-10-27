@@ -1,4 +1,5 @@
 import difflib
+import os
 import platform
 import shlex
 import shutil
@@ -90,20 +91,22 @@ class DependencySetManager:
         check: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
-        self.config = self.workspace.load_config(config_path)
-        if check:
-            self.temp_dir = tempfile.mkdtemp()
-            self.output_paths = self.get_output_paths()
-            self.copy_to_temp_dir()
+        self.config = self.workspace.load_configs(config_path)
+        self.config_name = os.path.basename(config_path)
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
+        if check:
+            self.temp_dir = tempfile.mkdtemp()
+            self.output_paths = self.get_output_paths()
+            self.copy_to_temp_dir()
 
     def get_output_paths(self) -> List[Path]:
         output_paths = []
-        for depset in self.config.depsets:
-            output_paths.append(Path(depset.output))
+        for node in topological_sort(self.build_graph):
+            if self.build_graph.nodes[node]["node_type"] == "depset":
+                output_paths.append(Path(self.build_graph.nodes[node]["depset"].output))
         return output_paths
 
     def copy_to_temp_dir(self):
@@ -136,7 +139,7 @@ class DependencySetManager:
         diffs = self.get_diffs()
         if len(diffs) > 0:
             raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                f"Lock files are not up to date for config: {self.config_name}. Please update lock files and push the changes.\n"
                 + "".join(diffs)
             )
         click.echo("Lock files are up to date.")
@@ -148,21 +151,35 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="compile",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
             elif depset.operation == "subset":
                 self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="subset",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
                 self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset, node_type="depset"
+                    depset.name,
+                    operation="expand",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
-                raise ValueError(f"Invalid operation: {depset.operation}")
+                raise ValueError(
+                    f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
+                )
             if depset.pre_hooks:
                 for ind, hook in enumerate(depset.pre_hooks):
                     hook_name = f"{depset.name}_pre_hook_{ind+1}"
@@ -171,12 +188,32 @@ class DependencySetManager:
                         operation="pre_hook",
                         pre_hook=hook,
                         node_type="pre_hook",
+                        config_name=depset.config_name,
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
+        self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
         nodes = dependency_nodes | {depset_name}
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
+
+    def subgraph_config_nodes(self):
+        # Get all nodes that have the target config name
+        config_nodes = [
+            node
+            for node in self.build_graph.nodes
+            if self.build_graph.nodes[node]["config_name"] == self.config_name
+        ]
+        # Get all ancestors of the target config nodes
+        ancestors_by_confg_node = {
+            n: networkx_ancestors(self.build_graph, n) for n in config_nodes
+        }
+        # Union all the ancestors of the target config nodes
+        config_nodes_ancestors = set().union(
+            *(ancestors_by_confg_node[n] for n in config_nodes)
+        )
+        nodes = set(config_nodes) | config_nodes_ancestors
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def execute(self, single_depset_name: Optional[str] = None):
@@ -184,7 +221,6 @@ class DependencySetManager:
             # check if the depset exists
             _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
-
         for node in topological_sort(self.build_graph):
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":
@@ -198,24 +234,27 @@ class DependencySetManager:
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
     ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
-        click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
+        click.echo(f"Executing command: {' '.join(cmd)}")
+        status = subprocess.run(
+            cmd, cwd=self.workspace.dir, input=stdin, capture_output=True
+        )
         if status.returncode != 0:
-            raise RuntimeError(f"Failed to execute command: {cmd}")
-        return status.stdout
+            raise RuntimeError(
+                f"Failed to execute command: {' '.join(cmd)} with error: {status.stderr.decode('utf-8')}"
+            )
+        return status.stdout.decode("utf-8")
 
     def execute_pre_hook(self, pre_hook: str):
         status = subprocess.run(
             shlex.split(pre_hook),
             cwd=self.workspace.dir,
             capture_output=True,
-            text=True,
         )
         if status.returncode != 0:
             raise RuntimeError(
-                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr.decode('utf-8')}",
             )
-        click.echo(f"{status.stdout}")
+        click.echo(f"{status.stdout.decode('utf-8')}")
         click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
@@ -318,8 +357,9 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = _get_depset(self.config.depsets, depset_name)
-            depset_req_list.extend(depset.requirements)
+            depset_req_list.extend(
+                self.get_expanded_depset_requirements(depset_name, [])
+            )
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
@@ -344,8 +384,27 @@ class DependencySetManager:
         for req in requirements:
             if req not in source_depset.requirements:
                 raise RuntimeError(
-                    f"Requirement {req} is not a subset of {source_depset.name}"
+                    f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )
+
+    def get_expanded_depset_requirements(
+        self, depset_name: str, requirements_list: List[str]
+    ) -> List[str]:
+        """Get all requirements for expanded depsets
+
+        Args:
+            depset_name: The name of the expanded depset to get the requirements for.
+            requirements_list: The list of requirements to extend.
+
+        Returns:
+            A list of requirements for the expanded depset.
+        """
+        depset = _get_depset(self.config.depsets, depset_name)
+        requirements_list.extend(depset.requirements)
+        if depset.operation == "expand":
+            for dep in depset.depsets:
+                self.get_expanded_depset_requirements(dep, requirements_list)
+        return list(set(requirements_list))
 
     def cleanup(self):
         if self.temp_dir:

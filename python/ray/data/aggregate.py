@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pyarrow.compute as pc
@@ -889,6 +889,88 @@ class Unique(AggregateFnV2):
             return {x}
 
 
+@PublicAPI
+class ValueCounter(AggregateFnV2):
+    """Counts the number of times each value appears in a column.
+
+    This aggregation computes value counts for a specified column, similar to pandas'
+    `value_counts()` method. It returns a dictionary with two lists: "values" containing
+    the unique values found in the column, and "counts" containing the corresponding
+    count for each value.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ValueCounter
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count occurrences of each category
+            result = ds.aggregate(ValueCounter(on="category"))
+            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+
+    Args:
+        on: The name of the column to count values in. Must be provided.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "value_counter({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"value_counter({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+
+        col_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        return col_accessor.value_counts()
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new_accumulator: Dict[str, List],
+    ) -> Dict[str, List]:
+
+        values = current_accumulator["values"]
+        counts = current_accumulator["counts"]
+
+        # Build a value → index map once (avoid repeated lookups)
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+            if v_new in value_to_index:
+                idx = value_to_index[v_new]
+                counts[idx] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return current_accumulator
+
+
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 
@@ -1189,3 +1271,101 @@ class ZeroPercentage(AggregateFnV2):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+
+@PublicAPI(stability="alpha")
+class ApproximateQuantile(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import kll_floats_sketch  # type: ignore[import]
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateQuantile requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return kll_floats_sketch
+
+    def __init__(
+        self,
+        on: str,
+        quantiles: List[float],
+        quantile_precision: int = 800,
+        alias_name: Optional[str] = None,
+    ):
+        """
+        Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+        https://datasketches.apache.org/docs/KLL/KLLSketch.html
+
+        The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
+        the overall size of the sketch.
+        The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
+        median (rank = 0.50) means that the true quantile (if you could extract it from the set)
+        should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
+        rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
+        In other words, the error is a fixed +/- epsilon for the entire range of ranks.
+
+        Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
+            - quantile_precision=100 → ~2.61%
+            - quantile_precision=200 → ~1.33%
+            - quantile_precision=400 → ~0.68%
+            - quantile_precision=800 → ~0.35%
+
+        See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+
+        Null values in the target column are ignored when constructing the sketch.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateQuantile
+
+                # Create a dataset with some values
+                ds = ray.data.from_items(
+                    [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+                    {"value": 80.0}, {"value": 100.0}]
+                )
+
+                result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+                # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+
+
+        Args:
+            on: The name of the column to calculate the quantile on. Must be a numeric column.
+            quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
+            quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+            alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
+        """
+        self._sketch_cls = self._require_datasketches()
+        self._quantiles = quantiles
+        self._quantile_precision = quantile_precision
+        super().__init__(
+            alias_name if alias_name else f"approx_quantile({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: self.zero(quantile_precision).serialize(),
+        )
+
+    def zero(self, quantile_precision: int):
+        return self._sketch_cls(k=quantile_precision)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = self.zero(self._quantile_precision)
+        for value in column:
+            # we ignore nulls here
+            if value.as_py() is not None:
+                sketch.update(float(value.as_py()))
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = self.zero(self._quantile_precision)
+        combined.merge(self._sketch_cls.deserialize(current_accumulator))
+        combined.merge(self._sketch_cls.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[float]:
+        return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)

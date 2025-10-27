@@ -6,7 +6,7 @@ import tempfile
 
 from ray import train
 from ray.train import Checkpoint
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
@@ -34,8 +34,6 @@ run_config = RunConfig(
     # The experiment results will be saved to: storage_path/name
     storage_path=os.path.expanduser("~/ray_results"),
     # storage_path="s3://my_bucket/tune_results",
-    # Stopping criteria
-    stop={"training_iteration": 10},
 )
 # __run_config_end__
 

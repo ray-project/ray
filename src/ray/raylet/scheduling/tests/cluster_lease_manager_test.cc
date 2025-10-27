@@ -158,7 +158,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers) const override {
+      bool filter_dead_drivers, bool filter_system_drivers) const override {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
@@ -265,7 +265,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
-        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        return gcs_client.Nodes().GetNodeAddressAndLiveness(
+                   NodeID::FromBinary(node_id.Binary())) != nullptr;
       });
 
   return scheduler;
@@ -386,12 +387,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             *scheduler_,
             lease_dependency_manager_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+            [this](
+                const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
               node_info_calls_++;
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                return std::optional((node_info_[node_id]));
               }
-              return nullptr;
+              return std::nullopt;
             },
             pool_,
             leased_workers_,
@@ -413,12 +415,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             id_,
             *scheduler_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+            [this](
+                const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
               node_info_calls_++;
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                return std::optional((node_info_[node_id]));
               }
-              return nullptr;
+              return std::nullopt;
             },
             /* announce_infeasible_lease= */
             [this](const RayLease &lease) { announce_infeasible_lease_calls_++; },
@@ -428,8 +431,9 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   }
 
   void SetUp() {
-    static rpc::GcsNodeInfo node_info;
-    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+    static rpc::GcsNodeAddressAndLiveness node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor,
+            GetNodeAddressAndLiveness(::testing::_, ::testing::_))
         .WillByDefault(::testing::Return(&node_info));
   }
 
@@ -453,7 +457,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
     scheduler_->GetClusterResourceManager().AddOrUpdateNode(
         scheduling::NodeID(id.Binary()), node_resources, node_resources);
 
-    rpc::GcsNodeInfo info;
+    rpc::GcsNodeAddressAndLiveness info;
     node_info_[id] = info;
   }
 
@@ -512,7 +516,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
 
   int node_info_calls_ = 0;
   int announce_infeasible_lease_calls_ = 0;
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
   int64_t current_time_ms_ = 0;
 
   MockLeaseDependencyManager lease_dependency_manager_;
