@@ -669,8 +669,6 @@ In your policy, access custom metrics via:
   The number of data points stored for each replica depends on the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (the sliding window size) and [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) (the metric recording interval).
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
-> Today, aggregation is a time-weighted average. In future releases, additional aggregation options may be supported.
-
 
 ## External scaling webhook
 
@@ -716,7 +714,7 @@ Replace `{application_name}` and `{deployment_name}` with your application and d
 
 The request body must conform to the [`ScaleDeploymentRequest`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ScaleDeploymentRequest.html) schema. The `target_num_replicas` field (integer, required) specifies the target number of replicas for the deployment and must be a non-negative integer.
 
-### Example - Predictive scaling
+### Example: Predictive scaling
 
 Implement predictive scaling based on historical patterns or forecasts. For instance, you can preemptively scale up before anticipated traffic spikes:
 
@@ -760,9 +758,6 @@ def predictive_scale(
     
     return response.status_code == 200
 ```
-
-The external scaling webhook is useful when you need custom scaling logic beyond Ray Serve's built-in autoscaling. Common scenarios include scaling based on external metrics from monitoring systems (Prometheus, Datadog, CloudWatch) or business metrics, implementing predictive scaling based on historical patterns or schedules (preemptive scaling before traffic spikes, event-driven scaling for launches or batch jobs), and maintaining operational control for tasks like load testing, cost optimization during off-peak hours, or managing development environments.
-
 
 ### Application level autoscaling
 
