@@ -42,10 +42,10 @@ class Result(ResultV1):
         path: Union[str, os.PathLike],
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Result":
-        """Restore a Ray Train v2 Result from a persisted training run path.
+        """Restore a training result from a previously saved training run path.
 
         Args:
-            path: Path to the experiment directory containing checkpoint_manager_snapshot.json
+            path: Path to the run output directory
             storage_filesystem: Optional filesystem to use for accessing the path
 
         Returns:
