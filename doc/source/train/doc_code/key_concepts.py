@@ -4,8 +4,7 @@
 from pathlib import Path
 import tempfile
 
-from ray import train
-from ray.train import Checkpoint
+import ray.train
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -13,13 +12,14 @@ def train_fn(config):
     for i in range(3):
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             Path(temp_checkpoint_dir).joinpath("model.pt").touch()
-            train.report(
-                {"loss": i}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
+            ray.train.report(
+                {"loss": i},
+                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
 
 trainer = DataParallelTrainer(
-    train_fn, scaling_config=train.ScalingConfig(num_workers=2)
+    train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
 )
 
 
@@ -113,9 +113,18 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 # __result_restore_end__
 
 
-# __result_error_start__
-if result.error:
-    assert isinstance(result.error, Exception)
+def error_train_fn(config):
+    raise RuntimeError("Simulated training error")
 
-    print("Got exception:", result.error)
+
+trainer = DataParallelTrainer(
+    error_train_fn, scaling_config=ray.train.ScalingConfig(num_workers=1)
+)
+
+# __result_error_start__
+try:
+    result = trainer.fit()
+except ray.train.TrainingFailedError as e:
+    if isinstance(e, ray.train.WorkerGroupError):
+        print(e.worker_failures)
 # __result_error_end__
