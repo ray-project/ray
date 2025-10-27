@@ -213,12 +213,16 @@ class MetricsLogger:
             return self._get_throughputs(key=key, default=default)
 
         # Create a reduced view of the entire stats structure.
-        def _nested_peek(stats):
-            return tree.map_structure(
-                # If the Stats object has a reduce method, we need to convert the list to a single value
-                lambda s: s.peek(compile=compile),
-                stats.copy(),
-            )
+        def _nested_peek(stats: Dict[str, Any]):
+            def _peek_with_path(path: str, stats: StatsBase):
+                try:
+                    return stats.peek(compile=compile)
+                except Exception as e:
+                    raise ValueError(
+                        f"Error peeking stats {stats} with compile={compile} at path {path}."
+                    ) from e
+
+            return tree.map_structure_with_path(_peek_with_path, stats.copy())
 
         with self._threading_lock:
             if key is None:
@@ -653,11 +657,16 @@ class MetricsLogger:
             A dict containing all ever logged nested keys to this MetricsLogger with the leafs being the reduced stats.
         """
 
-        def _reduce(stats: StatsBase):
-            return stats.reduce(compile=compile)
+        def _reduce(path: str, stats: StatsBase):
+            try:
+                return stats.reduce(compile=compile)
+            except Exception as e:
+                raise ValueError(
+                    f"Error reducing stats {stats} with compile={compile} at path {path}."
+                ) from e
 
         with self._threading_lock:
-            return tree.map_structure(_reduce, self.stats)
+            return tree.map_structure_with_path(_reduce, self.stats)
 
     @Deprecated(
         new="log_value",

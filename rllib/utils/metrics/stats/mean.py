@@ -26,12 +26,12 @@ class MeanStats(SeriesStats):
 
     stats_cls_identifier = "mean"
 
-    def _np_reduce_fn(self, values):
+    def _np_reduce_fn(self, values: np.ndarray) -> float:
         return np.nanmean(values)
 
-    def _torch_reduce_fn(self, values):
+    def _torch_reduce_fn(self, values: torch.Tensor) -> torch.Tensor:
         """Reduce function for torch tensors (stays on GPU)."""
-        return torch.nanmean(values)
+        return torch.nanmean(values.float())
 
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.

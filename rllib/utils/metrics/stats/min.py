@@ -13,16 +13,16 @@ class MinStats(SeriesStats):
 
     stats_cls_identifier = "min"
 
-    def _np_reduce_fn(self, values):
+    def _np_reduce_fn(self, values: np.ndarray) -> float:
         return np.nanmin(values)
 
-    def _torch_reduce_fn(self, values):
+    def _torch_reduce_fn(self, values: torch.Tensor) -> torch.Tensor:
         """Reduce function for torch tensors (stays on GPU)."""
         # torch.nanmin not available, use workaround
         clean_values = values[~torch.isnan(values)]
         if len(clean_values) == 0:
             return torch.tensor(float("nan"), device=values.device)
-        return torch.min(clean_values)
+        return torch.min(clean_values.float())
 
     def __repr__(self) -> str:
         return f"MinStats({self.peek()}; window={self._window}; len={len(self)}"

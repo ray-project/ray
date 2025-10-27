@@ -15,16 +15,16 @@ class SumStats(SeriesStats):
 
     stats_cls_identifier = "sum"
 
-    def _np_reduce_fn(self, values):
+    def _np_reduce_fn(self, values: np.ndarray) -> float:
         return np.nansum(values)
 
-    def _torch_reduce_fn(self, values):
+    def _torch_reduce_fn(self, values: torch.Tensor) -> torch.Tensor:
         """Reduce function for torch tensors (stays on GPU)."""
         # torch.nansum not available, use workaround
         clean_values = values[~torch.isnan(values)]
         if len(clean_values) == 0:
             return torch.tensor(0.0, device=values.device)
-        return torch.sum(clean_values)
+        return torch.sum(clean_values.float())
 
     def __init__(self, with_throughput: bool = False, **kwargs):
         """Initializes a SumStats instance.

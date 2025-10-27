@@ -22,7 +22,9 @@ class MaxStats(SeriesStats):
         clean_values = values[~torch.isnan(values)]
         if len(clean_values) == 0:
             return torch.tensor(float("nan"), device=values.device)
-        return torch.max(clean_values)
+        return torch.max(
+            clean_values, dtype=torch.float32
+        )  # cast to float32 to avoid errors from Long tensors
 
     def __repr__(self) -> str:
         return f"MaxStats({self.peek()}; window={self._window}; len={len(self)})"

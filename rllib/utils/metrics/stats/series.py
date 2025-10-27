@@ -23,6 +23,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
     # Set by subclasses
     _np_reduce_fn = None
+    # Set by subclasses
+    _torch_reduce_fn = None
 
     def __init__(
         self,
