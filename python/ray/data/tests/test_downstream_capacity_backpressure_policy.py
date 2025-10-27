@@ -33,7 +33,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         mock_operator.num_active_tasks.return_value = max_concurrent_tasks
 
         op_state = MagicMock(spec=OpState)
-        op_state.total_enqueued_blocks.return_value = num_enqueued_blocks
+        op_state.total_enqueued_input_blocks.return_value = num_enqueued_blocks
         return mock_operator, op_state
 
     def _mock_actor_pool_map_operator(
