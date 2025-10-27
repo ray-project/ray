@@ -199,9 +199,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  # Failing since Aug 2024
-  # https://github.com/ray-project/ray/issues/46687
-  frequency: manual
+  frequency: weekly
   team: ml
 
   cluster:
@@ -217,7 +215,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: manual
+    frequency: weekly
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -277,7 +275,8 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   stable: false
@@ -295,7 +294,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -332,7 +331,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49847
+  frequency: manual
   team: ml
 
   cluster:
@@ -354,7 +354,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49846
+  frequency: manual
   team: ml
 
   cluster:
@@ -1475,7 +1476,8 @@
 # Serve tests
 ########################
 
-- name: serve_scale_replicas
+- name: pytest_serve_scale_replicas
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1498,7 +1500,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_multi_deployment_1k_noop_replica
+- name: pytest_serve_multi_deployment_1k_noop_replica
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1528,7 +1531,8 @@
       cluster:
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
-- name: serve_autoscaling_load_test
+- name: pytest_serve_autoscaling_load_test
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1552,7 +1556,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_microbenchmarks
+- name: pytest_serve_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1580,7 +1585,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_throughput_optimized_microbenchmarks
+- name: pytest_serve_throughput_optimized_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1611,7 +1617,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_resnet_benchmark
+- name: pytest_serve_resnet_benchmark
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -3367,6 +3374,7 @@
     - __suffix__: aws
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
@@ -3397,6 +3405,7 @@
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
