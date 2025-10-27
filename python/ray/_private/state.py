@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 from collections import defaultdict
+from threading import Lock
 from typing import Dict, Optional
 
 import ray
@@ -32,6 +33,8 @@ class GlobalState:
         # Args used for lazy init of this object.
         self.gcs_options = None
         self.global_state_accessor = None
+        self._lock = Lock()
+        self._is_connected = False
 
     def _check_connected(self):
         """Ensure that the object has been initialized before it is used.
@@ -42,14 +45,16 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.gcs_options is not None and self.global_state_accessor is None:
-            self._really_init_global_state()
-
-        # _really_init_global_state should have set self.global_state_accessor
-        if self.global_state_accessor is None:
+        if self.gcs_options is None:
             raise ray.exceptions.RaySystemError(
-                "Ray has not been started yet. You can start Ray with 'ray.init()'."
+                "Trying to use state API before ray.init() has been called."
             )
+        with self._lock:
+            if self._is_connected:
+                return
+            self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
+            self.global_state_accessor.connect()
+            self._is_connected = True
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -72,10 +77,6 @@ class GlobalState:
         # Save args for lazy init of global state. This avoids opening extra
         # gcs connections from each worker until needed.
         self.gcs_options = gcs_options
-
-    def _really_init_global_state(self):
-        self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
-        self.global_state_accessor.connect()
 
     def actor_table(
         self,
