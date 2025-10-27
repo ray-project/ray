@@ -14,12 +14,12 @@ from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
@@ -178,11 +178,11 @@ class WorkerGroup(BaseWorkerGroup):
             )
         )
         self._collective_timeout_s = env_float(
-            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+            COLLECTIVE_TIMEOUT_S_ENV_VAR, DEFAULT_COLLECTIVE_TIMEOUT_S
         )
         self._collective_warn_interval_s = env_float(
-            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
-            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+            COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
     ################################################################################
