@@ -295,8 +295,15 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
-    ray_event_recorder_->StartExportingEvents();
+    if (server_status.ok()) {
+      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
   });
 
   // Start RPC server when all tables have finished loading initial

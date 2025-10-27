@@ -161,6 +161,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._actor_locality_enabled: Optional[bool] = None
 
         # Locality metrics
         self._locality_hits = 0
@@ -198,18 +199,16 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def internal_queue_size(self) -> int:
+    def internal_queue_num_blocks(self) -> int:
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
-        return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
+        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
 
-    def completed(self) -> bool:
-        # TODO separate marking as completed from the check
+    def internal_queue_num_bytes(self) -> int:
         return (
-            self._inputs_complete
-            and self._bundle_queue.is_empty()
-            and super().completed()
+            self._bundle_queue.estimate_size_bytes()
+            + self._block_ref_bundler.size_bytes()
         )
 
     def start(self, options: ExecutionOptions):
@@ -498,13 +497,12 @@ class ActorPoolMapOperator(MapOperator):
     def per_task_resource_allocation(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        # For Actor tasks resource allocation is determined as:
+        #   - Per actor resource allocation divided by
+        #   - Actor's max task concurrency
+        max_concurrency = self._actor_pool.max_actor_concurrency()
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
-
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
-        return max_concurrency * self._actor_pool.max_size()
 
     def min_scheduling_resources(
         self: "PhysicalOperator",
@@ -533,6 +531,9 @@ class ActorPoolMapOperator(MapOperator):
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
 
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        return self._actor_pool.max_size() * self._actor_pool.max_actor_concurrency()
+
 
 class _MapWorker:
     """An actor worker for MapOperator."""
@@ -543,7 +544,7 @@ class _MapWorker:
         src_fn_name: str,
         map_transformer: MapTransformer,
         logical_actor_id: str,
-        actor_location_tracker: ActorLocationTracker,
+        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer

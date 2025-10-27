@@ -554,19 +554,22 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 input_logical_ops,
             )
 
+        ray_remote_args = self._get_default_aggregator_ray_remote_args(
+            num_partitions=target_num_partitions,
+            num_aggregators=num_aggregators,
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+
+        if aggregator_ray_remote_args_override is not None:
+            # Set default values missing for configs missing in the override
+            ray_remote_args.update(aggregator_ray_remote_args_override)
+
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=target_num_partitions,
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
-            aggregator_ray_remote_args=(
-                aggregator_ray_remote_args_override
-                or self._get_default_aggregator_ray_remote_args(
-                    num_partitions=target_num_partitions,
-                    num_aggregators=num_aggregators,
-                    total_available_cluster_resources=total_available_cluster_resources,
-                    estimated_dataset_bytes=estimated_dataset_bytes,
-                )
-            ),
+            aggregator_ray_remote_args=ray_remote_args,
             data_context=data_context,
         )
 
@@ -1087,11 +1090,19 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             )
         else:
             # NOTE: In cases when we're unable to estimate dataset size,
-            #       we simply fallback to request
-            #       ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
-            #       memory for every Aggregator
-            estimated_aggregator_memory_required = (
-                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
+            #       we simply fallback to request the minimum of:
+            #       - conservative 50% of total available memory for a join operation.
+            #       - ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
+            #       memory for every Aggregator.
+
+            max_memory_per_aggregator = (
+                total_available_cluster_resources.memory / num_aggregators
+            )
+            modest_memory_per_aggregator = max_memory_per_aggregator / 2
+
+            estimated_aggregator_memory_required = min(
+                modest_memory_per_aggregator,
+                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
             )
 
         remote_args = {
@@ -1105,6 +1116,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             #       nodes to prevent any single node being overloaded with a "thundering
             #       herd"
             "scheduling_strategy": "SPREAD",
+            # Allow actor tasks to execute out of order by default to prevent head-of-line
+            # blocking scenario.
+            "allow_out_of_order_execution": True,
         }
 
         return remote_args

@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.util.annotations import PublicAPI
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="stable")
+@requires_train_worker(raise_in_tune_session=True)
 def report(
     metrics: Dict[str, Any],
     checkpoint: Optional["Checkpoint"] = None,
@@ -123,6 +125,7 @@ def report(
 
 
 @PublicAPI(stability="stable")
+@requires_train_worker(raise_in_tune_session=True)
 def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
@@ -130,12 +133,11 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    # TODO: Return a dummy train context on the controller and driver process
-    # instead of raising an exception if the train context does not exist.
     return get_train_fn_utils().get_context()
 
 
 @PublicAPI(stability="stable")
+@requires_train_worker(raise_in_tune_session=True)
 def get_checkpoint() -> Optional["Checkpoint"]:
     """Access the latest reported checkpoint to resume from if one exists.
 
@@ -183,6 +185,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 
 
 @PublicAPI(stability="alpha")
+@requires_train_worker()
 def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
@@ -228,6 +231,7 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
 
 
 @PublicAPI(stability="stable")
+@requires_train_worker()
 def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataIterator"]:
     """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
