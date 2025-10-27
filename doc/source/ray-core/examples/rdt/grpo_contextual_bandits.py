@@ -394,9 +394,9 @@ def train(total_steps: int) -> None:
                 losses.append(step_result["loss"])
                 rewards.append(step_result["rewards"])
                 clip_fractions.append(step_result["clip_fraction"])
-                print(
-                    f"Step {i}/{total_steps} | Loss: {sum(losses[-20:]) / 20} | Rewards: {sum(rewards[-20:]) / 20:.3f} | Fraction clipped: {sum(clip_fractions[-20:]) / 20:.3f}"
-                )
+            print(
+                f"Step {i}/{total_steps} | Loss: {sum(losses[-20:]) / 20} | Rewards: {sum(rewards[-20:]) / 20:.3f} | Fraction clipped: {sum(clip_fractions[-20:]) / 20:.3f}"
+            )
             step_results.clear()
 
         step_results.append(learner.step.remote())
