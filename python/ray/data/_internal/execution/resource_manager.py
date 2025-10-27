@@ -223,9 +223,6 @@ class ResourceManager:
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_budgets(
                 limits=self._global_limits,
-                task_resource_usage=self._op_usages,
-                internal_object_store_usage=self._mem_op_internal,
-                outputs_object_store_usage=self._mem_op_outputs,
             )
 
     def get_global_usage(self) -> ExecutionResources:
@@ -784,8 +781,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         res = self._op_budgets[op].object_store_memory
         # Add the remaining of `_reserved_for_op_outputs`.
-        op_outputs_usage = self._get_op_outputs_usage_with_downstream(
-            op, task_resource_usage, output_object_store_usage
+        op_outputs_usage = self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
+            op
         )
 
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
