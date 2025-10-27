@@ -37,7 +37,7 @@ Create a Placement Group (Reserve Resources)
 You can create a placement group using :func:`ray.util.placement_group`.
 Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`.
 Note that each bundle must be able to fit on a single node on the Ray cluster.
-For example, if you only have a 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``,
+For example, if you only have an 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``,
 this bundle cannot be scheduled.
 
 Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1, "GPU": 1}]``).
@@ -585,12 +585,19 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
 [Advanced] Named Placement Group
 --------------------------------
 
-A placement group can be given a globally unique name.
-This allows you to retrieve the placement group from any job in the Ray cluster.
-This can be useful if you cannot directly pass the placement group handle to
+Within a :ref:`namespace <namespaces-guide>`, you can *name* a placement group.
+You can use the name of a placement group to retrieve the placement group from any job 
+in the Ray cluster, as long as the job is within the same namespace.
+This is useful if you can't directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
-access a placement group launched by another driver.
-Note that the placement group is still destroyed if its lifetime isn't `detached`.
+access a placement group launched by another driver. 
+
+The placement group is destroyed when the original creation job completes if its 
+lifetime isn't `detached`. You can avoid this by using a :ref:`detached placement group <placement-group-detached>`
+
+Note that this feature requires that you specify a 
+:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the 
+placement group across jobs.
 
 .. tab-set::
 

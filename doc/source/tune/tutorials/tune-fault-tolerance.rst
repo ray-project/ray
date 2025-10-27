@@ -73,7 +73,7 @@ The actual training loop is just for demonstration purposes: the important detai
     :end-before: __ft_initial_run_end__
 
 The results and checkpoints of the experiment are saved to ``~/ray_results/tune_fault_tolerance_guide``,
-as configured by :class:`~ray.train.RunConfig`.
+as configured by :class:`~ray.tune.RunConfig`.
 If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
@@ -134,7 +134,7 @@ Tune Experiment Restoration with Ray Object References (Advanced)
 Experiment restoration often happens in a different Ray session than the original run,
 in which case Ray object references are automatically garbage collected.
 If object references are saved along with experiment state (e.g., within each trial's config),
-then attempting to retrieve theses objects will not work properly after restoration:
+then attempting to retrieve these objects will not work properly after restoration:
 the objects these references point to no longer exist.
 
 To work around this, you must re-create these objects, put them in the Ray object store,
@@ -189,10 +189,10 @@ Trial-level fault tolerance deals with individual trial failures in the cluster,
 - Ephemeral network connection issues.
 - Nodes running out of memory or out of disk space.
 
-Ray Tune provides a way to configure failure handling of individual trials with the :class:`~ray.train.FailureConfig`.
+Ray Tune provides a way to configure failure handling of individual trials with the :class:`~ray.tune.FailureConfig`.
 
 Assuming that we're using the ``trainable`` from the previous example that implements
-trial checkpoint saving and loading, here is how to configure :class:`~ray.train.FailureConfig`:
+trial checkpoint saving and loading, here is how to configure :class:`~ray.tune.FailureConfig`:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python

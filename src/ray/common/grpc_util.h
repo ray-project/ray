@@ -16,6 +16,7 @@
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
+#include <google/protobuf/timestamp.pb.h>
 #include <google/protobuf/util/message_differencer.h>
 #include <grpcpp/grpcpp.h>
 
@@ -25,11 +26,13 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
+#include "ray/util/type_traits.h"
 
 namespace ray {
 
 /// Wrap a protobuf message.
 template <class Message>
+// TODO(#55921): Remove MessageWrapper class and clean up LeaseSpec/TaskSpec classes
 class MessageWrapper {
  public:
   /// Construct an empty message wrapper. This should not be used directly.
@@ -148,11 +151,72 @@ inline std::vector<ID> IdVectorFromProtobuf(
   return ret;
 }
 
-/// Converts a Protobuf map to a cpp map
+/// Converts a Protobuf map to a cpp map.
 template <class K, class V>
 inline absl::flat_hash_map<K, V> MapFromProtobuf(
     const ::google::protobuf::Map<K, V> &pb_map) {
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
+}
+
+/// Debug string for a google protobuf map.
+template <class K, class V>
+inline std::string DebugString(const ::google::protobuf::Map<K, V> &pb_map) {
+  std::stringstream ss;
+  ss << "{";
+  bool first = true;
+  for (const auto &pair : pb_map) {
+    if (!first) {
+      ss << ",";
+      first = false;
+    }
+    ss << pair.first << ":" << pair.second;
+  }
+  ss << "}";
+  return ss.str();
+}
+
+/// Check whether 2 google::protobuf::Map are equal. This function assumes that the
+/// value of the map is either a simple type that supports operator== or a protobuf
+/// message that can be compared using
+/// google::protobuf::util::MessageDifferencer::Equivalent.
+template <class K, class V>
+bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
+              const ::google::protobuf::Map<K, V> &rhs) {
+  static_assert(
+      has_equal_operator<V>::value ||
+          std::is_base_of<google::protobuf::Message, V>::value,
+      "Invalid value type for the map. The value of in the map must either be a simple "
+      "type that supports operator== or a protobuf message that can be compared using "
+      "google::protobuf::util::MessageDifferencer::Equivalent");
+
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (const auto &pair : lhs) {
+    auto it = rhs.find(pair.first);
+    if (it == rhs.end()) {
+      return false;
+    }
+    if constexpr (has_equal_operator<V>::value) {
+      if (it->second != pair.second) {
+        return false;
+      }
+    } else if (std::is_base_of<google::protobuf::Message, V>::value) {
+      if (!google::protobuf::util::MessageDifferencer::Equivalent(it->second,
+                                                                  pair.second)) {
+        return false;
+      }
+    } else {
+      // Should never reach here due to the static_assert above.
+      throw std::invalid_argument(
+          "The value of in the map must either be a simple "
+          "type that supports operator== or a protobuf message that can be compared "
+          "using google::protobuf::util::MessageDifferencer::Equivalent");
+    }
+  }
+
+  return true;
 }
 
 inline grpc::ChannelArguments CreateDefaultChannelArguments() {
@@ -167,6 +231,24 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());
   return arguments;
+}
+
+// Convert an epoch time in nanoseconds to a protobuf timestamp
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
+inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) {
+  google::protobuf::Timestamp timestamp;
+
+  // Extract the seconds and the fractional nanoseconds from the epoch time
+  timestamp.set_seconds(nanos / 1000000000);
+  timestamp.set_nanos(nanos % 1000000000);
+  return timestamp;
+}
+
+// Conver a protobuf timestamp to an epoch time in nanoseconds
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
+inline int64_t ProtoTimestampToAbslTimeNanos(
+    const google::protobuf::Timestamp &timestamp) {
+  return timestamp.seconds() * 1000000000LL + timestamp.nanos();
 }
 
 }  // namespace ray

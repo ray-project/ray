@@ -1,0 +1,87 @@
+// Copyright 2022 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/grpc_server.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.pb.h"
+
+using namespace ray;         // NOLINT
+using namespace ray::rpc;    // NOLINT
+using namespace helloworld;  // NOLINT
+
+class ServerCallFactory;
+
+class GreeterHandler {
+ public:
+  virtual void HandleSayHello(SayHelloRequest request,
+                              SayHelloReply *reply,
+                              SendReplyCallback send_reply_callback) = 0;
+  virtual ~GreeterHandler() {}
+};
+
+class GreeterServiceHandler : public GreeterHandler {
+ public:
+  void HandleSayHello(SayHelloRequest request,
+                      SayHelloReply *reply,
+                      SendReplyCallback send_reply_callback) override {
+    *reply->mutable_response() = std::move(*request.mutable_request());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+};
+
+class GreeterGrpcService : public GrpcService {
+ public:
+  GreeterGrpcService(instrumented_io_context &main_service,
+                     GreeterServiceHandler &service_handler)
+      : GrpcService(main_service), service_handler_(service_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override{
+      RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
+          Greeter, SayHello, -1, AuthType::NO_AUTH)}
+
+  /// The grpc async service object.
+  Greeter::AsyncService service_;
+
+  /// The service handler that actually handles the requests.
+  GreeterServiceHandler &service_handler_;
+};
+
+int main() {
+  const auto env = std::getenv("GRPC_SERVER_CPUS");
+  const auto parallelism = env ? std::atoi(env) : std::thread::hardware_concurrency();
+
+  GrpcServer server("grpc_bench", 50051, false, ClusterID::Nil(), parallelism);
+  instrumented_io_context main_service;
+  std::thread t([&main_service] {
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        main_service.get_executor());
+    main_service.run();
+  });
+  GreeterServiceHandler handler;
+  server.RegisterService(std::make_unique<GreeterGrpcService>(main_service, handler));
+  server.Run();
+  t.join();
+  return 0;
+}

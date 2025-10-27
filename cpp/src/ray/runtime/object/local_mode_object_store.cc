@@ -41,11 +41,8 @@ void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                   const ObjectID &object_id) {
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
-  auto status = memory_store_->Put(
+  memory_store_->Put(
       ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), object_id);
-  if (!status) {
-    throw RayException("Put object error");
-  }
 }
 
 std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &object_id,
@@ -89,12 +86,14 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   for (const auto &object_id : ids) {
     memory_object_ids.insert(object_id);
   }
-  absl::flat_hash_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+
   ::ray::Status status = memory_store_->Wait(memory_object_ids,
                                              num_objects,
                                              timeout_ms,
                                              local_mode_ray_tuntime_.GetWorkerContext(),
-                                             &ready);
+                                             &ready,
+                                             &plasma_object_ids);
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }

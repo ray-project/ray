@@ -1,14 +1,17 @@
 from collections import Counter
 from numbers import Number
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data import Dataset
-from ray.data._internal.aggregate import Mean
+from ray.data.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 @PublicAPI(stability="alpha")
@@ -66,6 +69,17 @@ class SimpleImputer(Preprocessor):
         2  3.0  c
         3  3.0  c
 
+        :class:`SimpleImputer` can also be used in append mode by providing the
+        name of the output_columns that should hold the imputed values.
+
+        >>> preprocessor = SimpleImputer(columns=["X"], output_columns=["X_imputed"], strategy="mean")
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+             X     Y  X_imputed
+        0  0.0  None        0.0
+        1  NaN     b        2.0
+        2  3.0     c        3.0
+        3  3.0     c        3.0
+
     Args:
         columns: The columns to apply imputation to.
         strategy: How imputed values are chosen.
@@ -75,6 +89,10 @@ class SimpleImputer(Preprocessor):
             * ``"constant"``: The value passed to ``fill_value``.
 
         fill_value: The value to use when ``strategy`` is ``"constant"``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     Raises:
         ValueError: if ``strategy`` is not ``"mean"``, ``"most_frequent"``, or
@@ -88,7 +106,10 @@ class SimpleImputer(Preprocessor):
         columns: List[str],
         strategy: str = "mean",
         fill_value: Optional[Union[str, Number]] = None,
+        *,
+        output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.strategy = strategy
         self.fill_value = fill_value
@@ -107,17 +128,30 @@ class SimpleImputer(Preprocessor):
                     '`fill_value` must be set when using "constant" strategy.'
                 )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
+
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         if self.strategy == "mean":
-            aggregates = [Mean(col) for col in self.columns]
-            self.stats_ = dataset.aggregate(*aggregates)
+            self.stat_computation_plan.add_aggregator(
+                aggregator_fn=Mean, columns=self.columns
+            )
         elif self.strategy == "most_frequent":
-            self.stats_ = _get_most_frequent_values(dataset, *self.columns)
+            self.stat_computation_plan.add_callable_stat(
+                stat_fn=lambda key_gen: _get_most_frequent_values(
+                    dataset=dataset,
+                    columns=self.columns,
+                    key_gen=key_gen,
+                ),
+                stat_key_fn=lambda col: f"most_frequent({col})",
+                columns=self.columns,
+            )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column in self.columns:
+        for column, output_column in zip(self.columns, self.output_columns):
             value = self._get_fill_value(column)
 
             if value is None:
@@ -128,11 +162,23 @@ class SimpleImputer(Preprocessor):
 
             if column not in df.columns:
                 # Create the column with the fill_value if it doesn't exist
-                df[column] = value
+                df[output_column] = value
             else:
                 if is_categorical_dtype(df.dtypes[column]):
-                    df[column] = df[column].cat.add_categories([value])
-                df[column].fillna(value, inplace=True)
+                    df[output_column] = df[column].cat.add_categories([value])
+
+                if (
+                    output_column != column
+                    # If the backing array is memory-mapped from shared memory, then the
+                    # array won't be writeable.
+                    or (
+                        isinstance(df[output_column].values, np.ndarray)
+                        and not df[output_column].values.flags.writeable
+                    )
+                ):
+                    df[output_column] = df[column].copy(deep=True)
+
+                df.fillna({output_column: value}, inplace=True)
 
         return df
 
@@ -152,16 +198,17 @@ class SimpleImputer(Preprocessor):
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"strategy={self.strategy!r}, fill_value={self.fill_value!r})"
+            f"strategy={self.strategy!r}, fill_value={self.fill_value!r}, "
+            f"output_columns={self.output_columns!r})"
         )
 
 
 def _get_most_frequent_values(
-    dataset: Dataset, *columns: str
+    dataset: "Dataset",
+    columns: List[str],
+    key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
-    columns = list(columns)
-
-    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
         return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
@@ -172,6 +219,6 @@ def _get_most_frequent_values(
                 final_counters[col] += counter
 
     return {
-        f"most_frequent({column})": final_counters[column].most_common(1)[0][0]
+        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
         for column in columns
     }

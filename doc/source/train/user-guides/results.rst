@@ -3,19 +3,16 @@
 Inspecting Training Results
 ===========================
 
-The return value of your :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`
-call is a :class:`~ray.train.Result` object.
+The return value of ``trainer.fit()`` is a :class:`~ray.train.Result` object.
 
 The :class:`~ray.train.Result` object contains, among other information:
 
-- The last reported metrics (e.g. the loss)
-- The last reported checkpoint (to load the model)
+- The last reported checkpoint (to load the model) and its attached metrics
 - Error messages, if any errors occurred
 
 Viewing metrics
 ---------------
-You can retrieve metrics reported to Ray Train from the :class:`~ray.train.Result`
-object.
+You can retrieve reported metrics that were attached to a checkpoint from the :class:`~ray.train.Result` object.
 
 Common metrics include the training or validation loss, or prediction accuracies.
 
@@ -24,11 +21,17 @@ correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 
+.. note::
+    Persisting free-floating metrics reported via ``ray.train.report(metrics, checkpoint=None)`` is deprecated.
+    This also means that retrieving these metrics from the :class:`~ray.train.Result` object is deprecated.
+    Only metrics attached to checkpoints are persisted. See :ref:`train-metric-only-reporting-deprecation` for more details.
+
+
 Last reported metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-Use :attr:`Result.metrics <ray.train.Result.metrics>` to retrieve the
-latest reported metrics.
+Use :attr:`Result.metrics <ray.train.Result>` to retrieve the
+metrics attached to the last reported checkpoint.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -38,8 +41,8 @@ latest reported metrics.
 Dataframe of all reported metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use :attr:`Result.metrics_dataframe <ray.train.Result.metrics_dataframe>` to retrieve
-a pandas DataFrame of all reported metrics.
+Use :attr:`Result.metrics_dataframe <ray.train.Result>` to retrieve
+a pandas DataFrame of all metrics reported alongside checkpoints.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -65,7 +68,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 Last saved checkpoint
 ~~~~~~~~~~~~~~~~~~~~~
-Use :attr:`Result.checkpoint <ray.train.Result.checkpoint>` to retrieve the
+Use :attr:`Result.checkpoint <ray.train.Result>` to retrieve the
 last checkpoint.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -81,7 +84,7 @@ after more training due to overfitting, you may want to retrieve the checkpoint 
 the lowest loss.
 
 You can retrieve a list of all available checkpoints and their metrics with
-:attr:`Result.best_checkpoints <ray.train.Result.best_checkpoints>`
+:attr:`Result.best_checkpoints <ray.train.Result>`
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -95,7 +98,7 @@ You can retrieve a list of all available checkpoints and their metrics with
 Accessing storage location
 ---------------------------
 If you need to retrieve the results later, you can get the storage location
-of the training run with :attr:`Result.path <ray.train.Result.path>`.
+of the training run with :attr:`Result.path <ray.train.Result>`.
 
 This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
 in the :class:`~ray.train.RunConfig`. It will be a
@@ -112,19 +115,19 @@ access the storage location, which is useful if the path is on cloud storage.
     :end-before: __result_path_end__
 
 
-You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
+.. You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
 
-.. literalinclude:: ../doc_code/key_concepts.py
-    :language: python
-    :start-after: __result_restore_start__
-    :end-before: __result_restore_end__
+.. .. literalinclude:: ../doc_code/key_concepts.py
+..     :language: python
+..     :start-after: __result_restore_start__
+..     :end-before: __result_restore_end__
 
 
 
 Viewing Errors
 --------------
 If an error occurred during training,
-:attr:`Result.error <ray.train.Result.error>` will be set and contain the exception
+:attr:`Result.error <ray.train.Result>` will be set and contain the exception
 that was raised.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -138,5 +141,5 @@ Finding results on persistent storage
 All training results, including reported metrics, checkpoints, and error files,
 are stored on the configured :ref:`persistent storage <train-log-dir>`.
 
-See :ref:`our persistent storage guide <train-log-dir>` to configure this location
+See :ref:`the persistent storage guide <train-log-dir>` to configure this location
 for your training run.

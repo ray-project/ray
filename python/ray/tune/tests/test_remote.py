@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch
 
 import ray
-import ray.train
 from ray.tune import choice, register_trainable, run, run_experiments
 from ray.tune.experiment import Experiment, Trial
 from ray.tune.result import TIMESTEPS_TOTAL
@@ -13,7 +12,7 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 
 def train_fn(config):
     for i in range(100):
-        ray.train.report(dict(timesteps_total=i))
+        ray.tune.report(dict(timesteps_total=i))
 
 
 class RemoteTest(unittest.TestCase):

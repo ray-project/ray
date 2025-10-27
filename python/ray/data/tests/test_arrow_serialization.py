@@ -9,13 +9,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
 import ray.data
 import ray.train
 from ray._private.arrow_serialization import (
+    PicklableArrayPayload,
     _align_bit_offset,
     _bytes_for_bits,
     _copy_bitpacked_buffer_if_needed,
@@ -23,7 +24,7 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
@@ -442,7 +443,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -492,7 +493,7 @@ def test_custom_arrow_data_serializer_fallback(
     cap_mult = 0.1
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -595,3 +596,60 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
     assert len(s_view) > 0.8 * len(s_t)
+
+
+def test_fixed_shape_tensor_array_serialization():
+    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.arange(4 * 2 * 3).reshape(4, 2, 3)
+    )
+    payload = PicklableArrayPayload.from_array(a)
+    a2 = payload.to_array()
+    assert a == a2
+
+
+class _VariableShapeTensorType(pa.ExtensionType):
+    def __init__(
+        self,
+        value_type: pa.DataType,
+        ndim: int,
+    ) -> None:
+        self.value_type = value_type
+        self.ndim = ndim
+        super().__init__(
+            pa.struct(
+                [
+                    pa.field("data", pa.list_(value_type)),
+                    pa.field("shape", pa.list_(pa.int32(), ndim)),
+                ]
+            ),
+            "variable_shape_tensor",
+        )
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type: pa.DataType, serialized: bytes):
+        ndim = storage_type[1].type.list_size
+        value_type = storage_type[0].type.value_type
+        return cls(value_type, ndim)
+
+
+def test_variable_shape_tensor_serialization():
+    t = _VariableShapeTensorType(pa.float32(), 2)
+    ar = pa.array(
+        [
+            {
+                "data": np.arange(2 * 3),
+                "shape": [2, 3],
+            },
+            {
+                "data": np.arange(4 * 5),
+                "shape": [4, 5],
+            },
+        ],
+        type=t,
+    )
+    payload = PicklableArrayPayload.from_array(ar)
+    ar2 = payload.to_array()
+    assert ar == ar2

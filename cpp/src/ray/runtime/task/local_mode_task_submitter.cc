@@ -34,10 +34,10 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                                         const ActorCreationOptions &options) {
   /// TODO(SongGuyang): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
-  /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
+  /// Maybe some information of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.remote_function_holder.function_name);
+      invocation.remote_function_holder.function_name_);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -93,7 +93,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                              /*max_retries=*/0,
                              /*retry_exceptions=*/false,
                              /*serialized_retry_exception_allowlist=*/"",
-                             invocation.actor_counter);
+                             invocation.sequence_number);
   } else {
     throw RayException("unknown task type");
   }

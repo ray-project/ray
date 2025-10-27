@@ -1,4 +1,4 @@
-Advanced Topics
+Advanced topics
 ===============
 
 This section covers extended topics on how to use Ray.
@@ -7,6 +7,7 @@ This section covers extended topics on how to use Ray.
     :maxdepth: -1
 
     tips-for-first-time
+    type-hint
     starting-ray
     ray-generator
     namespaces

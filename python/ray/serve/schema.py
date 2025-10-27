@@ -1,11 +1,12 @@
 import logging
+from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
@@ -15,14 +16,17 @@ from ray._private.pydantic_compat import (
     root_validator,
     validator,
 )
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
+    RequestProtocol,
     ServeDeployMode,
 )
 from ray.serve._private.constants import (
+    DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
@@ -30,8 +34,8 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import DEFAULT
-from ray.serve.config import ProxyLocation
+from ray.serve._private.utils import DEFAULT, validate_ssl_config
+from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -140,6 +144,15 @@ class LoggingConfig(BaseModel):
             "Whether to enable access logs for each request. Default to True."
         ),
     )
+    additional_log_standard_attrs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Default attributes from the Python standard logger that will be "
+            "added to all log records. "
+            "See https://docs.python.org/3/library/logging.html#logrecord-attributes "
+            "for a list of available attributes."
+        ),
+    )
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
@@ -167,6 +180,16 @@ class LoggingConfig(BaseModel):
                 f"{list(logging._nameToLevel.keys())}."
             )
         return v
+
+    @validator("additional_log_standard_attrs")
+    def valid_additional_log_standard_attrs(cls, v):
+        for attr in v:
+            if attr not in LOGRECORD_STANDARD_ATTRS:
+                raise ValueError(
+                    f"Unknown attribute '{attr}'. "
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                )
+        return list(set(v))
 
     def _compute_hash(self) -> int:
         return crc32(
@@ -240,8 +263,8 @@ class RayActorOptionsSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -384,6 +407,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
+    request_router_config: Union[Dict, RequestRouterConfig] = Field(
+        default=DEFAULT.VALUE,
+        description="Config for the request router used for this deployment.",
+    )
 
     @root_validator
     def validate_num_replicas_and_autoscaling_config(cls, values):
@@ -462,6 +489,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
+        request_router_config=info.deployment_config.request_router_config,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -534,6 +562,15 @@ class ServeApplicationSchema(BaseModel):
         default=[],
         description="Deployment options that override options specified in the code.",
     )
+    autoscaling_policy: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Application-level autoscaling policy. "
+            "If null, serve fallbacks to autoscaling policy in each deployment. "
+            "This option is under development and not yet supported."
+        ),
+    )
+
     args: Dict = Field(
         default={},
         description="Arguments that will be passed to the application builder.",
@@ -554,8 +591,8 @@ class ServeApplicationSchema(BaseModel):
             return
 
         uris = v.get("py_modules", [])
-        if "working_dir" in v and v["working_dir"] not in uris:
-            uris.append(v["working_dir"])
+        if "working_dir" in v:
+            uris = [*uris, v["working_dir"]]
 
         for uri in uris:
             if uri is not None:
@@ -638,6 +675,10 @@ class gRPCOptionsSchema(BaseModel):
             "need to be importable from the context of where Serve is running."
         ),
     )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for gRPC requests. Defaults to no timeout.",
+    )
 
 
 @PublicAPI(stability="stable")
@@ -683,6 +724,31 @@ class HTTPOptionsSchema(BaseModel):
         "before closing them when no requests are ongoing. Defaults to "
         f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
+    ssl_keyfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL key file for HTTPS. If provided with ssl_certfile, "
+        "the HTTP server will use HTTPS. Cannot be updated once Serve has started.",
+    )
+    ssl_certfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL certificate file for HTTPS. If provided with "
+        "ssl_keyfile, the HTTP server will use HTTPS. Cannot be updated once Serve "
+        "has started.",
+    )
+    ssl_keyfile_password: Optional[str] = Field(
+        default=None,
+        description="Password for the SSL key file, if encrypted.",
+    )
+    ssl_ca_certs: Optional[str] = Field(
+        default=None,
+        description="Path to the CA certificate file for verifying client certificates.",
+    )
+
+    @validator("ssl_certfile")
+    def validate_ssl_certfile(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        validate_ssl_config(v, ssl_keyfile)
+        return v
 
 
 @PublicAPI(stability="stable")
@@ -879,6 +945,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     Attributes:
         node_id: ID of the node that the actor is running on.
         node_ip: IP address of the node that the actor is running on.
+        node_instance_id: Cloud provider instance id of the node that the actor is running on.
         actor_id: Actor ID.
         actor_name: Actor name.
         worker_id: Worker ID.
@@ -891,6 +958,9 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
     node_ip: Optional[str] = Field(
         description="IP address of the node that the actor is running on."
+    )
+    node_instance_id: Optional[str] = Field(
+        description="Cloud provider instance id of the node that the actor is running on."
     )
     actor_id: Optional[str] = Field(description="Actor ID.")
     actor_name: Optional[str] = Field(description="Actor name.")
@@ -916,6 +986,63 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
             "this is the time at which the controller recovers and retrieves replica "
             "state from the running replica actor."
         )
+    )
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsHealth(str, Enum):
+    HEALTHY = "healthy"
+    DELAYED = "delayed"
+    UNAVAILABLE = "unavailable"
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingStatus(str, Enum):
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+    STABLE = "STABLE"
+
+
+@PublicAPI(stability="alpha")
+class ScalingDecision(BaseModel):
+    """One autoscaling decision with minimal provenance."""
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the decision was made."
+    )
+    reason: str = Field(
+        ..., description="Short, human-readable reason for the decision."
+    )
+    prev_num_replicas: int = Field(
+        ..., ge=0, description="Replica count before the decision."
+    )
+    curr_num_replicas: int = Field(
+        ..., ge=0, description="Replica count after the decision."
+    )
+    policy: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentAutoscalingDetail(BaseModel):
+    """Deployment-level autoscaler observability."""
+
+    scaling_status: AutoscalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent scaling decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for this deployment."
+    )
+    metrics_health: AutoscalingMetricsHealth = Field(
+        AutoscalingMetricsHealth.HEALTHY,
+        description="Health of metrics collection pipeline.",
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
     )
 
 
@@ -952,8 +1079,16 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "number for other deployments."
         )
     )
+    required_resources: Dict = Field(
+        description="The resources required per replica of this deployment."
+    )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
+    )
+
+    autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
     )
 
 
@@ -964,6 +1099,14 @@ class APIType(str, Enum):
     UNKNOWN = "unknown"
     IMPERATIVE = "imperative"
     DECLARATIVE = "declarative"
+
+    @classmethod
+    def get_valid_user_values(cls):
+        """Get list of valid APIType values that users can explicitly pass.
+
+        Excludes 'unknown' which is for internal use only.
+        """
+        return [cls.IMPERATIVE.value, cls.DECLARATIVE.value]
 
 
 @PublicAPI(stability="stable")
@@ -1041,6 +1184,21 @@ class ProxyDetails(ServeActorDetails, frozen=True):
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 
+@PublicAPI(stability="alpha")
+class Target(BaseModel, frozen=True):
+    ip: str = Field(description="IP address of the target.")
+    port: int = Field(description="Port of the target.")
+    instance_id: str = Field(description="Instance ID of the target.")
+    name: str = Field(description="Name of the target.")
+
+
+@PublicAPI(stability="alpha")
+class TargetGroup(BaseModel, frozen=True):
+    targets: List[Target] = Field(description="List of targets for the given route.")
+    route_prefix: str = Field(description="Prefix route of the targets.")
+    protocol: RequestProtocol = Field(description="Protocol of the targets.")
+
+
 @PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
@@ -1079,6 +1237,14 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         description="Details about all live applications running on the cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+
+    target_groups: List[TargetGroup] = Field(
+        default_factory=list,
+        description=(
+            "List of target groups, each containing target info for a given route and "
+            "protocol."
+        ),
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1126,17 +1292,302 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` is only used internally and should not be exposed to
-        # the REST api. This method iteratively removes it from each autoscaling config
-        # if exists.
+        # `serialized_policy_def` and internal router config fields are only used
+        # internally and should not be exposed to the REST api. This method iteratively
+        # removes them from each deployment config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
-                if (
-                    "deployment_config" in deployment
-                    and "autoscaling_config" in deployment["deployment_config"]
-                ):
-                    deployment["deployment_config"]["autoscaling_config"].pop(
-                        "_serialized_policy_def", None
-                    )
+                if "deployment_config" in deployment:
+                    # Remove internal fields from request_router_config if it exists
+                    if "request_router_config" in deployment["deployment_config"]:
+                        deployment["deployment_config"]["request_router_config"].pop(
+                            "_serialized_request_router_cls", None
+                        )
+                    if "autoscaling_config" in deployment["deployment_config"]:
+                        deployment["deployment_config"]["autoscaling_config"].pop(
+                            "_serialized_policy_def", None
+                        )
 
         return values
+
+
+@PublicAPI(stability="alpha")
+class CeleryAdapterConfig(BaseModel):
+    """
+    Celery adapter config. You can use it to configure the Celery task processor for your Serve application.
+    """
+
+    app_custom_config: Optional[Dict[str, Any]] = Field(
+        default=None, description="The custom configurations to use for the Celery app."
+    )
+    task_custom_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="""
+        The custom configurations to use for the Celery task.
+        This custom configurations will get applied to all the celery tasks.
+        """,
+    )
+    broker_url: str = Field(..., description="The URL of the broker to use for Celery.")
+    backend_url: str = Field(
+        ..., description="The URL of the backend to use for Celery."
+    )
+    broker_transport_options: Optional[Dict[str, Any]] = Field(
+        default=None, description="The broker transport options to use for Celery."
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskProcessorConfig(BaseModel):
+    """
+    Task processor config. You can use it to configure the task processor for your Serve application.
+    """
+
+    queue_name: str = Field(
+        ..., description="The name of the queue to use for task processing."
+    )
+    adapter: Union[str, Callable] = Field(
+        default="ray.serve.task_processor.CeleryTaskProcessorAdapter",
+        description="The adapter to use for task processing. By default, Celery is used.",
+    )
+    adapter_config: Any = Field(..., description="The adapter config.")
+    max_retries: Optional[int] = Field(
+        default=3,
+        description="The maximum number of times to retry a task before marking it as failed.",
+    )
+    failed_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the failed task queue. This is used to move failed tasks to a dead-letter queue after max retries.",
+    )
+    unprocessable_task_queue_name: Optional[str] = Field(
+        default=None,
+        description="The name of the unprocessable task queue. This is used to move unprocessable tasks(like tasks with serialization issue, or missing handler) to a dead-letter queue.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class TaskResult(BaseModel):
+    """
+    Task result Model.
+    """
+
+    id: str = Field(..., description="The ID of the task.")
+    status: str = Field(..., description="The status of the task.")
+    created_at: Optional[float] = Field(
+        default=None, description="The timestamp of the task creation."
+    )
+    result: Any = Field(..., description="The result of the task.")
+
+
+@PublicAPI(stability="alpha")
+class TaskProcessorAdapter(ABC):
+    """
+    Abstract base class for task processing adapters.
+
+    Subclasses can support different combinations of sync and async operations.
+    Use supports_async_capability() to check if a specific async operation is supported.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the TaskProcessorAdapter.
+
+        """
+        pass
+
+    @abstractmethod
+    def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
+        """
+        Initialize the task processor.
+        """
+        pass
+
+    @abstractmethod
+    def register_task_handle(self, func: Callable, name: Optional[str] = None):
+        """
+        Register a function as a task handler.
+
+        Args:
+            func: The function to register as a task handler.
+            name: Custom name for the task.
+        """
+        pass
+
+    @abstractmethod
+    def enqueue_task_sync(
+        self,
+        task_name: str,
+        args: Optional[Any] = None,
+        kwargs: Optional[Any] = None,
+        **options,
+    ) -> TaskResult:
+        """
+        Enqueue a task for execution synchronously.
+
+        Args:
+            task_name: Name of the registered task to execute.
+            args: Positional arguments to pass to the task function.
+            kwargs: Keyword arguments to pass to the task function.
+            **options: Additional adapter-specific options for task execution.
+
+        Returns:
+            TaskResult: Object containing task ID, status, and other metadata.
+        """
+        pass
+
+    @abstractmethod
+    def get_task_status_sync(self, task_id: str) -> TaskResult:
+        """
+        Retrieve the current status of a task synchronously.
+
+        Args:
+            task_id: Unique identifier of the task to query.
+
+        Returns:
+            TaskResult: Object containing current task status, result, and other metadata.
+        """
+        pass
+
+    @abstractmethod
+    def start_consumer(self, **kwargs):
+        """
+        Start the task consumer/worker process.
+        """
+        pass
+
+    @abstractmethod
+    def stop_consumer(self, timeout: float = 10.0):
+        """
+        Stop the task consumer gracefully.
+
+        Args:
+            timeout: Maximum time in seconds to wait for the consumer to stop.
+        """
+        pass
+
+    @abstractmethod
+    def shutdown(self):
+        """
+        Shutdown the task processor and clean up resources.
+        """
+        pass
+
+    @abstractmethod
+    def cancel_task_sync(self, task_id: str):
+        """
+        Cancel a task synchronously.
+
+        Args:
+            task_id: Unique identifier of the task to cancel.
+        """
+        pass
+
+    @abstractmethod
+    def get_metrics_sync(self) -> Dict[str, Any]:
+        """
+        Get metrics synchronously.
+
+        Returns:
+            Dict[str, Any]: Adapter-specific metrics data.
+        """
+        pass
+
+    @abstractmethod
+    def health_check_sync(self) -> List[Dict]:
+        """
+        Perform health check synchronously.
+
+        Returns:
+            List[Dict]: Health status information for workers/components.
+        """
+        pass
+
+    async def enqueue_task_async(
+        self,
+        task_name: str,
+        args: Optional[Any] = None,
+        kwargs: Optional[Any] = None,
+        **options,
+    ) -> TaskResult:
+        """
+        Enqueue a task asynchronously.
+
+        Args:
+            task_name: Name of the registered task to execute.
+            args: Positional arguments to pass to the task function.
+            kwargs: Keyword arguments to pass to the task function.
+            **options: Additional adapter-specific options for task execution.
+
+        Returns:
+            TaskResult: Object containing task ID, status, and other metadata.
+
+        Raises:
+            NotImplementedError: If subclass didn't implement enqueue_task_async function
+        """
+
+        raise NotImplementedError("Subclass must implement enqueue_task_async function")
+
+    async def get_task_status_async(self, task_id: str) -> TaskResult:
+        """
+        Get task status asynchronously.
+
+        Args:
+            task_id: Unique identifier of the task to query.
+
+        Returns:
+            TaskResult: Object containing current task status, result, and other metadata.
+
+        Raises:
+            NotImplementedError: If subclass didn't implement get_task_status_async function
+        """
+
+        raise NotImplementedError(
+            "Subclass must implement get_task_status_async function"
+        )
+
+    async def cancel_task_async(self, task_id: str):
+        """
+        Cancel a task.
+
+        Args:
+            task_id: Unique identifier of the task to cancel.
+
+        Raises:
+            NotImplementedError: If subclass didn't implement cancel_task_async function
+        """
+
+        raise NotImplementedError("Subclass must implement cancel_task_async function")
+
+    async def get_metrics_async(self) -> Dict[str, Any]:
+        """
+        Get metrics asynchronously.
+
+        Returns:
+            Dict[str, Any]: Adapter-specific metrics data.
+
+        Raises:
+            NotImplementedError: If subclass didn't implement get_metrics_async function
+        """
+
+        raise NotImplementedError("Subclass must implement get_metrics_async function")
+
+    async def health_check_async(self) -> List[Dict]:
+        """
+        Perform health check asynchronously.
+
+        Returns:
+            List[Dict]: Health status information for workers/components.
+
+        Raises:
+            NotImplementedError: If subclass didn't implement health_check_async function
+        """
+
+        raise NotImplementedError("Subclass must implement health_check_async function")
+
+
+@PublicAPI(stability="alpha")
+class ScaleDeploymentRequest(BaseModel):
+    """Request schema for scaling a deployment's replicas."""
+
+    target_num_replicas: NonNegativeInt = Field(
+        description="The target number of replicas for the deployment."
+    )

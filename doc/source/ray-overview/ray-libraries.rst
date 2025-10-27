@@ -83,6 +83,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/daft.webp
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+                :target: https://github.com/Eventual-Inc/Daft
+
+            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
+
+        +++
+        .. button-link:: https://www.getdaft.io
+            :color: primary
+            :outline:
+            :expand:
+
+            Daft Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/dask.png
             :class: card-figure
 
@@ -100,6 +121,27 @@ more information.
             :expand:
 
             Dask Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/data_juicer.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/modelscope/data-juicer?style=social)]
+                :target: https://github.com/modelscope/data-juicer
+
+            Data-Juicer is a one-stop multimodal data processing system to make data higher-quality, juicier, and more digestible for foundation models. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
+
+        +++
+        .. button-link:: https://github.com/modelscope/data-juicer?tab=readme-ov-file#distributed-data-processing
+            :color: primary
+            :outline:
+            :expand:
+
+            Data-Juicer Integration
 
 
     .. grid-item-card::

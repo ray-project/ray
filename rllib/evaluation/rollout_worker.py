@@ -23,8 +23,7 @@ from typing import (
 from gymnasium.spaces import Space
 
 import ray
-from ray import ObjectRef
-from ray import cloudpickle as pickle
+from ray import ObjectRef, cloudpickle as pickle
 from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
@@ -74,8 +73,10 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
-from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
+from ray.rllib.utils.tf_utils import (
+    get_gpu_devices as get_tf_gpu_devices,
+    get_tf_eager_cls_if_necessary,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -388,7 +389,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if not (
             self.worker_index == 0
             and self.num_workers > 0
-            and not self.config.create_env_on_local_worker
+            and not self.config.create_local_env_runner
         ):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(copy.deepcopy(self.env_context))
@@ -664,7 +665,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             raise ValueError(
                 "RolloutWorker has no `input_reader` object! "
                 "Cannot call `sample()`. You can try setting "
-                "`create_env_on_driver` to True."
+                "`create_local_env_runner` to True."
             )
 
         if log_once("sample_start"):

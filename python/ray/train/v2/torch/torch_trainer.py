@@ -1,11 +1,17 @@
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
-from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
+from ray.train.v2._internal.execution.local_mode.torch import LocalTorchController
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    # NOTE: `ray.train.torch` module imports in this file will break
+    # with a circular import error if the TorchTrainer class is captured
+    # in the scope of a Ray task.
+    from ray.train.torch.config import TorchConfig
 
 
 @PublicAPI(stability="stable")
@@ -38,14 +44,14 @@ class TorchTrainer(DataParallelTrainer):
             from torch import nn
             from torch.nn.parallel import DistributedDataParallel
 
-            import ray
-            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+            import ray.train
             from ray.train.torch import TorchTrainer
+
 
             # If using GPUs, set this to True.
             use_gpu = False
             # Number of processes to run training on.
-            num_workers = 4
+            num_workers = 2
 
             # Define your network structure.
             class NeuralNetwork(nn.Module):
@@ -59,7 +65,7 @@ class TorchTrainer(DataParallelTrainer):
                     return self.layer2(self.relu(self.layer1(input)))
 
             # Training loop.
-            def train_loop_per_worker(config):
+            def train_fn_per_worker(config):
 
                 # Read configurations.
                 lr = config["lr"]
@@ -84,7 +90,6 @@ class TorchTrainer(DataParallelTrainer):
 
                 # Train multiple epochs.
                 for epoch in range(num_epochs):
-
                     # Train epoch.
                     for batch in dataloader:
                         output = model(batch["input"])
@@ -94,37 +99,32 @@ class TorchTrainer(DataParallelTrainer):
                         optimizer.step()
 
                     # Create checkpoint.
-                    base_model = (model.module
-                        if isinstance(model, DistributedDataParallel) else model)
-                    checkpoint_dir = tempfile.mkdtemp()
-                    torch.save(
-                        {"model_state_dict": base_model.state_dict()},
-                        os.path.join(checkpoint_dir, "model.pt"),
+                    base_model = (
+                        model.module
+                        if isinstance(model, DistributedDataParallel)
+                        else model
                     )
-                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
-                    # Report metrics and checkpoint.
-                    ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
-
-
-            # Define configurations.
-            train_loop_config = {"num_epochs": 20, "lr": 0.01, "batch_size": 32}
-            scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-            run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                        torch.save(
+                            {"model_state_dict": base_model.state_dict()},
+                            os.path.join(temp_checkpoint_dir, "model.pt"),
+                        )
+                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                        # Report metrics and checkpoint.
+                        ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
 
             # Define datasets.
             train_dataset = ray.data.from_items(
-                [{"input": [x], "label": [2 * x + 1]} for x in range(2000)]
+                [{"input": [x], "label": [2 * x + 1]} for x in range(128)]
             )
-            datasets = {"train": train_dataset}
 
             # Initialize the Trainer.
             trainer = TorchTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                train_loop_config=train_loop_config,
-                scaling_config=scaling_config,
-                run_config=run_config,
-                datasets=datasets
+                train_fn_per_worker,
+                train_loop_config={"num_epochs": 1, "lr": 0.01, "batch_size": 32},
+                scaling_config=ray.train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+                datasets={"train": train_dataset},
             )
 
             # Train the model.
@@ -132,11 +132,6 @@ class TorchTrainer(DataParallelTrainer):
 
             # Inspect the results.
             final_loss = result.metrics["loss"]
-
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
 
@@ -181,7 +176,7 @@ class TorchTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        torch_config: Optional[TorchConfig] = None,
+        torch_config: Optional["TorchConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -190,9 +185,12 @@ class TorchTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        from ray.train.torch.config import TorchConfig
+
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
-            torch_config.backend = "nccl" if scaling_config.use_gpu else "gloo"
+            is_gpu_training = scaling_config and scaling_config.use_gpu
+            torch_config.backend = "nccl" if is_gpu_training else "gloo"
 
         super(TorchTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -204,4 +202,10 @@ class TorchTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+        )
+
+    def _get_local_controller(self) -> LocalTorchController:
+        return LocalTorchController(
+            experiment_name=self.run_config.name,
+            datasets=self.datasets,
         )

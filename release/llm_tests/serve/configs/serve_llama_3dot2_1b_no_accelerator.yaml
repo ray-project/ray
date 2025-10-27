@@ -1,0 +1,11 @@
+applications:
+  - args:
+      llm_configs:
+        - model_loading_config:
+            model_id: meta-llama/Llama-3.2-1B-Instruct
+          engine_kwargs:
+            max_model_len: 8192
+            enforce_eager: true
+    import_path: ray.serve.llm:build_openai_app
+    name: llm-endpoint
+    route_prefix: /

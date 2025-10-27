@@ -5,7 +5,9 @@ try:
     from ray.serve.api import (
         Application,
         Deployment,
+        RunTarget,
         _run,
+        _run_many,
         delete,
         deployment,
         get_app_handle,
@@ -15,7 +17,9 @@ try:
         ingress,
         multiplexed,
         run,
+        run_many,
         shutdown,
+        shutdown_async,
         start,
         status,
     )
@@ -38,14 +42,18 @@ ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "_run",
+    "_run_many",
     "batch",
     "start",
     "HTTPOptions",
     "get_replica_context",
     "shutdown",
+    "shutdown_async",
     "ingress",
     "deployment",
     "run",
+    "run_many",
+    "RunTarget",
     "delete",
     "Application",
     "Deployment",

@@ -7,7 +7,7 @@ import time
 
 import mlflow
 
-from ray import train, tune
+from ray import tune
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
 
 
@@ -23,7 +23,7 @@ def train_function(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -31,7 +31,7 @@ def tune_with_callback(mlflow_tracking_uri, finish_fast=False):
 
     tuner = tune.Tuner(
         train_function,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="mlflow",
             callbacks=[
                 MLflowLoggerCallback(
@@ -65,7 +65,7 @@ def train_function_mlflow(config):
         # Log the metrics to mlflow
         mlflow.log_metrics(dict(mean_loss=intermediate_score), step=step)
         # Feed the score back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -75,7 +75,7 @@ def tune_with_setup(mlflow_tracking_uri, finish_fast=False):
     mlflow.set_experiment(experiment_name="mixin_example")
     tuner = tune.Tuner(
         train_function_mlflow,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="mlflow",
         ),
         tune_config=tune.TuneConfig(

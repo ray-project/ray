@@ -9,9 +9,11 @@ from typing import Any, Dict, Optional, Tuple, Union
 import click
 
 import ray._private.ray_constants as ray_constants
-from ray._private.storage import _load_class
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
+    load_class,
+)
+from ray._private.utils import (
     parse_metadata_json,
     parse_resources_json,
 )
@@ -113,7 +115,7 @@ def job_cli_group():
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -248,7 +250,7 @@ def submit(
 
     if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
         # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
-        _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
+        load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
             address=address,
             job_id=submission_id,
             submission_id=submission_id,
@@ -300,6 +302,9 @@ def submit(
             cli_logger.print(cf.bold(f"ray job stop {job_id}"))
 
     cli_logger.newline()
+    # Flush stdout to ensure the Ray job ID is output immediately
+    # for the kubectl plugin, ref PR #52780, Issue kuberay/#3508.
+    cli_logger.flush()
     sdk_version = client.get_version()
     # sdk version 0 does not have log streaming
     if not no_wait:
@@ -328,7 +333,7 @@ def submit(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -358,7 +363,7 @@ def status(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -413,7 +418,7 @@ def stop(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -450,7 +455,7 @@ def delete(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -503,7 +508,7 @@ def logs(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @add_common_job_options

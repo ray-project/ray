@@ -51,8 +51,8 @@ template <>
 inline std::vector<std::string> ConvertValue<std::vector<std::string>>(
     const std::string &type_string, const std::string &value) {
   std::vector<std::string> split = absl::StrSplit(value, ',');
-  for (auto &value : split) {
-    boost::algorithm::trim(value);
+  for (auto &part : split) {
+    boost::algorithm::trim(part);
   }
   return split;
 }

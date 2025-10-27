@@ -3,11 +3,10 @@ import re
 from typing import List, Set
 
 from ci.ray_ci.doc.api import (
-    API,
-    _SPHINX_AUTOSUMMARY_HEADER,
     _SPHINX_AUTOCLASS_HEADER,
+    _SPHINX_AUTOSUMMARY_HEADER,
+    API,
 )
-
 
 _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
@@ -17,14 +16,14 @@ _SPHINX_INCLUDE_HEADER = ".. include::"
 class Autodoc:
     """
     Autodoc class represents the top level sphinx autodoc landing page and finds
-    autodoc APIs that would be generated from sphinx from all sub-pages
+    autodoc APIs that would be generated from sphinx from all sub-pages.
     """
 
     def __init__(self, head_rst_file: str):
         """
         Args:
-            head_rst_file: The path to the landing page rst file that contains the list
-            of children rsts of the autodoc APIs
+            head_rst_file: The path to the landing page RST file that contains the list
+                of children RSTs of the autodoc APIs.
         """
         self._head_rst_file = head_rst_file
         self._autodoc_rsts = None

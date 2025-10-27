@@ -8,7 +8,7 @@ This demonstrates running the following policies in competition:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2 [--use-lstm]?`
+`python [script file name].py --num-agents=2 [--use-lstm]?`
 
 Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0, always
 beating the `always_same` policy, but only 50% of the time beating the `beat_last`
@@ -32,7 +32,7 @@ import random
 import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -59,7 +59,6 @@ parser = add_rllib_example_script_args(
     default_reward=6.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(
@@ -86,7 +85,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("pettingzoo_rps")
         .env_runners(
-            env_to_module_connector=lambda env: (
+            env_to_module_connector=lambda env, spaces, device: (
                 # `agent_ids=...`: Only flatten obs for the learning RLModule.
                 FlattenObservations(multi_agent=True, agent_ids={"player_0"}),
             ),

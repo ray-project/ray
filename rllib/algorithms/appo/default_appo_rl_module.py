@@ -3,8 +3,7 @@ from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
 from ray.rllib.core.learner.utils import make_target_network
-from ray.rllib.core.models.base import ACTOR
-from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
 from ray.rllib.core.rl_module.apis import (
     TARGET_NETWORK_ACTION_DIST_INPUTS,
     TargetNetworkAPI,
@@ -50,8 +49,7 @@ class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(DefaultPPORLModule)
     def get_non_inference_attributes(self) -> List[str]:
-        # Get the NON inference-only attributes from the parent class
-        # `PPOTorchRLModule`.
+        # Get the NON inference-only attributes from the parent class.
         ret = super().get_non_inference_attributes()
         # Add the two (APPO) target networks to it (NOT needed in
         # inference-only mode).

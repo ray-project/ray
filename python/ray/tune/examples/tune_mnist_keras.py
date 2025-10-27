@@ -5,7 +5,7 @@ import sys
 from filelock import FileLock
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 if sys.version_info >= (3, 12):
@@ -14,7 +14,7 @@ if sys.version_info >= (3, 12):
 else:
     from tensorflow.keras.datasets import mnist
 
-    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.tune.integration.keras import TuneReportCheckpointCallback
 
 
 def train_mnist(config):
@@ -51,7 +51,7 @@ def train_mnist(config):
         verbose=0,
         validation_data=(x_test, y_test),
         callbacks=[
-            ReportCheckpointCallback(
+            TuneReportCheckpointCallback(
                 checkpoint_on=[], metrics={"mean_accuracy": "accuracy"}
             )
         ],
@@ -65,7 +65,7 @@ def tune_mnist(num_training_iterations):
 
     tuner = tune.Tuner(
         tune.with_resources(train_mnist, resources={"cpu": 2, "gpu": 0}),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="exp",
             stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},
         ),

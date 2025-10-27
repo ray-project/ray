@@ -1,7 +1,7 @@
-import re
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
+import re
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -16,7 +16,7 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
-    """Nvidia GPU accelerators."""
+    """NVIDIA GPU accelerators."""
 
     @staticmethod
     def get_resource_name() -> str:

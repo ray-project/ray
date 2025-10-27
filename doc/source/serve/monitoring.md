@@ -54,7 +54,7 @@ For a detailed overview of the Ray dashboard, see the [dashboard documentation](
 Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
 If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
 
-`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
+`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, recovering failed replicas, and performing other relevant actions.
 
 Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
 
@@ -98,10 +98,13 @@ deployments:
 * `message`: Provides context on the current status.
 * `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
 * `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
-    * `status`: A Serve deployment has three possible statuses:
+    * `status`: A Serve deployment has six possible statuses:
         * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
-        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
-        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+        * `"HEALTHY"`: The deployment is healthy and running at the target replica count.
+        * `"UNHEALTHY"`: The deployment has updated and has become unhealthy afterwards. This condition may be due to replicas failing to upscale, replicas failing health checks, or a general system or machine error.
+        * `"DEPLOY_FAILED"`: The deployment failed to start or update. This condition is likely due to an error in the deployment's constructor.
+        * `"UPSCALING"`: The deployment (with autoscaling enabled) is upscaling the number of replicas.
+        * `"DOWNSCALING"`: The deployment (with autoscaling enabled) is downscaling the number of replicas.
     * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
         * `STARTING`: The replica is starting and not yet ready to serve requests.
         * `UPDATING`: The replica is undergoing a `reconfigure` update.
@@ -575,7 +578,7 @@ The following metrics are exposed by Ray Serve:
        * application
        * handle
        * actor_id
-     - The current number of requests to this deployment that have been submitted to a replica.
+     - The current number of queries to this deployment waiting to be assigned to a replica.
    * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
      - * deployment
        * application
@@ -638,7 +641,7 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
        * model_id
-     - The mutliplexed model ID registered on the current replica.
+     - The multiplexed model ID registered on the current replica.
    * - ``ray_serve_multiplexed_get_model_requests_counter_total``
      - * deployment
        * replica
@@ -668,7 +671,13 @@ The requests loop until canceled with `Control-C`.
 
 While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds, so you need to refresh the page to see new values.
+The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. The metrics report interval rate can be modified using the following configuration option (note that this is not a stable public API and is subject to change without warning):
+
+```console
+
+ray start --head --system-config='{"metrics_report_interval_ms": 1000}'
+
+```
 
 For example, after running the script for some time and refreshing `localhost:8080` you should find metrics similar to the following:
 

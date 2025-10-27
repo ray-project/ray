@@ -12,6 +12,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 from collections import defaultdict
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing_extensions import Self
 import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -59,7 +60,7 @@ from ray.rllib.utils.metrics import (
     TD_ERROR_KEY,
     TIMERS,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
@@ -95,7 +96,6 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -107,7 +107,7 @@ class DQNConfig(AlgorithmConfig):
         )
         tune.Tuner(
             "DQN",
-            run_config=air.RunConfig(stop={"training_iteration":1}),
+            run_config=tune.RunConfig(stop={"training_iteration":1}),
             param_space=config,
         ).fit()
 
@@ -239,7 +239,7 @@ class DQNConfig(AlgorithmConfig):
         categorical_distribution_temperature: Optional[float] = NotProvided,
         burn_in_len: Optional[int] = NotProvided,
         **kwargs,
-    ) -> "DQNConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -594,7 +594,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
 class DQN(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DQNConfig:
         return DQNConfig()
 
     @classmethod
@@ -606,6 +606,20 @@ class DQN(Algorithm):
             return DQNTorchPolicy
         else:
             return DQNTFPolicy
+
+    @override(Algorithm)
+    def setup(self, config: AlgorithmConfig) -> None:
+        super().setup(config)
+
+        if self.config.enable_env_runner_and_connector_v2 and self.env_runner_group:
+            if self.env_runner is None:
+                self._module_is_stateful = self.env_runner_group.foreach_env_runner(
+                    lambda er: er.module.is_stateful(),
+                    remote_worker_ids=[1],
+                    local_env_runner=False,
+                )[0]
+            else:
+                self._module_is_stateful = self.env_runner.module.is_stateful()
 
     @override(Algorithm)
     def training_step(self) -> None:
@@ -646,9 +660,7 @@ class DQN(Algorithm):
                     _return_metrics=True,
                 )
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(
-                env_runner_results, key=ENV_RUNNER_RESULTS
-            )
+            self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
             # Add the sampled experiences to the replay buffer.
             with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
@@ -677,9 +689,11 @@ class DQN(Algorithm):
                         n_step=self.config.n_step,
                         # In case an `EpisodeReplayBuffer` is used we need to provide
                         # the sequence length.
-                        batch_length_T=self.env_runner.module.is_stateful()
-                        * self.config.model_config.get("max_seq_len", 0),
-                        lookback=int(self.env_runner.module.is_stateful()),
+                        batch_length_T=(
+                            self._module_is_stateful
+                            * self.config.model_config.get("max_seq_len", 0)
+                        ),
+                        lookback=int(self._module_is_stateful),
                         # TODO (simon): Implement `burn_in_len` in SAC and remove this
                         # if-else clause.
                         min_batch_length_T=self.config.burn_in_len
@@ -692,13 +706,13 @@ class DQN(Algorithm):
 
                     # Get the replay buffer metrics.
                     replay_buffer_results = self.local_replay_buffer.get_metrics()
-                    self.metrics.merge_and_log_n_dicts(
+                    self.metrics.aggregate(
                         [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
                     )
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_episodes(
+                    learner_results = self.learner_group.update(
                         episodes=episodes,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -731,9 +745,7 @@ class DQN(Algorithm):
                         module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for module_id, s in td_errors.items()
                     }
-                    self.metrics.merge_and_log_n_dicts(
-                        learner_results, key=LEARNER_RESULTS
-                    )
+                    self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):

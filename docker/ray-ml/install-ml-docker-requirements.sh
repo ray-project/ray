@@ -19,15 +19,14 @@ sudo apt-get update \
         unrar \
         zlib1g-dev
 
-pip --no-cache-dir install -U pip pip-tools
-
 # Install requirements
-pip --no-cache-dir install -U -r requirements.txt
+pip --no-cache-dir install -r requirements.txt -c requirements_compiled.txt
 
 # Install other requirements. Keep pinned requirements bounds as constraints
-pip --no-cache-dir install -U \
+pip --no-cache-dir install \
            -c requirements.txt \
            -c requirements_compiled.txt \
+           -r dl-cpu-requirements.txt \
            -r core-requirements.txt \
            -r data-requirements.txt \
            -r rllib-requirements.txt \

@@ -17,6 +17,10 @@
 #include <grpcpp/server.h>
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "boost/functional/hash.hpp"
@@ -193,9 +197,7 @@ class RaySyncer {
 /// like tree-based one.
 class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
-  RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
-
-  ~RaySyncerService();
+  explicit RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
 
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override;

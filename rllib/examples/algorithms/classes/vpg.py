@@ -1,4 +1,5 @@
 import tree  # pip install dm_tree
+from typing_extensions import Self
 
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -40,9 +41,7 @@ class VPGConfig(AlgorithmConfig):
         self.num_env_runners = 1
 
     @override(AlgorithmConfig)
-    def training(
-        self, *, num_episodes_per_train_batch=NotProvided, **kwargs
-    ) -> "VPGConfig":
+    def training(self, *, num_episodes_per_train_batch=NotProvided, **kwargs) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -95,7 +94,7 @@ class VPGConfig(AlgorithmConfig):
 class VPG(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> VPGConfig:
         return VPGConfig()
 
     @override(Algorithm)
@@ -113,7 +112,7 @@ class VPG(Algorithm):
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             episodes, env_runner_results = self._sample_episodes()
         # Merge results from n parallel sample calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+        self.metrics.aggregate(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Just for demonstration purposes, log the number of time steps sampled in this
         # `training_step` round.
@@ -133,7 +132,7 @@ class VPG(Algorithm):
 
         # Update model.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -144,7 +143,7 @@ class VPG(Algorithm):
                 },
             )
         # Merge results from m parallel update calls into self's metrics logger.
-        self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+        self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Sync weights.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):

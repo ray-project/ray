@@ -1,15 +1,15 @@
 from collections import OrderedDict
-from gymnasium.spaces import Discrete, MultiDiscrete
-import numpy as np
-import tree  # pip install dm_tree
 from types import MappingProxyType
 from typing import List, Optional
 
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Discrete, MultiDiscrete
 
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
+from ray.rllib.utils.typing import SpaceStruct, TensorStructType, TensorType, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -154,7 +154,6 @@ def convert_to_numpy(x: TensorStructType, reduce_type: bool = True) -> TensorStr
                 ret = ret.astype(np.float32)
             elif np.issubdtype(ret.dtype, int):
                 ret = ret.astype(np.int32)
-            return ret
         return ret
 
     return tree.map_structure(mapping, x)

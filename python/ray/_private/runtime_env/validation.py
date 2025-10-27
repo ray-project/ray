@@ -1,22 +1,25 @@
 import logging
-from pathlib import Path
 import sys
+from collections import OrderedDict
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from collections import OrderedDict
 import yaml
+
+from ray._private.path_utils import is_path
+from ray._private.runtime_env.packaging import parse_path
 
 logger = logging.getLogger(__name__)
 
 
-def validate_uri(uri: str):
-    if not isinstance(uri, str):
-        raise TypeError(
-            "URIs for working_dir and py_modules must be " f"strings, got {type(uri)}."
-        )
+def validate_path(path: str) -> None:
+    """Parse the path to ensure it is well-formed and exists."""
+    parse_path(path)
 
+
+def validate_uri(uri: str):
     try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        from ray._private.runtime_env.packaging import Protocol, parse_uri
 
         protocol, path = parse_uri(uri)
     except ValueError:
@@ -42,33 +45,71 @@ def _handle_local_deps_requirement_file(requirements_file: str):
     return requirements_path.read_text().strip().split("\n")
 
 
+def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
+    """Parses and validates a 'py_modules' option.
+
+    Expects py_modules to be a list of URIs.
+    """
+    if not isinstance(py_modules_uris, list):
+        raise TypeError(
+            "`py_modules` must be a list of strings, got " f"{type(py_modules_uris)}."
+        )
+
+    for module in py_modules_uris:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        validate_uri(module)
+
+
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     """Parses and validates a 'py_modules' option.
 
-    This should be a list of URIs.
+    Expects py_modules to be a list of local paths or URIs.
     """
     if not isinstance(py_modules, list):
         raise TypeError(
             "`py_modules` must be a list of strings, got " f"{type(py_modules)}."
         )
 
-    for uri in py_modules:
-        validate_uri(uri)
+    for module in py_modules:
+
+        if not isinstance(module, str):
+            raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
+
+        if is_path(module):
+            validate_path(module)
+        else:
+            validate_uri(module)
 
     return py_modules
+
+
+def validate_working_dir_uri(working_dir_uri: str) -> str:
+    """Parses and validates a 'working_dir' option."""
+    if not isinstance(working_dir_uri, str):
+        raise TypeError(
+            "`working_dir` must be a string, got " f"{type(working_dir_uri)}."
+        )
+
+    validate_uri(working_dir_uri)
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a 'working_dir' option.
 
-    This should be a URI.
+    This can be a URI or a path.
     """
     assert working_dir is not None
 
     if not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got " f"{type(working_dir)}.")
 
-    validate_uri(working_dir)
+    if is_path(working_dir):
+        validate_path(working_dir)
+    else:
+        validate_uri(working_dir)
 
     return working_dir
 
@@ -92,19 +133,20 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
             "https://github.com/ray-project/ray/issues."
         )
 
-    result = None
+    result = conda
     if isinstance(conda, str):
-        yaml_file = Path(conda)
-        if yaml_file.suffix in (".yaml", ".yml"):
-            if not yaml_file.is_file():
-                raise ValueError(f"Can't find conda YAML file {yaml_file}.")
+        file_path = Path(conda)
+        if file_path.suffix in (".yaml", ".yml"):
+            if not file_path.is_file():
+                raise ValueError(f"Can't find conda YAML file {file_path}.")
             try:
-                result = yaml.safe_load(yaml_file.read_text())
+                result = yaml.safe_load(file_path.read_text())
             except Exception as e:
-                raise ValueError(f"Failed to read conda file {yaml_file}: {e}.")
-        else:
-            # Assume it's a pre-existing conda environment name.
-            result = conda
+                raise ValueError(f"Failed to read conda file {file_path}: {e}.")
+        elif file_path.is_absolute():
+            if not file_path.is_dir():
+                raise ValueError(f"Can't find conda env directory {file_path}.")
+            result = str(file_path)
     elif isinstance(conda, dict):
         result = conda
     else:
@@ -228,14 +270,16 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                the package name 'pip' in front of the `pip_version` to form the final
                requirement string, the syntax of a requirement specifier is defined in
                full in PEP 508.
+            d) pip_install_options (optional, List[str]): user-provided options for
+              `pip install` command, defaults to ["--disable-pip-version-check", "--no-cache-dir"].
 
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
     """
     assert pip is not None
-
     result = None
+
     if sys.platform == "win32":
         logger.warning(
             "runtime environment support is experimental on Windows. "
@@ -245,14 +289,22 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_list = _handle_local_deps_requirement_file(pip)
-        result = dict(packages=pip_list, pip_check=False)
+        result = dict(
+            packages=pip_list,
+            pip_check=False,
+        )
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=False)
     elif isinstance(pip, dict):
-        if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
+        if set(pip.keys()) - {
+            "packages",
+            "pip_check",
+            "pip_install_options",
+            "pip_version",
+        }:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
-                "packages, pip_check and pip_version, but got: "
+                "packages, pip_check, pip_install_options and pip_version, but got: "
                 f"{list(pip.keys())}"
             )
 
@@ -267,8 +319,25 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                     "runtime_env['pip']['pip_version'] must be of type str, "
                     f"got {type(pip['pip_version'])}"
                 )
+        if "pip_install_options" in pip:
+            if not isinstance(pip["pip_install_options"], list):
+                raise TypeError(
+                    "runtime_env['pip']['pip_install_options'] must be of type "
+                    f"list[str] got {type(pip['pip_install_options'])}"
+                )
+            # Check each item in installation option.
+            for idx, cur_opt in enumerate(pip["pip_install_options"]):
+                if not isinstance(cur_opt, str):
+                    raise TypeError(
+                        "runtime_env['pip']['pip_install_options'] must be of type "
+                        f"list[str] got {type(cur_opt)} for {idx}-th item."
+                    )
+
         result = pip.copy()
+        # Contrary to pip_check, we do not insert the default value of pip_install_options.
+        # This is to maintain backwards compatibility with ray==2.0.1
         result["pip_check"] = pip.get("pip_check", False)
+
         if "packages" not in pip:
             raise ValueError(
                 f"runtime_env['pip'] must include field 'packages', but got {pip}"
@@ -383,4 +452,14 @@ OPTION_TO_VALIDATION_FN = {
     "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
+}
+
+# RuntimeEnv can be created with local paths
+# for these options. However, after the packages
+# for these options have been uploaded to GCS,
+# they must be URIs. These functions provide the ability
+# to validate that these options only contain well-formed URIs.
+OPTION_TO_NO_PATH_VALIDATION_FN = {
+    "working_dir": validate_working_dir_uri,
+    "py_modules": validate_py_modules_uris,
 }

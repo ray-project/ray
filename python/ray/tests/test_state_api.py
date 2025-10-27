@@ -1,89 +1,94 @@
-import os
-import time
 import json
-import sys
+import os
 import signal
+import sys
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from ray._private.state_api_test_utils import (
-    get_state_api_manager,
-    create_api_options,
-    verify_schema,
-)
-from ray.util.state import get_job
-from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
-import ray.dashboard.consts as dashboard_consts
-import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID, JobID, TaskID
-from ray._private.test_utils import (
-    run_string_as_driver,
-    wait_for_condition,
-    async_wait_for_condition_async_predicate,
-    find_free_port,
+import ray._private.state as global_state
+import ray.dashboard.consts as dashboard_consts
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import (
     SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
 )
+from ray._private.state_api_test_utils import (
+    create_api_options,
+    get_state_api_manager,
+    verify_schema,
+)
+from ray._private.test_utils import (
+    find_free_port,
+    run_string_as_driver,
+)
+from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
-from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
     Address,
     CoreWorkerStats,
     ObjectRefInfo,
     TaskInfoEntry,
     TaskStatus,
-    WorkerType,
     TaskType,
+    WorkerType,
 )
-from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_pb2 import (
-    TaskEvents,
-    TaskStateUpdate,
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
+    TaskEvents,
+    TaskStateUpdate,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GcsStatus,
-    GetTaskEventsReply,
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
+    GetTaskEventsReply,
 )
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,
 )
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
 )
 from ray.dashboard.state_api_utils import convert_filters_type
+from ray.dashboard.utils import ray_address_to_api_server_url
+from ray.job_submission import JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import (
+    StateApiClient,
     get_actor,
+    get_job,
     get_node,
     get_objects,
     get_placement_group,
     get_task,
     get_worker,
     list_actors,
+    list_cluster_events,
     list_jobs,
     list_nodes,
     list_objects,
@@ -94,36 +99,33 @@ from ray.util.state import (
     summarize_actors,
     summarize_objects,
     summarize_tasks,
-    list_cluster_events,
-    StateApiClient,
 )
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
+    GetApiOptions,
+    Humanify,
     ListApiOptions,
-    SummaryApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
+    StateSchema,
+    SummaryApiOptions,
     TaskState,
     WorkerState,
-    StateSchema,
     state_column,
 )
-from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,
-    format_list_api_output,
     _parse_filter,
+    format_list_api_output,
+    ray_get,
+    ray_list,
     summary_state_cli_group,
 )
-from ray.util.state.state_cli import ray_get
-from ray.util.state.state_cli import ray_list
-from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
-from ray.job_submission import JobSubmissionClient
-from ray.runtime_env import RuntimeEnv
+from ray.util.state.state_manager import StateDataSourceClient
 
 """
 Unit tests
@@ -148,10 +150,8 @@ def state_source_client(gcs_address):
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(
-        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
-    )
+    gcs_client = GcsClient(address=gcs_address)
+    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
     return client
 
 
@@ -170,7 +170,7 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         name="abc",
         pid=1234,
         class_name=class_name,
-        address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        address=Address(node_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
         job_id=b"123",
         node_id=None,
         ray_namespace="",
@@ -207,7 +207,7 @@ def generate_worker_data(
 ):
     return WorkerTableData(
         worker_address=Address(
-            raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
         ),
         is_alive=True,
         timestamp=1234,
@@ -371,7 +371,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
@@ -491,22 +491,6 @@ def test_parse_filter():
         _parse_filter("key>value!=")
 
 
-def test_id_to_ip_map():
-    node_id_1 = "1"
-    node_ip_1 = "ip_1"
-    node_id_2 = "2"
-    node_ip_2 = "ip_2"
-    m = IdToIpMap()
-    m.put(node_id_1, node_ip_1)
-    assert m.get_ip(node_ip_2) is None
-    assert m.get_node_id(node_id_2) is None
-    assert m.get_ip(node_id_1) == node_ip_1
-    assert m.get_node_id(node_ip_1) == node_id_1
-    m.pop(node_id_1)
-    assert m.get_ip(node_id_1) is None
-    assert m.get_node_id(node_id_1) is None
-
-
 # Without this, capsys will have a race condition
 # that causes
 # ValueError: I/O operation on closed file.
@@ -579,7 +563,7 @@ del b
         assert result.num_after_truncation == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test actor id filtering on source
@@ -591,7 +575,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test state filtering on source
@@ -602,7 +586,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test job filtering on source
@@ -614,7 +598,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         with pytest.raises(ValueError):
@@ -624,7 +608,7 @@ del b
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.asyncio
@@ -986,7 +970,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 @pytest.mark.asyncio
 @patch.object(
-    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
 async def test_state_data_source_client_get_all_task_info_no_early_return():
     #  Setup
@@ -1274,8 +1258,23 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+    data_source_client.get_all_node_info = AsyncMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id=b"1" * 28,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.1",
+                node_manager_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id=b"2" * 28,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.2",
+                node_manager_port=10002,
+            ),
+        ]
+    )
 
     data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
@@ -1289,10 +1288,10 @@ async def test_api_manager_list_objects(state_api_manager):
     result = await state_api_manager.list_objects(option=create_api_options())
     data = result.result
     data_source_client.get_object_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_object_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     data = data
     assert len(data) == 2
@@ -1380,12 +1379,29 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
-    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
-        "1",
-        "2",
-        "3",
-    ]
+    data_source_client.get_all_node_info = AsyncMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id=b"1" * 28,
+                node_manager_address="192.168.1.1",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10000,
+            ),
+            GcsNodeInfo(
+                node_id=b"2" * 28,
+                node_manager_address="192.168.1.2",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id=b"3" * 28,
+                node_manager_address="192.168.1.3",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10002,
+            ),
+        ]
+    )
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1398,14 +1414,14 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     result = await state_api_manager.list_runtime_envs(option=create_api_options())
     data = result.result
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10000, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
 
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "3", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.3", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     assert len(data) == 3
     verify_schema(RuntimeEnvState, data[0])
@@ -1623,37 +1639,20 @@ async def test_state_data_source_client(ray_start_cluster):
     """
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-    assert len(client.get_all_registered_raylet_ids()) == 2
 
     """
     Test objects
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_object_info("1234")
-
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
-        node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        result = await client.get_object_info(node_id)
+        port = node["NodeManagerPort"]
+        result = await client.get_object_info(ip, port)
         assert isinstance(result, GetObjectsInfoReply)
 
     """
     Test runtime env
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_runtime_envs_info("1234")
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -1665,9 +1664,9 @@ async def test_state_data_source_client(ray_start_cluster):
             )
 
         wait_for_condition(lambda: get_addr() is not None)
-        ip, http_port, grpc_port = json.loads(get_addr())
-        client.register_agent_client(node_id, ip, grpc_port)
-        result = await client.get_runtime_envs_info(node_id)
+        result = await client.get_runtime_envs_info(
+            node["NodeManagerAddress"], node["RuntimeEnvAgentPort"]
+        )
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
     """
@@ -1707,14 +1706,9 @@ async def test_state_data_source_client(ray_start_cluster):
 
         # Querying to the dead node raises gRPC error, which should raise an exception.
         with pytest.raises(DataSourceUnavailable):
-            await client.get_object_info(node_id)
-
-        # Make sure unregister API works as expected.
-        client.unregister_raylet_client(node_id)
-        assert len(client.get_all_registered_raylet_ids()) == 1
-        # Since the node_id is unregistered, the API should raise ValueError.
-        with pytest.raises(ValueError):
-            result = await client.get_object_info(node_id)
+            await client.get_object_info(
+                node["NodeManagerAddress"], node["NodeManagerPort"]
+            )
 
 
 @pytest.mark.asyncio
@@ -1774,18 +1768,12 @@ def test_humanify():
 async def test_state_data_source_client_limit_distributed_sources(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=8)
+    cluster.add_node(num_cpus=8, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     client = state_source_client(cluster.address)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-    """
-    Test objects
-    """
+
+    [node] = ray.nodes()
+    ip, port = node["NodeManagerAddress"], int(node["NodeManagerPort"])
 
     @ray.remote
     def long_running_task(obj):  # noqa
@@ -1798,7 +1786,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     refs = [long_running_task.remote(obj) for obj in objs]
 
     async def verify():
-        result = await client.get_object_info(node_id, limit=2)
+        result = await client.get_object_info(ip, port, limit=2)
         # 4 objs (driver)
         # 4 refs (driver)
         # 4 pinned in memory for each task
@@ -1817,9 +1805,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert len(c.object_refs) == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
+    await async_wait_for_condition(verify)
+    [ray.cancel(ref, force=True) for ref in refs]
     del refs
 
     """
@@ -1827,6 +1814,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
         def get_addr():
@@ -1835,8 +1824,6 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             )
 
         wait_for_condition(lambda: get_addr() is not None)
-        ip, http_port, grpc_port = json.loads(get_addr())
-        client.register_agent_client(node_id, ip, grpc_port)
 
     @ray.remote
     class Actor:
@@ -1849,7 +1836,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     ]
     ray.get([actor.ready.remote() for actor in actors])
 
-    result = await client.get_runtime_envs_info(node_id, limit=2)
+    result = await client.get_runtime_envs_info(ip, runtime_env_agent_port, limit=2)
     assert result.total == 3
     assert len(result.runtime_env_states) == 2
 
@@ -1873,7 +1860,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     for _ in range(NUM_NODES - 1):
-        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     runner = CliRunner()
 
     client = JobSubmissionClient(
@@ -2167,7 +2154,11 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
             "test_cloud_id",
         )
         m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
-        cluster.add_node(num_cpus=1, node_name="worker_node")
+        cluster.add_node(
+            num_cpus=1,
+            node_name="worker_node",
+            dashboard_agent_listen_port=find_free_port(),
+        )
     client = state_source_client(cluster.address)
 
     async def verify():
@@ -2184,7 +2175,7 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
@@ -2195,7 +2186,11 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        node_name="worker_node",
+        dashboard_agent_listen_port=find_free_port(),
+    )
 
     cluster.remove_node(worker_node)
 
@@ -2203,7 +2198,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -2358,7 +2353,7 @@ def test_list_cluster_events(shutdown_only):
         print(events)
         assert len(events) == 1
         assert (
-            "Error: No available node types can fulfill " "resource request"
+            "Error: No available node types can fulfill resource request"
         ) in events[0]["message"]
         return True
 
@@ -2556,6 +2551,71 @@ def test_list_actor_tasks_call_site(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_list_get_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=2, labels={"ray.io/accelerator-type": "A100", "region": "us-west4"}
+    )
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    def foo():
+        import time
+
+        time.sleep(5)
+
+    call_ref = foo.remote()
+
+    ray.get(call_ref)
+
+    def verify():
+        task = get_task(call_ref)
+        assert task["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, labels={"region": "us-west4"})
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(5)
+
+    actor = Actor.remote()
+    ray.get(actor.method.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
 
 
 def test_pg_worker_id_tasks(shutdown_only):
@@ -3399,9 +3459,9 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 def test_state_api_server_enforce_concurrent_http_requests(
     api_func, monkeypatch, shutdown_only
 ):
-    import time
-    import threading
     import queue
+    import threading
+    import time
 
     # Set environment
     with monkeypatch.context() as m:
@@ -3653,10 +3713,10 @@ def test_get_id_not_found(shutdown_only):
 
 
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()
@@ -3741,8 +3801,40 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
+def test_get_actor_timeout_multiplier(shutdown_only):
+    """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
+
+    This test reproduces the issue where get_actor with timeout=1 fails even though
+    the actual operation takes less than 1 second, because GetApiOptions doesn't
+    apply the 0.8 server timeout multiplier that ListApiOptions uses.
+
+    Related issue: https://github.com/ray-project/ray/issues/54153
+    """
+
+    @ray.remote
+    class TestActor:
+        def ready(self):
+            pass
+
+    actor = TestActor.remote()
+    ray.get(actor.ready.remote())
+
+    # Test that both options classes apply the same timeout multiplier
+    test_timeout = 1
+    get_options = GetApiOptions(timeout=test_timeout)
+    list_options = ListApiOptions(timeout=test_timeout)
+
+    # After __post_init__, both should have the same effective timeout
+    assert get_options.timeout == list_options.timeout
+
+    # Test that get_actor works with a 1-second timeout
+    actors = list_actors()
+    actor_id = actors[0]["actor_id"]
+
+    # This should work without timeout issues
+    result = get_actor(actor_id, timeout=1)
+    assert result["actor_id"] == actor_id
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

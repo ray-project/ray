@@ -15,5 +15,7 @@ srcs:
   - python/requirements/ml/tune-test-requirements.txt
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
+  - python/requirements/ml/rllib-requirements.txt
+  - python/requirements/ml/rllib-test-requirements.txt
 tags:
   - cr.ray.io/rayproject/docgpubuild

@@ -67,7 +67,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: Text
 
@@ -218,7 +218,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -229,7 +229,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             pip install gcsfs
 
-        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gs://`` scheme.
 
         .. testcode::
             :skipif: True
@@ -238,7 +238,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "gcs://anonymous@ray-example-data/iris.parquet",
+                "gs://...",
                 filesystem=filesystem
             )
 
@@ -256,7 +256,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
@@ -375,7 +375,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             )
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
-        Python objects.
+        Python objects. In the schema, the column name defaults to "item". 
 
         .. testcode::
 
@@ -410,7 +410,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             MaterializedDataset(
                num_blocks=1,
                num_rows=3,
-               schema={data: numpy.ndarray(shape=(2, 2), dtype=double)}
+               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
             )
 
     .. tab-item:: pandas
@@ -469,7 +469,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -480,6 +480,33 @@ Ray Data interoperates with distributed data processing frameworks like
 
 .. tab-set::
 
+    .. tab-item:: Daft
+
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
+        by your Daft query.
+
+        .. warning::
+            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
+            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
+
+        .. testcode::
+            :skipif: True
+
+            import daft
+            import ray
+
+            df = daft.from_pydict({"int_col": [i for i in range(10000)], "str_col": [str(i) for i in range(10000)]})
+            ds = ray.data.from_daft(df)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'int_col': 0, 'str_col': '0'}
+            {'int_col': 1, 'str_col': '1'}
+            {'int_col': 2, 'str_col': '2'}
+
     .. tab-item:: Dask
 
         To create a :class:`~ray.data.dataset.Dataset` from a
@@ -488,7 +515,12 @@ Ray Data interoperates with distributed data processing frameworks like
         ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly
         the Dask DataFrame.
 
+        ..
+          We skip the code snippet below because `from_dask` doesn't work with PyArrow 
+          14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
+
         .. testcode::
+            :skipif: True
 
             import dask.dataframe as dd
             import pandas as pd
@@ -545,21 +577,21 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
         the distributed files that underlie the Iceberg table.
 
-        ..
-
         .. testcode::
             :skipif: True
 
-            >>> import ray
-            >>> from pyiceberg.expressions import EqualTo
-            >>> ds = ray.data.read_iceberg(
-            ...     table_identifier="db_name.table_name",
-            ...     row_filter=EqualTo("column_name", "literal_value"),
-            ...     catalog_kwargs={"name": "default", "type": "glue"}
-            ... )
+            import ray
+            from pyiceberg.expressions import EqualTo
 
+            ds = ray.data.read_iceberg(
+                table_identifier="db_name.table_name",
+                row_filter=EqualTo("column_name", "literal_value"),
+                catalog_kwargs={"name": "default", "type": "glue"}
+            )
+            ds.show(3)
 
         .. testoutput::
+            :options: +MOCK
 
             {'col1': 0, 'col2': '0'}
             {'col1': 1, 'col2': '1'}
@@ -598,6 +630,7 @@ Ray Data interoperates with distributed data processing frameworks like
         DataFrame.
 
         .. testcode::
+            :skipif: True
 
             import mars
             import mars.dataframe as md
@@ -644,7 +677,10 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
             `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
 
+        .. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54837.
+
         .. testcode::
+            :skipif: True
 
             import ray.data
             from datasets import load_dataset
@@ -713,7 +749,7 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
                num_rows=50000,
                schema={
                   id: binary,
-                  image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                  image: ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8),
                   label: int64
                }
             )
@@ -963,7 +999,8 @@ Synthetic datasets can be useful for testing and benchmarking.
     .. tab-item:: Int Range
 
         To create a synthetic :class:`~ray.data.Dataset` from a range of integers, call
-        :func:`~ray.data.range`. Ray Data stores the integer range in a single column.
+        :func:`~ray.data.range`. Ray Data stores the integer range in a single column called
+        "id".
 
         .. testcode::
 
@@ -983,7 +1020,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
         To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
         :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-        the provided shape.
+        the provided shape. In the schema, the column name defaults to "data". 
 
         .. testcode::
 
@@ -997,7 +1034,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(64, 64), dtype=int64)
+            data    ArrowTensorTypeV2(shape=(64, 64), dtype=int64)
 
 Loading other datasources
 ==========================

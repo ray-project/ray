@@ -1,5 +1,5 @@
-# This is a clone and python3.9 version of ci/docker/serve.build.wanda.yaml. The latter 
-# one is a multi-py version. This file exists due to the historical reason that Ray 
+# This is a clone and python3.9 version of ci/docker/serve.build.wanda.yaml. The latter
+# one is a multi-py version. This file exists due to the historical reason that Ray
 # CI only supports one python version which is python 3.9.
 #
 # TODO(can-anyscale): migrate all jobs to use the multi-py version

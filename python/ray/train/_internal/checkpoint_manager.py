@@ -1,40 +1,45 @@
 import logging
 import numbers
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ray._private import ray_constants
 from ray._private.dict import flatten_dict
 from ray.air._internal.util import is_nan
 from ray.air.config import MAX
-from ray.train import CheckpointConfig
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import _delete_fs_path
+from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
 
-def _insert_into_sorted_list(list: List[Any], item: Any, key: Callable[[Any], Any]):
+def _insert_into_sorted_list(
+    list: List[_TrainingResult],
+    item: _TrainingResult,
+    key: Callable[[_TrainingResult], Any],
+    checkpoint_to_report_index: Optional[Dict[Checkpoint, int]] = None,
+):
     """Insert an item into a sorted list with a custom key function.
 
-    Examples:
-
-        >>> list = []
-        >>> _insert_into_sorted_list(list, {"a": 1, "b": 0}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}]
-        >>> _insert_into_sorted_list(list, {"a": 3, "b": 1}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 3, 'b': 1}]
-        >>> _insert_into_sorted_list(list, {"a": 4, "b": 2}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 3, 'b': 1}, {'a': 4, 'b': 2}]
-        >>> _insert_into_sorted_list(list, {"a": 1, "b": 3}, lambda x: x["a"])
-        >>> list
-        [{'a': 1, 'b': 0}, {'a': 1, 'b': 3}, {'a': 3, 'b': 1}, {'a': 4, 'b': 2}]
+    Args:
+        list: The list to insert the item into.
+        item: The item to insert.
+        key: The key function to use to sort the list.
+        checkpoint_to_report_index: A dictionary mapping checkpoints to report indices.
+            Used to break ties when scores are equal.
     """
+    checkpoint_to_report_index = checkpoint_to_report_index or {}
+    # TODO: optimize this with sortedlist, batching, etc
     i = 0
     while i < len(list):
-        # Insert to the right of all duplicates.
-        if key(list[i]) > key(item):
+        # When scores are equal, later checkpoints are later in the list.
+        list_item_key, item_key = key(list[i]), key(item)
+        if list_item_key > item_key or (
+            list_item_key == item_key
+            and checkpoint_to_report_index.get(list[i].checkpoint, 0)
+            > checkpoint_to_report_index.get(item.checkpoint, 0)
+        ):
             break
         i += 1
     list.insert(i, item)
@@ -90,7 +95,19 @@ class _CheckpointManager:
         """
         self._latest_checkpoint_result = checkpoint_result
 
-        if self._checkpoint_config.checkpoint_score_attribute is not None:
+        score_attr = self._checkpoint_config.checkpoint_score_attribute
+        if ray_constants.env_bool(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False):
+            metrics = (
+                {score_attr: checkpoint_result.metrics[score_attr]}
+                if score_attr in checkpoint_result.metrics
+                else {}
+            )
+            checkpoint_result = _TrainingResult(
+                checkpoint=checkpoint_result.checkpoint,
+                metrics=metrics,
+            )
+
+        if score_attr is not None and score_attr in checkpoint_result.metrics:
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(

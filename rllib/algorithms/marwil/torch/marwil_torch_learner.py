@@ -117,9 +117,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # Log import loss stats. In case of the BC loss this is simply
         # the policy loss.
         if config.beta == 0.0:
-            self.metrics.log_dict(
-                {POLICY_LOSS_KEY: policy_loss}, key=module_id, window=1
-            )
+            self.metrics.log_value((module_id, POLICY_LOSS_KEY), policy_loss, window=1)
         # Log more stats, if using the MARWIL loss.
         else:
             ma_sqd_adv_norms = self.moving_avg_sqd_adv_norms_per_module[module_id]

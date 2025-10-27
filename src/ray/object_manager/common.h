@@ -19,8 +19,8 @@
 #endif
 
 #include <atomic>
-#include <boost/asio.hpp>
 #include <functional>
+#include <string>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -186,7 +186,7 @@ struct PlasmaObjectHeader {
   /// Helper method to acquire a semaphore while failing if the error bit is set. This
   /// method is idempotent.
   ///
-  /// \param sem The semaphor to acquire.
+  /// \param sem The semaphore to acquire.
   /// \param timeout_point The time point when to timeout if the semaphore is not
   /// acquired. If this is nullptr, then there is no timeout and the method will block
   /// indefinitely until the semaphore is acquired. If timeout_point is already passed,
@@ -216,8 +216,8 @@ struct ObjectInfo {
   bool is_mutable = false;
   int64_t data_size = 0;
   int64_t metadata_size = 0;
-  /// Owner's raylet ID.
-  NodeID owner_raylet_id;
+  /// Owner's node ID.
+  NodeID owner_node_id;
   /// Owner's IP address.
   std::string owner_ip_address;
   /// Owner's port.
@@ -232,7 +232,7 @@ struct ObjectInfo {
   bool operator==(const ObjectInfo &other) const {
     return ((object_id == other.object_id) && (data_size == other.data_size) &&
             (metadata_size == other.metadata_size) &&
-            (owner_raylet_id == other.owner_raylet_id) &&
+            (owner_node_id == other.owner_node_id) &&
             (owner_ip_address == other.owner_ip_address) &&
             (owner_port == other.owner_port) &&
             (owner_worker_id == other.owner_worker_id));

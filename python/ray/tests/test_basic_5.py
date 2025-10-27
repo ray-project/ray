@@ -2,22 +2,22 @@
 import gc
 import logging
 import os
+import subprocess
 import sys
 import time
-import subprocess
-from unittest.mock import Mock, patch
 import unittest
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._private.test_utils import (
+    client_test_enabled,
     run_string_as_driver,
     wait_for_pid_to_exit,
-    client_test_enabled,
 )
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -367,7 +367,4 @@ def test_head_node_resource_ray_start(call_ray_start):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

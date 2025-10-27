@@ -1,7 +1,7 @@
-import numpy as np
 from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class _FrameStacking(ConnectorV2):
+class FrameStacking(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     @override(ConnectorV2)
@@ -41,7 +41,7 @@ class _FrameStacking(ConnectorV2):
         as_learner_connector: bool = False,
         **kwargs,
     ):
-        """Initializes a _FrameStackingConnector instance.
+        """Initializes a FrameStackingConnector instance.
 
         Args:
             num_frames: The number of observation frames to stack up (into a single
@@ -85,12 +85,14 @@ class _FrameStacking(ConnectorV2):
                     new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
+                    # But return a copy to avoid non-contiguous memory in the object
+                    # store (which is very expensive to deserialize).
                     return np.transpose(
                         np.lib.stride_tricks.as_strided(
                             s, shape=new_shape, strides=new_strides
                         ),
                         axes=[0, 2, 3, 1],
-                    )
+                    ).copy()
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for

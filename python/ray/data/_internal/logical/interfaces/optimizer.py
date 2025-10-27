@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Type
 
 from .plan import Plan
 
@@ -9,6 +9,16 @@ class Rule:
     def apply(self, plan: Plan) -> Plan:
         """Apply the optimization rule to the execution plan."""
         raise NotImplementedError
+
+    @classmethod
+    def dependencies(cls) -> List[Type["Rule"]]:
+        """List of rules that must be applied before this rule."""
+        return []
+
+    @classmethod
+    def dependents(cls) -> List[Type["Rule"]]:
+        """List of rules that must be applied after this rule."""
+        return []
 
 
 class Optimizer:
@@ -24,6 +34,14 @@ class Optimizer:
 
     def optimize(self, plan: Plan) -> Plan:
         """Optimize operators with a list of rules."""
-        for rule in self.rules:
-            plan = rule.apply(plan)
+        # Apply rules until the plan is not changed
+        previous_plan = plan
+        while True:
+            for rule in self.rules:
+                plan = rule.apply(plan)
+            # TODO: Eventually we should implement proper equality.
+            # Using str to check equality seems brittle
+            if plan.dag.dag_str == previous_plan.dag.dag_str:
+                break
+            previous_plan = plan
         return plan

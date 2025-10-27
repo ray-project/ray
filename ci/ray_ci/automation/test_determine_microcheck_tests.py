@@ -1,19 +1,19 @@
-import sys
 import json
+import sys
 from typing import List
 
 import pytest
+from ray_release.result import ResultStatus
+from ray_release.test import Test, TestResult
 
 from ci.ray_ci.automation.determine_microcheck_tests import (
     _get_failed_commits,
+    _get_failed_tests_from_master_branch,
     _get_flaky_tests,
     _get_test_with_minimal_coverage,
-    _get_failed_tests_from_master_branch,
     _update_high_impact_tests,
 )
 from ci.ray_ci.utils import ci_init
-from ray_release.result import ResultStatus
-from ray_release.test import TestResult, Test
 
 ci_init()
 

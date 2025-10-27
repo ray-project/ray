@@ -7,7 +7,7 @@ User Guides
 If you’re new to Ray Data, start with the
 :ref:`Ray Data Quickstart <data_quickstart>`.
 This user guide helps you navigate the Ray Data project and
-show you how achieve several tasks.
+shows you how to achieve several tasks.
 
 .. toctree::
     :maxdepth: 2
@@ -16,14 +16,17 @@ show you how achieve several tasks.
     inspecting-data
     transforming-data
     iterating-over-data
+    joining-data
     shuffling-data
     saving-data
     working-with-images
     working-with-text
     working-with-tensors
     working-with-pytorch
+    working-with-llms
     monitoring-your-workload
     execution-configurations
     batch_inference
     performance-tips
     custom-datasource-example
+    aggregations

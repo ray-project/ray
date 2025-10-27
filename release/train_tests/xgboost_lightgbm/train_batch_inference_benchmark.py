@@ -10,10 +10,14 @@ import lightgbm as lgb
 
 import ray
 from ray import data
-from ray.train.lightgbm.v2 import LightGBMTrainer
-from ray.train.xgboost.v2 import XGBoostTrainer
-from ray.train.xgboost import RayTrainReportCallback as XGBoostReportCallback
-from ray.train.lightgbm import RayTrainReportCallback as LightGBMReportCallback
+from ray.train.lightgbm import (
+    LightGBMTrainer,
+    RayTrainReportCallback as LightGBMReportCallback,
+)
+from ray.train.xgboost import (
+    RayTrainReportCallback as XGBoostReportCallback,
+    XGBoostTrainer,
+)
 from ray.train import RunConfig, ScalingConfig
 
 _TRAINING_TIME_THRESHOLD = 600
@@ -61,7 +65,6 @@ class LightGBMPredictor(BasePredictor):
 
 
 def xgboost_train_loop_function(config: Dict):
-    # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
 
@@ -70,9 +73,6 @@ def xgboost_train_loop_function(config: Dict):
 
     dtrain = xgb.DMatrix(train_X, label=train_y)
 
-    # 2. Do distributed data-parallel training.
-    # Ray Train sets up the necessary coordinator processes and
-    # environment variables for your workers to communicate with each other.
     report_callback = config["report_callback_cls"]
     xgb.train(
         params,
@@ -83,7 +83,6 @@ def xgboost_train_loop_function(config: Dict):
 
 
 def lightgbm_train_loop_function(config: Dict):
-    # 1. Get the dataset shard for the worker and convert to a DataFrame
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
 
@@ -91,10 +90,10 @@ def lightgbm_train_loop_function(config: Dict):
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lgb.Dataset(train_X, label=train_y)
 
-    # 2. Do distributed data-parallel training.
-    # Ray Train sets up the necessary coordinator processes and
-    # environment variables for your workers to communicate with each other.
     report_callback = config["report_callback_cls"]
+    network_params = ray.train.lightgbm.get_network_params()
+    params.update(network_params)
+
     lgb.train(
         params,
         train_set=train_set,
@@ -167,7 +166,7 @@ def predict(framework: str, result: ray.train.Result, data_path: str):
     ds = ds.drop_columns(["labels"])
 
     concurrency = int(ray.cluster_resources()["CPU"] // 2)
-    result = ds.map_batches(
+    ds.map_batches(
         predictor_cls,
         # Improve prediction throughput with larger batch size than default 4096
         batch_size=8192,
@@ -179,10 +178,7 @@ def predict(framework: str, result: ray.train.Result, data_path: str):
             "result": result,
         },
         batch_format="pandas",
-    )
-
-    for _ in result.iter_batches():
-        pass
+    ).write_parquet("/mnt/cluster_storage/predictions")
 
 
 def main(args):

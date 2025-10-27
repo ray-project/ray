@@ -1,38 +1,40 @@
 import collections
 import copy
 import logging
-import yaml
-import tempfile
-from typing import Dict, Callable, List
 import shutil
-from queue import PriorityQueue
+import sys
+import tempfile
 import unittest
+from queue import PriorityQueue
+from typing import Callable, Dict, List
+
 import pytest
+import yaml
 
 import ray
-from ray.tests.test_autoscaler import (
-    MockProvider,
-    MockProcessRunner,
-    MockGcsClient,
-    mock_raylet_id,
-    MockAutoscaler,
-)
-from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
+from ray._private.gcs_utils import PlacementGroupTableData
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _clear_provider_cache,
 )
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_KIND,
     NODE_KIND_HEAD,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
 )
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
-from ray.autoscaler._private.cli_logger import cli_logger
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
-from ray._private.gcs_utils import PlacementGroupTableData
+from ray.tests.test_autoscaler import (
+    MockAutoscaler,
+    MockGcsClient,
+    MockProcessRunner,
+    MockProvider,
+    mock_node_id,
+)
+from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
 
 
 class Task:
@@ -82,7 +84,7 @@ class Node:
         self.in_cluster = in_cluster
         self.node_type = node_type
         self.start_time = start_time
-        self.raylet_id = mock_raylet_id()
+        self.node_id = mock_node_id()
 
     def bundle_fits(self, bundle):
         if not self.in_cluster:
@@ -369,7 +371,7 @@ class Simulator:
                 continue
             self.load_metrics.update(
                 ip=ip,
-                raylet_id=node.raylet_id,
+                node_id=node.node_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
                 node_idle_duration_s=0,
@@ -619,10 +621,4 @@ class AutoscalingPolicyTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

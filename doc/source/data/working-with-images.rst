@@ -26,7 +26,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Raw images
 
-        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.  In the schema, the column name defaults to "image".
 
         .. note::
 
@@ -47,7 +47,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: NumPy
 
@@ -65,7 +65,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            data    ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: TFRecords
 
@@ -106,7 +106,7 @@ To view the full list of supported file formats, see the
             def decode_bytes(row: Dict[str, Any]) -> Dict[str, Any]:
                 data = row["image"]
                 image = Image.open(io.BytesIO(data))
-                row["image"] = np.array(image)
+                row["image"] = np.asarray(image)
                 return row
 
             ds = (
@@ -128,7 +128,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
             label   int64
 
     .. tab-item:: Parquet
@@ -147,7 +147,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            img     struct<bytes: binary, path: string>
             label   int64
 
 
@@ -230,7 +230,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
     predictions = ds.map_batches(
         ImageClassifier,
-        concurrency=2,
+        compute=ray.data.ActorPoolStrategy(size=2),
         batch_size=4
     )
     predictions.show(3)

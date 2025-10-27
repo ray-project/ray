@@ -6,7 +6,7 @@ import random
 import numpy as np
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PBTBenchmarkExample,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_class_api_example",
             # Stop when done = True or at some # of train steps (whichever comes first)
             stop={
@@ -121,7 +121,7 @@ if __name__ == "__main__":
             # This is to ensure that the lastest checkpoints are being used by PBT
             # when trials decide to exploit. If checkpointing and perturbing are not
             # aligned, then PBT may use a stale checkpoint to resume from.
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=4,

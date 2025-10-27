@@ -3,24 +3,19 @@ import {
   AlertProps,
   Box,
   Button,
-  InputAdornment,
   Link,
-  Menu,
-  MenuItem,
   Paper,
   SxProps,
-  TextField,
+  Tab,
+  Tabs,
   Theme,
-  Tooltip,
 } from "@mui/material";
-import React, { useContext, useEffect, useState } from "react";
-import { BiRefresh, BiTime } from "react-icons/bi";
+import React, { useContext, useMemo, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
+import { useLocalStorage } from "usehooks-ts";
 import { GlobalContext } from "../../App";
-import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
-import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
@@ -76,337 +71,98 @@ export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
+type DashboardTab = "core" | "data";
+
+// Exported for use by Serve metrics sections (they still use individual panels)
 export type MetricConfig = {
   title: string;
   pathParams: string;
 };
 
-export type MetricsSectionConfig = {
-  title: string;
-  contents: MetricConfig[];
-};
-
-// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/default_dashboard_panels.py
-const METRICS_CONFIG: MetricsSectionConfig[] = [
-  {
-    title: "Tasks and Actors",
-    contents: [
-      {
-        title: "Scheduler Task State",
-        pathParams: "orgId=1&theme=light&panelId=26",
-      },
-      {
-        title: "Requested Live Tasks by Name",
-        pathParams: "orgId=1&theme=light&panelId=35",
-      },
-      {
-        title: "Running Tasks by Name",
-        pathParams: "orgId=1&theme=light&panelId=38",
-      },
-      {
-        title: "Scheduler Actor State",
-        pathParams: "orgId=1&theme=light&panelId=33",
-      },
-      {
-        title: "Requested Live Actors by Name",
-        pathParams: "orgId=1&theme=light&panelId=36",
-      },
-      {
-        title: "Out of Memory Failures by Name",
-        pathParams: "orgId=1&theme=light&panelId=44",
-      },
-    ],
-  },
-  {
-    title: "Ray Resource Usage",
-    contents: [
-      {
-        title: "Scheduler CPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=27",
-      },
-      {
-        title: "Scheduler GPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=28",
-      },
-      {
-        title: "Object Store Memory",
-        pathParams: "orgId=1&theme=light&panelId=29",
-      },
-      {
-        title: "Placement Groups",
-        pathParams: "orgId=1&theme=light&panelId=40",
-      },
-    ],
-  },
-  {
-    title: "Hardware Utilization",
-    contents: [
-      {
-        title: "Node Count",
-        pathParams: "orgId=1&theme=light&panelId=24",
-      },
-      {
-        title: "Node CPU (hardware utilization)",
-        pathParams: "orgId=1&theme=light&panelId=2",
-      },
-      {
-        title: "Node Memory (heap + object store)",
-        pathParams: "orgId=1&theme=light&panelId=4",
-      },
-      {
-        title: "Node Memory Percentage (heap + object store)",
-        pathParams: "orgId=1&theme=light&panelId=48",
-      },
-      {
-        title: "Node GPU (hardware utilization)",
-        pathParams: "orgId=1&theme=light&panelId=8",
-      },
-      {
-        title: "Node GPU Memory (GRAM)",
-        pathParams: "orgId=1&theme=light&panelId=18",
-      },
-      {
-        title: "Node Disk",
-        pathParams: "orgId=1&theme=light&panelId=6",
-      },
-      {
-        title: "Node Disk IO Speed",
-        pathParams: "orgId=1&theme=light&panelId=32",
-      },
-      {
-        title: "Node Network",
-        pathParams: "orgId=1&theme=light&panelId=20",
-      },
-      {
-        title: "Node CPU by Component",
-        pathParams: "orgId=1&theme=light&panelId=37",
-      },
-      {
-        title: "Node Memory by Component",
-        pathParams: "orgId=1&theme=light&panelId=34",
-      },
-    ],
-  },
-];
-
-const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
-  {
-    title: "Ray Data Metrics (Overview)",
-    contents: [
-      {
-        title: "Bytes Spilled",
-        pathParams: "orgId=1&theme=light&panelId=1",
-      },
-      {
-        title: "Bytes Allocated",
-        pathParams: "orgId=1&theme=light&panelId=2",
-      },
-      {
-        title: "Bytes Freed",
-        pathParams: "orgId=1&theme=light&panelId=3",
-      },
-      {
-        title: "Object Store Memory",
-        pathParams: "orgId=1&theme=light&panelId=4",
-      },
-      {
-        title: "CPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=5",
-      },
-      {
-        title: "GPUs (logical slots)",
-        pathParams: "orgId=1&theme=light&panelId=6",
-      },
-      {
-        title: "Bytes Outputted",
-        pathParams: "orgId=1&theme=light&panelId=7",
-      },
-      {
-        title: "Rows Outputted",
-        pathParams: "orgId=1&theme=light&panelId=11",
-      },
-    ],
-  },
-  {
-    title: "Ray Data Metrics (Inputs)",
-    contents: [
-      {
-        title: "Input Blocks Received by Operator",
-        pathParams: "orgId=1&theme=light&panelId=17",
-      },
-      {
-        title: "Input Blocks Processed by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=19",
-      },
-      {
-        title: "Input Bytes Processed by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=20",
-      },
-      {
-        title: "Input Bytes Submitted to Tasks",
-        pathParams: "orgId=1&theme=light&panelId=21",
-      },
-    ],
-  },
-  {
-    title: "Ray Data Metrics (Outputs)",
-    contents: [
-      {
-        title: "Blocks Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=22",
-      },
-      {
-        title: "Bytes Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=23",
-      },
-      {
-        title: "Rows Generated by Tasks",
-        pathParams: "orgId=1&theme=light&panelId=24",
-      },
-      {
-        title: "Output Blocks Taken by Downstream Operators",
-        pathParams: "orgId=1&theme=light&panelId=25",
-      },
-      {
-        title: "Output Bytes Taken by Downstream Operators",
-        pathParams: "orgId=1&theme=light&panelId=26",
-      },
-    ],
-  },
-  {
-    title: "Ray Data Metrics (Tasks)",
-    contents: [
-      {
-        title: "Submitted Tasks",
-        pathParams: "orgId=1&theme=light&panelId=29",
-      },
-      {
-        title: "Running Tasks",
-        pathParams: "orgId=1&theme=light&panelId=30",
-      },
-      {
-        title: "Tasks with output blocks",
-        pathParams: "orgId=1&theme=light&panelId=31",
-      },
-      {
-        title: "Finished Tasks",
-        pathParams: "orgId=1&theme=light&panelId=32",
-      },
-      {
-        title: "Failed Tasks",
-        pathParams: "orgId=1&theme=light&panelId=33",
-      },
-      {
-        title: "Block Generation Time",
-        pathParams: "orgId=1&theme=light&panelId=8",
-      },
-      {
-        title: "Task Submission Backpressure Time",
-        pathParams: "orgId=1&theme=light&panelId=37",
-      },
-    ],
-  },
-  {
-    title: "Ray Data Metrics (Object Store Memory)",
-    contents: [
-      {
-        title: "Operator Internal Inqueue Size (Blocks)",
-        pathParams: "orgId=1&theme=light&panelId=13",
-      },
-      {
-        title: "Operator Internal Inqueue Size (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=14",
-      },
-      {
-        title: "Operator Internal Outqueue Size (Blocks)",
-        pathParams: "orgId=1&theme=light&panelId=15",
-      },
-      {
-        title: "Operator Internal Outqueue Size (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=16",
-      },
-      {
-        title: "Size of Blocks used in Pending Tasks (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=34",
-      },
-      {
-        title: "Freed Memory in Object Store (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=35",
-      },
-      {
-        title: "Spilled Memory in Object Store (Bytes)",
-        pathParams: "orgId=1&theme=light&panelId=36",
-      },
-    ],
-  },
-  {
-    title: "Ray Data Metrics (Iteration)",
-    contents: [
-      {
-        title: "Iteration Initialization Time",
-        pathParams: "orgId=1&theme=light&panelId=12",
-      },
-      {
-        title: "Iteration Blocked Time",
-        pathParams: "orgId=1&theme=light&panelId=9",
-      },
-      {
-        title: "Iteration User Time",
-        pathParams: "orgId=1&theme=light&panelId=10",
-      },
-    ],
-  },
-  // Add metrics with `metrics_group: "misc"` here.
-  // {
-  //   title: "Ray Data Metrics (Miscellaneous)",
-  //   contents: [],
-  // },
-];
-
 export const Metrics = () => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    grafanaOrgId,
+    grafanaClusterFilter,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+    sessionName,
+    currentTimeZone,
+  } = useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
+  const grafanaDataDashboardUid = dashboardUids?.data;
 
+  const grafanaOrgIdParam = grafanaOrgId ?? "1";
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
-  const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    RefreshOptions.FIVE_SECONDS,
+  const [cachedSelectedTab, setCachedSelectedTab] =
+    useLocalStorage<DashboardTab | null>(`Metrics-selectedTab`, null);
+
+  const [selectedTab, setSelectedTab] = useState<DashboardTab>(
+    cachedSelectedTab ?? "core",
   );
 
-  const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.FIVE_MINS,
+  // Build the dashboard URL based on selected tab
+  const buildDashboardUrl = useMemo(
+    () =>
+      (tab: DashboardTab, kiosk = true): string => {
+        const dashboardUid =
+          tab === "data" ? grafanaDataDashboardUid : grafanaDefaultDashboardUid;
+
+        const params = new URLSearchParams();
+        params.set("orgId", grafanaOrgIdParam);
+        params.set("theme", "light");
+
+        if (kiosk) {
+          params.set("kiosk", "1");
+        }
+
+        params.set("refresh", "5s");
+        params.set("from", "now-5m");
+        params.set("to", "now");
+
+        if (currentTimeZone !== undefined) {
+          params.set("timezone", currentTimeZone);
+        }
+
+        if (sessionName !== undefined) {
+          params.set("var-SessionName", sessionName);
+        }
+
+        params.set("var-datasource", grafanaDefaultDatasource);
+
+        if (grafanaClusterFilter) {
+          params.set("var-Cluster", grafanaClusterFilter);
+        }
+
+        return `${grafanaHost}/d/${dashboardUid}/?${params.toString()}`;
+      },
+    [
+      grafanaDataDashboardUid,
+      grafanaDefaultDashboardUid,
+      grafanaOrgIdParam,
+      currentTimeZone,
+      sessionName,
+      grafanaDefaultDatasource,
+      grafanaClusterFilter,
+      grafanaHost,
+    ],
   );
 
-  const [refresh, setRefresh] = useState<string | null>(null);
-
-  const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
-    null,
-    null,
-  ]);
-
-  useEffect(() => {
-    setRefresh(REFRESH_VALUE[refreshOption]);
-  }, [refreshOption]);
-
-  useEffect(() => {
-    const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
-    setTimeRange([from, "now"]);
-  }, [timeRangeOption]);
-
-  const [viewInGrafanaMenuRef, setViewInGrafanaMenuRef] =
-    useState<HTMLButtonElement | null>(null);
-
-  const fromParam = from !== null ? `&from=${from}` : "";
-  const toParam = to !== null ? `&to=${to}` : "";
-  const timeRangeParams = `${fromParam}${toParam}`;
-
-  const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const currentDashboardUrl = buildDashboardUrl(selectedTab);
+  const currentGrafanaUrl = buildDashboardUrl(selectedTab, false);
 
   return (
-    <div>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: `calc(100vh - ${MAIN_NAV_HEIGHT}px)`,
+      }}
+    >
       <MainNavPageInfo
         pageInfo={{
           id: "metrics",
@@ -417,7 +173,7 @@ export const Metrics = () => {
       {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert sx={{ marginTop: "30px" }} />
       ) : (
-        <div>
+        <React.Fragment>
           <Paper
             sx={{
               position: "sticky",
@@ -426,202 +182,60 @@ export const Metrics = () => {
               display: "flex",
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "flex-end",
-              padding: 1,
+              justifyContent: "space-between",
               boxShadow: "0px 1px 0px #D2DCE6",
               zIndex: 1,
-              height: 36,
+              flexShrink: 0,
             }}
           >
-            <Button
-              onClick={({ currentTarget }) => {
-                setViewInGrafanaMenuRef(currentTarget);
+            <Tabs
+              value={selectedTab}
+              onChange={(_, newValue) => {
+                setSelectedTab(newValue as DashboardTab);
+                setCachedSelectedTab(newValue as DashboardTab);
               }}
-              endIcon={<RiExternalLinkLine />}
+              sx={{
+                borderBottom: "none",
+              }}
             >
-              View in Grafana
-            </Button>
-            {viewInGrafanaMenuRef && (
-              <Menu
-                open
-                anchorEl={viewInGrafanaMenuRef}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-                onClose={() => {
-                  setViewInGrafanaMenuRef(null);
-                }}
+              <Tab label="Core" value="core" />
+              {grafanaDataDashboardUid && <Tab label="Ray Data" value="data" />}
+            </Tabs>
+            <Box sx={{ paddingRight: 2 }}>
+              <Button
+                component="a"
+                href={currentGrafanaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<RiExternalLinkLine />}
               >
-                <MenuItem
-                  component="a"
-                  href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Core Dashboard
-                </MenuItem>
-                {dashboardUids?.["data"] && (
-                  <Tooltip title="The Ray Data dashboard has a dropdown to filter the data metrics by Dataset ID">
-                    <MenuItem
-                      component="a"
-                      href={`${grafanaHost}/d/${dashboardUids["data"]}/?var-datasource=${grafanaDefaultDatasource}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Ray Data Dashboard
-                    </MenuItem>
-                  </Tooltip>
-                )}
-              </Menu>
-            )}
-            <TextField
-              sx={{ marginLeft: 2, width: 80 }}
-              select
-              size="small"
-              value={refreshOption}
-              onChange={({ target: { value } }) => {
-                setRefreshOption(value as RefreshOptions);
-              }}
-              variant="standard"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
-                  </InputAdornment>
-                ),
-              }}
-            >
-              {Object.entries(RefreshOptions).map(([key, value]) => (
-                <MenuItem key={key} value={value}>
-                  {value}
-                </MenuItem>
-              ))}
-            </TextField>
-            <HelpInfo>Auto-refresh interval</HelpInfo>
-            <TextField
-              sx={{ marginLeft: 2, width: 140 }}
-              select
-              size="small"
-              value={timeRangeOption}
-              onChange={({ target: { value } }) => {
-                setTimeRangeOption(value as TimeRangeOptions);
-              }}
-              variant="standard"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
-                  </InputAdornment>
-                ),
-              }}
-            >
-              {Object.entries(TimeRangeOptions).map(([key, value]) => (
-                <MenuItem key={key} value={value}>
-                  {value}
-                </MenuItem>
-              ))}
-            </TextField>
-            <HelpInfo>Time range picker</HelpInfo>
+                View tab in Grafana
+              </Button>
+            </Box>
           </Paper>
-          <Alert severity="info">
-            Tip: You can click on the legend to focus on a specific line in the
-            time-series graph. You can use control/cmd + click to filter out a
-            line in the time-series graph.
-          </Alert>
-          <Box sx={{ margin: 1 }}>
-            {METRICS_CONFIG.map((config) => (
-              <MetricsSection
-                key={config.title}
-                metricConfig={config}
-                refreshParams={refreshParams}
-                timeRangeParams={timeRangeParams}
-                dashboardUid={grafanaDefaultDashboardUid}
-                dashboardDatasource={grafanaDefaultDatasource}
-              />
-            ))}
-            {dashboardUids?.["data"] &&
-              DATA_METRICS_CONFIG.map((config) => (
-                <MetricsSection
-                  key={config.title}
-                  metricConfig={config}
-                  refreshParams={refreshParams}
-                  timeRangeParams={timeRangeParams}
-                  dashboardUid={dashboardUids["data"]}
-                  dashboardDatasource={grafanaDefaultDatasource}
-                />
-              ))}
-          </Box>
-        </div>
-      )}
-    </div>
-  );
-};
-
-type MetricsSectionProps = {
-  metricConfig: MetricsSectionConfig;
-  refreshParams: string;
-  timeRangeParams: string;
-  dashboardUid: string;
-  dashboardDatasource: string;
-};
-
-const MetricsSection = ({
-  metricConfig: { title, contents },
-  refreshParams,
-  timeRangeParams,
-  dashboardUid,
-  dashboardDatasource,
-}: MetricsSectionProps) => {
-  const { grafanaHost, sessionName, currentTimeZone } =
-    useContext(GlobalContext);
-  return (
-    <CollapsibleSection
-      key={title}
-      title={title}
-      startExpanded
-      sx={{ marginTop: 3 }}
-      keepRendered
-    >
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 3,
-          marginTop: 2,
-        }}
-      >
-        {contents.map(({ title, pathParams }) => {
-          const path =
-            `/d-solo/${dashboardUid}?${pathParams}` +
-            `&${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
-          return (
-            <Paper
-              key={pathParams}
-              sx={(theme) => ({
+          <Box
+            sx={{
+              flex: 1,
+              overflow: "hidden",
+              width: "100%",
+            }}
+          >
+            <Box
+              component="iframe"
+              title={
+                selectedTab === "data" ? "Ray Data Dashboard" : "Core Dashboard"
+              }
+              src={currentDashboardUrl}
+              sx={{
                 width: "100%",
-                height: 400,
-                overflow: "hidden",
-                [theme.breakpoints.up("md")]: {
-                  // Calculate max width based on 1/3 of the total width minus padding between cards
-                  width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
-                },
-              })}
-              variant="outlined"
-              elevation={0}
-            >
-              <Box
-                component="iframe"
-                key={title}
-                title={title}
-                sx={{ width: "100%", height: "100%" }}
-                src={`${grafanaHost}${path}`}
-                frameBorder="0"
-              />
-            </Paper>
-          );
-        })}
-      </Box>
-    </CollapsibleSection>
+                height: "100%",
+                border: "none",
+              }}
+            />
+          </Box>
+        </React.Fragment>
+      )}
+    </Box>
   );
 };
 

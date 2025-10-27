@@ -78,7 +78,7 @@ cdef class GlobalStateAccessor:
         for item in items:
             c_node_info.ParseFromString(item)
             node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(c_node_info.node_id()),
+                "NodeID": ray._common.utils.binary_to_hex(c_node_info.node_id()),
                 "Alive": c_node_info.state() == CGcsNodeState.ALIVE,
                 "NodeManagerAddress": c_node_info.node_manager_address().decode(),
                 "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
@@ -118,7 +118,7 @@ cdef class GlobalStateAccessor:
         results = {}
         while draining_nodes_it != draining_nodes.end():
             draining_node_id = dereference(draining_nodes_it).first
-            results[ray._private.utils.binary_to_hex(
+            results[ray._common.utils.binary_to_hex(
                 draining_node_id.Binary())] = dereference(draining_nodes_it).second
             postincrement(draining_nodes_it)
 
@@ -195,7 +195,7 @@ cdef class GlobalStateAccessor:
 
     def get_worker_info(self, worker_id):
         cdef unique_ptr[c_string] worker_info
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         with nogil:
             worker_info = self.inner.get().GetWorkerInfo(cworker_id)
         if worker_info:
@@ -211,14 +211,14 @@ cdef class GlobalStateAccessor:
 
     def get_worker_debugger_port(self, worker_id):
         cdef c_uint32_t result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         with nogil:
             result = self.inner.get().GetWorkerDebuggerPort(cworker_id)
         return result
 
     def update_worker_debugger_port(self, worker_id, debugger_port):
         cdef c_bool result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         cdef c_uint32_t cdebugger_port = debugger_port
         with nogil:
             result = self.inner.get().UpdateWorkerDebuggerPort(
@@ -228,7 +228,7 @@ cdef class GlobalStateAccessor:
 
     def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
         cdef c_bool result
-        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        cdef CWorkerID cworker_id = <CWorkerID>CUniqueID.FromBinary(worker_id.binary())
         cdef c_int32_t cnum_paused_threads_delta = num_paused_threads_delta
 
         with nogil:
@@ -295,9 +295,11 @@ cdef class GlobalStateAccessor:
         if not status.ok():
             raise RuntimeError(status.message())
         c_node_info.ParseFromString(cnode_info_str)
+        c_labels = PythonGetNodeLabels(c_node_info)
         return {
             "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
+            "labels": {key.decode(): value.decode() for key, value in c_labels},
         }

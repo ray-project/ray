@@ -2,7 +2,7 @@
 
 .. _accelerator_types:
 
-Accelerator Types
+Accelerator types
 =================
 
 Ray supports the following accelerator types:

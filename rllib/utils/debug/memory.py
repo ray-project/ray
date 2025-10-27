@@ -1,11 +1,12 @@
 from collections import defaultdict
-import numpy as np
-import tree  # pip install dm_tree
 from typing import DefaultDict, List, Optional, Set
 
-from ray.rllib.utils.annotations import DeveloperAPI
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.util.debug import _test_some_code_for_memory_leaks, Suspect
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.util.debug import Suspect, _test_some_code_for_memory_leaks
 
 
 @DeveloperAPI
@@ -47,7 +48,7 @@ def check_memory_leaks(
     if "env" in to_check:
         assert local_worker.async_env is not None, (
             "ERROR: Cannot test 'env' since given Algorithm does not have one "
-            "in its local worker. Try setting `create_env_on_driver=True`."
+            "in its local worker. Try setting `create_local_env_runner=True`."
         )
 
         # Isolate the first sub-env in the vectorized setup and test it.

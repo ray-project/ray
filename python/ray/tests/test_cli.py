@@ -18,6 +18,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import json
 import multiprocessing as mp
 import multiprocessing.connection
 import os
@@ -25,10 +26,10 @@ import re
 import sys
 import tempfile
 import threading
-import json
 import time
 import uuid
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -42,15 +43,15 @@ from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
-import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
-from ray.util.check_open_ports import check_open_ports
-from ray._private.test_utils import wait_for_condition
+from ray._common.network_utils import build_address, parse_address
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
+from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psutil
 
@@ -1012,7 +1013,7 @@ def start_open_port_check_server():
 
     yield (
         OpenPortCheckServer,
-        f"http://{server.server_address[0]}:{server.server_address[1]}",
+        f"http://{build_address(server.server_address[0], server.server_address[1])}",
     )
 
     server.shutdown()
@@ -1035,7 +1036,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     )
     assert result.exit_code == 0
     assert (
-        int(context.address_info["gcs_address"].split(":")[1])
+        int(parse_address(context.address_info["gcs_address"])[1])
         in open_port_check_server.request_ports
     )
     assert "[🟢] No open ports detected" in result.output
@@ -1057,7 +1058,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
 
 def test_ray_drain_node(monkeypatch):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
-    ray._raylet.Config.initialize("")
+    ray.init()
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1196,6 +1197,29 @@ def test_ray_drain_node(monkeypatch):
         assert result.exit_code != 0
         assert "The drain request is not accepted: Node not idle" in result.output
 
+    # Test without node-id
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.01:6543",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            ray.get_runtime_context().get_node_id(), 2, "spot preemption", 0
+        )
+
     with patch("time.time_ns", return_value=1000000000), patch(
         "ray._raylet.GcsClient"
     ) as MockGcsClient:
@@ -1262,7 +1286,4 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

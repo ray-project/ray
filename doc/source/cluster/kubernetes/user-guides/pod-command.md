@@ -20,13 +20,12 @@ metadata:
   ...
 spec:
   headGroupSpec:
-    rayStartParams: {}
     # Pod template
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:2.8.0
+          image: rayproject/ray:2.46.0
           # Because the annotation "ray.io/overwrite-container-cmd" is set to "true",
           # KubeRay will overwrite the generated container command with `command` and
           # `args` in the following. Hence, you need to specify the `ulimit` command
@@ -72,14 +71,12 @@ Some users employ this method to set up environment variables used by `ray start
 
 ```yaml
 # https://github.com/ray-project/kuberay/ray-operator/config/samples/ray-cluster.head-command.yaml
-    rayStartParams:
-        ...
     #pod template
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:2.8.0
+          image: rayproject/ray:2.46.0
           resources:
             ...
           ports:
@@ -99,11 +96,8 @@ Some users employ this method to set up environment variables used by `ray start
     ```sh
     # Prerequisite: There is a KubeRay operator in the Kubernetes cluster.
 
-    # Download `ray-cluster.head-command.yaml`
-    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.head-command.yaml
-
     # Create a RayCluster
-    kubectl apply -f ray-cluster.head-command.yaml
+    kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.head-command.yaml
 
     # Check ${RAYCLUSTER_HEAD_POD}
     kubectl get pod -l ray.io/node-type=head

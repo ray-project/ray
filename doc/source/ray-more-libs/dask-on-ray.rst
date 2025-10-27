@@ -31,7 +31,10 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
-     * - ``2.40.0`` or above
+     * - ``2.48.0`` or above
+       - | ``2023.6.1 (Python version < 3.12)``
+         | ``2025.5.0 (Python version >= 3.12)``
+     * - ``2.40.0`` to ``2.47.1``
        - | ``2022.10.2 (Python version < 3.12)``
          | ``2024.6.0 (Python version >= 3.12)``
      * - ``2.34.0`` to ``2.39.0``
@@ -115,13 +118,13 @@ Best Practice for Large Scale workloads
 For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible.
 It is more desirable to spread tasks if you run a large scale / memory intensive Dask on Ray workloads.
 
-In this case, there are two recommended setup.
+In this case, there are two recommended setups.
 - Reducing the config flag `scheduler_spread_threshold` to tell the scheduler to prefer spreading tasks across the cluster instead of packing.
 - Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
 
 .. code-block:: bash
 
-  # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
+  # Head node. Set `num_cpus=0` to avoid tasks being scheduled on a head node.
   RAY_scheduler_spread_threshold=0.0 ray start --head --num-cpus=0
 
   # Worker node.

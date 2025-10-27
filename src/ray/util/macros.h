@@ -14,13 +14,6 @@
 
 #pragma once
 
-// From Google gutil
-#ifndef RAY_DISALLOW_COPY_AND_ASSIGN
-#define RAY_DISALLOW_COPY_AND_ASSIGN(TypeName) \
-  TypeName(const TypeName &) = delete;         \
-  void operator=(const TypeName &) = delete
-#endif
-
 #define RAY_UNUSED(x) (void)x
 
 //
@@ -65,4 +58,11 @@
 #define __suppress_ubsan__(type) __attribute__((no_sanitize_undefined))
 #else
 #define __suppress_ubsan__(type)
+#endif
+
+// Portable code for unreachable
+#if defined(_MSC_VER)
+#define UNREACHABLE __assume(0)
+#else
+#define UNREACHABLE __builtin_unreachable()
 #endif

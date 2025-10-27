@@ -1,0 +1,66 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "stats_metric",
+    srcs = [
+        "metric.cc",
+        "metric_defs.cc",
+    ],
+    hdrs = [
+        "metric.h",
+        "metric_defs.h",
+    ],
+    deps = [
+        ":tag_defs",
+        "//src/ray/common:ray_config",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/observability:open_telemetry_metric_recorder",
+        "//src/ray/util:logging",
+        "//src/ray/util:size_literals",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_prod",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_lib",
+    srcs = [
+        "metric_exporter.cc",
+    ],
+    hdrs = [
+        "metric.h",
+        "metric_exporter.h",
+        "stats.h",
+    ],
+    linkopts = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    deps = [
+        ":stats_metric",
+        ":tag_defs",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/util:network_util",
+        "//src/ray/util:size_literals",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
+    ],
+)
+
+ray_cc_library(
+    name = "tag_defs",
+    srcs = ["tag_defs.cc"],
+    hdrs = ["tag_defs.h"],
+    deps = [
+        "//src/ray/observability:metric_interface",
+    ],
+)

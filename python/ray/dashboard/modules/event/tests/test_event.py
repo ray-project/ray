@@ -17,24 +17,26 @@ import pytest
 import requests
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import binary_to_hex
 from ray._private.event.event_logger import (
     filter_event_by_level,
     get_event_id,
     get_event_logger,
 )
-from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.event.export_event_logger import (
+    EventLogType,
+    get_export_event_logger,
+)
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
-    export_event_pb2,
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
@@ -135,7 +137,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
             __name__ + str(random.random()),
             test_log_file,
             max_bytes=2000,
-            backup_count=1000,
+            backup_count=0,
         )
         for i in range(test_count):
             sample_event = _get_event(str(i), job_id=job_id, source_type=source_type)
@@ -229,13 +231,38 @@ def test_event_message_limit(
     wait_for_condition(_check_events, timeout=15)
 
 
+def test_report_events(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    url = f"{webui_url}/report_events"
+
+    resp = requests.post(url)
+    assert resp.status_code == 400
+    resp = requests.post(url, json={"Hello": "World"})
+    assert resp.status_code == 400
+
+    job_id = ray.JobID.from_int(100).hex()
+    sample_event = _get_event("Hello", job_id=job_id)
+    resp = requests.post(url, json=[json.dumps(sample_event)])
+    assert resp.status_code == 200
+
+    resp = requests.get(f"{webui_url}/events")
+    assert resp.status_code == 200
+    result = resp.json()
+    all_events = result["data"]["events"]
+    assert len(all_events) == 1
+    assert job_id in all_events
+    assert len(all_events[job_id]) == 1
+    assert all_events[job_id][0]["message"] == "Hello"
+
+
 @pytest.mark.asyncio
 async def test_monitor_events():
     with tempfile.TemporaryDirectory() as temp_dir:
         common = event_pb2.Event.SourceType.Name(event_pb2.Event.COMMON)
         common_log = os.path.join(temp_dir, f"event_{common}.log")
         test_logger = _test_logger(
-            __name__ + str(random.random()), common_log, max_bytes=10, backup_count=10
+            __name__ + str(random.random()), common_log, max_bytes=10, backup_count=0
         )
         test_events1 = []
         monitor_task = monitor_events(
@@ -287,7 +314,7 @@ async def test_monitor_events():
         log_file_count = len(os.listdir(temp_dir))
 
         test_logger = _test_logger(
-            __name__ + str(random.random()), common_log, max_bytes=1000, backup_count=10
+            __name__ + str(random.random()), common_log, max_bytes=1000, backup_count=0
         )
         assert len(os.listdir(temp_dir)) == log_file_count
 
@@ -306,7 +333,7 @@ async def test_monitor_events():
             await monitor_task
         assert monitor_task.done()
 
-        assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
+        assert len(os.listdir(temp_dir)) == 1, "There should just be 1 event log"
 
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
@@ -637,9 +664,7 @@ def test_export_event_logger(tmp_path):
     Unit test a mock export event of type ExportSubmissionJobEventData
     is correctly written to file. This doesn't events are correctly generated.
     """
-    logger = get_export_event_logger(
-        export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
-    )
+    logger = get_export_event_logger(EventLogType.SUBMISSION_JOB, str(tmp_path))
     ExportSubmissionJobEventData = (
         export_submission_job_event_pb2.ExportSubmissionJobEventData
     )

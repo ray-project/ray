@@ -1,8 +1,11 @@
+import io
 import logging
-from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import pandas as pd
+
 from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -11,26 +14,26 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+JSON_FILE_EXTENSIONS = [
+    "json",
+    "jsonl",
+    # gzip-compressed files
+    "json.gz",
+    "jsonl.gz",
+    # Brotli-compressed fi;es
+    "json.br",
+    "jsonl.br",
+    # Zstandard-compressed files
+    "json.zst",
+    "jsonl.zst",
+    # lz4-compressed files
+    "json.lz4",
+    "jsonl.lz4",
+]
 
-class JSONDatasource(FileBasedDatasource):
+
+class ArrowJSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
-
-    _FILE_EXTENSIONS = [
-        "json",
-        "jsonl",
-        # gzip-compressed files
-        "json.gz",
-        "jsonl.gz",
-        # Brotli-compressed fi;es
-        "json.br",
-        "jsonl.br",
-        # Zstandard-compressed files
-        "json.zst",
-        "jsonl.zst",
-        # lz4-compressed files
-        "json.lz4",
-        "jsonl.lz4",
-    ]
 
     def __init__(
         self,
@@ -56,6 +59,7 @@ class JSONDatasource(FileBasedDatasource):
         read block size in the case of the read object
         straddling block boundaries."""
         import pyarrow as pa
+        import pyarrow.json as pajson
 
         # When reading large files, the default block size configured in PyArrow can be
         # too small, resulting in the following error: `pyarrow.lib.ArrowInvalid:
@@ -77,8 +81,8 @@ class JSONDatasource(FileBasedDatasource):
         max_block_size = DataContext.get_current().target_max_block_size
         while True:
             try:
-                yield pa.json.read_json(
-                    BytesIO(buffer),
+                yield pajson.read_json(
+                    io.BytesIO(buffer),
                     read_options=self.read_options,
                     **self.arrow_json_args,
                 )
@@ -86,7 +90,10 @@ class JSONDatasource(FileBasedDatasource):
                 break
             except pa.ArrowInvalid as e:
                 if "straddling object straddles two block boundaries" in str(e):
-                    if self.read_options.block_size < max_block_size:
+                    if (
+                        max_block_size is None
+                        or self.read_options.block_size < max_block_size
+                    ):
                         # Increase the block size in case it was too small.
                         logger.debug(
                             f"JSONDatasource read failed with "
@@ -120,7 +127,7 @@ class JSONDatasource(FileBasedDatasource):
         if buffer.size == 0:
             return
 
-        parsed_json = json.load(BytesIO(buffer))
+        parsed_json = json.load(io.BytesIO(buffer))
         try:
             yield pa.Table.from_pylist(parsed_json)
         except AttributeError as e:
@@ -152,3 +159,117 @@ class JSONDatasource(FileBasedDatasource):
                 f"PyArrow error was:\n{e}"
             )
             yield from self._read_with_python_json(buffer)
+
+
+class PandasJSONDatasource(FileBasedDatasource):
+
+    # Buffer size in bytes for reading files. Default is 1MB.
+    #
+    # pandas reads data in small chunks (~8 KiB), which leads to many costly
+    # small read requests when accessing cloud storage. To reduce overhead and
+    # improve performance, we wrap the file in a larger buffered reader that
+    # reads bigger blocks at once.
+    _BUFFER_SIZE = 1024**2
+
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        target_output_size_bytes: int,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self._target_output_size_bytes = target_output_size_bytes
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str):
+        chunksize = self._estimate_chunksize(f)
+
+        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
+        if chunksize is None:
+            # When chunksize=None, pandas returns DataFrame directly (no context manager)
+            df = pd.read_json(stream, chunksize=chunksize, lines=True)
+            yield _cast_range_index_to_string(df)
+        else:
+            # When chunksize is a number, pandas returns JsonReader (supports context manager)
+            with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
+                for df in reader:
+                    yield _cast_range_index_to_string(df)
+
+    def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
+        """Estimate the chunksize by sampling the first row.
+
+        This is necessary to avoid OOMs while reading the file.
+        """
+        assert f.tell() == 0, "File pointer must be at the beginning"
+
+        if self._target_output_size_bytes is None:
+            return None
+
+        stream = StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE)
+        with pd.read_json(stream, chunksize=1, lines=True) as reader:
+            try:
+                df = _cast_range_index_to_string(next(reader))
+            except StopIteration:
+                return 1
+
+        block_accessor = PandasBlockAccessor.for_block(df)
+        if block_accessor.num_rows() == 0:
+            chunksize = 1
+        else:
+            bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
+            chunksize = max(round(self._target_output_size_bytes / bytes_per_row), 1)
+
+        # Reset file pointer to the beginning.
+        f.seek(0)
+
+        return chunksize
+
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        # Use seekable file so we can reset the file after sampling the first row.
+        file = filesystem.open_input_file(path, **open_args)
+        assert file.seekable(), "File must be seekable"
+        return file
+
+
+def _cast_range_index_to_string(df: pd.DataFrame):
+    # NOTE: PandasBlockAccessor doesn't support RangeIndex, so we need to convert
+    # to string.
+    if isinstance(df.columns, pd.RangeIndex):
+        df.columns = df.columns.astype(str)
+    return df
+
+
+class StrictBufferedReader(io.RawIOBase):
+    """Wrapper that prevents premature file closure and ensures full-buffered reads.
+
+    This is necessary for two reasons:
+    1. The datasource reads the file twice -- first to sample and determine the chunk size,
+       and again to load the actual data. Since pandas assumes ownership of the file and
+       may close it, we prevent that by explicitly detaching the underlying file before
+       closing the buffer.
+
+    2. pandas wraps the file in a TextIOWrapper to decode bytes into text. TextIOWrapper
+       prefers calling read1(), which doesn't prefetch for random-access files
+       (e.g., from PyArrow). This wrapper forces all reads through the full buffer to
+       avoid inefficient small-range S3 GETs.
+    """
+
+    def __init__(self, file: io.RawIOBase, buffer_size: int):
+        self._file = io.BufferedReader(file, buffer_size=buffer_size)
+
+    def read(self, size=-1, /):
+        return self._file.read(size)
+
+    def readable(self) -> bool:
+        return True
+
+    def close(self):
+        if not self.closed:
+            self._file.detach()
+            self._file.close()
+            super().close()

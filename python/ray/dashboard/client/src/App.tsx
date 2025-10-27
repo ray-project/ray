@@ -81,6 +81,14 @@ export type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * The param 'orgId' used in grafana. Default is 1.
+   */
+  grafanaOrgId: string;
+  /**
+   * The filter for the Cluster variable in grafana dashboards.
+   */
+  grafanaClusterFilter: string | undefined;
+  /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
   dashboardUids: DashboardUids | undefined;
@@ -111,6 +119,8 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   namespaceMap: {},
   metricsContextLoaded: false,
   grafanaHost: undefined,
+  grafanaOrgId: "1",
+  grafanaClusterFilter: undefined,
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
@@ -129,6 +139,8 @@ const App = () => {
     namespaceMap: {},
     metricsContextLoaded: false,
     grafanaHost: undefined,
+    grafanaOrgId: "1",
+    grafanaClusterFilter: undefined,
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
@@ -159,6 +171,8 @@ const App = () => {
     const doEffect = async () => {
       const {
         grafanaHost,
+        grafanaOrgId,
+        grafanaClusterFilter,
         sessionName,
         prometheusHealth,
         dashboardUids,
@@ -168,6 +182,8 @@ const App = () => {
         ...existingContext,
         metricsContextLoaded: true,
         grafanaHost,
+        grafanaOrgId,
+        grafanaClusterFilter,
         dashboardUids,
         sessionName,
         prometheusHealth,
@@ -179,7 +195,7 @@ const App = () => {
 
   useEffect(() => {
     const updateTimezone = async () => {
-      // Sets the intial timezone to localStorage value if it exists
+      // Sets the initial timezone to localStorage value if it exists
       const storedTimeZone = localStorage.getItem("timezone");
       if (storedTimeZone) {
         setCurrentTimeZone(storedTimeZone);

@@ -28,6 +28,7 @@
 					"type": "string",
 					"enum": [
 						"3.9",
+						"3.10",
 						"3.11",
 						"3.12"
 					]
@@ -36,10 +37,10 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				},
 				"team": {
@@ -72,6 +73,9 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
+				"ray_version": {
+					"type": "string"
+				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -80,6 +84,9 @@
 					"minimum": -1
 				},
 				"cloud_id": {
+					"type": "string"
+				},
+				"project_id": {
 					"type": "string"
 				},
 				"cloud_name": {
@@ -99,10 +106,13 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"type":{
+				"type": {
 					"type": "string"
 				},
-				"post_build_script":{
+				"post_build_script": {
+					"type": "string"
+				},
+				"python_depset": {
 					"type": "string"
 				},
 				"pip": {
@@ -112,8 +122,7 @@
 					"type": "array"
 				}
 			},
-			"required": [
-			],
+			"required": [],
 			"title": "Byod"
 		},
 		"Run": {
@@ -198,10 +207,10 @@
 					"type": "string",
 					"enum": [
 						"manual",
-						"multi",
 						"nightly",
 						"nightly-3x",
-						"weekly"
+						"weekly",
+						"monthly"
 					]
 				}
 			},

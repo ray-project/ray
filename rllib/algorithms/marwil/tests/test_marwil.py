@@ -5,10 +5,12 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 
@@ -157,13 +159,21 @@ class TestMARWIL(unittest.TestCase):
         # Sample a batch from the offline data.
         batch = algo.offline_data.data.take_batch(2000)
 
+        # Get the module state.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+
         # Create the prelearner and compute advantages and values.
         offline_prelearner = OfflinePreLearner(
-            config=config, learner=algo.learner_group._learner
+            config=config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
+            spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
-        batch = offline_prelearner(batch)["batch"][0]
+        batch = unflatten_dict(offline_prelearner(batch))
         if Columns.LOSS_MASK in batch[DEFAULT_MODULE_ID]:
             loss_mask = (
                 batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK].detach().cpu().numpy()
@@ -215,18 +225,10 @@ class TestMARWIL(unittest.TestCase):
         learner_results = algo.learner_group._learner.metrics.peek(DEFAULT_MODULE_ID)
 
         # Check all components.
-        check(
-            learner_results[VF_LOSS_KEY].detach().cpu().numpy(),
-            expected_vf_loss,
-            decimals=4,
-        )
-        check(
-            learner_results[POLICY_LOSS_KEY].detach().cpu().numpy(),
-            expected_pol_loss,
-            decimals=4,
-        )
+        check(learner_results[VF_LOSS_KEY], expected_vf_loss, decimals=4)
+        check(learner_results[POLICY_LOSS_KEY], expected_pol_loss, decimals=4)
         # Check the total loss.
-        check(total_loss.detach().cpu().numpy(), expected_loss, decimals=3)
+        check(total_loss, expected_loss, decimals=3)
 
 
 if __name__ == "__main__":

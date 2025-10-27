@@ -26,7 +26,7 @@ logger = logging.getLogger()
 
 @DeveloperAPI
 class DoublyRobust(OffPolicyEstimator):
-    """The Doubly Robust estimator.
+    r"""The Doubly Robust estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 

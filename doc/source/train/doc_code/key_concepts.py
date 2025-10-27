@@ -6,7 +6,7 @@ import tempfile
 
 from ray import train
 from ray.train import Checkpoint
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
@@ -34,21 +34,8 @@ run_config = RunConfig(
     # The experiment results will be saved to: storage_path/name
     storage_path=os.path.expanduser("~/ray_results"),
     # storage_path="s3://my_bucket/tune_results",
-    # Stopping criteria
-    stop={"training_iteration": 10},
 )
 # __run_config_end__
-
-# __failure_config_start__
-from ray.train import RunConfig, FailureConfig
-
-
-# Tries to recover a run up to this many times.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=2))
-
-# No limit on the number of retries.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
-# __failure_config_end__
 
 # __checkpoint_config_start__
 from ray.train import RunConfig, CheckpointConfig
@@ -133,11 +120,12 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 # __result_path_end__
 
 
+# TODO(justinvyu): Result.from_path is not supported in Train V2 yet.
 # __result_restore_start__
-from ray.train import Result
+# from ray.train import Result
 
-restored_result = Result.from_path(result_path)
-print("Restored loss", result.metrics["loss"])
+# restored_result = Result.from_path(result_path)
+# print("Restored loss", result.metrics["loss"])
 # __result_restore_end__
 
 

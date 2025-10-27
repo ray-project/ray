@@ -61,24 +61,24 @@ def test_pip_no_working_dir(ray_start):
     driver = """
 import ray
 from ray import serve
-import requests
+import httpx
 
 ray.init(address="auto")
 
 
 @serve.deployment
-def requests_version(request):
-    return requests.__version__
+def httpx_version(request):
+    return httpx.__version__
 
 
-serve.run(requests_version.options(
+serve.run(httpx_version.options(
     ray_actor_options={
         "runtime_env": {
-            "pip": ["requests==2.25.1"]
+            "pip": ["httpx==0.25.1"]
         }
     }).bind())
 
-assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
+assert httpx.get("http://127.0.0.1:8000/httpx_version").text == "0.25.1"
 """
 
     output = run_string_as_driver(driver)

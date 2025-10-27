@@ -32,24 +32,24 @@ struct RemoteFunctionHolder {
   RemoteFunctionHolder(const std::string &module_name,
                        const std::string &function_name,
                        const std::string &class_name = "",
-                       LangType lang_type = LangType::CPP) {
-    this->module_name = module_name;
-    this->function_name = function_name;
-    this->class_name = class_name;
-    this->lang_type = lang_type;
-  }
+                       LangType lang_type = LangType::CPP)
+      : module_name_(module_name),
+        function_name_(function_name),
+        class_name_(class_name),
+        lang_type_(lang_type) {}
+
   RemoteFunctionHolder(std::string func_name) {
     if (func_name.empty()) {
       throw RayException(
           "Function not found. Please use RAY_REMOTE to register this function.");
     }
-    function_name = std::move(func_name);
+    function_name_ = std::move(func_name);
   }
 
-  std::string module_name;
-  std::string function_name;
-  std::string class_name;
-  LangType lang_type = LangType::CPP;
+  std::string module_name_;
+  std::string function_name_;
+  std::string class_name_;
+  LangType lang_type_ = LangType::CPP;
 };
 
 class RayRuntime {

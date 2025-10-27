@@ -1,20 +1,20 @@
 # coding: utf-8
 import os
 import sys
-import torch
 
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
+from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
 )
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import wait_for_condition
-from ray.dag import InputNode
 
 
 def error_logged(capsys, msg):
@@ -240,7 +240,10 @@ def test_p2p_direct_return(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -282,7 +285,10 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -349,7 +355,9 @@ def test_p2p_static_shape_and_direct_return(
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_tensor_transport(
-            transport="nccl", _static_shape=True, _direct_return=True
+            transport="nccl",
+            _static_shape=True,
+            _direct_return=True,
         )
         dag = receiver.recv.bind(dag)
 
@@ -389,9 +397,7 @@ def test_p2p_static_shape_and_direct_return(
             "[(shape=torch.Size([20]), dtype=torch.float16)]"
         )
     else:
-        msg = (
-            "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
-        )
+        msg = "Task annotated with _direct_return=True must return a CUDA torch.Tensor"
     wait_for_condition(lambda: error_logged(capsys, msg))
 
 

@@ -14,19 +14,13 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tests.conftest import *  # noqa  # noqa
 
 
 @pytest.fixture(name="temp_database")
 def temp_database_fixture() -> Generator[str, None, None]:
     with tempfile.NamedTemporaryFile(suffix=".db") as file:
         yield file.name
-
-
-def test_read_sql_with_parallelism_warns(temp_database):
-    with pytest.raises(ValueError):
-        ray.data.read_sql(
-            "SELECT * FROM movie", lambda: sqlite3.connect(temp_database), parallelism=2
-        )
 
 
 def test_read_sql(temp_database: str):
@@ -47,6 +41,73 @@ def test_read_sql(temp_database: str):
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
     assert sorted(actual_values) == sorted(expected_values)
+
+
+def test_read_sql_with_parallelism_fallback(temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE grade(name, id, score)")
+    base_tuple = ("xiaoming", 1, 8.2)
+    # Generate 200 elements
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
+    ]
+    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    num_blocks = 2
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        lambda: sqlite3.connect(temp_database),
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+    assert dataset.num_blocks() == num_blocks
+
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)
+
+
+# for mysql test
+@pytest.mark.skip(reason="skip this test because mysql env is not ready")
+def test_read_sql_with_parallelism_mysql(temp_database: str):
+    # connect mysql
+    import pymysql
+
+    connection = pymysql.connect(
+        host="10.10.xx.xx", user="root", password="22222", database="test"
+    )
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS grade (name VARCHAR(255), id INT, score FLOAT)"
+    )
+
+    base_tuple = ("xiaoming", 1, 8.2)
+    expected_values = [
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(200)
+    ]
+
+    cursor.executemany(
+        "INSERT INTO grade (name, id, score) VALUES (%s, %s, %s)", expected_values
+    )
+    connection.commit()
+
+    cursor.close()
+    connection.close()
+
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        lambda: pymysql.connect(host="xxxxx", user="xx", password="xx", database="xx"),
+        parallelism=4,
+        shard_keys=["id"],
+    )
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+
+    assert sorted(actual_values) == sorted(expected_values)
+    assert dataset.materialize().num_blocks() == 4
 
 
 def test_write_sql(temp_database: str):
@@ -315,6 +376,55 @@ def test_databricks_uc_datasource():
         )
 
         pd.testing.assert_frame_equal(result, expected_result_df)
+
+
+def test_databricks_uc_datasource_empty_result():
+    with mock.patch("requests.get") as mock_get, mock.patch(
+        "requests.post"
+    ) as mock_post:
+        #  Mock the POST request starting the query
+        def post_mock(url, *args, **kwargs):
+            class Resp:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"statement_id": "test_stmt", "status": {"state": "PENDING"}}
+
+            return Resp()
+
+        # Mock the GET request returning no chunks key to simulate empty result
+        def get_mock(url, *args, **kwargs):
+            class Resp:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {
+                        "status": {"state": "SUCCEEDED"},
+                        "manifest": {"truncated": False},
+                    }
+
+            return Resp()
+
+        mock_post.side_effect = post_mock
+        mock_get.side_effect = get_mock
+
+        with mock.patch.dict(
+            os.environ,
+            {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"},
+        ):
+
+            # Call with dummy query to hit mocked flow
+            ds = ray.data.read_databricks_tables(
+                warehouse_id="dummy_warehouse",
+                query="select * from dummy_table",
+                catalog="dummy_catalog",
+                schema="dummy_schema",
+                override_num_blocks=1,
+            )
+
+            assert ds.count() == 0
 
 
 if __name__ == "__main__":

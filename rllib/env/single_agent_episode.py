@@ -1,10 +1,12 @@
-import functools
 from collections import defaultdict
+import copy
+import functools
 import numpy as np
 import time
 import uuid
 
 import gymnasium as gym
+import tree
 from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
@@ -12,7 +14,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -169,7 +171,7 @@ class SingleAgentEpisode:
         "_last_step_time",
         "_observation_space",
         "_start_time",
-        "_temporary_timestep_data",
+        "_custom_data",
     )
 
     def __init__(
@@ -237,12 +239,12 @@ class SingleAgentEpisode:
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
-                etc..). If larger 0, will interpret the first `len_lookback_buffer`
-                items in each type of data as NOT part of this actual
+                etc..). If larger than 0, the first `len_lookback_buffer`
+                items of each type of data are interpreted as NOT part of this actual
                 episode chunk, but instead serve as "historical" record that may be
                 viewed and used to derive new data from. For example, it might be
                 necessary to have a lookback buffer of four if you would like to do
-                observation frame stacking and your episode has been cut and you are now
+                observation frame stacking and your episode has been cut and you're now
                 operating on a new chunk (continuing from the cut one). Then, for the
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
@@ -336,9 +338,9 @@ class SingleAgentEpisode:
         # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = len(self.rewards) + self.t_started
 
-        # Caches for temporary per-timestep data. May be used to store custom metrics
-        # from within a callback for the ongoing episode (e.g. render images).
-        self._temporary_timestep_data = defaultdict(list)
+        # Cache for custom data. May be used to store custom metrics from within a
+        # callback for the ongoing episode (e.g. render images).
+        self._custom_data = {}
 
         # Keep timer stats on deltas between steps.
         self._start_time = None
@@ -371,12 +373,6 @@ class SingleAgentEpisode:
         assert self.t == self.t_started == 0
 
         infos = infos or {}
-
-        if self.observation_space is not None:
-            assert self.observation_space.contains(observation), (
-                f"`observation` {observation} does NOT fit SingleAgentEpisode's "
-                f"observation_space: {self.observation_space}!"
-            )
 
         self.observations.append(observation)
         self.infos.append(infos)
@@ -495,6 +491,10 @@ class SingleAgentEpisode:
                 assert len(v) == len(self.observations) - 1
 
     @property
+    def custom_data(self):
+        return self._custom_data
+
+    @property
     def is_reset(self) -> bool:
         """Returns True if `self.add_env_reset()` has already been called."""
         return len(self.observations) > 0
@@ -591,7 +591,7 @@ class SingleAgentEpisode:
         return self
 
     def concat_episode(self, other: "SingleAgentEpisode") -> None:
-        """Adds the given `other` SingleAgentEpisode to the right side of self.
+        """Adds the given `other` SingleAgentEpisode to the right side of `self`.
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
@@ -603,7 +603,8 @@ class SingleAgentEpisode:
         Args:
             other: The other `SingleAgentEpisode` to be concatenated to this one.
 
-        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `SingleAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         assert other.id_ == self.id_
@@ -616,7 +617,17 @@ class SingleAgentEpisode:
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        tree.assert_same_structure(other.observations[0], self.observations[-1])
+        # Use tree.map_structure with np.array_equal to check every leaf node are equivalent
+        #   then np.all on flatten to validate all are tree
+        assert np.all(
+            tree.flatten(
+                tree.map_structure(
+                    np.array_equal, other.observations[0], self.observations[-1]
+                )
+            )
+        )
+
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
@@ -638,6 +649,11 @@ class SingleAgentEpisode:
         for key in other.extra_model_outputs.keys():
             assert key in self.extra_model_outputs
             self.extra_model_outputs[key].extend(other.get_extra_model_outputs(key))
+
+        # Merge with `other`'s custom_data, but give `other` priority b/c we assume
+        # that as a follow-up chunk of `self` other has a more complete version of
+        # `custom_data`.
+        self.custom_data.update(other.custom_data)
 
         # Validate.
         self.validate()
@@ -688,10 +704,7 @@ class SingleAgentEpisode:
             else slice(None, 0)
         )
 
-        # Erase all temporary timestep data caches in `self`.
-        self._temporary_timestep_data.clear()
-
-        return SingleAgentEpisode(
+        sa_episode = SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
             observations=self.get_observations(indices=indices_obs_and_infos),
@@ -709,6 +722,10 @@ class SingleAgentEpisode:
             # Use the length of the provided data as lookback buffer.
             len_lookback_buffer="auto",
         )
+        # Deepcopy all custom data in `self` to be continued in the cut episode.
+        sa_episode._custom_data = copy.deepcopy(self.custom_data)
+
+        return sa_episode
 
     # TODO (sven): Distinguish between:
     #  - global index: This is the absolute, global timestep whose values always
@@ -1385,48 +1402,6 @@ class SingleAgentEpisode:
             neg_index_as_lookback=neg_index_as_lookback,
         )
 
-    def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `to_numpy()` called) per-timestep data to self.
-
-        The given `data` is appended to a list (`self._temporary_timestep_data`), which
-        is cleared upon calling `self.to_numpy()`. To get the thus-far accumulated
-        temporary timestep data for a certain key, use the `get_temporary_timestep_data`
-        API.
-        Note that the size of the per timestep list is NOT checked or validated against
-        the other, non-temporary data in this episode (like observations).
-
-        Args:
-            key: The key under which to find the list to append `data` to. If `data` is
-                the first data to be added for this key, start a new list.
-            data: The data item (representing a single timestep) to be stored.
-        """
-        if self.is_numpy:
-            raise ValueError(
-                "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"numpy'ized {type(self).__name__}!"
-            )
-        self._temporary_timestep_data[key].append(data)
-
-    def get_temporary_timestep_data(self, key: str) -> List[Any]:
-        """Returns all temporarily stored data items (list) under the given key.
-
-        Note that all temporary timestep data is erased/cleared when calling
-        `self.to_numpy()`.
-
-        Returns:
-            The current list storing temporary timestep data under `key`.
-        """
-        if self.is_numpy:
-            raise ValueError(
-                "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"numpy'ized {type(self).__name__}! All temporary data has been erased "
-                f"upon `{type(self).__name__}.to_numpy()`."
-            )
-        try:
-            return self._temporary_timestep_data[key]
-        except KeyError:
-            raise KeyError(f"Key {key} not found in temporary timestep data!")
-
     def slice(
         self,
         slice_: slice,
@@ -1736,9 +1711,7 @@ class SingleAgentEpisode:
             else None,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "_temporary_timestep_data": dict(self._temporary_timestep_data)
-            if len(self._temporary_timestep_data) > 0
-            else None,
+            "custom_data": self.custom_data,
         }
 
     @staticmethod
@@ -1796,9 +1769,7 @@ class SingleAgentEpisode:
         )
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
-        episode._temporary_timestep_data = defaultdict(
-            list, state["_temporary_timestep_data"] or {}
-        )
+        episode._custom_data = state.get("custom_data", {})
         # Validate the episode.
         episode.validate()
 
@@ -1853,10 +1824,10 @@ class SingleAgentEpisode:
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
 
-    @Deprecated(new="SingleAgentEpisode.is_numpy()", error=True)
-    def is_finalized(self):
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key] = ...", error=True)
+    def add_temporary_timestep_data(self):
         pass
 
-    @Deprecated(new="SingleAgentEpisode.to_numpy()", error=True)
-    def finalize(self):
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key]", error=True)
+    def get_temporary_timestep_data(self):
         pass

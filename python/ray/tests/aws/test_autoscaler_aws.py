@@ -1,4 +1,5 @@
 import copy
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
@@ -769,6 +770,36 @@ def test_terminate_nodes(num_on_demand_nodes, num_spot_nodes, stop):
         assert nodes_to_include_in_call == nodes_included_in_call
 
 
+def test_retry_get_node():
+    """
+    This tests _get_node() retries `ec2.instances.filter` if the first call returns an empty list.
+    This is important because the EC2 API is eventually consistent, and it may take some time for the
+    instance to be available after it has been launched.
+    """
+
+    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_resource"):
+        provider = AWSNodeProvider(
+            provider_config={"region": "nowhere"},
+            cluster_name="default",
+        )
+
+    attempts = 0
+    fake_instance = {"id": "i-1234567890abcdef0"}
+
+    def mock_filter(*args, **kwargs):
+        nonlocal attempts
+        if kwargs.get("InstanceIds") == [fake_instance["id"]]:
+            attempts += 1
+            if attempts > 1:
+                return [fake_instance]
+        return []
+
+    provider.ec2.instances.filter.side_effect = mock_filter
+
+    assert provider._get_node(fake_instance["id"]) == fake_instance
+    assert attempts == 2
+
+
 def test_use_subnets_ordered_by_az(ec2_client_stub):
     """
     This test validates that when bootstrap_aws populates the SubnetIds field,
@@ -1155,6 +1186,4 @@ def test_cloudwatch_alarm_update_worker_node(
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

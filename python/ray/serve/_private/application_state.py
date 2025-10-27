@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -6,12 +7,13 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -22,7 +24,12 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import RAY_SERVE_ENABLE_TASK_EVENTS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -40,17 +47,16 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.api import ASGIAppReplicaWrapper
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
+    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.generated.serve_pb2 import (
+    DeploymentLanguage,
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     APIType,
     ApplicationStatus,
@@ -133,8 +139,9 @@ class StatusOverview:
         Args:
             name: Deployment's name.
 
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
+        Returns:
+            Optional[DeploymentStatusInfo]: The status of the deployment if it exists,
+                otherwise None.
         """
 
         for deployment_status in self.deployment_statuses:
@@ -203,6 +210,7 @@ class ApplicationTargetState:
     target_capacity_direction: the scale direction to use when
         running the Serve autoscaler.
     deleting: whether the application is being deleted.
+    serialized_application_autoscaling_policy_def: Optional[bytes]
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -212,6 +220,7 @@ class ApplicationTargetState:
     target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
     api_type: APIType
+    serialized_application_autoscaling_policy_def: Optional[bytes]
 
 
 class ApplicationState:
@@ -221,29 +230,27 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
-        save_checkpoint_func: Callable,
         logging_config: LoggingConfig,
     ):
         """
+        Initialize an ApplicationState instance.
+
         Args:
             name: Application name.
-            deployment_state_manager: State manager for all deployments
-                in the cluster.
-            endpoint_state: State manager for endpoints in the system.
-            save_checkpoint_func: Function that can be called to write
-                a checkpoint of the application state. This should be
-                called in self._set_target_state() before actually
-                setting the target state so that the controller can
-                properly recover application states if it crashes.
+            deployment_state_manager: Manages the state of all deployments in the cluster.
+            autoscaling_state_manager: Manages autoscaling decisions in the cluster.
+            endpoint_state: Manages endpoints in the system.
+            logging_config: Logging configuration schema.
         """
 
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
-        self._docs_path: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
@@ -260,8 +267,8 @@ class ApplicationState:
             target_capacity_direction=None,
             deleting=False,
             api_type=APIType.UNKNOWN,
+            serialized_application_autoscaling_policy_def=None,
         )
-        self._save_checkpoint_func = save_checkpoint_func
         self._logging_config = logging_config
 
     @property
@@ -270,7 +277,13 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        return self._docs_path
+        # get the docs path from the running deployments
+        # we are making an assumption that the docs path can only be set
+        # on ingress deployments with fastapi.
+        ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
+        return self._deployment_state_manager.get_deployment_docs_path(
+            ingress_deployment
+        )
 
     @property
     def status(self) -> ApplicationStatus:
@@ -322,6 +335,24 @@ class ApplicationState:
             deleting=checkpoint_data.deleting,
         )
 
+        # Restore route prefix and docs path from checkpointed deployments when
+        # the imperatively started application is restarting with controller.
+        if checkpoint_data.deployment_infos is not None:
+            self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
+
+        # Restore app-level autoscaling policy from checkpoint
+        if (
+            checkpoint_data.config
+            and checkpoint_data.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                AutoscalingPolicy(
+                    _serialized_policy_def=checkpoint_data.serialized_application_autoscaling_policy_def,
+                    **checkpoint_data.config.autoscaling_policy,
+                ),
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -332,6 +363,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
+        serialized_application_autoscaling_policy_def: Optional[bytes] = None,
     ):
         """Set application target state.
 
@@ -362,13 +394,9 @@ class ApplicationState:
             target_capacity_direction,
             deleting,
             api_type=api_type,
+            serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
-        # Checkpoint ahead, so that if the controller crashes before we
-        # write to the target state, the target state will be recovered
-        # after the controller recovers
-        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
-        # Set target state
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -377,7 +405,7 @@ class ApplicationState:
         Wipes the target deployment infos, code version, and config.
         """
         self._set_target_state(
-            deployment_infos=dict(),
+            deployment_infos={},
             api_type=self._target_state.api_type,
             code_version=None,
             target_config=None,
@@ -401,10 +429,18 @@ class ApplicationState:
             deleting=False,
         )
 
-    def _delete_deployment(self, name):
+    def _delete_deployment(self, name: str) -> bool:
+        """Delete a deployment in the application.
+
+        Args:
+            name: The name of the deployment to delete.
+
+        Returns:
+            Whether the target state has changed.
+        """
         id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
-        self._deployment_state_manager.delete_deployment(id)
+        return self._deployment_state_manager.delete_deployment(id)
 
     def delete(self):
         """Delete the application"""
@@ -423,12 +459,71 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self) -> bool:
+        """Determine if autoscaling is enabled for the application.
+
+        Returns:
+            Autoscaling is enabled for the application if any of the deployments have autoscaling enabled.
+        """
+
+        return self._autoscaling_state_manager.should_autoscale_application(self._name)
+
+    def autoscale(self) -> bool:
+        """
+        Apply the autoscaling decisions for the application.
+        If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
+
+        Returns:
+            True if there is a change to number of replicas for any deployment. False otherwise.
+        """
+        target_deployments = self.target_deployments
+        if len(target_deployments) == 0:
+            return False
+
+        deployment_to_target_num_replicas: Dict[DeploymentID, int] = {}
+        for deployment_name in target_deployments:
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+            target_num_replicas = (
+                self._deployment_state_manager.get_deployment_target_num_replicas(
+                    deployment_id
+                )
+            )
+            if target_num_replicas is None:
+                continue
+            deployment_to_target_num_replicas[deployment_id] = target_num_replicas
+
+        if len(deployment_to_target_num_replicas) == 0:
+            return False
+        decisions: Dict[
+            DeploymentID, int
+        ] = self._autoscaling_state_manager.get_decision_num_replicas(
+            self._name, deployment_to_target_num_replicas
+        )
+
+        target_state_changed = False
+        for deployment_id, decision_num_replicas in decisions.items():
+            target_state_changed = (
+                self._deployment_state_manager.autoscale(
+                    deployment_id, decision_num_replicas
+                )
+                or target_state_changed
+            )
+        return target_state_changed
+
     def apply_deployment_info(
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-    ) -> None:
-        """Deploys a deployment in the application."""
+    ) -> bool:
+        """Deploys a deployment in the application.
+
+        Args:
+            deployment_name: The name of the deployment to apply.
+            deployment_info: The deployment info to apply.
+
+        Returns:
+            Whether the target state has changed.
+        """
         route_prefix = deployment_info.route_prefix
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
@@ -437,7 +532,9 @@ class ApplicationState:
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+        target_state_changed = self._deployment_state_manager.deploy(
+            deployment_id, deployment_info
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -458,6 +555,8 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
+        return target_state_changed
+
     def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
         """(Re-)deploy the application from list of deployment infos.
 
@@ -469,7 +568,7 @@ class ApplicationState:
         """
 
         # Check routes are unique in deployment infos
-        self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
+        self._route_prefix = self._check_routes(deployment_infos)
 
         self._set_target_state(
             deployment_infos=deployment_infos,
@@ -507,7 +606,7 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._check_routes(overrided_infos)
+                self._route_prefix = self._check_routes(overrided_infos)
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -528,7 +627,7 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
-                        f"Unexpected error occured while applying config for "
+                        f"Unexpected error occurred while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
@@ -551,6 +650,28 @@ class ApplicationState:
             ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
+            if isinstance(config.autoscaling_policy, dict):
+                application_autoscaling_policy_function = config.autoscaling_policy.get(
+                    "policy_function"
+                )
+            else:
+                application_autoscaling_policy_function = None
+
+            deployment_to_autoscaling_policy_function = {
+                deployment.name: deployment.autoscaling_config.get("policy", {}).get(
+                    "policy_function", DEFAULT_AUTOSCALING_POLICY_NAME
+                )
+                for deployment in config.deployments
+                if isinstance(deployment.autoscaling_config, dict)
+            }
+            deployment_to_request_router_cls = {
+                deployment.name: deployment.request_router_config.get(
+                    "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
+                )
+                for deployment in config.deployments
+                if isinstance(deployment.request_router_config, dict)
+            }
+
             # Kick off new build app task
             logger.info(f"Importing and building app '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
@@ -562,6 +683,9 @@ class ApplicationState:
                 config.name,
                 config.args,
                 self._logging_config,
+                application_autoscaling_policy_function,
+                deployment_to_autoscaling_policy_function,
+                deployment_to_request_router_cls,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 obj_ref=build_app_obj_ref,
@@ -633,10 +757,15 @@ class ApplicationState:
         else:
             return ApplicationStatus.RUNNING, ""
 
-    def _reconcile_build_app_task(self) -> Tuple[Optional[Dict], BuildAppStatus, str]:
+    def _reconcile_build_app_task(
+        self,
+    ) -> Tuple[Optional[bytes], Optional[Dict], BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
 
         Returns:
+            Serialized application autoscaling policy def (bytes):
+                The serialized application autoscaling policy def returned from the build app task
+                if it was built successfully, otherwise None.
             Deploy arguments (Dict[str, DeploymentInfo]):
                 The deploy arguments returned from the build app task
                 and their code version.
@@ -649,19 +778,22 @@ class ApplicationState:
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
         if self._build_app_task_info is None or self._build_app_task_info.finished:
-            return None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            return None, BuildAppStatus.IN_PROGRESS, ""
+            return None, None, BuildAppStatus.IN_PROGRESS, ""
 
         # Retrieve build app task result
         self._build_app_task_info.finished = True
         try:
-            args, err = ray.get(self._build_app_task_info.obj_ref)
+            serialized_application_autoscaling_policy_def, args, err = ray.get(
+                self._build_app_task_info.obj_ref
+            )
             if err is None:
                 logger.info(f"Imported and built app '{self._name}' successfully.")
             else:
                 return (
+                    None,
                     None,
                     BuildAppStatus.FAILED,
                     f"Deploying app '{self._name}' failed with exception:\n{err}",
@@ -671,13 +803,13 @@ class ApplicationState:
                 f"Runtime env setup for app '{self._name}' failed:\n"
                 + traceback.format_exc()
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
-                f"Unexpected error occured while deploying application "
+                f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
 
         # Convert serialized deployment args (returned by build app task)
         # to deployment infos and apply option overrides from config
@@ -688,47 +820,59 @@ class ApplicationState:
                 )
                 for params in args
             }
+            deployment_to_serialized_autoscaling_policy_def = {
+                params["deployment_name"]: params["serialized_autoscaling_policy_def"]
+                for params in args
+                if params["serialized_autoscaling_policy_def"] is not None
+            }
+            deployment_to_serialized_request_router_cls = {
+                params["deployment_name"]: params["serialized_request_router_cls"]
+                for params in args
+                if params["serialized_request_router_cls"] is not None
+            }
             overrided_infos = override_deployment_info(
-                deployment_infos, self._build_app_task_info.config
+                deployment_infos,
+                self._build_app_task_info.config,
+                deployment_to_serialized_autoscaling_policy_def,
+                deployment_to_serialized_request_router_cls,
             )
-            self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
-            return overrided_infos, BuildAppStatus.SUCCEEDED, ""
+            self._route_prefix = self._check_routes(overrided_infos)
+            return (
+                serialized_application_autoscaling_policy_def,
+                overrided_infos,
+                BuildAppStatus.SUCCEEDED,
+                "",
+            )
         except (TypeError, ValueError, RayServeException):
-            return None, BuildAppStatus.FAILED, traceback.format_exc()
+            return None, None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
-                f"Unexpected error occured while applying config for application "
+                f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
-        """Check route prefixes and docs paths of deployments in app.
+        """Check route prefixes of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
         set it as the application route prefix. This function must be
         run every control loop iteration because the target config could
         be updated without kicking off a new task.
 
-        Returns: tuple of route prefix, docs path.
-        Raises: RayServeException if more than one route prefix or docs
-            path is found among deployments.
+        Returns: route prefix.
+        Raises: RayServeException if more than one route prefix is found among deployments.
         """
         num_route_prefixes = 0
-        num_docs_paths = 0
         route_prefix = None
-        docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
                 route_prefix = info.route_prefix
                 num_route_prefixes += 1
-            if info.docs_path is not None:
-                docs_path = info.docs_path
-                num_docs_paths += 1
 
         if num_route_prefixes > 1:
             raise RayServeException(
@@ -736,17 +880,8 @@ class ApplicationState:
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
             )
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{self._name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
-        return route_prefix, docs_path
+        return route_prefix
 
     def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
@@ -754,6 +889,7 @@ class ApplicationState:
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
         """
+        target_state_changed = False
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
@@ -777,51 +913,85 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(deployment_name, deploy_info)
+            target_state_changed = (
+                self.apply_deployment_info(deployment_name, deploy_info)
+                or target_state_changed
+            )
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
-                self._delete_deployment(deployment_name)
+                target_state_changed = (
+                    self._delete_deployment(deployment_name) or target_state_changed
+                )
 
-    def update(self) -> bool:
+        return target_state_changed
+
+    def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
         current state of the system.
 
         Returns:
-            A boolean indicating whether the application is ready to be
-            deleted.
+            Whether the target state has changed.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
-        if task_status == BuildAppStatus.SUCCEEDED:
-            self._set_target_state(
-                deployment_infos=infos,
-                code_version=self._build_app_task_info.code_version,
-                api_type=self._target_state.api_type,
-                target_config=self._build_app_task_info.config,
-                target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_direction=(
-                    self._build_app_task_info.target_capacity_direction
-                ),
-            )
-        elif task_status == BuildAppStatus.FAILED:
-            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        target_state_changed = False
+        # If the application is being deleted, ignore any build task results to
+        # avoid flipping the state back to DEPLOYING/RUNNING.
+        if not self._target_state.deleting:
+            (
+                serialized_application_autoscaling_policy_def,
+                infos,
+                task_status,
+                msg,
+            ) = self._reconcile_build_app_task()
+            if task_status == BuildAppStatus.SUCCEEDED:
+                target_state_changed = True
+                self._set_target_state(
+                    deployment_infos=infos,
+                    code_version=self._build_app_task_info.code_version,
+                    api_type=self._target_state.api_type,
+                    target_config=self._build_app_task_info.config,
+                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_capacity_direction=(
+                        self._build_app_task_info.target_capacity_direction
+                    ),
+                    serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
+                )
+                # Handling the case where the user turns off/turns on app-level autoscaling policy,
+                # between app deployment.
+                if (
+                    self._target_state.config is not None
+                    and self._target_state.config.autoscaling_policy is not None
+                ):
+                    self._autoscaling_state_manager.register_application(
+                        self._name,
+                        AutoscalingPolicy(
+                            _serialized_policy_def=serialized_application_autoscaling_policy_def,
+                            **self._target_state.config.autoscaling_policy,
+                        ),
+                    )
+                else:
+                    self._autoscaling_state_manager.deregister_application(self._name)
+            elif task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # Only reconcile deployments when the build app task is finished. If
         # it's not finished, we don't know what the target list of deployments
         # is, so we don't perform any reconciliation.
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
+            target_state_changed = (
+                self._reconcile_target_deployments() or target_state_changed
+            )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return self.is_deleted()
-        return False
+            return self.is_deleted(), target_state_changed
+        return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
@@ -881,15 +1051,20 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
-        self._application_states: Dict[str, ApplicationState] = dict()
+
+        self._shutting_down = False
+
+        self._application_states: Dict[str, ApplicationState] = {}
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -901,8 +1076,8 @@ class ApplicationStateManager:
                 app_state = ApplicationState(
                     app_name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
-                    self._save_checkpoint_func,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -913,6 +1088,54 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return
         self._application_states[name].delete()
+
+    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+        live_route_prefixes: Dict[str, str] = {
+            app_state.route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
+        }
+
+        for name, deployment_args in name_to_deployment_args.items():
+            for deploy_param in deployment_args:
+                # Make sure route_prefix is not being used by other application.
+                deploy_app_prefix = deploy_param.get("route_prefix")
+                if deploy_app_prefix is None:
+                    continue
+
+                existing_app_name = live_route_prefixes.get(deploy_app_prefix)
+                # It's ok to redeploy an app with the same prefix
+                # if it has the same name as the app already using that prefix.
+                if existing_app_name is not None and existing_app_name != name:
+                    raise RayServeException(
+                        f"Prefix {deploy_app_prefix} is being used by application "
+                        f'"{existing_app_name}". Failed to deploy application "{name}".'
+                    )
+
+                # We might be deploying more than one app,
+                # so we need to add this app's prefix to the
+                # set of live route prefixes that we're checking
+                # against during this batch operation.
+                live_route_prefixes[deploy_app_prefix] = name
+
+            if name not in self._application_states:
+                self._application_states[name] = ApplicationState(
+                    name,
+                    self._deployment_state_manager,
+                    self._autoscaling_state_manager,
+                    self._endpoint_state,
+                    self._logging_config,
+                )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+            deployment_infos = {
+                params["deployment_name"]: deploy_args_to_deployment_info(
+                    **params, app_name=name
+                )
+                for params in deployment_args
+            }
+            self._application_states[name].deploy_app(deployment_infos)
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
@@ -928,45 +1151,7 @@ class ApplicationStateManager:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
         """
-
-        # Make sure route_prefix is not being used by other application.
-        live_route_prefixes: Dict[str, str] = {
-            app_state.route_prefix: app_name
-            for app_name, app_state in self._application_states.items()
-            if app_state.route_prefix is not None
-            and not app_state.status == ApplicationStatus.DELETING
-            and name != app_name
-        }
-
-        for deploy_param in deployment_args:
-            deploy_app_prefix = deploy_param.get("route_prefix", None)
-            if deploy_app_prefix is None:
-                continue
-
-            app_name = live_route_prefixes.get(deploy_app_prefix)
-            if app_name is not None:
-                raise RayServeException(
-                    f"Prefix {deploy_app_prefix} is being used by application "
-                    f'"{app_name}". Failed to deploy application "{name}".'
-                )
-
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                self._endpoint_state,
-                self._save_checkpoint_func,
-                self._logging_config,
-            )
-        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-
-        deployment_infos = {
-            params["deployment_name"]: deploy_args_to_deployment_info(
-                **params, app_name=name
-            )
-            for params in deployment_args
-        }
-        self._application_states[name].deploy_app(deployment_infos)
+        self.deploy_apps({name: deployment_args})
 
     def apply_app_configs(
         self,
@@ -989,8 +1174,8 @@ class ApplicationStateManager:
                 self._application_states[app_config.name] = ApplicationState(
                     app_config.name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
-                    save_checkpoint_func=self._save_checkpoint_func,
                     logging_config=self._logging_config,
                 )
 
@@ -1056,12 +1241,30 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
-    def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
-        """Return a dictionary with {app name: application info}"""
-        return {
-            name: self._application_states[name].get_application_status_info()
-            for name in self._application_states
-        }
+    def list_app_statuses(
+        self, source: Optional[APIType] = None
+    ) -> Dict[str, ApplicationStatusInfo]:
+        """Return a dictionary with {app name: application info}
+
+        Args:
+            source: Optional API type filter. If provided, only returns apps
+                   deployed via the specified API type.
+
+        Returns:
+            Dict[str, ApplicationStatusInfo]: A dictionary mapping application names
+                to their corresponding status information.
+        """
+        if source is None:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+            }
+        else:
+            return {
+                name: self._application_states[name].get_application_status_info()
+                for name in self._application_states
+                if self.get_app_source(name) is source
+            }
 
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
@@ -1070,20 +1273,33 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def update(self):
-        """Update each application state"""
+        """Update each application state."""
         apps_to_be_deleted = []
+        any_target_state_changed = False
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+            if app.should_autoscale():
+                any_target_state_changed = app.autoscale() or any_target_state_changed
+            ready_to_be_deleted, app_target_state_changed = app.update()
+            any_target_state_changed = (
+                any_target_state_changed or app_target_state_changed
+            )
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
+        if any_target_state_changed:
+            self.save_checkpoint()
+            self._deployment_state_manager.save_checkpoint()
+
     def shutdown(self) -> None:
+        self._shutting_down = True
+
         for app_state in self._application_states.values():
             app_state.delete()
 
@@ -1095,22 +1311,21 @@ class ApplicationStateManager:
         Iterate through all application states and check if all their applications
         are deleted.
         """
-        return all(
+        return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]
-    ) -> None:
+    def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         application_state_info = {
             app_name: app_state.get_checkpoint_data()
             for app_name, app_state in self._application_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            application_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
@@ -1125,7 +1340,10 @@ def build_serve_application(
     name: str,
     args: Dict,
     logging_config: LoggingConfig,
-) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    application_autoscaling_policy_function: Optional[str],
+    deployment_to_autoscaling_policy_function: Dict[str, str],
+    deployment_to_request_router_cls: Dict[str, str],
+) -> Tuple[Optional[bytes], Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
 
     Args:
@@ -1136,7 +1354,13 @@ def build_serve_application(
             without removing existing applications.
         args: Arguments to be passed to the application builder.
         logging_config: the logging config for the build app task.
+        application_autoscaling_policy_function: the application autoscaling policy function name
+        deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
+        deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
+
     Returns:
+        Serialized application autoscaling policy def: a serialized autoscaling
+            policy def for the application if it was built successfully, otherwise None.
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
         Error message: a string if an error was raised, otherwise None.
@@ -1164,8 +1388,36 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
+        num_ingress_deployments = 0
+
+        def _get_serialized_def(attr_path: str) -> bytes:
+            module, attr = import_module_and_attr(attr_path)
+            cloudpickle.register_pickle_by_value(module)
+            serialized = cloudpickle.dumps(attr)
+            cloudpickle.unregister_pickle_by_value(module)
+            return serialized
+
+        application_serialized_autoscaling_policy_def = None
+        if application_autoscaling_policy_function is not None:
+            application_serialized_autoscaling_policy_def = _get_serialized_def(
+                application_autoscaling_policy_function
+            )
         for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
+            deployment_to_serialized_autoscaling_policy_def = None
+            deployment_to_serialized_request_router_cls = None
+            if deployment.name in deployment_to_autoscaling_policy_function:
+                deployment_to_serialized_autoscaling_policy_def = _get_serialized_def(
+                    deployment_to_autoscaling_policy_function[deployment.name]
+                )
+            if deployment.name in deployment_to_request_router_cls:
+                deployment_to_serialized_request_router_cls = _get_serialized_def(
+                    deployment_to_request_router_cls[deployment.name]
+                )
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
@@ -1174,10 +1426,21 @@ def build_serve_application(
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
-                    docs_path=deployment._docs_path,
+                    serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
+                    serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                 )
             )
-        return deploy_args_list, None
+        if num_ingress_deployments > 1:
+            return (
+                None,
+                None,
+                (
+                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
+                ),
+            )
+        return application_serialized_autoscaling_policy_def, deploy_args_list, None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
@@ -1185,17 +1448,19 @@ def build_serve_application(
             "Existing config deployment request terminated because of keyboard "
             "interrupt."
         )
-        return None, None
+        return None, None, None
     except Exception:
         logger.error(
             f"Exception importing application '{name}'.\n{traceback.format_exc()}"
         )
-        return None, traceback.format_exc()
+        return None, None, traceback.format_exc()
 
 
 def override_deployment_info(
     deployment_infos: Dict[str, DeploymentInfo],
     override_config: Optional[ServeApplicationSchema],
+    deployment_to_serialized_autoscaling_policy_def: Optional[Dict[str, bytes]] = None,
+    deployment_to_serialized_request_router_cls: Optional[Dict[str, bytes]] = None,
 ) -> Dict[str, DeploymentInfo]:
     """Override deployment infos with options from app config.
 
@@ -1204,6 +1469,8 @@ def override_deployment_info(
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
+        deployment_to_serialized_autoscaling_policy_def: serialized autoscaling policy def for each deployment
+        deployment_to_serialized_request_router_cls: serialized request router cls for each deployment
 
     Returns: the updated deployment infos.
 
@@ -1227,7 +1494,8 @@ def override_deployment_info(
         deployment_name = options["name"]
         if deployment_name not in deployment_infos:
             raise ValueError(
-                f"Got config override for nonexistent deployment '{deployment_name}'"
+                f"Deployment '{deployment_name}' does not exist. "
+                f"Available: {list(deployment_infos.keys())}"
             )
 
         info = deployment_infos[deployment_name]
@@ -1249,12 +1517,23 @@ def override_deployment_info(
             if autoscaling_config:
                 new_config.update(autoscaling_config)
 
+            if (
+                deployment_to_serialized_autoscaling_policy_def
+                and deployment_name in deployment_to_serialized_autoscaling_policy_def
+            ):
+                # By setting the serialized policy def, AutoscalingConfig constructor will not
+                # try to import the policy from the string import path
+                policy_obj = AutoscalingPolicy.from_serialized_policy_def(
+                    new_config["policy"],
+                    deployment_to_serialized_autoscaling_policy_def[deployment_name],
+                )
+                new_config["policy"] = policy_obj
             options["autoscaling_config"] = AutoscalingConfig(**new_config)
 
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
-        override_options = dict()
+        override_options = {}
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
@@ -1297,6 +1576,26 @@ def override_deployment_info(
             max_replicas_per_node=override_max_replicas_per_node,
         )
         override_options["replica_config"] = replica_config
+
+        if "request_router_config" in options:
+            request_router_config = options.get("request_router_config")
+            if request_router_config:
+                if (
+                    deployment_to_serialized_request_router_cls
+                    and deployment_name in deployment_to_serialized_request_router_cls
+                ):
+                    # By setting the serialized request router cls, RequestRouterConfig constructor will not
+                    # try to import the request router cls from the string import path
+                    options[
+                        "request_router_config"
+                    ] = RequestRouterConfig.from_serialized_request_router_cls(
+                        request_router_config,
+                        deployment_to_serialized_request_router_cls[deployment_name],
+                    )
+                else:
+                    options["request_router_config"] = RequestRouterConfig(
+                        **request_router_config
+                    )
 
         # Override deployment config options
         options.pop("name", None)

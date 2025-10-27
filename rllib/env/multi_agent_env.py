@@ -1,3 +1,4 @@
+import copy
 import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
@@ -7,7 +8,7 @@ import numpy as np
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -389,6 +390,12 @@ def make_multi_agent(
             #  with data fields.
             if config is None:
                 config = {}
+            else:
+                # Note the deepcopy is needed b/c (a) we need to remove the
+                # `num_agents` keyword and (b) with `num_envs > 0` in the
+                # `VectorMultiAgentEnv` all following environment creations
+                # need the same config again.
+                config = copy.deepcopy(config)
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
@@ -410,6 +417,8 @@ def make_multi_agent(
             obs, infos = {}, {}
             for i, env in enumerate(self.envs):
                 obs[i], infos[i] = env.reset(seed=seed, options=options)
+                if not self.observation_spaces[i].contains(obs[i]):
+                    print("===> MultiEnv does not contain obs.")
 
             return obs, infos
 
@@ -435,7 +444,7 @@ def make_multi_agent(
             #  an additional episode_done bool that covers cases where all agents are
             #  either terminated or truncated, but not all are truncated and not all are
             #  terminated. We can then get rid of the aweful `__all__` special keys!
-            terminated["__all__"] = len(self.terminateds) + len(self.truncateds) == len(
+            terminated["__all__"] = len(self.terminateds | self.truncateds) == len(
                 self.envs
             )
             truncated["__all__"] = len(self.truncateds) == len(self.envs)

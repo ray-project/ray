@@ -14,10 +14,10 @@
 
 #include "ray/common/scheduling/resource_set.h"
 
-#include <cmath>
+#include <set>
 #include <sstream>
-
-#include "ray/util/logging.h"
+#include <string>
+#include <unordered_map>
 
 namespace ray {
 
@@ -146,7 +146,7 @@ const std::string ResourceSet::DebugString() const {
       buffer << ", ";
     }
     first = false;
-    buffer << id.Binary() << ": " << quantity;
+    buffer << id.Binary() << ": " << quantity.Double();
   }
   buffer << "}";
   return buffer.str();

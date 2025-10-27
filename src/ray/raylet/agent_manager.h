@@ -17,7 +17,9 @@
 #include <atomic>
 #include <boost/asio/deadline_timer.hpp>
 #include <csignal>
+#include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -28,9 +30,11 @@
 namespace ray {
 namespace raylet {
 
-typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                   uint32_t delay_ms)>
-    DelayExecutorFn;
+using DelayExecutorFn = std::function<std::shared_ptr<boost::asio::deadline_timer>(
+    std::function<void()>, uint32_t)>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 // Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.
@@ -47,8 +51,7 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent. Note we append extra arguments:
-    // --agent-id $AGENT_ID # A random string of int
+    // Commands to start the agent.
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e., when the process
     // fails to start or exits, we SIGTERM the raylet.
@@ -59,10 +62,11 @@ class AgentManager {
       Options options,
       DelayExecutorFn delay_executor,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      bool start_agent = true /* for test */)
+      bool start_agent = true /* for test */,
+      AddProcessToCgroupHook add_to_cgroup = [](const std::string &) {})
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+        shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
@@ -71,13 +75,13 @@ class AgentManager {
       RAY_LOG(FATAL) << "AgentManager agent_commands must not be empty.";
     }
     if (start_agent) {
-      StartAgent();
+      StartAgent(std::move(add_to_cgroup));
     }
   }
   ~AgentManager();
 
  private:
-  void StartAgent();
+  void StartAgent(AddProcessToCgroupHook add_to_cgroup);
 
  private:
   const Options options_;

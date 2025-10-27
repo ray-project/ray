@@ -16,6 +16,7 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -62,7 +63,7 @@ class WorkerContext {
 
   TaskID GetMainThreadOrActorCreationTaskID() const;
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
+  PlacementGroupID GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -97,7 +98,7 @@ class WorkerContext {
 
   const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
@@ -117,6 +118,13 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Set a flag to indicate that the current actor should exit, it'll be checked
+  /// periodically and the actor will exit if the flag is set.
+  void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get the flag to indicate that the current actor should exit.
+  bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   uint64_t GetNextTaskIndex();
@@ -128,23 +136,23 @@ class WorkerContext {
 
   int64_t GetTaskDepth() const;
 
- protected:
-  // allow unit test to set.
-  bool current_actor_is_direct_call_ = false;
-  bool current_task_is_direct_call_ = false;
-
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
 
-  // a worker's job infomation might be lazily initialized.
+  // a worker's job information might be lazily initialized.
   JobID current_job_id_ ABSL_GUARDED_BY(mutex_);
   std::optional<rpc::JobConfig> job_config_ ABSL_GUARDED_BY(mutex_);
 
   int64_t task_depth_ ABSL_GUARDED_BY(mutex_) = 0;
+  // `true` if the worker has ever begun executing a normal (non-actor) task.
+  bool current_task_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
+  // `true` if the worker has ever begun executing an actor creation task.
+  bool current_actor_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
   ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
+  bool current_actor_should_exit_ ABSL_GUARDED_BY(mutex_) = false;
   bool is_detached_actor_ ABSL_GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_ ABSL_GUARDED_BY(mutex_);

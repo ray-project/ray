@@ -2,7 +2,7 @@ import numpy as np
 import time
 import ray
 import ray.autoscaler.sdk
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 import json
 import os

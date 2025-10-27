@@ -16,7 +16,7 @@ def test_timeout_stopper_timeout():
 
 
 def test_timeout_stopper_recover_before_timeout():
-    """ "If checkpointed before timeout, should continue where we left."""
+    """If checkpointed before timeout, should continue where we left."""
     with freeze_time() as frozen:
         stopper = TimeoutStopper(timeout=60)
         assert not stopper.stop_all()
@@ -38,7 +38,7 @@ def test_timeout_stopper_recover_before_timeout():
 
 
 def test_timeout_stopper_recover_after_timeout():
-    """ "If checkpointed after timeout, should still stop after recover."""
+    """If checkpointed after timeout, should still stop after recover."""
     with freeze_time() as frozen:
         stopper = TimeoutStopper(timeout=60)
         assert not stopper.stop_all()

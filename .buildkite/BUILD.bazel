@@ -1,0 +1,12 @@
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "copy_files",
+    srcs = ["copy_files.py"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ci_require("boto3"),
+        ci_require("aws_requests_auth"),
+    ],
+)

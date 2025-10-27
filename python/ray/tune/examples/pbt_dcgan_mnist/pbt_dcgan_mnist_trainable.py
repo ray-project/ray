@@ -16,7 +16,7 @@ import torch.utils.data
 from filelock import FileLock
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.examples.pbt_dcgan_mnist.common import (
     MODEL_PATH,
     Discriminator,
@@ -150,11 +150,11 @@ if __name__ == "__main__":
     tune_iter = 10 if args.smoke_test else 300
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_dcgan_mnist",
             stop={"training_iteration": tune_iter},
             verbose=1,
-            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=tune.CheckpointConfig(checkpoint_at_end=True),
         ),
         tune_config=tune.TuneConfig(
             metric="is_score",

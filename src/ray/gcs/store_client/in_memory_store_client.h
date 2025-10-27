@@ -14,16 +14,14 @@
 
 #pragma once
 
-#include <functional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
+#include "ray/util/concurrent_flat_map.h"
 
 namespace ray::gcs {
 
@@ -35,60 +33,54 @@ class InMemoryStoreClient : public StoreClient {
  public:
   explicit InMemoryStoreClient() = default;
 
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  std::string data,
-                  bool overwrite,
-                  Postable<void(bool)> callback) override;
+  void AsyncPut(const std::string &table_name,
+                const std::string &key,
+                std::string data,
+                bool overwrite,
+                Postable<void(bool)> callback) override;
 
-  Status AsyncGet(const std::string &table_name,
-                  const std::string &key,
-                  ToPostable<OptionalItemCallback<std::string>> callback) override;
+  void AsyncGet(const std::string &table_name,
+                const std::string &key,
+                ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(
+  void AsyncGetAll(
       const std::string &table_name,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncMultiGet(
+  void AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncDelete(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncDelete(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          Postable<void(int64_t)> callback) override;
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override;
 
-  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
+  void AsyncGetNextJobID(Postable<void(int)> callback) override;
 
-  Status AsyncGetKeys(const std::string &table_name,
-                      const std::string &prefix,
-                      Postable<void(std::vector<std::string>)> callback) override;
+  void AsyncGetKeys(const std::string &table_name,
+                    const std::string &prefix,
+                    Postable<void(std::vector<std::string>)> callback) override;
 
-  Status AsyncExists(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncExists(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
  private:
-  struct InMemoryTable {
-    /// Mutex to protect the records_ field and the index_keys_ field.
-    mutable absl::Mutex mutex_;
-    // Mapping from key to data.
-    // TODO(dayshah): benchmark reader/writer locks against boost::concurrent_flat_map
-    absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
-  };
-
   // The returned reference is valid as long as the InMemoryStoreClient is alive and
   // as long as no other thread erases the InMemoryTable from tables_.
-  InMemoryTable &GetOrCreateMutableTable(const std::string &table_name);
+  ConcurrentFlatMap<std::string, std::string> &GetOrCreateMutableTable(
+      const std::string &table_name);
 
   // 1) Will return nullptr if the table does not exist.
   // 2) The returned pointer is valid as long as the InMemoryStoreClient is alive and
   //    as long as no other thread erases the InMemoryTable from tables_.
-  const InMemoryTable *GetTable(const std::string &table_name);
+  const ConcurrentFlatMap<std::string, std::string> *GetTable(
+      const std::string &table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
@@ -96,7 +88,8 @@ class InMemoryStoreClient : public StoreClient {
   // mutex to be held without extra heap alloation, most operations done on this are just
   // find, for which performance is almost identical to flat_hash_map.
   // Note: Do not erase from this as it will invalidate pointer from GetTable.
-  absl::node_hash_map<std::string, InMemoryTable> tables_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<std::string, ConcurrentFlatMap<std::string, std::string>> tables_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Current job id, auto-increment when request next-id.
   std::atomic<int> job_id_ = 1;

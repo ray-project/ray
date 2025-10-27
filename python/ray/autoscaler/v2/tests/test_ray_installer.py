@@ -24,7 +24,7 @@ class RayInstallerTest(unittest.TestCase):
         self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)
         self.runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
 
-        assert self.ray_installer.install_ray(
+        self.ray_installer.install_ray(
             Instance(
                 instance_id="0", instance_type="worker_nodes1", cloud_instance_id="0"
             ),
@@ -33,24 +33,32 @@ class RayInstallerTest(unittest.TestCase):
 
     def test_install_failed(self):
         # creation failed because no such node.
-        assert not self.ray_installer.install_ray(
-            Instance(
-                instance_id="0", instance_type="worker_nodes1", cloud_instance_id="0"
-            ),
-            head_node_ip="1.2.3.4",
-        )
+        with self.assertRaisesRegex(KeyError, "0"):
+            assert not self.ray_installer.install_ray(
+                Instance(
+                    instance_id="0",
+                    instance_type="worker_nodes1",
+                    cloud_instance_id="0",
+                ),
+                head_node_ip="1.2.3.4",
+            )
 
         self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)
-        self.runner.fail_cmds = ["setup_cmd"]
+        self.runner.fail_cmds = [
+            "echo"  # this is the command used in the test_ray_complex.yaml
+        ]
         self.runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
 
         # creation failed because setup command failed.
-        assert self.ray_installer.install_ray(
-            Instance(
-                instance_id="0", instance_type="worker_nodes1", cloud_instance_id="0"
-            ),
-            head_node_ip="1.2.3.4",
-        )
+        with self.assertRaisesRegex(Exception, "unexpected status"):
+            self.ray_installer.install_ray(
+                Instance(
+                    instance_id="0",
+                    instance_type="worker_nodes1",
+                    cloud_instance_id="0",
+                ),
+                head_node_ip="1.2.3.4",
+            )
 
 
 if __name__ == "__main__":

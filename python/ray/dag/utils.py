@@ -1,12 +1,12 @@
 from typing import Dict
 
 from ray.dag import (
-    DAGNode,
-    InputNode,
-    InputAttributeNode,
-    FunctionNode,
-    ClassNode,
     ClassMethodNode,
+    ClassNode,
+    DAGNode,
+    FunctionNode,
+    InputAttributeNode,
+    InputNode,
     MultiOutputNode,
 )
 

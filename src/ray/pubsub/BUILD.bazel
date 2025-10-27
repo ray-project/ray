@@ -1,0 +1,108 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "publisher_interface",
+    hdrs = ["publisher_interface.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "publisher",
+    srcs = ["publisher.cc"],
+    hdrs = ["publisher.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/pubsub:publisher_interface",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "subscriber_interface",
+    hdrs = ["subscriber_interface.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "subscriber",
+    srcs = ["subscriber.cc"],
+    hdrs = ["subscriber.h"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_subscriber",
+    hdrs = ["fake_subscriber.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":subscriber_interface",
+        "//src/ray/protobuf:pubsub_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_publisher",
+    hdrs = ["fake_publisher.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":publisher_interface",
+        "//src/ray/common:asio",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_publisher",
+    srcs = ["gcs_publisher.cc"],
+    hdrs = ["gcs_publisher.h"],
+    deps = [
+        ":publisher_interface",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_subscriber",
+    srcs = ["gcs_subscriber.cc"],
+    hdrs = ["gcs_subscriber.h"],
+    deps = [
+        ":subscriber_interface",
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "python_gcs_subscriber",
+    srcs = ["python_gcs_subscriber.cc"],
+    hdrs = ["python_gcs_subscriber.h"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/gcs_rpc_client:rpc_client",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/util:visibility",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.tune import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.result import DEFAULT_METRIC
@@ -24,6 +24,7 @@ from ray.util import PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
+    from ray.train import Checkpoint as TrainCheckpoint
     from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
@@ -34,20 +35,31 @@ class _PBTTrialState:
 
     def __init__(self, trial: Trial):
         self.orig_tag = trial.experiment_tag
-        self.last_score = None
-        self.last_checkpoint = None
-        self.last_perturbation_time = 0
-        self.last_train_time = 0  # Used for synchronous mode.
-        self.last_result = None  # Used for synchronous mode.
+        self.last_score: Union[float, None] = None  # Set on _save_trial_state
+        self.last_checkpoint: Union[TrainCheckpoint, _FutureTrainingResult, None] = None
+        self.last_perturbation_time: int = 0
+        self.last_train_time: int = 0  # Used for synchronous mode
+        self.last_result: Optional[
+            dict[str, object]
+        ] = None  # Used for synchronous mode
 
     def __repr__(self) -> str:
-        return str(
-            (
-                self.last_score,
-                self.last_checkpoint,
-                self.last_train_time,
-                self.last_perturbation_time,
+        # Informative repr for easier debugging.
+        return (
+            self.__class__.__name__
+            + "("
+            + ", ".join(
+                f"{k}={v}"
+                for k, v in self.__dict__.items()
+                if k
+                in (
+                    "last_score",
+                    "last_checkpoint",
+                    "last_train_time",
+                    "last_perturbation_time",
+                )
             )
+            + ")"
         )
 
 
@@ -412,7 +424,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
         self._perturbation_factors = perturbation_factors
-        self._trial_state = {}
+        self._trial_state: dict[Trial, _PBTTrialState] = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
         self._require_attrs = require_attrs
@@ -954,7 +966,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 logger.debug("Trial {} is finished".format(trial))
             if state.last_score is not None and not trial.is_finished():
                 trials.append(trial)
-        trials.sort(key=lambda t: self._trial_state[t].last_score)
+        # last_score is by construction never None
+        trials.sort(key=lambda t: self._trial_state[t].last_score)  # type: ignore[arg-type,return-value]
 
         if len(trials) <= 1:
             return [], []
@@ -1036,7 +1049,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import train, tune
+        from ray import tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -1046,7 +1059,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         tuner = tune.Tuner(
             PytorchTrainable,
-            run_config=train.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 100}
             ),
             tune_config=tune.TuneConfig(

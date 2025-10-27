@@ -6,9 +6,9 @@ from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray.serve import metrics
-from ray.serve._private.common import MultiplexedReplicaInfo
+from ray.serve._private.common import ReplicaID, RequestRoutingInfo
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
+    MODEL_LOAD_LATENCY_BUCKETS_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
@@ -58,15 +58,17 @@ class _ModelMultiplexWrapper:
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
+        # log MODEL_LOAD_LATENCY_BUCKET_MS
+        logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
         self.model_load_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_load_latency_ms",
             description="The time it takes to load a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.model_unload_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_unload_latency_ms",
             description="The time it takes to unload a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.num_models_gauge = metrics.Gauge(
             "serve_num_multiplexed_models",
@@ -100,7 +102,7 @@ class _ModelMultiplexWrapper:
 
         self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
-        self._replica_id: str = context.replica_id
+        self._replica_id: ReplicaID = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
@@ -139,10 +141,10 @@ class _ModelMultiplexWrapper:
                 self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
-                _get_global_client().record_multiplexed_replica_info(
-                    MultiplexedReplicaInfo(
-                        self._replica_id,
-                        self._get_loading_and_loaded_model_ids(),
+                _get_global_client().record_request_routing_info(
+                    RequestRoutingInfo(
+                        replica_id=self._replica_id,
+                        multiplexed_model_ids=self._get_loading_and_loaded_model_ids(),
                     )
                 )
                 self._push_multiplexed_replica_info = False

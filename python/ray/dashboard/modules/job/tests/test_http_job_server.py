@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -12,18 +11,23 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
+import requests
 import yaml
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray._private.runtime_env.packaging import (
+    create_package,
+    download_and_unpack_package,
+    get_uri_for_file,
+)
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    ray_constants,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.job_head import JobHead
+from ray.dashboard.modules.job.common import uri_to_http_components
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
@@ -46,11 +50,16 @@ def headers():
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client(headers) -> JobSubmissionClient:
+def ray_start_context():
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        address = ctx.address_info["webui_url"]
-        assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address), headers=headers)
+        yield ctx
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers, ray_start_context) -> JobSubmissionClient:
+    address = ray_start_context.address_info["webui_url"]
+    assert wait_until_server_available(address)
+    yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 @pytest.fixture
@@ -259,8 +268,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -417,7 +425,7 @@ def test_http_bad_request(job_sdk_client):
     )
 
     assert r.status_code == 400
-    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
+    assert "__init__() got an unexpected keyword argument" in r.text
 
 
 def test_invalid_runtime_env(job_sdk_client):
@@ -730,153 +738,39 @@ ray.init(address="auto")
 
 
 @pytest.mark.asyncio
-async def test_job_head_pick_random_job_agent(monkeypatch):
-    with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
-        import importlib
+async def test_get_upload_package(ray_start_context, tmp_path):
+    assert wait_until_server_available(ray_start_context["webui_url"])
+    webui_url = format_web_url(ray_start_context["webui_url"])
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    url = webui_url + "/api/packages/{protocol}/{package_name}"
 
-        importlib.reload(ray.dashboard.consts)
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    filename = "task.py"
 
-        from ray.dashboard.datacenter import DataSource
+    file_content = b"Hello world"
+    with (pkg_dir / filename).open("wb") as f:
+        f.write(file_content)
 
-        class MockJobHead(JobHead):
-            def __init__(self):
-                self._agents = dict()
+    package_uri = get_uri_for_file(str(pkg_dir / filename))
+    protocol, package_name = uri_to_http_components(package_uri)
+    package_file = tmp_path / package_name
+    create_package(str(pkg_dir), package_file)
 
-        DataSource.agents = {}
-        DataSource.nodes = {}
-        job_head = MockJobHead()
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 404
 
-        def add_agent(agent):
-            node_id = agent[0]
-            node_ip = agent[1]["ipAddress"]
-            http_port = agent[1]["httpPort"]
-            grpc_port = agent[1]["grpcPort"]
-            DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
-            DataSource.agents[node_id] = (node_ip, http_port, grpc_port)
+    resp = requests.put(
+        url.format(protocol=protocol, package_name=package_name),
+        data=package_file.read_bytes(),
+    )
+    assert resp.status_code == 200
 
-        def del_agent(agent):
-            node_id = agent[0]
-            DataSource.nodes.pop(node_id)
-            DataSource.agents.pop(node_id)
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 200
 
-        head_node_id = "node1"
-
-        agent_1 = (
-            head_node_id,
-            dict(
-                ipAddress="1.1.1.1",
-                httpPort=1,
-                grpcPort=1,
-                httpAddress="1.1.1.1:1",
-            ),
-        )
-        agent_2 = (
-            "node2",
-            dict(
-                ipAddress="2.2.2.2",
-                httpPort=2,
-                grpcPort=2,
-                httpAddress="2.2.2.2:2",
-            ),
-        )
-        agent_3 = (
-            "node3",
-            dict(
-                ipAddress="3.3.3.3",
-                httpPort=3,
-                grpcPort=3,
-                httpAddress="3.3.3.3:3",
-            ),
-        )
-
-        # Disable Head-node routing for the Ray job critical ops (enabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
-        )
-
-        # Check only 1 agent present, only agent being returned
-        add_agent(agent_1)
-        job_agent_client = await job_head.get_target_agent()
-        assert job_agent_client._agent_address == "http://1.1.1.1:1"
-
-        # Remove only agent, no agents present, should time out
-        del_agent(agent_1)
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
-
-        # Enable Head-node routing for the Ray job critical ops (disabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True
-        )
-
-        # Add 3 agents
-        add_agent(agent_1)
-        add_agent(agent_2)
-        add_agent(agent_3)
-
-        # Mock GCS client
-        class _MockedGCSClient:
-            async def internal_kv_get(self, key: bytes, **kwargs):
-                if key == ray_constants.KV_HEAD_NODE_ID_KEY:
-                    return head_node_id.encode()
-
-                return None
-
-        job_head._gcs_aio_client = _MockedGCSClient()
-
-        # Make sure returned agent is a head-node
-        # NOTE: We run 3 tims to make sure we're not hitting branch probabilistically
-        for _ in range(3):
-            job_agent_client = await job_head.get_target_agent()
-            assert job_agent_client._agent_address == "http://1.1.1.1:1"
-
-        # Disable Head-node routing for the Ray job critical ops (enabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
-        )
-
-        # Theoretically, the probability of failure is 1/3^100
-        addresses_1 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_1.add(job_agent_client._agent_address)
-        assert len(addresses_1) == 2
-        addresses_2 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_2.add(job_agent_client._agent_address)
-        assert len(addresses_2) == 2 and addresses_1 == addresses_2
-
-        for agent in [agent_1, agent_2, agent_3]:
-            if f"http://{agent[1]['httpAddress']}" in addresses_2:
-                break
-        del_agent(agent)
-
-        # Theoretically, the probability of failure is 1/2^100
-        addresses_3 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_3.add(job_agent_client._agent_address)
-        assert len(addresses_3) == 2
-        assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
-        addresses_4 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_4.add(job_agent_client._agent_address)
-        assert addresses_4 == addresses_3
-
-        for agent in [agent_1, agent_2, agent_3]:
-            if f"http://{agent[1]['httpAddress']}" in addresses_4:
-                break
-        del_agent(agent)
-        address = None
-        for _ in range(3):
-            job_agent_client = await job_head.get_target_agent()
-            assert address is None or address == job_agent_client._agent_address
-            address = job_agent_client._agent_address
+    await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
+    assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
 
 if __name__ == "__main__":

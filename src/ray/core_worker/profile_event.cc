@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/profile_event.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/time/clock.h"
 
 namespace ray {
@@ -44,7 +48,8 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       worker_context.GetWorkerID().Binary(),
       node_ip_address,
       event_name,
-      absl::GetCurrentTimeNanos());
+      absl::GetCurrentTimeNanos(),
+      task_event_buffer_.GetSessionName());
 }
 
 ProfileEvent::~ProfileEvent() {

@@ -14,11 +14,12 @@
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
-#include <boost/algorithm/string.hpp>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -76,16 +77,19 @@ bool ClusterResourceManager::UpdateNode(
     return false;
   }
 
-  auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
-  auto resources_available =
+  const auto resources_total =
+      MapFromProtobuf(resource_view_sync_message.resources_total());
+  const auto resources_available =
       MapFromProtobuf(resource_view_sync_message.resources_available());
+  auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
   NodeResources node_resources =
       ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = node_resources.total;
-  local_view.available = node_resources.available;
+  local_view.total = std::move(node_resources.total);
+  local_view.available = std::move(node_resources.available);
+  local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
@@ -266,11 +270,18 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
   return false;
 }
 
-std::string ClusterResourceManager::DebugString() const {
+std::string ClusterResourceManager::DebugString(
+    std::optional<size_t> max_num_nodes_to_include) const {
   std::stringstream buffer;
+  size_t num_nodes_included = 0;
   for (auto &node : GetResourceView()) {
+    if (max_num_nodes_to_include.has_value() &&
+        num_nodes_included >= max_num_nodes_to_include.value()) {
+      break;
+    }
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
+    ++num_nodes_included;
   }
   buffer << " " << bundle_location_index_.DebugString();
   return buffer.str();
@@ -282,13 +293,13 @@ BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
 
 void ClusterResourceManager::SetNodeLabels(
     const scheduling::NodeID &node_id,
-    const absl::flat_hash_map<std::string, std::string> &labels) {
+    absl::flat_hash_map<std::string, std::string> labels) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
   }
-  it->second.GetMutableLocalView()->labels = labels;
+  it->second.GetMutableLocalView()->labels = std::move(labels);
 }
 
 }  // namespace ray

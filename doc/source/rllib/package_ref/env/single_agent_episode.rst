@@ -47,7 +47,6 @@ Getting environment data
     ~SingleAgentEpisode.get_actions
     ~SingleAgentEpisode.get_rewards
     ~SingleAgentEpisode.get_extra_model_outputs
-    ~SingleAgentEpisode.get_temporary_timestep_data
 
 Adding data
 ~~~~~~~~~~~
@@ -57,7 +56,6 @@ Adding data
 
     ~SingleAgentEpisode.add_env_reset
     ~SingleAgentEpisode.add_env_step
-    ~SingleAgentEpisode.add_temporary_timestep_data
 
 Creating and handling episode chunks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

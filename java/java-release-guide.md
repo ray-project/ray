@@ -1,16 +1,16 @@
 # Ray Java Release Guideline
 
-This document help Ray Java developers release Ray Java.  
+This document help Ray Java developers release Ray Java.
 Note that we assume you release it on your local laptop.
 
 ## 1. Installing GPG
-**If you have installed GPG, you can skip this step.**  
+**If you have installed GPG, you can skip this step.**
 
-Install gpg software on your laptop. https://gpgtools.org/  
-Create your own key pair of GPG.  
+Install gpg software on your laptop. https://gpgtools.org/
+Create your own key pair of GPG.
 Distribute it to a key server so that users can validate it.(Follow the guide of GPG software)
-  
-Post a PR to bump the version to the release branch and merge it.  
+
+Post a PR to bump the version to the release branch and merge it.
 Change all of the version numbers of `pom.xml` files and `pom_template.xml` files. (These files are under `java/`directory)
 
 
@@ -44,6 +44,6 @@ sh java/build-jar-multiplatform.sh deploy_jars
 
 ## 3. Closing and Releasing it
 
-Login to the [SONATYPE](https://oss.sonatype.org/) website and there are 2 buttons you should click:  
-- First click the `Close` button. It’ll validate your releasing jars.  
+Login to the [SONATYPE](https://oss.sonatype.org/) website and there are 2 buttons you should click:
+- First click the `Close` button. It’ll validate your releasing jars.
 - Then click the `Release` button.

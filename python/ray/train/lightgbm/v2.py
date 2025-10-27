@@ -17,13 +17,13 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -50,7 +50,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,
@@ -71,11 +71,6 @@ class LightGBMTrainer(DataParallelTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.

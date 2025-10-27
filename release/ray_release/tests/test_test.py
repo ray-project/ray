@@ -6,6 +6,7 @@ import platform
 from unittest import mock
 from typing import List
 
+
 import aioboto3
 import boto3
 import pytest
@@ -30,6 +31,7 @@ from ray_release.test import (
     WINDOWS_TEST_PREFIX,
     MACOS_BISECT_DAILY_RATE_LIMIT,
 )
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
 
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
@@ -71,6 +73,7 @@ def _stub_test_result(
         timestamp=0,
         pull_request="1",
         rayci_step_id=rayci_step_id,
+        duration_ms=5.0,
     )
 
 
@@ -89,8 +92,9 @@ def test_get_python_version():
 
 
 def test_get_ray_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
+
+    # These images are NOT saved on Docker Hub, but on private ECR.
     assert (
         _stub_test(
             {
@@ -98,7 +102,7 @@ def test_get_ray_image():
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:123456-py39-cpu"
+        == "rayproject/ray:a1b2c3d4-py39-cpu"
     )
     assert (
         _stub_test(
@@ -111,23 +115,47 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:123456-py39-gpu"
+        == "rayproject/ray-ml:a1b2c3d4-py39-gpu"
     )
-    os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
-        _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py39-cpu"
+        _stub_test(
+            {
+                "python": "3.11",
+                "cluster": {
+                    "byod": {
+                        "type": "llm-cu124",
+                    }
+                },
+            }
+        ).get_ray_image()
+        == "rayproject/ray-llm:a1b2c3d4-py311-cu124"
     )
-    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:pr-123.123456-py39-cpu"
-        )
+
+    # When RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
     with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
         assert (
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
             == "rayproject/ray:my_tag"
         )
+
+    with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
+        # Even on release branches, we also use the RAYCI_BUILD_ID.
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:a1b2c3d4-py39-cpu"
+        )
+        with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
+            assert (
+                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+                == "rayproject/ray:a1b2c3d4-py39-cpu"
+            )
+
+        # Unless RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.
+        with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
+            assert (
+                _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+                == "rayproject/ray:my_tag"
+            )
 
 
 def test_get_byod_runtime_env():
@@ -147,11 +175,10 @@ def test_get_byod_runtime_env():
 
 
 def test_get_anyscale_byod_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37-cpu"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:a1b2c3d4-py37-cpu"
     )
     assert _stub_test(
         {
@@ -163,7 +190,8 @@ def test_get_anyscale_byod_image():
             },
         }
     ).get_anyscale_byod_image() == (
-        f"{get_global_config()['byod_ecr']}/" f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        f"{get_global_config()['byod_ecr']}/"
+        f"{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu"
     )
     assert _stub_test(
         {
@@ -177,8 +205,44 @@ def test_get_anyscale_byod_image():
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
-        f"/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
-        "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
+        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+    )
+
+
+def test_get_anyscale_byod_image_ray_version():
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
+    assert (
+        _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:a1b2c3d4-py37-cpu"
+    )
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "type": "gpu",
+                },
+            },
+        }
+    ).get_anyscale_byod_image() == (f"{ANYSCALE_RAY_IMAGE_PREFIX}:2.50.0-py38-cu121")
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "type": "gpu",
+                    "post_build_script": "foo.sh",
+                },
+            },
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}"
+        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+        "-2.50.0"
     )
 
 
@@ -214,19 +278,21 @@ def test_is_stable() -> None:
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
-            "testResult": {"status": "PASSED"},
+            "testResult": {"status": "PASSED", "testAttemptDurationMillis": "5"},
         }
     )
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
     assert result.rayci_step_id == "g4_s5"
+    assert result.duration_ms == 5
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
         }
     )
     assert result.is_failing()
+    assert result.duration_ms is None
 
 
 def test_from_bazel_event() -> None:
@@ -479,6 +545,51 @@ def test_gen_microcheck_tests() -> None:
                 )
                 == test["output"]
             )
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag(mock_get_byod_base_image_tag):
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "post_build_script": "test_post_build_script.sh",
+                    "python_depset": "test_python_depset.lock",
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_post_build_script.sh",
+        "python_depset": "test_python_depset.lock",
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_ray_version(mock_get_byod_base_image_tag):
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "post_build_script": "test_post_build_script.sh",
+                    "python_depset": "test_python_depset.lock",
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_post_build_script.sh",
+        "python_depset": "test_python_depset.lock",
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}-2.50.0"
 
 
 if __name__ == "__main__":

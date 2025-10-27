@@ -27,7 +27,7 @@ def test_normalizer():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # l1 norm
     normalizer = Normalizer(["B", "C"], norm="l1")
@@ -42,7 +42,7 @@ def test_normalizer():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # max norm
     normalizer = Normalizer(["B", "C"], norm="max")
@@ -57,7 +57,30 @@ def test_normalizer():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+    # append mode
+    with pytest.raises(ValueError):
+        Normalizer(columns=["B", "C"], output_columns=["B_encoded"])
+
+    normalizer = Normalizer(["B", "C"], output_columns=["B_normalized", "C_normalized"])
+    transformed = normalizer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    processed_col_a = col_a
+    processed_col_b = [1 / np.sqrt(5), 0.6, 0.6]
+    processed_col_c = [2 / np.sqrt(5), 0.8, -0.8]
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "A": col_a,
+            "B": col_b,
+            "C": col_c,
+            "B_normalized": processed_col_b,
+            "C_normalized": processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
 
 if __name__ == "__main__":

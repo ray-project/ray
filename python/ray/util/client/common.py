@@ -14,6 +14,7 @@ import grpc
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._common.signature import extract_signature, get_signature
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -21,16 +22,12 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
-from ray._private.signature import extract_signature, get_signature
 from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for int32 id's -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -745,6 +742,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     still be used to replace the one in cache.
     """
     diff = abs(id2 - id1)
+    # Int32 max is also the maximum number of simultaneous in-flight requests.
     if diff > (INT32_MAX // 2):
         # Rollover likely occurred. In this case the smaller ID is newer
         return id1 < id2

@@ -7,17 +7,24 @@ from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
-import requests
 
-import ray
 import ray.experimental.internal_kv as kv
-from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
+from ray._common.test_utils import wait_for_condition
+from ray._private import worker
+from ray._private.ray_constants import (
+    KV_NAMESPACE_DASHBOARD,
+    PROCESS_TYPE_DASHBOARD,
+)
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
-from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray._raylet import GcsClient
+from ray.dashboard.consts import (
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+)
 from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
     ClusterInfo,
@@ -26,6 +33,7 @@ from ray.dashboard.modules.dashboard_sdk import (
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
 
@@ -76,10 +84,13 @@ def test_parse_cluster_info(
 
     address, module_string, inner_address = address_param
 
-    with patch.multiple(
-        "ray.dashboard.modules.dashboard_sdk",
-        get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
-    ), patch.multiple("importlib", import_module=mock_import_module):
+    with (
+        patch.multiple(
+            "ray.dashboard.modules.dashboard_sdk",
+            get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
+        ),
+        patch.multiple("importlib", import_module=mock_import_module),
+    ):
         if module_string == "ray":
             with pytest.raises(ValueError, match="ray://"):
                 parse_cluster_info(
@@ -158,144 +169,13 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
                 print("Internal KV was GC'ed at time ", time.time() - start)
 
 
-@pytest.fixture
-def mock_candidate_number():
-    os.environ["CANDIDATE_AGENT_NUMBER"] = "2"
-    yield
-    os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
-
-
-def get_register_agents_number(webui_url):
-    response = requests.get(webui_url + "/internal/node_module")
-    response.raise_for_status()
-    result = response.json()
-    data = result["data"]
-    return data["registeredAgents"]
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "include_dashboard": True,
-            "env_vars": {
-                "CANDIDATE_AGENT_NUMBER": "2",
-                RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
-                "RAY_health_check_initial_delay_ms": "0",
-                "RAY_health_check_period_ms": "1000",
-                "RAY_JOB_AGENT_USE_HEAD_NODE_ONLY": "0",
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
-    cluster = ray_start_cluster_head_with_env_vars
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    client = JobSubmissionClient(webui_url)
-
-    def submit_job_and_wait_finish():
-        submission_id = client.submit_job(entrypoint="echo hello")
-
-        wait_for_condition(
-            _check_job_succeeded, client=client, job_id=submission_id, timeout=30
-        )
-
-    head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
-    worker_1_http_port = 52366
-    cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
-    assert len(cluster.worker_nodes) == 1
-    node_try_to_kill = list(cluster.worker_nodes)[0]
-
-    def make_sure_worker_node_run_job(port):
-        actors = ray.state.actors()
-
-        def _kill_all_driver():
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
-
-        try:
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    parent_proc = proc.parent()
-                    if f"--listen-port={port}" in " ".join(parent_proc.cmdline()):
-                        _kill_all_driver()
-                        return True
-        except Exception as ex:
-            print("Got exception:", ex)
-            raise
-        client.submit_job(entrypoint="sleep 3600")
-        return False
-
-    # Make `list(cluster.worker_nodes)[0]` and head node called at least once
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_1_http_port), timeout=60
+def get_register_agents_number(gcs_client):
+    keys = gcs_client.internal_kv_keys(
+        prefix=DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+        namespace=KV_NAMESPACE_DASHBOARD,
+        timeout=GCS_RPC_TIMEOUT_SECONDS,
     )
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(head_http_port), timeout=60
-    )
-
-    worker_2_http_port = 52367
-    cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
-
-    # The third `JobAgent` will not be called here.
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    def get_all_new_supervisor_actor_info(old_supervisor_actor_ids):
-        all_actors = ray.state.state.actor_table(None)
-        res = dict()
-        for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor_ids:
-                continue
-            if not actor_info["Name"].startswith("_ray_internal_job_actor"):
-                continue
-            res[actor_id] = actor_info
-        return res
-
-    old_supervisor_actor_ids = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-
-    assert len(new_owner_port) == 2
-    old_owner_port = new_owner_port
-
-    node_try_to_kill.kill_raylet()
-
-    # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
-
-    # Make sure the third JobAgent will be called here.
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_2_http_port), timeout=60
-    )
-
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-    assert len(new_owner_port) == 2
-    assert len(old_owner_port - new_owner_port) == 1
-    assert len(new_owner_port - old_owner_port) == 1
+    return len(keys)
 
 
 @pytest.mark.parametrize(
@@ -324,6 +204,7 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
+    gcs_client = GcsClient(address=cluster.gcs_address)
 
     def _check_nodes(num_nodes):
         try:
@@ -334,7 +215,7 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
             return False
 
     wait_for_condition(lambda: _check_nodes(num_nodes=3), timeout=15)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
 
     # Submit 20 simple jobs.
     for i in range(20):
@@ -366,6 +247,92 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     assert (num_ids > 1) if allow_driver_on_worker_nodes else (num_ids == 1), [
         id[:5] for id in driver_node_ids
     ]
+
+
+@pytest.fixture
+def runtime_env_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        working_dir = path / "working_dir"
+        working_dir.mkdir(parents=True)
+        yield working_dir
+
+
+@pytest.fixture
+def py_module_whl():
+    with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
+        yield tmp_file.name
+
+
+def test_job_submission_with_runtime_env_as_dict(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        runtime_env = {"working_dir": working_dir_str, "py_modules": [py_module_whl]}
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        job_details = client.get_job_info(job_id)
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_job_submission_with_runtime_env_as_object(
+    runtime_env_working_dir, py_module_whl
+):
+    working_dir_str = str(runtime_env_working_dir)
+    with _ray_start(num_cpus=1):
+        client = JobSubmissionClient()
+        runtime_env = RuntimeEnv(
+            working_dir=working_dir_str, py_modules=[py_module_whl]
+        )
+        job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        job_details = client.get_job_info(job_id)
+        parsed_runtime_env = job_details.runtime_env
+        assert "gcs://" in parsed_runtime_env["working_dir"]
+        assert len(parsed_runtime_env["py_modules"]) == 1
+        assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
+    """
+    Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
+
+    This test uses its own Ray cluster and kills the dashboard while tailing logs
+    to simulate an abnormal WebSocket closure.
+    """
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(format_web_url(dashboard_url))
+
+    # Submit a long-running job
+    driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.5)
+"""
+    entrypoint = f"python -c '{driver_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint)
+
+    # Start tailing logs and stop Ray while tailing
+    # Expect RuntimeError when WebSocket closes abnormally
+    with pytest.raises(
+        RuntimeError,
+        match="WebSocket connection closed unexpectedly with close code",
+    ):
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            i += 1
+
+            # Kill the dashboard after receiving a few log lines
+            if i == 3:
+                print("\nKilling the dashboard to close websocket abnormally...")
+                dash_info = worker._global_node.all_processes[PROCESS_TYPE_DASHBOARD][0]
+                psutil.Process(dash_info.process.pid).kill()
 
 
 if __name__ == "__main__":

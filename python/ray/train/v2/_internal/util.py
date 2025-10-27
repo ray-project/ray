@@ -1,6 +1,8 @@
 import contextlib
 import functools
+import logging
 import time
+import traceback
 from datetime import datetime
 from typing import (
     Any,
@@ -8,6 +10,7 @@ from typing import (
     ContextManager,
     Dict,
     Generator,
+    Generic,
     List,
     Optional,
     TypeVar,
@@ -16,7 +19,11 @@ from typing import (
 
 import ray
 from ray.train._internal.utils import count_required_parameters
+from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
+
 
 T = TypeVar("T")
 
@@ -42,7 +49,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     train_func_context: ContextManager,
-    fn_arg_name: Optional[str] = "train_func",
+    fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -86,6 +93,16 @@ def construct_train_func(
     return train_fn
 
 
+class ObjectRefWrapper(Generic[T]):
+    """Thin wrapper around ray.put to manually control dereferencing."""
+
+    def __init__(self, obj: T):
+        self._ref = ray.put(obj)
+
+    def get(self) -> T:
+        return ray.get(self._ref)
+
+
 def date_str(include_ms: bool = False):
     pattern = "%Y-%m-%d_%H-%M-%S"
     if include_ms:
@@ -106,7 +123,7 @@ def _copy_doc(copy_func):
 
 
 def ray_get_safe(
-    object_refs: Union[ObjectRef, List[ObjectRef]]
+    object_refs: Union[ObjectRef, List[ObjectRef]],
 ) -> Union[Any, List[Any]]:
     """This is a safe version of `ray.get` that raises an exception immediately
     if an input task dies, while the others are still running.
@@ -169,3 +186,105 @@ def get_module_name(obj: object) -> str:
         Full module and qualified name as a string.
     """
     return f"{obj.__module__}.{obj.__qualname__}"
+
+
+def get_callable_name(fn: Callable) -> str:
+    """Returns a readable name for any callable.
+
+    Examples:
+
+        >>> get_callable_name(lambda x: x)
+        '<lambda>'
+        >>> def foo(a, b): pass
+        >>> get_callable_name(foo)
+        'foo'
+        >>> from functools import partial
+        >>> bar = partial(partial(foo, a=1), b=2)
+        >>> get_callable_name(bar)
+        'foo'
+        >>> class Dummy:
+        ...     def __call__(self, a, b): pass
+        >>> get_callable_name(Dummy())
+        'Dummy'
+    """
+    if isinstance(fn, functools.partial):
+        return get_callable_name(fn.func)
+
+    # Use __name__ for regular functions and lambdas
+    if hasattr(fn, "__name__"):
+        return fn.__name__
+
+    # Fallback to the class name for objects that implement __call__
+    return fn.__class__.__name__
+
+
+def construct_user_exception_with_traceback(
+    e: BaseException, exclude_frames: int = 0
+) -> UserExceptionWithTraceback:
+    """Construct a UserExceptionWithTraceback from a base exception.
+
+    Args:
+        e: The base exception to construct a UserExceptionWithTraceback from.
+        exclude_frames: The number of frames to exclude from the beginnning of
+            the traceback.
+
+    Returns:
+        A UserExceptionWithTraceback object.
+    """
+    # TODO(justinvyu): This is brittle and may break if the call stack
+    # changes. Figure out a more robust way to exclude these frames.
+    exc_traceback_str = traceback.format_exc(
+        limit=-(len(traceback.extract_tb(e.__traceback__)) - exclude_frames)
+    )
+    logger.error(f"Error in training function:\n{exc_traceback_str}")
+    return UserExceptionWithTraceback(e, traceback_str=exc_traceback_str)
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V2 worker."""
+    from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+
+    try:
+        get_train_fn_utils()
+        return True
+    except RuntimeError:
+        return False
+
+
+def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
+    """Check that the caller is a Ray Train worker spawned by Ray Train,
+    with access to training function utilities.
+
+    Args:
+        raise_in_tune_session: Whether to raise a specific error message if the caller
+            is in a Tune session. If True, will raise a DeprecationWarning.
+
+    Returns:
+        A decorator that performs this check, which raises an error if the caller
+        is not a Ray Train worker.
+    """
+
+    def _wrap(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def _wrapped_fn(*args, **kwargs):
+            from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+            if raise_in_tune_session and _in_tune_session():
+                raise DeprecationWarning(
+                    f"`ray.train.{fn.__name__}` is deprecated when running in a function "
+                    "passed to Ray Tune. Please use the equivalent `ray.tune` API instead. "
+                    "See this issue for more context: "
+                    "https://github.com/ray-project/ray/issues/49454"
+                )
+
+            if not _in_ray_train_worker():
+                raise RuntimeError(
+                    f"`{fn.__name__}` cannot be used outside of a Ray Train training function. "
+                    "You are calling this API from the driver or another non-training process. "
+                    "These utilities are only available within a function launched by `trainer.fit()`."
+                )
+            return fn(*args, **kwargs)
+
+        return _wrapped_fn
+
+    return _wrap

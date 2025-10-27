@@ -1,24 +1,31 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
+from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
-    from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2._internal.execution.context import TrainRunContext
+    from ray.train.v2._internal.execution.controller import (
+        TrainControllerState,
+    )
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
-    from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
+    from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
     from ray.train.v2._internal.execution.worker_group import (
+        Worker,
         WorkerGroup,
-        WorkerGroupStatus,
+        WorkerGroupContext,
+        WorkerGroupPollStatus,
     )
 
 
 @DeveloperAPI
 class WorkerGroupCallback(RayTrainCallback):
     def before_init_train_context(
-        self, worker_group: "WorkerGroup"
+        self, workers: List["Worker"]
     ) -> Dict[str, List[Any]]:
         """Called before initializing the TrainContext for the worker_group.
 
@@ -32,6 +39,10 @@ class WorkerGroupCallback(RayTrainCallback):
     @contextmanager
     def on_worker_group_start(self):
         yield
+
+    def before_worker_group_start(self, worker_group_context: "WorkerGroupContext"):
+        """Called before the worker group actors are initialized."""
+        pass
 
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
@@ -51,16 +62,44 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
-    def after_worker_group_poll_status(self, worker_group_status: "WorkerGroupStatus"):
+    def after_worker_group_poll_status(
+        self, worker_group_status: "WorkerGroupPollStatus"
+    ):
+        pass
+
+    def before_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        """Called before the worker group is aborted."""
         pass
 
 
 @DeveloperAPI
 class ControllerCallback(RayTrainCallback):
-    def after_controller_start(self):
+    def after_controller_start(self, train_run_context: "TrainRunContext"):
         """Called immediately after `TrainController.run` is called,
         before the control loop starts executing."""
         pass
+
+    # TODO(matthewdeng): Revisit this callback interface for better extensibility.
+    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # for new worker groups (e.g., for TPU reservations). The current interface is
+    # tightly coupled to this purpose and limits its reuse for other use-cases.
+    def on_controller_start_worker_group(
+        self, *, scaling_config: ScalingConfig, num_workers: int
+    ) -> Optional[Dict[str, str]]:
+        """Called by the TrainController before the worker group is started.
+
+        This hook can be used to perform setup that modifies the worker group's
+        placement, such as reserving an accelerator slice.
+
+        Args:
+            scaling_config: The scaling configuration for the run.
+            num_workers: The number of workers to be started.
+
+        Returns:
+            An optional dictionary defining a `bundle_label_selector`
+            to gang schedule the worker group on the reserved TPU slice.
+        """
+        return None
 
     def before_controller_shutdown(self):
         """Called before `TrainController.run` exits,
@@ -78,24 +117,33 @@ class ControllerCallback(RayTrainCallback):
     def before_controller_execute_failure_decision(
         self,
         failure_decision: "FailureDecision",
-        worker_group_status: "WorkerGroupStatus",
     ):
         """Called before the controller executes a failure decision."""
         pass
 
-    def before_controller_execute_scaling_decision(
+    def before_controller_execute_resize_decision(
         self,
-        scaling_decision: "ScalingDecision",
-        worker_group_status: "WorkerGroupStatus",
+        resize_decision: "ResizeDecision",
     ):
-        """Called before the controller executes a scaling decision."""
+        """Called before the controller executes a resize decision."""
+        pass
+
+    def after_controller_finish(self, result: Result):
+        """Called after the training run completes, providing access to the final result.
+
+        Args:
+            result: The final training result containing metrics and checkpoint.
+        """
         pass
 
 
+# TODO: consider consolidating all metrics into one dict, possibly with UDF
 @DeveloperAPI
 class ReportCallback(RayTrainCallback):
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional["Checkpoint"]
+        self,
+        training_report: _TrainingReport,
+        metrics: List[Dict[str, Any]],
     ):
         """Called after all workers have reported a training result.
 

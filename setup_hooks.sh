@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -eu
 
 # This stops git rev-parse from failing if we run this from the .git directory

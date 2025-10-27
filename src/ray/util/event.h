@@ -24,6 +24,9 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -33,7 +36,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
-#include "src/ray/protobuf/export_api/export_event.pb.h"
+#include "src/ray/protobuf/export_event.pb.h"
 
 namespace ray {
 
@@ -80,6 +83,8 @@ namespace ray {
 // interface of event reporter
 class BaseEventReporter {
  public:
+  virtual ~BaseEventReporter() = default;
+
   virtual void Init() = 0;
 
   virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
@@ -101,12 +106,11 @@ class LogEventReporter : public BaseEventReporter {
                    int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
-  virtual ~LogEventReporter();
+  ~LogEventReporter() override;
 
-  virtual void Report(const rpc::Event &event,
-                      const nlohmann::json &custom_fields) override;
+  void Report(const rpc::Event &event, const nlohmann::json &custom_fields) override;
 
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+  void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
  private:
   virtual std::string replaceLineFeed(std::string message);
@@ -116,13 +120,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
-  virtual void Init() override {}
+  void Init() override {}
 
-  virtual void Close() override {}
+  void Close() override {}
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
+  std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
   std::string log_dir_;
@@ -140,7 +144,13 @@ class EventManager final {
  public:
   static EventManager &Instance();
 
-  bool IsEmpty();
+  EventManager(const EventManager &manager) = delete;
+
+  const EventManager &operator=(const EventManager &manager) = delete;
+
+  ~EventManager() = default;
+
+  bool IsEmpty() const;
 
   // We added `const json &custom_fields` here because we need to support typed custom
   // fields.
@@ -164,14 +174,11 @@ class EventManager final {
  private:
   EventManager();
 
-  EventManager(const EventManager &manager) = delete;
-
-  const EventManager &operator=(const EventManager &manager) = delete;
-
- private:
-  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_
+      ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
-      export_log_reporter_map_;
+      export_log_reporter_map_ ABSL_GUARDED_BY(mutex_);
+  mutable absl::Mutex mutex_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -180,7 +187,7 @@ class RayEventContext final {
  public:
   static RayEventContext &Instance();
 
-  RayEventContext() {}
+  RayEventContext() = default;
 
   void SetEventContext(
       rpc::Event_SourceType source_type,
@@ -198,30 +205,30 @@ class RayEventContext final {
   void UpdateCustomFields(
       const absl::flat_hash_map<std::string, std::string> &custom_fields);
 
-  inline void SetSourceType(rpc::Event_SourceType source_type) {
-    source_type_ = source_type;
-  }
+  void SetSourceType(rpc::Event_SourceType source_type) { source_type_ = source_type; }
 
-  inline const rpc::Event_SourceType &GetSourceType() const { return source_type_; }
+  const rpc::Event_SourceType &GetSourceType() const { return source_type_; }
 
-  inline const std::string &GetSourceHostname() const { return source_hostname_; }
+  const std::string &GetSourceHostname() const { return source_hostname_; }
 
-  inline int32_t GetSourcePid() const { return source_pid_; }
+  int32_t GetSourcePid() const { return source_pid_; }
 
-  inline const absl::flat_hash_map<std::string, std::string> &GetCustomFields() const {
+  const absl::flat_hash_map<std::string, std::string> &GetCustomFields() const {
     return custom_fields_;
   }
 
-  inline bool GetInitialzed() const {
+  bool GetInitialzed() const {
     return source_type_ != rpc::Event_SourceType::Event_SourceType_COMMON;
   }
-
- private:
-  static RayEventContext &GlobalInstance();
 
   RayEventContext(const RayEventContext &event_context) = delete;
 
   const RayEventContext &operator=(const RayEventContext &event_context) = delete;
+
+  ~RayEventContext() = default;
+
+ private:
+  static RayEventContext &GlobalInstance();
 
   rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   std::string source_hostname_ = boost::asio::ip::host_name();
@@ -248,12 +255,12 @@ class RayEvent {
   // deconstructed. Otherwise we might have memory issues.
   RayEvent(rpc::Event_Severity severity,
            RayLogLevel log_severity,
-           const std::string &label,
+           std::string label,
            const char *file_name,
            int line_number)
       : severity_(severity),
         log_severity_(log_severity),
-        label_(label),
+        label_(std::move(label)),
         file_name_(file_name),
         line_number_(line_number) {}
 
@@ -293,14 +300,14 @@ class RayEvent {
 
   ~RayEvent();
 
+  RayEvent(const RayEvent &event) = delete;
+
+  const RayEvent &operator=(const RayEvent &event) = delete;
+
  private:
   RayEvent() = default;
 
   void SendMessage(const std::string &message);
-
-  RayEvent(const RayEvent &event) = delete;
-
-  const RayEvent &operator=(const RayEvent &event) = delete;
 
   // Only for test
   static void SetLevel(const std::string &event_level);
@@ -327,13 +334,13 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
 class RayExportEvent {
  public:
-  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+  explicit RayExportEvent(ExportEventDataPtr event_data_ptr)
+      : event_data_ptr_(std::move(event_data_ptr)) {}
 
   ~RayExportEvent();
 
   void SendEvent();
 
- private:
   RayExportEvent(const RayExportEvent &event) = delete;
 
   const RayExportEvent &operator=(const RayExportEvent &event) = delete;
@@ -343,9 +350,9 @@ class RayExportEvent {
 };
 
 bool IsExportAPIEnabledSourceType(
-    std::string source_type,
+    std::string_view source_type,
     bool enable_export_api_write_global,
-    std::vector<std::string> enable_export_api_write_config_str);
+    const std::vector<std::string> &enable_export_api_write_config_str);
 
 /// Ray Event initialization.
 ///
@@ -361,8 +368,7 @@ bool IsExportAPIEnabledSourceType(
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
+void RayEventInit(const std::vector<SourceTypeVariant> &source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",
@@ -372,7 +378,7 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
 /// and has been separated out so RayEventInit can be called multiple times in
 /// tests.
 /// **Note**: This should only be called from tests.
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+void RayEventInit_(const std::vector<SourceTypeVariant> &source_types,
                    const absl::flat_hash_map<std::string, std::string> &custom_fields,
                    const std::string &log_dir,
                    const std::string &event_level,

@@ -1,14 +1,14 @@
 import functools
 import os
-from pathlib import Path
 import pickle
 import sys
 import time
 import unittest
+from pathlib import Path
 
 import ray
-from ray.util.state import list_actors
 from ray.rllib.utils.actor_manager import FaultAwareApply, FaultTolerantActorManager
+from ray.util.state import list_actors
 
 
 def load_random_numbers():
@@ -331,21 +331,6 @@ class TestActorManager(unittest.TestCase):
 
         manager.clear()
 
-    def test_len_of_func_not_match_len_of_actors(self):
-        """Test healthy only mode works when a list of funcs are provided."""
-        actors = [Actor.remote(i) for i in range(4)]
-        manager = FaultTolerantActorManager(actors=actors)
-
-        def f(id, _):
-            return id
-
-        func = [functools.partial(f, i) for i in range(3)]
-
-        with self.assertRaisesRegexp(AssertionError, "same number of callables") as _:
-            manager.foreach_actor_async(func, healthy_only=True)
-
-        manager.clear()
-
     def test_probe_unhealthy_actors(self):
         """Test probe brings back unhealthy actors."""
         actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
@@ -437,6 +422,17 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(result.tag, "call")
             else:
                 raise ValueError("result is not str or int")
+
+    def test_foreach_actor_async_fetch_ready(self):
+        """Test foreach_actor_async_fetch_ready works."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(2)]
+        manager = FaultTolerantActorManager(actors=actors)
+        manager.foreach_actor_async_fetch_ready(lambda w: w.ping(), tag="ping")
+        time.sleep(5)
+        results = manager.foreach_actor_async_fetch_ready(
+            lambda w: w.ping(), tag="ping"
+        )
+        self.assertEqual(len(results), 2)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,9 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.offline.offline_evaluation_runner_group import (
+    OfflineEvaluationRunnerGroup,
+)
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -105,6 +108,27 @@ class RLlibCallback(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
+    def on_evaluate_offline_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        **kwargs,
+    ) -> None:
+        """Callback before offline evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics before running the next round of offline
+                evaluation.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_evaluate_end(
         self,
         *,
@@ -123,6 +147,31 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics after the most recent evaluation round.
             evaluation_metrics: Results dict to be returned from algorithm.evaluate().
                 You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_offline_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the offline evaluation is done.
+
+        Runs at the end of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics after the most recent offline evaluation
+                round.
+            evaluation_metrics: Results dict to be returned from
+                Algorithm.evaluate_offline(). You can mutate this object to add
+                additional metrics.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -186,6 +235,61 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_offline_eval_runners_recreated(
+        self,
+        *,
+        algorithm: "Algorithm",
+        offline_eval_runner_group: "OfflineEvaluationRunnerGroup",
+        offline_eval_runner_indices: List[int],
+        **kwargs,
+    ) -> None:
+        """Callback run after one or more OfflineEvaluationRunner actors have been recreated.
+
+        You can access and change the OfflineEvaluationRunners in question through the following code
+        snippet inside your custom override of this method:
+
+        .. testcode::
+            from ray.rllib.callbacks.callbacks import RLlibCallback
+
+            class MyCallbacks(RLlibCallback):
+                def on_offline_eval_runners_recreated(
+                    self,
+                    *,
+                    algorithm,
+                    offline_eval_runner_group,
+                    offline_eval_runner_indices,
+                    **kwargs,
+                ):
+                    # Define what you would like to do on the recreated EnvRunner:
+                    def func(offline_eval_runner):
+                        # Here, we just set some arbitrary property to 1.
+                        if is_evaluation:
+                            offline_eval_runner._custom_property_for_evaluation = 1
+                        else:
+                            offline_eval_runner._custom_property_for_training = 1
+
+                    # Use the `foreach_runner` method of the worker set and
+                    # only loop through those worker IDs that have been restarted.
+                    # Note that `local_runner=False` as long as there are remote
+                    # runners.
+                    offline_eval_runner_group.foreach_runner(
+                        func,
+                        remote_runner_ids=offline_eval_runner_indices,
+                        local_runner=False,
+                    )
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            offline_eval_runner_group: The OfflineEvaluationRunnerGroup object in which
+                the workers in question reside. You can use a `runner_group.foreach_runner(
+                remote_worker_ids=..., local_runner=False)` method call to execute
+                custom code on the recreated (remote) workers.
+            offline_eval_runner_indices: The list of (remote) worker IDs that have been
+                recreated.
         """
         pass
 
@@ -257,39 +361,28 @@ class RLlibCallback(metaclass=_CallbackMeta):
     ) -> None:
         """Callback run when a new episode is created (but has not started yet!).
 
-        This method gets called after a new Episode(V2) (old stack) or
-        MultiAgentEpisode instance has been created.
-        This happens before the respective sub-environment's (usually a gym.Env)
+        This method gets called after a new SingleAgentEpisode or MultiAgentEpisode
+        instance has been created. This happens before the respective sub-environment's
         `reset()` is called by RLlib.
 
-        Note, at the moment this callback does not get called in the new API stack
-        and single-agent mode.
-
-        1) Episode(V2)/MultiAgentEpisode created: This callback is called.
+        1) SingleAgentEpisode/MultiAgentEpisode created: This callback is called.
         2) Respective sub-environment (gym.Env) is `reset()`.
         3) Callback `on_episode_start` is called.
         4) Stepping through sub-environment/episode commences.
 
         Args:
-            episode: The newly created episode. On the new API stack, this will be a
-                MultiAgentEpisode object. On the old API stack, this will be a
-                Episode or EpisodeV2 object.
+            episode: The newly created SingleAgentEpisode or MultiAgentEpisode.
                 This is the episode that is about to be started with an upcoming
                 `env.reset()`. Only after this reset call, the `on_episode_start`
                 callback will be called.
-            env_runner: Replaces `worker` arg. Reference to the current EnvRunner.
+            env_runner: Reference to the current EnvRunner.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics after Episode creation.
-            env: Replaces `base_env` arg.  The gym.Env (new API stack) or RLlib
-                BaseEnv (old API stack) running the episode. On the old stack, the
-                underlying sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            rl_module: Replaces `policies` arg. Either the RLModule (new API stack) or a
-                dict mapping policy IDs to policy objects (old stack). In single agent
-                mode there will only be a single policy/RLModule under the
-                `rl_module["default_policy"]` key.
-            env_index: The index of the sub-environment that is about to be reset
-                (within the vector of sub-environments of the BaseEnv).
+            env: The gym.Env running the episode.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
+            env_index: The index of the sub-environment that is about to be reset.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -329,9 +422,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -372,9 +465,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics during env/episode stepping.
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that has just been stepped.
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -384,6 +477,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
         self,
         *,
         episode: Union[EpisodeType, EpisodeV2],
+        prev_episode_chunks: Optional[List[EpisodeType]] = None,
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -426,15 +520,20 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 object). Note that this method is still called before(!) the episode
                 object is numpy'ized, meaning all its timestep data is still present in
                 lists of individual timestep data.
+            prev_episode_chunks: A complete list of all previous episode chunks
+                with the same ID as `episode` that have been sampled on this EnvRunner.
+                In order to compile metrics across the complete episode, users should
+                loop through the list: `[episode] + previous_episode_chunks` and
+                accumulate the required information.
             env_runner: Reference to the EnvRunner running the env and episode.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that has just been terminated
                 or truncated.
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -456,8 +555,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             env_runner: Reference to the current EnvRunner object.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.
-            samples: Batch to be returned. You can mutate this
-                object to modify the samples generated.
+            samples: Lists of SingleAgentEpisode or MultiAgentEpisode instances to be
+                returned. You can mutate the episodes to modify the returned training
+                data.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -480,13 +580,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
         `Algorithm.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
 
         Args:
-            worker: Reference to the current rollout worker.
+            worker: Reference to the current EnvRunner.
             sub_environment: The sub-environment instance that has been
                 created. This is usually a gym.Env object.
             env_context: The `EnvContext` object that has been passed to
                 the env's constructor.
             env_index: The index of the sub-environment that has been created
-                (within the vector of sub-environments of the BaseEnv).
+                (within the vector of sub-environments of the gym.vector.Env).
             kwargs: Forward compatibility placeholder.
         """
         pass

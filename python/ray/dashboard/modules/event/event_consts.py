@@ -2,7 +2,6 @@ from ray._private.ray_constants import env_float, env_integer
 from ray.core.generated import event_pb2
 
 LOG_ERROR_EVENT_STRING_LENGTH_LIMIT = 1000
-RETRY_CONNECT_TO_DASHBOARD_INTERVAL_SECONDS = 2
 # Monitor events
 SCAN_EVENT_DIR_INTERVAL_SECONDS = env_integer("SCAN_EVENT_DIR_INTERVAL_SECONDS", 2)
 SCAN_EVENT_START_OFFSET_SECONDS = -30 * 60

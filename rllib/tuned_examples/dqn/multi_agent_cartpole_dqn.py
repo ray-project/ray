@@ -14,7 +14,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=500000,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 # Use `parser` to add your own custom command line options to this script
@@ -63,6 +62,7 @@ stop = {
     # `episode_return_mean` is the sum of all agents/policies' returns.
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0 * args.num_agents,
 }
+
 
 if __name__ == "__main__":
 

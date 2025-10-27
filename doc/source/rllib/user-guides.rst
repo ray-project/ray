@@ -12,13 +12,13 @@ User Guides
 
     rllib-advanced-api
     rllib-callback
-    rllib-models
     checkpoints
     metrics-logger
     single-agent-episode
+    connector-v2
     rllib-replay-buffers
     rllib-offline
-    rllib-rlmodule
+    rl-modules
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
@@ -62,14 +62,6 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-models
-
-            Working with models, preprocessors and action distributions
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
         .. button-ref:: checkpoints
 
             Checkpointing your experiments and models
@@ -81,6 +73,14 @@ RLlib Feature Guides
         .. button-ref:: single-agent-episode
 
             How to process trajectories through episodes
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: connector-v2
+
+            How To Use Connectors and Connector pipelines?
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

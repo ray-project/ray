@@ -1,13 +1,15 @@
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import ray.train
 from ray.train import Checkpoint
-from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated
+
+if TYPE_CHECKING:
+    from ray.train.lightgbm import LightGBMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +21,14 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
         from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -52,13 +55,14 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,
                 train_set,
                 valid_sets=[eval_set],
                 valid_names=["eval"],
+                num_boost_round=1,
                 # To access the checkpoint from trainer, you need this callback.
                 callbacks=[RayTrainReportCallback()],
             )
@@ -70,15 +74,10 @@ class LightGBMTrainer(DataParallelTrainer):
         trainer = LightGBMTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -119,7 +118,7 @@ class LightGBMTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        lightgbm_config: Optional[LightGBMConfig] = None,
+        lightgbm_config: Optional["LightGBMConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -127,7 +126,25 @@ class LightGBMTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # TODO: [Deprecated] Legacy LightGBMTrainer API
+        label_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        num_boost_round: Optional[int] = None,
     ):
+        if (
+            label_column is not None
+            or params is not None
+            or num_boost_round is not None
+        ):
+            raise DeprecationWarning(
+                "The legacy LightGBMTrainer API is deprecated. "
+                "Please switch to passing in a custom `train_loop_per_worker` "
+                "function instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/50042"
+            )
+        from ray.train.lightgbm import LightGBMConfig
+
         super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
@@ -140,8 +157,8 @@ class LightGBMTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def get_model(
         cls,
         checkpoint: Checkpoint,

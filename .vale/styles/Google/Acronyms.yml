@@ -52,6 +52,7 @@ exceptions:
   - PNG
   - POST
   - RAM
+  - RAG
   - REPL
   - RSA
   - SCM

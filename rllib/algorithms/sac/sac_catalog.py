@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+from typing import Callable
 
 # TODO (simon): Store this function somewhere more central as many
 # algorithms will use it.
@@ -11,8 +12,12 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.base import Encoder, Model
-from ray.rllib.models.torch.torch_distributions import TorchSquashedGaussian
+from ray.rllib.core.distribution.torch.torch_distribution import (
+    TorchSquashedGaussian,
+    TorchCategorical,
+)
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.core.distribution.distribution import Distribution
 
 
 # TODO (simon): Check, if we can directly derive from DQNCatalog.
@@ -72,6 +77,8 @@ class SACCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
+        if not isinstance(self.action_space, (gym.spaces.Box, gym.spaces.Discrete)):
+            self._raise_unsupported_action_space_error()
 
         # Define the heads.
         self.pi_and_qf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
@@ -84,17 +91,26 @@ class SACCatalog(Catalog):
         # -> Build pi config only in the `self.build_pi_head` method.
         self.pi_head_config = None
 
+        # SAC-Discrete: The Q-function outputs q-values for each action
+        # SAC-Continuous: The Q-function outputs a single value (the Q-value for the
+        # action taken).
+        required_qf_output_dim = (
+            self.action_space.n
+            if isinstance(self.action_space, gym.spaces.Discrete)
+            else 1
+        )
+
         # TODO (simon): Implement in a later step a q network with
         #  different `head_fcnet_hiddens` than pi.
+        # TODO (simon): These latent_dims could be different for the
+        # q function, value function, and pi head.
+        # Here we consider the simple case of identical encoders.
         self.qf_head_config = MLPHeadConfig(
-            # TODO (simon): These latent_dims could be different for the
-            # q function, value function, and pi head.
-            # Here we consider the simple case of identical encoders.
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_qf_head_hiddens,
             hidden_layer_activation=self.pi_and_qf_head_activation,
             output_layer_activation="linear",
-            output_layer_dim=1,
+            output_layer_dim=required_qf_output_dim,
         )
 
     @OverrideToImplementCustomLogic
@@ -115,23 +131,30 @@ class SACCatalog(Catalog):
         """
 
         # Compute the required dimension for the action space.
-        required_action_dim = self.action_space.shape[0]
+        if isinstance(self.action_space, gym.spaces.Box):
+            required_action_dim = self.action_space.shape[0]
+        elif isinstance(self.action_space, gym.spaces.Discrete):
+            # for discrete action spaces, we don't need to encode the action
+            # because the Q-function will output a value for each action
+            required_action_dim = 0
+        else:
+            self._raise_unsupported_action_space_error()
 
         # Encoder input for the Q-network contains state and action. We
         # need to infer the shape for the input from the state and action
         # spaces
-        if (
+        if not (
             isinstance(self.observation_space, gym.spaces.Box)
             and len(self.observation_space.shape) == 1
         ):
-            input_space = gym.spaces.Box(
-                -np.inf,
-                np.inf,
-                (self.observation_space.shape[0] + required_action_dim,),
-                dtype=np.float32,
-            )
-        else:
             raise ValueError("The observation space is not supported by RLlib's SAC.")
+
+        input_space = gym.spaces.Box(
+            -np.inf,
+            np.inf,
+            (self.observation_space.shape[0] + required_action_dim,),
+            dtype=np.float32,
+        )
 
         self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
         self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
@@ -162,6 +185,26 @@ class SACCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
+        BUILD_MAP: dict[
+            type[gym.spaces.Space], Callable[[str, Distribution], Model]
+        ] = {
+            gym.spaces.Discrete: self._build_pi_head_discrete,
+            gym.spaces.Box: self._build_pi_head_continuous,
+        }
+        try:
+            # Try to get the build function for the action space type.
+            return BUILD_MAP[type(self.action_space)](
+                framework, action_distribution_cls
+            )
+        except KeyError:
+            # If the action space type is not supported, raise an error.
+            self._raise_unsupported_action_space_error()
+
+    def _build_pi_head_continuous(
+        self, framework: str, action_distribution_cls: Distribution
+    ) -> Model:
+        """Builds the policy head for continuous action spaces."""
+        # Get action_distribution_cls to find out about the output dimension for pi_head
         # TODO (simon): CHeck, if this holds also for Squashed Gaussian.
         if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
@@ -196,6 +239,24 @@ class SACCatalog(Catalog):
 
         return self.pi_head_config.build(framework=framework)
 
+    def _build_pi_head_discrete(
+        self, framework: str, action_distribution_cls: Distribution
+    ) -> Model:
+        """Builds the policy head for discrete action spaces. The module outputs logits for Categorical
+        distribution.
+        """
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self._model_config_dict
+        )
+        self.pi_head_config = MLPHeadConfig(
+            input_dims=self.latent_dims,
+            hidden_layer_dims=self.pi_and_qf_head_hiddens,
+            hidden_layer_activation=self.pi_and_qf_head_activation,
+            output_layer_dim=required_output_dim,
+            output_layer_activation="linear",
+        )
+        return self.pi_head_config.build(framework=framework)
+
     @OverrideToImplementCustomLogic
     def build_qf_head(self, framework: str) -> Model:
         """Build the Q function head."""
@@ -203,6 +264,24 @@ class SACCatalog(Catalog):
         return self.qf_head_config.build(framework=framework)
 
     @override(Catalog)
-    def get_action_dist_cls(self, framework: str) -> "TorchSquashedGaussian":
+    def get_action_dist_cls(self, framework: str) -> Distribution:
+        """Returns the action distribution class to use for the given framework. TorchSquashedGaussian
+        for continuous action spaces and TorchCategorical for discrete action spaces."""
+        # TODO (KIY): Catalog.get_action_dist_cls should return a type[Distribution] instead of a Distribution instance.
         assert framework == "torch"
-        return TorchSquashedGaussian
+
+        if isinstance(self.action_space, gym.spaces.Box):
+            # For continuous action spaces, we use a Squashed Gaussian.
+            return TorchSquashedGaussian
+        elif isinstance(self.action_space, gym.spaces.Discrete):
+            # For discrete action spaces, we use a Categorical distribution.
+            return TorchCategorical
+        else:
+            self._raise_unsupported_action_space_error()
+
+    def _raise_unsupported_action_space_error(self):
+        """Raises an error if the action space is not supported."""
+        raise ValueError(
+            f"SAC only supports Box and Discrete action spaces. "
+            f"Got: {type(self.action_space)}"
+        )

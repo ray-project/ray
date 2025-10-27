@@ -22,6 +22,7 @@ logger = logging.getLogger(__file__)
 
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
+CLOUD = "serve_release_tests_cloud"
 
 
 @click.command()
@@ -52,7 +53,7 @@ def main(
         ],
     }
     compute_config = ComputeConfig(
-        cloud="serve_release_tests_cloud",
+        cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -92,9 +93,10 @@ def main(
         compute_config=compute_config,
         applications=[noop_1k_application],
         working_dir="workloads",
+        cloud=CLOUD,
     ) as service_name:
         ray.init("auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=CLOUD)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1

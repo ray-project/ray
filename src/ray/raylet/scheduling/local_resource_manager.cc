@@ -14,11 +14,18 @@
 
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "ray/common/grpc_util.h"
-#include "ray/common/ray_config.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/stats/metric_defs.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -202,7 +209,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   last_idle_times_[resource_id] = absl::Now();
 }
 
-absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
+std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 
@@ -284,7 +291,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::Now();
     } else {
       // Clear the idle info since we know it's being used.
-      RAY_LOG(INFO) << "Object store memory is not idle.";
+      RAY_LOG(DEBUG) << "Object store memory is not idle.";
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
 
@@ -299,6 +306,10 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
 void LocalResourceManager::PopulateResourceViewSyncMessage(
     syncer::ResourceViewSyncMessage &resource_view_sync_message) const {
   NodeResources resources = ToNodeResources();
+
+  // Populate node labels.
+  resource_view_sync_message.mutable_labels()->insert(resources.labels.begin(),
+                                                      resources.labels.end());
 
   auto total = resources.total.GetResourceMap();
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),

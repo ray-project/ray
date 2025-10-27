@@ -32,8 +32,7 @@ try:
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
     from optuna.storages import BaseStorage
-    from optuna.trial import Trial as OptunaTrial
-    from optuna.trial import TrialState as OptunaTrialState
+    from optuna.trial import Trial as OptunaTrial, TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None

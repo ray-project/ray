@@ -13,13 +13,12 @@ parser = add_rllib_example_script_args(
     default_timesteps=10000000,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 args = parser.parse_args()
 
 
-def _make_env_to_module_connector(env):
+def _make_env_to_module_connector(env, spaces, device):
     return FrameStackingEnvToModule(num_frames=4)
 
 
@@ -60,7 +59,7 @@ config = (
     .training(
         learner_connector=_make_learner_connector,
         train_batch_size_per_learner=500,
-        target_network_update_freq=4,
+        target_network_update_freq=2,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
         entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune

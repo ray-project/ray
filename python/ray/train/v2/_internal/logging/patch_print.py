@@ -41,7 +41,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
         return _original_print(objects, sep=sep, end=end, file=file, flush=flush)
 
     root_logger = logging.getLogger()
-    message = sep.join(map(str, objects)) + end
+    message = sep.join(map(str, objects))
     # Use the original `print` method for the scope of the logger call, in order to
     # avoid infinite recursion errors if any exceptions get raised (since exception
     # handling involves another `print(..., file=sys.stderr)`.

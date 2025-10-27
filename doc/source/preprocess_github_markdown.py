@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "source_path",
         type=pathlib.Path,
-        help="Path to github markdown file to " "preprocess",
+        help="Path to github markdown file to preprocess",
     )
     parser.add_argument(
         "dest_path", type=pathlib.Path, help="Path to save preprocessed markdown file."

@@ -1,0 +1,7 @@
+--index-url https://pypi.org/simple
+
+emoji==2.10.0 \
+    --hash=sha256:7e68435eecd2c428c3b4aaa5f72d61a5b1a36c81a5138681cba13d19d94aa3a0 \
+    --hash=sha256:aed4332caa23553a7218f032c08b0a325ae53b010f7fb98ad272c0f7841bc1d3
+pyperclip==1.6.0 \
+    --hash=sha256:ce829433a9af640e08ee89b20f7c62132714bcc5d77df114044d0fccb8c3b3b8

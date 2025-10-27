@@ -16,11 +16,9 @@
 
 #include <utility>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/lease/lease_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -34,7 +32,7 @@ struct LocalityData {
 /// Interface for providers of locality data to the lease policy.
 class LocalityDataProviderInterface {
  public:
-  virtual absl::optional<LocalityData> GetLocalityData(
+  virtual std::optional<LocalityData> GetLocalityData(
       const ObjectID &object_id) const = 0;
 
   virtual ~LocalityDataProviderInterface() = default;
@@ -43,15 +41,14 @@ class LocalityDataProviderInterface {
 /// Interface for mocking the lease policy.
 class LeasePolicyInterface {
  public:
-  /// Get the address of the best worker node for a lease request for the provided task.
-  virtual std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) = 0;
+  /// Get the address of the best worker node for a lease request.
+  virtual std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) = 0;
 
   virtual ~LeasePolicyInterface() = default;
 };
 
-using NodeAddrFactory =
-    std::function<absl::optional<rpc::Address>(const NodeID &node_id)>;
+using NodeAddrFactory = std::function<std::optional<rpc::Address>(const NodeID &node_id)>;
 
 /// Class used by the core worker to implement a locality-aware lease policy for
 /// picking a worker node for a lease request. This class is not thread-safe.
@@ -66,13 +63,13 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
 
   ~LocalityAwareLeasePolicy() override = default;
 
-  /// Get the address of the best worker node for a lease request for the provided task.
-  std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) override;
+  /// Get the address of the best worker node for a lease request.
+  std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) override;
 
  private:
-  /// Get the best worker node for a lease request for the provided task.
-  absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
+  /// Get the best worker node for a lease request.
+  std::optional<NodeID> GetBestNodeIdForLease(const LeaseSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.
   LocalityDataProviderInterface &locality_data_provider_;
@@ -93,9 +90,9 @@ class LocalLeasePolicy : public LeasePolicyInterface {
 
   ~LocalLeasePolicy() override = default;
 
-  /// Get the address of the local node for a lease request for the provided task.
-  std::pair<rpc::Address, bool> GetBestNodeForTask(
-      const TaskSpecification &spec) override;
+  /// Get the address of the local node for a lease request.
+  std::pair<rpc::Address, bool> GetBestNodeForLease(
+      const LeaseSpecification &spec) override;
 
  private:
   /// RPC address of the local node.

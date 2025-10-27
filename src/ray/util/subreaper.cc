@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+#include <algorithm>
+#include <memory>
 #include <vector>
 
 #ifdef __linux__
@@ -102,8 +104,8 @@ void SetupSigchldHandlerRemoveKnownChildren(boost::asio::io_context &io_service)
 // It's done by checking the list of child processes and killing the ones that are not
 // created via Process::spawnvpe.
 //
-// TODO: Checking PIDs is not 100% reliable because of PID recycling. If we find issues
-// later due to this, we can use pidfd.
+// TODO(core): Checking PIDs is not 100% reliable because of PID recycling. If we find
+// issues later due to this, we can use pidfd.
 void KillUnknownChildren() {
   auto to_kill =
       KnownChildrenTracker::instance().ListUnknownChildren([]() -> std::vector<pid_t> {

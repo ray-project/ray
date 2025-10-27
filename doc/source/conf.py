@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 from datetime import datetime
+from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
 
@@ -112,6 +113,15 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Add these for attachment handling
+nb_render_key_pairs = {
+    "html": [
+        ("img", ["src", "alt"]),
+    ]
+}
+
+nb_output_folder = "_build/jupyter_execute"
+
 # Make broken internal references into build time errors.
 # See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
 # for more information. :py:class: references are ignored due to false positives
@@ -119,9 +129,10 @@ myst_heading_anchors = 3
 # for additional context.
 nitpicky = True
 nitpick_ignore_regex = [
+    ("py:obj", "ray.actor.T"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
-    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -215,6 +226,12 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
+    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -230,6 +247,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -304,7 +322,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Influence the future of Ray with our <a target="_blank" href="https://www.surveymonkey.com/r/RayPulse2025?utm_source=ray_docs&utm_medium=website&utm_campaign=banner">Ray Community Pulse survey</a>. Complete it by Monday, January 27th, 2025 to get exclusive swag for eligible participants.""",
+    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -329,9 +347,7 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
-        "version_match": (
-            lambda v: v if v in ["master", "latest"] else f"releases/{v}"
-        )(os.getenv("READTHEDOCS_VERSION", "master")),
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
     },
 }
 
@@ -515,6 +531,13 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     )
 
 
+def process_signature(app, what, name, obj, options, signature, return_annotation):
+    # Sphinx is unable to render dataclass with factory/`field`
+    # https://github.com/sphinx-doc/sphinx/issues/10893
+    if what == "class" and is_dataclass(obj):
+        return signature.replace("<factory>", "..."), return_annotation
+
+
 def setup(app):
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
@@ -542,11 +565,14 @@ def setup(app):
     app.add_js_file("js/custom.js", defer="defer")
     app.add_css_file("css/custom.css", priority=800)
 
-    app.add_js_file("js/csat.js")
+    app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
+
+    app.add_js_file("js/dismissable-banner.js", defer="defer")
+    app.add_css_file("css/dismissable-banner.css")
 
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
@@ -562,6 +588,21 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    app.connect("autodoc-process-signature", process_signature)
+
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
 
 redoc = [
@@ -581,22 +622,25 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
-    "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -619,11 +663,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
@@ -674,7 +720,10 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": (
+        "https://docs.scipy.org/doc/scipy/",
+        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
@@ -691,3 +740,7 @@ intersphinx_mapping = {
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

@@ -8,7 +8,7 @@ This section describes how to pass arguments to your applications using an appli
 When writing an application, there are often parameters that you want to be able to easily change in development or production.
 For example, you might have a path to trained model weights and want to test out a newly trained model.
 In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`.
-This pattern allows you to be configure deployments using ordinary Python code but it requires modifying the code anytime one of the parameters needs to change.
+This pattern allows you to configure deployments using ordinary Python code, but it requires modifying the code whenever one of the parameters needs to change.
 
 To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
 
@@ -87,8 +87,8 @@ Arguments are passed the same way, but the resulting dictionary is used to const
 ```
 
 ```bash
-% serve run hello:app_builder message="Hello from CLI"
-2023-05-16 10:47:31,641 INFO scripts.py:404 -- Running import path: 'hello:app_builder'.
+% serve run hello:typed_app_builder message="Hello from CLI"
+2023-05-16 10:47:31,641 INFO scripts.py:404 -- Running import path: 'hello:typed_app_builder'.
 2023-05-16 10:47:33,344 INFO worker.py:1615 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=56826) INFO 2023-05-16 10:47:35,115 controller 56826 deployment_state.py:1244 - Deploying new version of deployment default_HelloWorld.
 (ServeController pid=56826) INFO 2023-05-16 10:47:35,141 controller 56826 deployment_state.py:1483 - Adding 1 replica to deployment default_HelloWorld.

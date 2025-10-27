@@ -1,23 +1,20 @@
-from math import ceil
 import sys
 import time
+from math import ceil
 
+import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_system_memory
 from ray._private import (
     ray_constants,
 )
-import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import wait_for_condition, raw_metrics
-
-import numpy as np
-from ray._private.utils import get_system_memory
-from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
-
+from ray._private.test_utils import raw_metrics
+from ray._private.utils import get_used_memory
 from ray.util.state.state_manager import StateDataSourceClient
-
 
 memory_usage_threshold = 0.5
 task_oom_retries = 1
@@ -28,23 +25,14 @@ expected_worker_eviction_message = (
 
 
 def get_local_state_client():
-    hostname = ray.worker._global_node.gcs_address
-
     gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+        ray.worker._global_node.gcs_address,
+        ray_constants.GLOBAL_GRPC_OPTIONS,
+        asynchronous=True,
     )
 
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        client.register_agent_client(node_id, ip, port)
-
-    return client
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    return StateDataSourceClient(gcs_channel, gcs_client)
 
 
 @pytest.fixture
@@ -107,12 +95,12 @@ class Leaker:
     def __init__(self):
         self.leaks = []
 
-    def allocate(self, allocate_bytes: int, sleep_time_s: int = 0):
+    def allocate(self, allocate_bytes: int, sleep_time_ms: int = 0):
         # divide by 8 as each element in the array occupies 8 bytes
         new_list = [0] * ceil(allocate_bytes / 8)
         self.leaks.append(new_list)
 
-        time.sleep(sleep_time_s / 1000)
+        time.sleep(sleep_time_ms / 1000)
 
     def get_worker_id(self):
         return ray._private.worker.global_worker.core_worker.get_worker_id().hex()
@@ -142,19 +130,18 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
+@pytest.mark.parametrize("restartable", [False, True])
+def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable: bool):
     addr = ray_with_memory_monitor
-    leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold - 0.3
-    )
-    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
+    if restartable:
+        leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+    else:
+        leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError):
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -163,7 +150,7 @@ def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
         retry_interval_ms=100,
         addr=addr,
         tag="MemoryManager.ActorEviction.Total",
-        value=1.0,
+        value=2.0 if restartable else 1.0,
     )
 
     wait_for_condition(
@@ -172,42 +159,7 @@ def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
         retry_interval_ms=100,
         addr=addr,
         tag="Leaker.__init__",
-        value=1.0,
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_restartable_actor_throws_oom_error(
-    ray_with_memory_monitor,
-):
-    addr = ray_with_memory_monitor
-    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
-
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold + 0.1
-    )
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="MemoryManager.ActorEviction.Total",
-        value=2.0,
-    )
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="Leaker.__init__",
-        value=2.0,
+        value=2.0 if restartable else 1.0,
     )
 
 
@@ -566,10 +518,9 @@ def test_last_task_of_the_group_fail_immediately():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
+def test_one_actor_max_lifo_kill_next_actor(shutdown_only):
     with ray.init(
         _system_config={
-            "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
             "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
         },
@@ -584,25 +535,31 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         assert "first_actor" in actors
 
         second_actor = Leaker.options(name="second_actor").remote()
-        ray.get(
-            second_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
-        )
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(
+                second_actor.allocate.remote(
+                    bytes_to_alloc, memory_monitor_refresh_ms * 3
+                )
+            )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1, actors
-        assert "first_actor" not in actors
-        assert "second_actor" in actors
+        assert "first_actor" in actors
+        assert "second_actor" not in actors
 
         third_actor = Leaker.options(name="third_actor").remote()
-        ray.get(
-            third_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
-        )
+        with pytest.raises(ray.exceptions.OutOfMemoryError):
+            ray.get(
+                third_actor.allocate.remote(
+                    bytes_to_alloc, memory_monitor_refresh_ms * 3
+                )
+            )
 
         actors = ray.util.list_named_actors()
         assert len(actors) == 1
-        assert "first_actor" not in actors
+        assert "first_actor" in actors
         assert "second_actor" not in actors
-        assert "third_actor" in actors
+        assert "third_actor" not in actors
 
 
 if __name__ == "__main__":

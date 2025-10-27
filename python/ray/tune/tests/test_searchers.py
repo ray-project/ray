@@ -13,7 +13,7 @@ import pytest
 from packaging.version import Version
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
@@ -22,21 +22,21 @@ def _invalid_objective(config):
     metric = "report"
 
     if config[metric] > 4:
-        train.report({"_metric": float("inf")})
+        tune.report({"_metric": float("inf")})
     elif config[metric] > 3:
-        train.report({"_metric": float("-inf")})
+        tune.report({"_metric": float("-inf")})
     elif config[metric] > 2:
-        train.report({"_metric": np.nan})
+        tune.report({"_metric": np.nan})
     else:
-        train.report({"_metric": float(config[metric]) or 0.1})
+        tune.report({"_metric": float(config[metric]) or 0.1})
 
 
 def _multi_objective(config):
-    train.report(dict(a=config["a"] * 100, b=config["b"] * -100, c=config["c"]))
+    tune.report(dict(a=config["a"] * 100, b=config["b"] * -100, c=config["c"]))
 
 
 def _dummy_objective(config):
-    train.report(dict(metric=config["report"]))
+    tune.report(dict(metric=config["report"]))
 
 
 class InvalidValuesTest(unittest.TestCase):

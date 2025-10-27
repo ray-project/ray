@@ -13,10 +13,6 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
-keep_alive() {
-  "${WORKSPACE_DIR}"/ci/keep_alive "$@"
-}
-
 # Calls the provided command with set -x temporarily suppressed
 suppress_xtrace() {
   {
@@ -54,18 +50,6 @@ reload_env() {
   fi
 }
 
-_need_wheels() {
-  local result="false"
-  case "${OSTYPE}" in
-    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
-    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
-  esac
-  echo "${result}"
-}
-
-NEED_WHEELS="$(_need_wheels)"
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -78,218 +62,92 @@ compile_pip_dependencies() {
     return 0
   fi
 
-  echo "Target file: $TARGET"
+  (
+    # shellcheck disable=SC2262
+    alias pip="python -m pip"
 
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  pip install pip-tools
+    cd "${WORKSPACE_DIR}"
 
-  # Required packages to lookup e.g. dragonfly-opt
-  HAS_TORCH=0
-  python -c "import torch" 2>/dev/null && HAS_TORCH=1
-  pip install --no-cache-dir numpy torch
+    echo "Target file: $TARGET"
+    pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
-  pip-compile --verbose --resolver=backtracking \
-     --pip-args --no-deps --strip-extras --no-header -o \
-    "${WORKSPACE_DIR}/python/$TARGET" \
-    "${WORKSPACE_DIR}/python/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
+    # Required packages to lookup e.g. dragonfly-opt
+    HAS_TORCH=0
+    python -c "import torch" 2>/dev/null && HAS_TORCH=1
+    pip install --no-cache-dir numpy torch
 
-  # Remove some pins from upstream dependencies: ray
-  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/$TARGET"
+    pip-compile --verbose --resolver=backtracking \
+      --pip-args --no-deps --strip-extras --no-header \
+      --unsafe-package ray \
+      --unsafe-package pip \
+      --unsafe-package setuptools \
+      -o "python/$TARGET" \
+      python/requirements.txt \
+      python/requirements/lint-requirements.txt \
+      python/requirements/test-requirements.txt \
+      python/requirements/cloud-requirements.txt \
+      python/requirements/docker/ray-docker-requirements.txt \
+      python/requirements/ml/core-requirements.txt \
+      python/requirements/ml/data-requirements.txt \
+      python/requirements/ml/data-test-requirements.txt \
+      python/requirements/ml/dl-cpu-requirements.txt \
+      python/requirements/ml/rllib-requirements.txt \
+      python/requirements/ml/rllib-test-requirements.txt \
+      python/requirements/ml/train-requirements.txt \
+      python/requirements/ml/train-test-requirements.txt \
+      python/requirements/ml/tune-requirements.txt \
+      python/requirements/ml/tune-test-requirements.txt \
+      python/requirements/security-requirements.txt
 
-  # Delete local installation
-  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+    # Delete local installation
+    sed -i "/@ file/d" "python/$TARGET"
 
-  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
-  # This is needed because we specify the requirements as torch==version, but
-  # the resolver adds the device-specific version tag. If this is not removed,
-  # pip install will complain about irresolvable constraints.
-  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+    # This is needed because we specify the requirements as torch==version, but
+    # the resolver adds the device-specific version tag. If this is not removed,
+    # pip install will complain about irresolvable constraints.
+    sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "python/$TARGET"
 
-  cat "${WORKSPACE_DIR}/python/$TARGET"
+    cat "python/$TARGET"
 
-  if [ "$HAS_TORCH" -eq 0 ]; then
-    pip uninstall -y torch
-  fi
-}
-
-test_core() {
-  local args=(
-    "//:*" "//src/..."
+    if [[ "$HAS_TORCH" == "0" ]]; then
+      pip uninstall -y torch
+    fi
   )
-  case "${OSTYPE}" in
-    msys)
-      args+=(
-        -//src/ray/util/tests:event_test
-        -//:gcs_server_rpc_test
-        -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
-        -//:gcs_health_check_manager_test
-        -//:gcs_client_reconnection_test
-      )
-      ;;
-  esac
-
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" -- "${args[@]}"
-}
-
-# For running Serve tests on Windows.
-test_serve() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/serve/...
-      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve/tests:test_gradio
-      -python/ray/serve/tests:test_fastapi
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running Python tests on Windows (excluding Serve).
-test_python() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/tests/...
-      -python/ray/tests:test_actor_advanced  # crashes in shutdown
-      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
-      -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_cli
-      -python/ray/tests:test_client_init # timeout
-      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/tests:test_global_gc
-      -python/ray/tests:test_job
-      -python/ray/tests:test_memstat
-      -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
-      -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_stress  # timeout
-      -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_tracing  # tracing not enabled on windows
-      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
-      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
-      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
-      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
-      -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running Python tests on Windows (excluding Serve).
-test_train_windows() {
-  if [ "${OSTYPE}" = msys ]; then
-    args+=(
-      python/ray/train:test_windows
-    )
-  fi
-  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
-    install_ray
-
-    # Shard the args.
-    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
-    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
-
-    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-    bazel test --config=ci \
-      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
-      --test_env=CI="1" \
-      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
-      -- "${TEST_SELECTION[@]}"
-  fi
-}
-
-# For running large Python tests on Linux and MacOS.
-test_large() {
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
-      -- python/ray/tests/...
 }
 
 test_cpp() {
+  if [[ "${OSTYPE}" == darwin* ]]; then
+    echo "use macos_ci.sh to run cpp tests"
+    exit 1
+  fi
+
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
-  bazel test --test_output=all //cpp:test_python_call_cpp
+  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example, currently does not work on mac
-  if [[ "${OSTYPE}" != darwin* ]]; then
-    rm -rf ray-template
-    ray cpp --generate-bazel-project-template-to ray-template
-    pushd ray-template && bash run.sh
-  fi
+  rm -rf ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  (
+    cd ray-template
+    bash run.sh
+  )
 }
 
-test_wheels() {
+test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
-  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
+  "${WORKSPACE_DIR}"/ci/build/test-macos-wheels.sh || TEST_WHEEL_RESULT=$?
 
   if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
@@ -299,8 +157,8 @@ test_wheels() {
   return "${TEST_WHEEL_RESULT}"
 }
 
-install_npm_project() {
-  if [ "${OSTYPE}" = msys ]; then
+_install_npm_project() {
+  if [[ "${OSTYPE}" == msys ]]; then
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
@@ -318,14 +176,16 @@ build_dashboard_front_end() {
       cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-        set +x  # suppress set -x since it'll get very noisy here
-        . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
-        nvm install $NODE_VERSION
-        nvm use --silent $NODE_VERSION
+      if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
+        if [[ -d "${HOME}/.nvm" ]]; then
+          set +x  # suppress set -x since it'll get very noisy here
+          . "${HOME}/.nvm/nvm.sh"
+          NODE_VERSION="14"
+          nvm install $NODE_VERSION
+          nvm use --silent $NODE_VERSION
+        fi
       fi
-      install_npm_project
+      _install_npm_project
       npm run build
     )
   fi
@@ -357,63 +217,53 @@ check_sphinx_links() {
 }
 
 _bazel_build_before_install() {
-  local target
-  if [ "${OSTYPE}" = msys ]; then
-    target="//:ray_pkg"
-  else
-    # Just build Python on other platforms.
-    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
-    target="//:ray_pkg"
-  fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
-    bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    # bazel build --config asan "${target}"
-    echo "Not needed"
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+  if [[ -z "${RAY_DEBUG_BUILD:-}" ]]; then
+    bazel run //:gen_ray_pkg
+  elif [[ "${RAY_DEBUG_BUILD}" == "asan" ]]; then
+    echo "No need to build anything before install"
+  elif [[ "${RAY_DEBUG_BUILD}" == "debug" ]]; then
+    bazel run --config debug //:gen_ray_pkg
   else
     echo "Invalid config given"
     exit 1
   fi
 }
 
-
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+
+    # This is required so that pip does not pick up a cython version that is
+    # too high that can break CI, especially on MacOS.
+    pip install -q cython==3.0.12
+
+    pip install -v -e . -c requirements_compiled.txt
   )
   (
     # For runtime_env tests, wheels are needed
     cd "${WORKSPACE_DIR}"
-    keep_alive pip wheel -e python -w .whl
+    pip wheel -e python -w .whl
   )
 }
 
-validate_wheels_commit_str() {
-  if [ "${OSTYPE}" = msys ]; then
-    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
-    return 0
-  fi
-
-  if [ -n "${BUILDKITE_COMMIT}" ]; then
-    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+_validate_macos_wheels_commit_str() {
+  if [[ -n "${BUILDKITE_COMMIT}" ]]; then
+    EXPECTED_COMMIT="${BUILDKITE_COMMIT:-}"
   else
-    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+    EXPECTED_COMMIT="$(git rev-parse HEAD)"
   fi
 
-  if [ -z "$EXPECTED_COMMIT" ]; then
-    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
-    return 0
+  if [[ -z "$EXPECTED_COMMIT" ]]; then
+    echo "Could not validate expected wheel commits: BUILDKITE_COMMIT is empty." >&2
+    exit 1
   fi
 
   for whl in .whl/*.whl; do
-    basename=${whl##*/}
+    basename="${whl##*/}"
 
     if [[ "$basename" =~ "_cpp" ]]; then
       # cpp wheels cannot be checked this way
@@ -434,85 +284,29 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels_and_jars() {
+build_macos_wheels_and_jars() {
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    echo "Not on macOS"
+    exit 1
+  fi
+
   _bazel_build_before_install
 
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  rm -rf .whl
   mkdir -p .whl
-  rm -rf .whl/* || true
 
-  case "${OSTYPE}" in
-    linux*)
-      # Mount bazel cache dir to the docker container.
-      # For the linux wheel build, we use a shared cache between all
-      # wheels, but not between different travis runs, because that
-      # caused timeouts in the past. See the "cache: false" line below.
-      local MOUNT_BAZEL_CACHE=(
-        -e "TRAVIS=true"
-        -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
-        -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-1}"
-        -e "BUILDKITE=${BUILDKITE:-}"
-        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
-        -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
-        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
-        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
-      )
+  # This command should be kept in sync with ray/python/README-building-wheels.md.
+  "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
 
-      IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
-      IMAGE_TAG="2022-12-20-b4884d9"
+  mkdir -p /tmp/artifacts
+  rm -rf /tmp/artifacts/.whl
+  cp -r .whl /tmp/artifacts/.whl
+  chmod 755 /tmp/artifacts/.whl
+  chmod 644 /tmp/artifacts/.whl/*
 
-      local MOUNT_ENV=()
-      if [[ "${LINUX_JARS-}" == "1" ]]; then
-        MOUNT_ENV+=(-e "BUILD_JAR=1")
-      fi
-
-      if [[ -z "${BUILDKITE-}" ]]; then
-        # This command should be kept in sync with ray/python/README-building-wheels.md,
-        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-        docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-      else
-        rm -rf /ray-mount/*
-        rm -rf /ray-mount/.whl || true
-        rm -rf /ray/.whl || true
-        cp -rT /ray /ray-mount
-        ls -a /ray-mount
-        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        cp -rT /ray-mount /ray # copy new files back here
-        find . | grep whl # testing
-
-        # Sync the directory to buildkite artifacts
-        rm -rf /artifact-mount/.whl || true
-
-        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
-          cp -r .whl /artifact-mount/.whl
-          chmod -R 777 /artifact-mount/.whl
-        fi
-
-        validate_wheels_commit_str
-      fi
-      ;;
-    darwin*)
-      # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      mkdir -p /tmp/artifacts/.whl
-      rm -rf /tmp/artifacts/.whl || true
-
-      if [[ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" == "1" ]]; then
-        cp -r .whl /tmp/artifacts/.whl
-        chmod -R 777 /tmp/artifacts/.whl
-      fi
-
-      validate_wheels_commit_str
-      ;;
-    msys*)
-      keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
-      ;;
-  esac
+  _validate_macos_wheels_commit_str
 }
 
 configure_system() {
@@ -545,59 +339,10 @@ init() {
 }
 
 build() {
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
-    return
-  fi
-
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install
   install_ray
-}
-
-run_minimal_test() {
-  EXPECTED_PYTHON_VERSION="$1"
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "--test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION" "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_minimal_install
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_output
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_runtime_env_ray_minimal
-  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_utils
-
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_serve_ray_minimal
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/dashboard/test_dashboard
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
-}
-
-test_minimal() {
-  ./ci/env/install-minimal.sh "$1"
-  echo "Installed minimal dependencies."
-  ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py --expected-python-version "$1"
-  run_minimal_test "$1"
-}
-
-
-test_latest_core_dependencies() {
-  ./ci/env/install-minimal.sh "$1"
-  echo "Installed minimal dependencies."
-  ./ci/env/env_info.sh
-  ./ci/env/install-core-prerelease-dependencies.sh
-  echo "Installed Core prerelease dependencies."
-  ./ci/env/env_info.sh
-  run_minimal_test "$1"
 }
 
 _main() {

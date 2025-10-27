@@ -41,7 +41,7 @@ Note that evaluation results (on the CartPole-v1 env) should be close to perfect
 from typing import Dict
 
 import numpy as np
-from ray import train, tune
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
@@ -69,7 +69,7 @@ def my_experiment(config: Dict):
         train_results = algo_high_lr.train()
         # Add the phase to the result dict.
         train_results["phase"] = 1
-        train.report(train_results)
+        tune.report(train_results)
         phase_high_lr_time = train_results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
     checkpoint_training_high_lr = algo_high_lr.save()
     algo_high_lr.stop()
@@ -85,7 +85,7 @@ def my_experiment(config: Dict):
         train_results["phase"] = 2
         # keep time moving forward
         train_results[NUM_ENV_STEPS_SAMPLED_LIFETIME] += phase_high_lr_time
-        train.report(train_results)
+        tune.report(train_results)
 
     checkpoint_training_low_lr = algo_low_lr.save()
     algo_low_lr.stop()
@@ -149,7 +149,7 @@ def my_experiment(config: Dict):
     # evaluation results.
     results = {**train_results, **eval_results}
     # Report everything.
-    train.report(results)
+    tune.report(results)
 
 
 if __name__ == "__main__":

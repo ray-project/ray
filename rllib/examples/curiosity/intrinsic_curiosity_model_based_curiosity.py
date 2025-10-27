@@ -35,7 +35,7 @@ learners to learn a good policy.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curiosity` flag to disable curiosity learning and force your policy
 to be trained on the task w/o the use of intrinsic rewards. With this option, the
@@ -107,7 +107,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=10000000,
     default_reward=0.9,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 class MeasureMaxDistanceToStart(RLlibCallback):
@@ -219,7 +218,7 @@ if __name__ == "__main__":
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
             num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
-            env_to_module_connector=lambda env: FlattenObservations(),
+            env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
         )
         .training(
             learner_config_dict={

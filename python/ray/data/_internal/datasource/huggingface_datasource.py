@@ -28,20 +28,28 @@ try:
 
     if "datasets_modules" not in sys.modules and is_datasets_available():
         import importlib
+        import importlib.metadata
         import os
 
         import datasets.load
+        from packaging.version import parse
 
-        dynamic_modules_path = os.path.join(
-            datasets.load.init_dynamic_modules(), "__init__.py"
-        )
-        # load dynamic_modules from path
-        spec = importlib.util.spec_from_file_location(
-            "datasets_modules", dynamic_modules_path
-        )
-        datasets_modules = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = datasets_modules
-        spec.loader.exec_module(datasets_modules)
+        # Datasets >= 4.0 removed dataset scripts support and the dynamic-modules cache.
+        # Only initialize dynamic modules on <= 3.x where the initializer `init_dynamic_modules` exists.
+        DATASETS_VERSION = parse(importlib.metadata.version("datasets"))
+        DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT = parse("4.0.0")
+
+        if DATASETS_VERSION < DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT:
+            dynamic_modules_path = os.path.join(
+                datasets.load.init_dynamic_modules(), "__init__.py"
+            )
+            # load dynamic_modules from path
+            spec = importlib.util.spec_from_file_location(
+                "datasets_modules", dynamic_modules_path
+            )
+            datasets_modules = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = datasets_modules
+            spec.loader.exec_module(datasets_modules)
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
@@ -118,43 +126,50 @@ class HuggingFaceDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return self._dataset.dataset_size
 
-    def get_read_tasks(
-        self,
-        parallelism: int,
-    ) -> List[ReadTask]:
-        # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
-        # We always generate a single ReadTask to perform the read.
-        _check_pyarrow_version()
+    def _read_dataset(self) -> Iterable[Block]:
+        # Note: This is a method instead of a higher level function because
+        # we need to capture `self`. This will trigger the try-import logic at
+        # the top of file to avoid import error of dataset_modules.
         import numpy as np
         import pandas as pd
         import pyarrow
 
-        def _read_dataset(dataset: "datasets.IterableDataset") -> Iterable[Block]:
-            for batch in dataset.with_format("arrow").iter(batch_size=self._batch_size):
-                # HuggingFace IterableDatasets do not fully support methods like
-                # `set_format`, `with_format`, and `formatted_as`, so the dataset
-                # can return whatever is the default configured batch type, even if
-                # the format is manually overriden before iterating above.
-                # Therefore, we limit support to batch formats which have native
-                # block types in Ray Data (pyarrow.Table, pd.DataFrame),
-                # or can easily be converted to such (dict, np.array).
-                # See: https://github.com/huggingface/datasets/issues/3444
-                if not isinstance(batch, (pyarrow.Table, pd.DataFrame, dict, np.array)):
-                    raise ValueError(
-                        f"Batch format {type(batch)} isn't supported. Only the "
-                        f"following batch formats are supported: "
-                        f"dict (corresponds to `None` in `dataset.with_format()`), "
-                        f"pyarrow.Table, np.array, pd.DataFrame."
-                    )
-                # Ensure np.arrays are wrapped in a dict
-                # (subsequently converted to a pyarrow.Table).
-                if isinstance(batch, np.ndarray):
-                    batch = {"item": batch}
-                if isinstance(batch, dict):
-                    batch = pyarrow_table_from_pydict(batch)
-                # Ensure that we return the default block type.
-                block = BlockAccessor.for_block(batch).to_default()
-                yield block
+        for batch in self._dataset.with_format("arrow").iter(
+            batch_size=self._batch_size
+        ):
+            # HuggingFace IterableDatasets do not fully support methods like
+            # `set_format`, `with_format`, and `formatted_as`, so the dataset
+            # can return whatever is the default configured batch type, even if
+            # the format is manually overriden before iterating above.
+            # Therefore, we limit support to batch formats which have native
+            # block types in Ray Data (pyarrow.Table, pd.DataFrame),
+            # or can easily be converted to such (dict, np.array).
+            # See: https://github.com/huggingface/datasets/issues/3444
+            if not isinstance(batch, (pyarrow.Table, pd.DataFrame, dict, np.array)):
+                raise ValueError(
+                    f"Batch format {type(batch)} isn't supported. Only the "
+                    f"following batch formats are supported: "
+                    f"dict (corresponds to `None` in `dataset.with_format()`), "
+                    f"pyarrow.Table, np.array, pd.DataFrame."
+                )
+            # Ensure np.arrays are wrapped in a dict
+            # (subsequently converted to a pyarrow.Table).
+            if isinstance(batch, np.ndarray):
+                batch = {"item": batch}
+            if isinstance(batch, dict):
+                batch = pyarrow_table_from_pydict(batch)
+            # Ensure that we return the default block type.
+            block = BlockAccessor.for_block(batch).to_default()
+            yield block
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+    ) -> List[ReadTask]:
+        # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
+        # We always generate a single ReadTask to perform the read.
+        _check_pyarrow_version()
 
         # TODO(scottjlee): IterableDataset doesn't provide APIs
         # for getting number of rows, byte size, etc., so the
@@ -163,14 +178,14 @@ class HuggingFaceDatasource(Datasource):
         meta = BlockMetadata(
             num_rows=None,
             size_bytes=None,
-            schema=None,
             input_files=None,
             exec_stats=None,
         )
         read_tasks: List[ReadTask] = [
             ReadTask(
-                lambda hfds=self._dataset: _read_dataset(hfds),
+                self._read_dataset,
                 meta,
+                per_task_row_limit=per_task_row_limit,
             )
         ]
         return read_tasks

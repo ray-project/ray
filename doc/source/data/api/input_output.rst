@@ -186,6 +186,25 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
+Unity Catalog
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_unity_catalog
+
 Delta Sharing
 -------------
 
@@ -212,6 +231,16 @@ Iceberg
    :toctree: doc/
 
    read_iceberg
+   Dataset.write_iceberg
+
+Delta Lake
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta
 
 Lance
 -----
@@ -221,6 +250,16 @@ Lance
    :toctree: doc/
 
    read_lance
+   Dataset.write_lance
+
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
 
 ClickHouse
 ----------
@@ -230,6 +269,17 @@ ClickHouse
    :toctree: doc/
 
    read_clickhouse
+   Dataset.write_clickhouse
+
+Daft
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_daft
+   Dataset.to_daft
 
 Dask
 ----
@@ -369,7 +419,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
 Shuffling API

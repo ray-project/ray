@@ -19,7 +19,7 @@ for a regular PPO algorithm.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curiosity` flag to disable curiosity learning and force your policy
 to be trained on the task w/o the use of intrinsic rewards. With this option, the
@@ -74,7 +74,6 @@ parser = add_rllib_example_script_args(
     default_reward=-140.0, default_iters=2000, default_timesteps=1000000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=4,
 )
 parser.add_argument(
@@ -99,7 +98,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("MountainCar-v0")
         .env_runners(
-            env_to_module_connector=lambda env: MeanStdFilter(),
+            env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
             num_envs_per_env_runner=5,
         )
         .training(

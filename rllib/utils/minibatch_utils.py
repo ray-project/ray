@@ -1,10 +1,11 @@
 import math
 from typing import List, Optional
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.data import DataIterator
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
+from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import DeviceType, EpisodeType
 
 
 @DeveloperAPI
@@ -185,6 +186,65 @@ class MiniBatchDummyIterator(MiniBatchIteratorBase):
 
     def __iter__(self):
         yield self._batch
+
+
+@DeveloperAPI
+class MiniBatchRayDataIterator:
+    def __init__(
+        self,
+        *,
+        iterator: DataIterator,
+        device: DeviceType,
+        minibatch_size: int,
+        num_iters: Optional[int],
+        **kwargs,
+    ):
+        # A `ray.data.DataIterator` that can iterate in different ways over the data.
+        self._iterator = iterator
+        # Note, in multi-learner settings the `return_state` is in `kwargs`.
+        self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
+
+        # Holds a batched_iterable over the dataset.
+        self._batched_iterable = self._iterator.iter_torch_batches(
+            batch_size=minibatch_size,
+            device=device,
+            **self._kwargs,
+        )
+        # Create an iterator that can be stopped and resumed during an epoch.
+        self._epoch_iterator = iter(self._batched_iterable)
+        self._num_iters = num_iters
+
+    def __iter__(self) -> MultiAgentBatch:
+        iteration = 0
+        while self._num_iters is None or iteration < self._num_iters:
+            for batch in self._epoch_iterator:
+                # Update the iteration counter.
+                iteration += 1
+
+                batch = unflatten_dict(batch)
+                batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(
+                        len(next(iter(module_data.values())))
+                        for module_data in batch.values()
+                    ),
+                )
+
+                yield (batch)
+
+                # If `num_iters` is reached break and return.
+                if self._num_iters and iteration == self._num_iters:
+                    break
+            else:
+                # Reinstantiate a new epoch iterator.
+                self._epoch_iterator = iter(self._batched_iterable)
+                # If a full epoch on the data should be run, stop.
+                if not self._num_iters:
+                    # Exit the loop.
+                    break
 
 
 @DeveloperAPI

@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/generator_waiter.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace ray {
 namespace core {
 

@@ -16,18 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 BROADCAST_PERIODIC_WARNING = """
-`ray.train.report` has not been called by all {world_size} workers in the group.
-
-The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks
-to join the `report` call: {missing_ranks}.
-
-Please ensure that all workers call `ray.train.report` regardless of whether
-they participate in checkpointing or not (e.g., pass `checkpoint=None` for ranks
-that do not save a checkpoint). Also ensure that workers are not hanging on
-other operations, causing them to miss this synchronization barrier.
-
-You can set the {warn_interval_env_var} environment variable to change the frequency
-of this warning (current value: {warn_interval_s} s).
+`{caller_method_name}` has not been called by all {world_size} workers in the group.
+The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks to join the `{caller_method_name}` call: {missing_ranks}.
+Also ensure that workers are not hanging on other operations, causing them to miss this synchronization barrier.
+You can set the {warn_interval_env_var} environment variable to change the frequency of this warning (current value: {warn_interval_s} s).
 """
 
 
@@ -124,7 +116,9 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    async def _wait_with_logging(self, condition, world_rank: int):
+    async def _wait_with_logging(
+        self, condition, world_rank: int, caller_method_name: str
+    ):
         """Waits for the condition to be notified, logging an warning every
         `log_interval` seconds, and raises a timeout error if `timeout` is reached.
         """
@@ -141,23 +135,40 @@ class SynchronizationActor:
             except (asyncio.TimeoutError, TimeoutError):
                 logger.warning(
                     BROADCAST_PERIODIC_WARNING.format(
+                        caller_method_name=caller_method_name,
                         world_size=self._world_size,
                         max_time_elapsed_s=self._get_time_elapsed(),
                         missing_ranks=self._get_missing_ranks(),
                         warn_interval_env_var=REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
                         warn_interval_s=self._warn_interval_s,
-                    )
+                    ),
                 )
 
     async def broadcast_from_rank_zero(
-        self, world_rank: int, world_size: int, data: T
+        self,
+        world_rank: int,
+        world_size: int,
+        data: T,
+        caller_method_name: str,
     ) -> T:
         """Broadcasts a data from the worker with rank 0 to all other workers.
 
         This method is a coroutine that blocks until all workers have called this
         method  with the their data. The data from the worker with rank 0 will
         be returned.
+
+        Args:
+            world_rank: The rank of the worker that calls this method.
+            world_size: The total number of workers in the group.
+            data: The data to broadcast.
+            caller_method_name: The name of the method that calls this method.
+
+        Returns:
+            The data broadcasted from the worker with rank 0.
         """
+        # TODO: resolve https://github.com/ray-project/ray/pull/54066#discussion_r2180657435
+        # We couldn't reproduce the issue but the asyncio docs don't say it can't happen.
+
         # Ensures that all global states manipulation is done within the async context
         # manager which makes the condition variable awaiting and the counter
         # incrementing an atomic operation.
@@ -175,7 +186,9 @@ class SynchronizationActor:
                 # other workers to call the broadcast_from_rank_zero method.
                 try:
                     await asyncio.wait_for(
-                        self._wait_with_logging(self._condition, world_rank),
+                        self._wait_with_logging(
+                            self._condition, world_rank, caller_method_name
+                        ),
                         timeout=self._timeout_s,
                     )
                     return self._reduced_data

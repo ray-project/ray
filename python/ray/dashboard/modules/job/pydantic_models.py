@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from ray._private.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
 from ray.util.annotations import PublicAPI
 
@@ -73,7 +73,7 @@ if PYDANTIC_INSTALLED:
         )
         start_time: Optional[int] = Field(
             None,
-            description="The time when the job was started. " "A Unix timestamp in ms.",
+            description="The time when the job was started. A Unix timestamp in ms.",
         )
         end_time: Optional[int] = Field(
             None,

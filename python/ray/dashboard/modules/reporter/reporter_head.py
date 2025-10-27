@@ -2,13 +2,18 @@ import asyncio
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import List, Optional, Tuple
+from urllib.parse import urlencode
 
 import aiohttp.web
 
-from ray import NodeID
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import ActorID, NodeID
+from ray._common.network_utils import build_address
+from ray._common.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -19,18 +24,18 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
-import ray.dashboard.consts as dashboard_consts
-from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = (
@@ -54,9 +59,9 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class ReportHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class ReportHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._ray_config = None
         # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
         # asynchronous and will lead to low performance. ray disconnect()
@@ -75,10 +80,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # the cluster's lifetime.
         self.cluster_metadata = None
 
+        self._health_checker = HealthChecker(self.gcs_client)
+
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
         return dashboard_optional_utils.rest_response(
-            success=True, message="", **self.cluster_metadata
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="",
+            **self.cluster_metadata,
         )
 
     @routes.get("/api/cluster_status")
@@ -101,7 +110,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
-                self.gcs_aio_client.internal_kv_get(
+                self.gcs_client.async_internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -120,7 +129,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         if not return_formatted_output:
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Got cluster status.",
                 autoscaling_status=legacy_status.decode() if legacy_status else None,
                 autoscaling_error=error.decode() if error else None,
@@ -128,7 +137,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
         else:
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Got formatted cluster status.",
                 cluster_status=debug_status(
                     formatted_status_string, error, address=self.gcs_address
@@ -166,21 +175,18 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_worker_details_for_running_task(
         self, task_id: str, attempt_number: int
     ) -> Tuple[Optional[int], Optional[str]]:
-        """
-        Retrieves worker details for a specific task and attempt number.
+        """Retrieves worker details for a specific task and attempt number.
 
         Args:
             task_id: The ID of the task.
             attempt_number: The attempt number of the task.
 
         Returns:
-            Tuple[Optional[int], Optional[str]]: A tuple
-            containing the worker's PID (process ID),
-            and worker's ID.
+            Tuple[Optional[int], Optional[str]]: A tuple containing the worker's PID
+            (process ID), and worker's ID.
 
         Raises:
-            ValueError: If the task attempt is not running or
-            the state APi is not initialized.
+            ValueError: If the task attempt is not running or the state API is not initialized.
         """
         if self._state_api is None:
             raise ValueError("The state API is not initialized yet. Please retry.")
@@ -210,14 +216,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         return pid, worker_id
 
     @routes.get("/task/traceback")
-    async def get_task_traceback(self, req) -> aiohttp.web.Response:
-        """
-        Retrieves the traceback information for a specific task.
+    async def get_task_traceback(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Retrieves the traceback information for a specific task.
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
-
-        Args:
-            req (aiohttp.web.Request): The HTTP request object.
 
         Params:
             task_id: The ID of the task.
@@ -225,20 +229,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id: The ID of the node.
 
         Returns:
-            aiohttp.web.Response: The HTTP response containing
-            the traceback information.
+            aiohttp.web.Response: The HTTP response containing the traceback information.
 
         Raises:
-            ValueError: If the "task_id" parameter
-            is missing in the request query.
-            ValueError: If the "attempt_number" parameter
-            is missing in the request query.
-            ValueError: If the worker begins working on
-            another task during the traceback retrieval.
-            aiohttp.web.HTTPInternalServerError: If there is
-            an internal server error during the traceback retrieval.
+            ValueError: If the "task_id" parameter is missing in the request query.
+            ValueError: If the "attempt_number" parameter is missing in the request query.
+            ValueError: If the worker begins working on another task during the traceback retrieval.
+            aiohttp.web.HTTPInternalServerError: If there is an internal server error during the traceback retrieval.
         """
-
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
@@ -256,7 +254,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
@@ -301,39 +299,34 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
         return aiohttp.web.Response(
-            text=WARNING_FOR_MULTI_TASK_IN_A_WORKER
-            + str(task_ids_in_a_worker)
-            + "\n"
-            + reply.output
-            if len(task_ids_in_a_worker) > 1
-            else reply.output
+            text=(
+                WARNING_FOR_MULTI_TASK_IN_A_WORKER
+                + str(task_ids_in_a_worker)
+                + "\n"
+                + reply.output
+                if len(task_ids_in_a_worker) > 1
+                else reply.output
+            )
         )
 
     @routes.get("/task/cpu_profile")
-    async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
-        """
-        Retrieves the CPU profile for a specific task.
+    async def get_task_cpu_profile(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Retrieves the CPU profile for a specific task.
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
-
-        Args:
-            req (aiohttp.web.Request): The HTTP request object.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the CPU profile data.
 
         Raises:
-            ValueError: If the "task_id" parameter is
-            missing in the request query.
-            ValueError: If the "attempt_number" parameter is
-            missing in the request query.
+            ValueError: If the "task_id" parameter is missing in the request query.
+            ValueError: If the "attempt_number" parameter is missing in the request query.
             ValueError: If the maximum duration allowed is exceeded.
-            ValueError: If the worker begins working on
-            another task during the profile retrieval.
-            aiohttp.web.HTTPInternalServerError: If there is
-            an internal server error during the profile retrieval.
-            aiohttp.web.HTTPInternalServerError: If the CPU Flame
-            Graph information for the task is not found.
+            ValueError: If the worker begins working on another task during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
@@ -359,7 +352,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -369,7 +362,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, for {task_id} with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}"
         )
 
         reply = await reporter_stub.CpuProfiling(
@@ -401,43 +394,57 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
         return aiohttp.web.Response(
-            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                EMOJI_WARNING,
-                WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
-            )
-            + SVG_STYLE
-            + (reply.output)
-            if len(task_ids_in_a_worker) > 1
-            else SVG_STYLE + reply.output,
+            body=(
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING,
+                    WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
+                )
+                + SVG_STYLE
+                + (reply.output)
+                if len(task_ids_in_a_worker) > 1
+                else SVG_STYLE + reply.output
+            ),
             headers={"Content-Type": "text/html"},
         )
 
     @routes.get("/worker/traceback")
-    async def get_traceback(self, req) -> aiohttp.web.Response:
-        """
+    async def get_traceback(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the traceback information for a specific worker.
+
         Params:
             pid: Required. The PID of the worker.
-            ip: Required. The IP address of the node.
+            ip or node_id: Required. The IP address or hex ID of the node.
 
         """
         pid = req.query.get("pid")
         ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
         if not pid:
             raise ValueError("pid is required")
-        if not ip:
-            raise ValueError("ip is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
 
-        addrs = await self._get_stub_address_by_ip(ip)
-        if not addrs:
-            raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at IP {ip}"
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
             )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}"
+                )
+
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            f"Sending stack trace request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
         pid = int(pid)
         reply = await reporter_stub.GetTraceback(
@@ -450,26 +457,47 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     @routes.get("/worker/cpu_profile")
-    async def cpu_profile(self, req) -> aiohttp.web.Response:
-        """
+    async def cpu_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the CPU profile for a specific worker.
+
         Params:
             pid: Required. The PID of the worker.
-            ip: Required. The IP address of the node.
+            ip or node_id: Required. The IP address or hex ID of the node.
+            duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
+            format: Optional. Output format (default: "flamegraph").
+            native: Optional. Whether to use native profiling (default: false).
+
+        Raises:
+            ValueError: If pid is not provided.
+            ValueError: If ip or node_id is not provided.
+            ValueError: If duration exceeds 60 seconds.
+            aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
         """
         pid = req.query.get("pid")
         ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
         if not pid:
             raise ValueError("pid is required")
-        if not ip:
-            raise ValueError("ip is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
 
-        addrs = await self._get_stub_address_by_ip(ip)
-        if not addrs:
-            raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node at IP {ip}"
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
             )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}"
+                )
+
         node_id, ip, http_port, grpc_port = addrs
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         pid = int(pid)
         duration_s = int(req.query.get("duration", 5))
@@ -480,7 +508,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
@@ -494,30 +522,111 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
-                    "Content-Type": "image/svg+xml"
-                    if format == "flamegraph"
-                    else "text/plain"
+                    "Content-Type": (
+                        "image/svg+xml" if format == "flamegraph" else "text/plain"
+                    )
                 },
             )
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
-    @routes.get("/memory_profile")
-    async def memory_profile(self, req) -> aiohttp.web.Response:
+    @routes.get("/worker/gpu_profile")
+    async def gpu_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the Torch GPU profile trace for a specific worker.
+
+        This is a Torch-specific API. It is not supported for other frameworks.
+
+        Params:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the GPU training worker.
+                ip or node_id: Required. The IP address or hex ID of the node where the GPU training worker is running.
+                num_iterations: Number of training steps for profiling. Defaults to 4
+                    This is the number of calls to the torch Optimizer.step().
+
+        Returns:
+            A redirect to the log API to download the GPU profiling trace file.
+
+        Raises:
+            aiohttp.web.HTTPInternalServerError: if one of the following happens:
+                (1) The GPU profiling dependencies are not installed on the target node.
+                (2) The target node doesn't have GPUs.
+                (3) The GPU profiling fails or times out.
+                    The output will contain a description of the error.
+                    For example, trying to profile a non-Torch training process will
+                    result in an error.
         """
-        Retrieves the memory profile for a specific worker or task.
+
+        pid = req.query.get("pid")
+        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
+        if not pid:
+            raise ValueError("pid is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
+
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
+            )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}, pid {pid}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}, pid {pid}"
+                )
+
+        node_id, ip, http_port, grpc_port = addrs
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
+
+        # Profile for num_iterations training steps (calls to optimizer.step())
+        num_iterations = int(req.query.get("num_iterations", 4))
+
+        logger.info(
+            f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
+            f"Profiling for {num_iterations} training steps."
+        )
+
+        reply = await reporter_stub.GpuProfiling(
+            reporter_pb2.GpuProfilingRequest(
+                pid=int(pid), num_iterations=num_iterations
+            )
+        )
+
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+        logger.info("Returning profiling response, size {}".format(len(reply.output)))
+
+        filepath = str(reply.output)
+        download_filename = Path(filepath).name
+
+        query = urlencode(
+            {
+                "node_ip": ip,
+                "filename": filepath,
+                "download_filename": download_filename,
+                "lines": "-1",
+            }
+        )
+        redirect_url = f"/api/v0/logs/file?{query}"
+        raise aiohttp.web.HTTPFound(redirect_url)
+
+    @routes.get("/memory_profile")
+    async def memory_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the memory profile for a specific worker or task.
         Note that for tasks, one worker process works on one task at a time
         or one worker works on multiple async tasks.
-
-        Args:
-            req (aiohttp.web.Request): The HTTP request object.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the memory profile data.
 
         Params (1):
             pid: The PID of the worker.
-            ip: The IP address of the node.
+            ip or node_id: The IP address or hex ID of the node.
+
         Params (2):
             task_id: The ID of the task.
             attempt_number: The attempt number of the task.
@@ -525,13 +634,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Raises:
             aiohttp.web.HTTPInternalServerError: If no stub
-                found from the given IP value
+                found from the given IP address or hex ID value
             aiohttp.web.HTTPInternalServerError: If the
                 "task_id" parameter exists but either "attempt_number"
                 or "node id" is missing in the request query.
             aiohttp.web.HTTPInternalServerError: If the maximum
                 duration allowed is exceeded.
-            aiohttp.web.HTTPInternalServerError If requesting task
+            aiohttp.web.HTTPInternalServerError: If requesting task
                 profiling for the worker begins working on another task
                 during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If there is
@@ -576,15 +685,30 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             pid = int(req.query["pid"])
             ip = req.query.get("ip")
-            addrs = await self._get_stub_address_by_ip(ip)
-            if not addrs:
-                return aiohttp.web.HTTPInternalServerError(
-                    text=f"Failed to execute: no agent address found for node IP {ip}"
+            node_id_hex = req.query.get("node_id")
+
+            if not node_id_hex and not ip:
+                raise ValueError("ip or node_id is required")
+
+            if node_id_hex:
+                addrs = await self._get_stub_address_by_node_id(
+                    NodeID.from_hex(node_id_hex)
                 )
-            _, ip, _, grpc_port = addrs
+                if not addrs:
+                    return aiohttp.web.HTTPInternalServerError(
+                        text=f"Failed to execute: no agent address found for node {node_id_hex}"
+                    )
+                _, ip, _, grpc_port = addrs
+            else:
+                addrs = await self._get_stub_address_by_ip(ip)
+                if not addrs:
+                    return aiohttp.web.HTTPInternalServerError(
+                        text=f"Failed to execute: no agent address found for node IP {ip}"
+                    )
+                _, ip, _, grpc_port = addrs
 
         assert pid is not None
-        ip_port = f"{ip}:{grpc_port}"
+        ip_port = build_address(ip, grpc_port)
 
         duration_s = int(req.query.get("duration", 10))
 
@@ -597,7 +721,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         reporter_stub = self._make_stub(ip_port)
 
         logger.info(
-            f"Retrieving memory profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
+            f"Retrieving memory profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
 
         reply = await reporter_stub.MemoryProfiling(
@@ -646,13 +770,89 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
 
         return aiohttp.web.Response(
-            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                EMOJI_WARNING, warning
-            )
-            + (reply.output)
-            if warning != ""
-            else reply.output,
+            body=(
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING, warning
+                )
+                + (reply.output)
+                if warning != ""
+                else reply.output
+            ),
             headers={"Content-Type": "text/html"},
+        )
+
+    @routes.get("/api/gcs_healthz")
+    async def health_check(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            alive = await self._health_checker.check_gcs_liveness()
+            if alive is True:
+                return aiohttp.web.Response(
+                    text="success",
+                    content_type="application/text",
+                )
+        except Exception as e:
+            return aiohttp.web.HTTPServiceUnavailable(
+                reason=f"Health check failed: {e}"
+            )
+
+        return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
+
+    @routes.get("/api/actors/kill")
+    async def kill_actor_gcs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        force_kill = req.query.get("force_kill", False) in ("true", "True")
+        no_restart = req.query.get("no_restart", False) in ("true", "True")
+        if not actor_id:
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="actor_id is required.",
+            )
+
+        status_code = await self.gcs_client.async_kill_actor(
+            ActorID.from_hex(actor_id),
+            force_kill,
+            no_restart,
+            timeout=30,
+        )
+
+        if status_code == dashboard_utils.HTTPStatusCode.NOT_FOUND:
+            message = f"Actor with id {actor_id} not found."
+        elif status_code == dashboard_utils.HTTPStatusCode.INTERNAL_ERROR:
+            message = f"Failed to kill actor with id {actor_id}."
+        elif status_code == dashboard_utils.HTTPStatusCode.OK:
+            message = (
+                f"Force killed actor with id {actor_id}"
+                if force_kill
+                else f"Requested actor with id {actor_id} to terminate. "
+                + "It will exit once running tasks complete"
+            )
+        else:
+            message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
+
+        return dashboard_optional_utils.rest_response(
+            status_code=status_code, message=message
+        )
+
+    @routes.get("/api/prometheus/sd")
+    async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
+        """
+        Expose Prometheus metrics targets through HTTP Service Discovery.
+        """
+        content = self.service_discovery.get_latest_service_discovery_content()
+        if not isinstance(content, list):
+            error_message = "service discovery error: content is not a list"
+            logger.warning(error_message)
+            return aiohttp.web.json_response(
+                {"error": error_message},
+                status=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                headers={"Cache-Control": "no-store"},
+            )
+        return aiohttp.web.Response(
+            text=json.dumps(content),
+            content_type="application/json",
+            charset="utf-8",
+            status=dashboard_utils.HTTPStatusCode.OK,
+            headers={"Cache-Control": "no-store"},
         )
 
     async def _get_stub_address_by_node_id(
@@ -665,7 +865,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         If not found, return None.
         """
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -677,8 +877,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_stub_address_by_ip(
         self, ip: str
-    ) -> Optional[Tuple[NodeID, str, int, int]]:
-        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+    ) -> Optional[Tuple[str, str, int, int]]:
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -686,7 +886,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if not agent_addr_json:
             return None
         node_id, http_port, grpc_port = json.loads(agent_addr_json)
-        return node_id, ip, http_port, grpc_port
+        return NodeID.from_hex(node_id), ip, http_port, grpc_port
 
     def _make_stub(
         self, ip_port: str
@@ -695,9 +895,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
         return reporter_pb2_grpc.ReporterServiceStub(channel)
 
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_aio_client
+            self.aiogrpc_gcs_channel, self.gcs_client
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can
@@ -712,12 +913,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
 
-        cluster_metadata = await self.gcs_aio_client.internal_kv_get(
+        cluster_metadata = await self.gcs_client.async_internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
-
-    @staticmethod
-    def is_minimal_module():
-        return False

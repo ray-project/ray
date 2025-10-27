@@ -20,7 +20,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
@@ -28,7 +27,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -466,26 +465,6 @@ class MultiRLModule(RLModule):
         return list(self._rl_modules.items())
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def _default_input_specs(self) -> SpecType:
-        """MultiRLModule should not check the input specs.
-
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
 
@@ -517,6 +496,22 @@ class MultiRLModule(RLModule):
                 f"Available modules: {set(self.keys())}"
             )
 
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
+
 
 @PublicAPI(stability="alpha")
 @dataclasses.dataclass
@@ -527,47 +522,34 @@ class MultiRLModuleSpec:
     share neural networks across the modules, the build method can be overridden to
     create the shared module first and then pass it to custom module classes that would
     then use it as a shared module.
-
-    Args:
-        multi_rl_module_class: The class of the MultiRLModule to construct. By
-            default, this is the base `MultiRLModule` class.
-        observation_space: Optional global observation space for the MultiRLModule.
-            Useful for shared network components that live only inside the MultiRLModule
-            and don't have their own ModuleID and own RLModule within
-            `self._rl_modules`.
-        action_space: Optional global action space for the MultiRLModule.
-            Useful for shared network components that live only inside the MultiRLModule
-            and don't have their own ModuleID and own RLModule within
-            `self._rl_modules`.
-        inference_only: An optional global inference_only flag. If not set (None by
-            default), considers the MultiRLModule to be inference_only=True, only
-            if all submodules also have their own inference_only flags set to True.
-        model_config: An optional global model_config dict. Useful to configure shared
-            network components that only live inside the MultiRLModule and don't have
-            their own ModuleID and own RLModule within `self._rl_modules`.
-        rl_module_specs: The module specs for each individual module. It can be either a
-            RLModuleSpec used for all module_ids or a dictionary mapping
-            from module IDs to RLModuleSpecs for each individual module.
-        load_state_path: The path to the module state to load from. NOTE: This must be
-            an absolute path. NOTE: If the load_state_path of this spec is set, and
-            the load_state_path of one of the RLModuleSpecs' is also set,
-            the weights of that RL Module will be loaded from the path specified in
-            the RLModuleSpec. This is useful if you want to load the weights
-            of a MultiRLModule and also manually load the weights of some of the RL
-            modules within that MultiRLModule from other checkpoints.
-        modules_to_load: A set of module ids to load from the checkpoint. This is
-            only used if load_state_path is set. If this is None, all modules are
-            loaded.
     """
 
+    #: The class of the MultiRLModule to construct. By default,
+    #: this is the base `MultiRLModule` class.
     multi_rl_module_class: Type[MultiRLModule] = MultiRLModule
+    #: Optional global observation space for the MultiRLModule.
+    #: Useful for shared network components that live only inside the MultiRLModule
+    #: and don't have their own ModuleID and own RLModule within
+    #: `self._rl_modules`.
     observation_space: Optional[gym.Space] = None
+    #: Optional global action space for the MultiRLModule. Useful for
+    #: shared network components that live only inside the MultiRLModule and don't
+    #: have their own ModuleID and own RLModule within `self._rl_modules`.
     action_space: Optional[gym.Space] = None
+    #: An optional global inference_only flag. If not set (None by
+    #: default), considers the MultiRLModule to be inference_only=True, only if all
+    #: submodules also have their own inference_only flags set to True.
     inference_only: Optional[bool] = None
     # TODO (sven): Once we support MultiRLModules inside other MultiRLModules, we would
     #  need this flag in here as well, but for now, we'll leave it out for simplicity.
     # learner_only: bool = False
+    #: An optional global model_config dict. Useful to configure shared
+    #: network components that only live inside the MultiRLModule and don't have
+    #: their own ModuleID and own RLModule within `self._rl_modules`.
     model_config: Optional[dict] = None
+    #: The module specs for each individual module. It can be either
+    #: an RLModuleSpec used for all module_ids or a dictionary mapping from module
+    #: IDs to RLModuleSpecs for each individual module.
     rl_module_specs: Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]] = None
 
     # TODO (sven): Deprecate these in favor of using the pure Checkpointable APIs for

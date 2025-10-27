@@ -16,14 +16,20 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
+#include "ray/common/metrics.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter_interface.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/rpc/utils.h"
 
 namespace ray {
 namespace core {
@@ -46,11 +52,11 @@ class CoreWorkerMemoryStore {
   /// \param[in] io_context Posts async callbacks to this context.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
-  /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
+  /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      ReferenceCounter *counter = nullptr,
-      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      ReferenceCounterInterface *counter = nullptr,
+      std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
@@ -63,9 +69,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Whether the object was put into the memory store. If false, then
-  /// this is because the object was promoted to and stored in plasma instead.
-  bool Put(const RayObject &object, const ObjectID &object_id);
+  void Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -91,12 +95,16 @@ class CoreWorkerMemoryStore {
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
-  /// Convenience wrapper around Get() that stores ready objects in a given result set.
+  /// Waits for a number of objects to be ready from the list of object_ids given.
+  /// \return A pair of sets of object IDs. The first set contains the object IDs that
+  /// are ready in the core worker memory store (capped to num_objects), and the second
+  /// set contains the object IDs are ready in the plasma object store (not capped).
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready);
+              absl::flat_hash_set<ObjectID> *ready,
+              absl::flat_hash_set<ObjectID> *plasma_object_ids);
 
   /// Get an object if it exists.
   ///
@@ -123,14 +131,12 @@ class CoreWorkerMemoryStore {
   /// \param[out] plasma_ids_to_delete This will be extended to
   /// include the IDs of the plasma objects to delete, based on the
   /// in-memory objects that contained InPlasmaError.
-  /// \return Void.
   void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
               absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
-  /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
   /// Check whether this store contains the object.
@@ -174,13 +180,17 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
+  /// \param[in] at_most_num_objects Whether this function will return *at most*
+  /// num_objects even if more are ready. We will still stop waiting when we have
+  /// num_objects.
   Status GetImpl(const std::vector<ObjectID> &object_ids,
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
                  bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
-                 bool abort_if_any_object_is_exception);
+                 bool abort_if_any_object_is_exception,
+                 bool at_most_num_objects);
 
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);
@@ -199,10 +209,10 @@ class CoreWorkerMemoryStore {
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
-  ReferenceCounter *ref_counter_ = nullptr;
+  ReferenceCounterInterface *ref_counter_;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
@@ -244,6 +254,8 @@ class CoreWorkerMemoryStore {
   std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                            const ObjectID &object_id)>
       object_allocator_;
+
+  ray::stats::Gauge object_store_memory_gauge_{ray::GetObjectStoreMemoryGaugeMetric()};
 };
 
 }  // namespace core

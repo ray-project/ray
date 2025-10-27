@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -43,7 +44,30 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Deprecated configs can use this value to detect if the user has set it.
-_DEPRECATED_VALUE = "DEPRECATED"
+# This has type Any to allow it to be assigned to any annotated parameter
+# without causing type errors.
+_DEPRECATED_VALUE: Any = "DEPRECATED"
+
+
+# ==================================================
+#               Train V2 constants
+# ==================================================
+
+# Set this to 1 to enable deprecation warnings for V2 migration.
+ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
+
+
+V2_MIGRATION_GUIDE_MESSAGE = (
+    "See this issue for more context and migration options: "
+    "https://github.com/ray-project/ray/issues/49454. "
+    "Disable these warnings by setting the environment variable: "
+    f"{ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR}=0"
+)
+
+
+def _v2_migration_warnings_enabled() -> bool:
+    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
+
 
 # ==================================================
 #               Environment Variables
@@ -57,9 +81,9 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
-# Integer value which if set will not share ROCR accelerator visible devices
+# Integer value which if set will not share HIP accelerator visible devices
 # across workers. 1 for True (default), 0 for False.
-ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ROCR_VISIBLE_DEVICES"
+ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_HIP_VISIBLE_DEVICES"
 
 # Integer value which if set will not share neuron-core accelerator visible cores
 # across workers. 1 for True (default), 0 for False.
@@ -91,13 +115,26 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
-# Set this to 1 to enable deprecation warnings for V2 migration.
-ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
+# Set this to 1 to only store the checkpoint score attribute with the Checkpoint
+# in the CheckpointManager. The Result will only have the checkpoint score attribute
+# but files written to disk like result.json will still have all the metrics.
+# Defaults to 0.
+# TODO: this is a temporary solution to avoid CheckpointManager OOM.
+# See https://github.com/ray-project/ray/pull/54642#issue-3234029360 for more details.
+TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE = (
+    "TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE"
+)
 
+# Seconds to wait for torch process group to shut down.
+# Shutting down a healthy torch process group, which we may want to do for reasons
+# like restarting a group of workers if an async checkpoint upload fails, can hang.
+# This is a workaround until we figure out how to avoid this hang.
+TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S = "TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S"
+DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S = 30
 
-def _v2_migration_warnings_enabled() -> bool:
-    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)
-
+# Seconds to wait for JAX distributed shutdown.
+JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S = "JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S"
+DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S = 30
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -109,6 +146,9 @@ TRAIN_ENV_VARS = {
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
+    TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE,
+    TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+    JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

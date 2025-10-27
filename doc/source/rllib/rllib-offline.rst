@@ -22,7 +22,7 @@ format. You should use the episode format when
 #. You need experiences grouped by their trajectory and ordered in time (for example, to train stateful modules).
 #. You want to use recorded experiences exclusively within RLlib (for example for offline RL or behavior cloning).
 
-Contrary, you should prefer the table (columns) format, if
+On the contrary, you should prefer the table (columns) format, if
 
 #. You need to read the data easily with other data tools or ML libraries.
 
@@ -30,8 +30,8 @@ Contrary, you should prefer the table (columns) format, if
     :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is usable outside of an RLlib context. To enable faster
     access through external data tools (for example, for data transformations), it's recommended to use the table record format.
 
-Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and
-write methods supported by Ray Data (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
+Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore supports all of its read and
+write methods (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
 :py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle
 of the API is to apply as many data transformations as possible on-the-fly prior to engaging the learner, allowing the latter to focus exclusively on model updates.
 
@@ -67,7 +67,7 @@ this agent and then use its policy to record expert data to local disk.
         EVALUATION_RESULTS,
         EPISODE_RETURN_MEAN,
     )
-    from ray import train, tune
+    from ray import tune
 
     # Configure the PPO algorithm.
     config = (
@@ -99,13 +99,13 @@ this agent and then use its policy to record expert data to local disk.
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={
                 metric: 450.0,
             },
             name="docs_rllib_offline_pretrain_ppo",
             verbose=2,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=1,
                 checkpoint_at_end=True,
             ),
@@ -246,7 +246,7 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
     from ray.rllib.algorithms.bc import BCConfig
 
     # Setup the config for behavior cloning.
@@ -314,11 +314,11 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
     tuner = tune.Tuner(
         "BC",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="docs_rllib_offline_bc",
             # Stop behavior cloning when we reach 450 in return.
             stop={metric: 450.0},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 # Only checkpoint at the end to be faster.
                 checkpoint_frequency=0,
                 checkpoint_at_end=True,
@@ -485,13 +485,13 @@ required to convert episode data into a columnar format. To confirm that the rec
     # eps_id              string
     # agent_id            null
     # module_id           null
-    # obs                 numpy.ndarray(shape=(4,), dtype=float)
+    # obs                 ArrowTensorTypeV2(shape=(4,), dtype=float)
     # actions             int32
     # rewards             double
-    # new_obs             numpy.ndarray(shape=(4,), dtype=float)
+    # new_obs             ArrowTensorTypeV2(shape=(4,), dtype=float)
     # terminateds         bool
     # truncateds          bool
-    # action_dist_inputs  numpy.ndarray(shape=(2,), dtype=float)
+    # action_dist_inputs  ArrowTensorTypeV2(shape=(2,), dtype=float)
     # action_logp         float
     # weights_seq_no      int64
 
@@ -880,7 +880,7 @@ Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightfor
 Actor pool size
 ~~~~~~~~~~~~~~~
 Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`
-instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's
+instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the previous layer's
 throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``map_batches_kwargs`` parameter to define this pool size:
 
 .. code-block:: python
@@ -1869,7 +1869,7 @@ You can configure experience input for an agent using the following options:
         # that exactly `train_batch_size_per_learner` experiences are sampled
         # per batch. The default is RLlib's `EpisodeReplayBuffer`.
         prelearner_buffer_class: Optional[Type],
-        # Optional keyword arguments for intializing the
+        # Optional keyword arguments for initializing the
         # `EpisodeReplayBuffer`. In most cases this is simply the `capacity`
         # for the default buffer used (`EpisodeReplayBuffer`), but it may
         # differ if the `prelearner_buffer_class` uses a custom buffer.

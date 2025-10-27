@@ -193,7 +193,7 @@ Specifying by Tune-Registered Lambda
 A third option for providing environment information to your config is to register an
 environment creator function (or lambda) with Ray Tune. The creator function must take a
 single ``config`` parameter and return a single non-vectorized
-`gymnasium.Env <https://github.com/Farama-Fundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
+`gymnasium.Env <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
 
 For example:
 
@@ -289,7 +289,7 @@ in combination.
    controlled through your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
    ``config.env_runners(num_env_runners=..)``.
 
-1. **Vectorization within a single process:** Many environments achieve high
+#. **Vectorization within a single process:** Many environments achieve high
    frame rates per core but are limited by policy inference latency. To address
    this limitation, create multiple environments per process to batch the policy forward pass
    across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``

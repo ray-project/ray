@@ -1,14 +1,15 @@
 """Abstract class for collective groups."""
-from abc import ABCMeta
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 
 from ray.util.collective.types import (
+    AllGatherOptions,
     AllReduceOptions,
     BarrierOptions,
-    ReduceOptions,
-    AllGatherOptions,
     BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
+    SendOptions,
 )
 
 
@@ -76,9 +77,9 @@ class BaseGroup(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def send(self, tensor, dst_rank):
+    def send(self, tensor, send_options: SendOptions):
         raise NotImplementedError()
 
     @abstractmethod
-    def recv(self, tensor, src_rank):
+    def recv(self, tensor, recv_options: RecvOptions):
         raise NotImplementedError()

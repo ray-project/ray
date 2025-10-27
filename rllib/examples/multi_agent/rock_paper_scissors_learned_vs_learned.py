@@ -33,7 +33,6 @@ parser = add_rllib_example_script_args(
     default_reward=6.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(
@@ -60,7 +59,9 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("pettingzoo_rps")
         .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            env_to_module_connector=(
+                lambda env, spaces, device: FlattenObservations(multi_agent=True)
+            ),
         )
         .multi_agent(
             policies={"p0", "p1"},

@@ -18,7 +18,9 @@ from typing import (
 
 import ray
 import ray.exceptions
+from ray.experimental.channel.accelerator_context import AcceleratorContext
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -101,16 +103,14 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
-    def requires_nccl(self) -> bool:
-        # By default, channels do not require NCCL.
+    def requires_accelerator(self) -> bool:
+        # By default, channels do not require accelerator.
         return False
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communicator group if one is specified.
         """
-        if self._contains_type is not None:
-            return self._contains_type.get_custom_nccl_group()
         return None
 
     def set_communicator_id(self, group_id: str) -> None:
@@ -126,8 +126,10 @@ class ChannelContext:
     _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
-        # Used for the torch.Tensor NCCL transport.
+        # Used for the torch.Tensor accelerator transport.
         self.communicators: Dict[str, "Communicator"] = {}
+        # Used for driver process to store actors in the communicator.
+        self.communicator_handles: Dict[str, "CommunicatorHandle"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -164,17 +166,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-
-            if not ray.get_gpu_ids():
-                import torch
-
-                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-                # by Ray. We instead want the default to be CPU.
-                self._torch_device = torch.device("cpu")
-
-            from ray.air._internal import torch_utils
-
-            self._torch_device = torch_utils.get_devices()[0]
+            self._torch_device = AcceleratorContext.get().get_accelerator_devices()[0]
 
         return self._torch_device
 
@@ -421,6 +413,12 @@ class SynchronousReader(ReaderInterface):
     def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
         for c in self._input_channels:
             start_time = time.monotonic()
+            assert hasattr(
+                c, "release_buffer"
+            ), "release_buffer() is only supported for shared memory channel "
+            "(e.g., Channel, BufferedSharedMemoryChannel, CompositeChannel) "
+            "and used between the last actor and the driver, but got a channel"
+            f" of type {type(c)}."
             c.release_buffer(timeout)
             if timeout is not None:
                 timeout -= time.monotonic() - start_time

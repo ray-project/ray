@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
@@ -23,13 +23,16 @@ class TorchDatasource(Datasource):
     ):
         self._dataset = dataset
 
-    def get_read_tasks(self, parallelism):
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ):
         assert parallelism == 1
 
         meta = BlockMetadata(
-            num_rows=len(self._dataset),
+            # Note: avoid len(self._dataset) because it will trigger
+            # iterating through IterableDataset, which can cause OOM.
+            num_rows=None,
             size_bytes=None,
-            schema=None,
             input_files=None,
             exec_stats=None,
         )
@@ -38,6 +41,7 @@ class TorchDatasource(Datasource):
                 subset,
             ),
             metadata=meta,
+            per_task_row_limit=per_task_row_limit,
         )
 
         return [read_task]
@@ -48,7 +52,17 @@ class TorchDatasource(Datasource):
 
 def _read_subset(subset: "torch.utils.data.Subset"):
     batch = []
-    for item in subset:
+
+    # Get items from dataset based on its type
+    if hasattr(subset, "__iter__"):
+        # IterableDataset: Use the iterator directly
+        items = subset
+    else:
+        # Map-style dataset: Respect __len__
+        items = (subset[i] for i in range(len(subset)))
+
+    # Process items in batches
+    for item in items:
         batch.append(item)
         if len(batch) == TORCH_DATASOURCE_READER_BATCH_SIZE:
             builder = DelegatingBlockBuilder()
@@ -56,6 +70,7 @@ def _read_subset(subset: "torch.utils.data.Subset"):
             yield builder.build()
             batch.clear()
 
+    # Handle any remaining items
     if len(batch) > 0:
         builder = DelegatingBlockBuilder()
         builder.add_batch({"item": batch})

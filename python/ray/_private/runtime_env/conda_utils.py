@@ -1,10 +1,10 @@
+import hashlib
+import json
 import logging
 import os
 import shutil
 import subprocess
-import hashlib
-import json
-from typing import Optional, List, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
@@ -35,7 +35,8 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
             # Use bash command syntax
             activate_conda_env = ["source", activate_path, conda_env_name]
         else:
-            activate_conda_env = ["conda", "activate", conda_env_name]
+            conda_path = get_conda_bin_executable("conda")
+            activate_conda_env = [conda_path, "activate", conda_env_name]
     return activate_conda_env + ["1>&2", "&&"]
 
 

@@ -1,13 +1,14 @@
-import os
 import glob
+import os
+import subprocess
 import sys
 from pathlib import Path
+
 import pytest
-import subprocess
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.nsight import parse_nsight_config
-from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
 
 
@@ -262,7 +263,4 @@ def test_nsight_not_installed():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

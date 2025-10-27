@@ -1,6 +1,9 @@
+import asyncio
+import inspect
 import logging
 import random
 import time
+from collections.abc import Sequence
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -12,11 +15,12 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    MultiplexedReplicaInfo,
+    RequestRoutingInfo,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
+    HTTP_PROXY_TIMEOUT,
     MAX_CACHED_HANDLES,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
@@ -24,14 +28,16 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
 from ray.serve.generated.serve_pb2 import (
+    DeploymentArgs,
+    DeploymentRoute,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import (
     ApplicationStatus,
@@ -88,6 +94,21 @@ class ServeControllerClient:
             self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
 
+    async def shutdown_cached_handles_async(self):
+        """Shuts down all cached handles asynchronously.
+
+        Remove the reference to the cached handles so that they can be
+        garbage collected.
+        """
+
+        async def shutdown_task(cache_key):
+            await self.handle_cache[cache_key].shutdown_async()
+            del self.handle_cache[cache_key]
+
+        await asyncio.gather(
+            *[shutdown_task(cache_key) for cache_key in list(self.handle_cache)]
+        )
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
@@ -99,6 +120,29 @@ class ServeControllerClient:
         if ray.is_initialized() and not self._shutdown:
             try:
                 ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
+            except ray.exceptions.RayActorError:
+                # Controller has been shut down.
+                pass
+            except TimeoutError:
+                logger.warning(
+                    f"Controller failed to shut down within {timeout_s}s. "
+                    "Check controller logs for more details."
+                )
+            self._shutdown = True
+
+    async def shutdown_async(self, timeout_s: float = 30.0) -> None:
+        """Completely shut down the connected Serve instance.
+
+        Shuts down all processes and deletes all state associated with the
+        instance.
+        """
+        await self.shutdown_cached_handles_async()
+
+        if ray.is_initialized() and not self._shutdown:
+            try:
+                await asyncio.wait_for(
+                    self._controller.graceful_shutdown.remote(), timeout=timeout_s
+                )
             except ray.exceptions.RayActorError:
                 # Controller has been shut down.
                 pass
@@ -246,72 +290,114 @@ class ServeControllerClient:
             )
 
     @_ensure_connected
-    def deploy_application(
-        self,
-        built_app: BuiltApplication,
-        *,
-        blocking: bool,
-        route_prefix: Optional[str],
-        logging_config: Optional[Union[Dict, LoggingConfig]],
-    ) -> DeploymentHandle:
-        deployment_args_list = []
-        for deployment in built_app.deployments:
-            if deployment.logging_config is None and logging_config:
-                deployment = deployment.options(logging_config=logging_config)
-
-            is_ingress = deployment.name == built_app.ingress_deployment_name
-            deployment_args = get_deploy_args(
-                deployment.name,
-                ingress=is_ingress,
-                replica_config=deployment._replica_config,
-                deployment_config=deployment._deployment_config,
-                version=deployment._version or get_random_string(),
-                route_prefix=route_prefix if is_ingress else None,
-                docs_path=deployment._docs_path,
+    def wait_for_proxies_serving(
+        self, wait_for_applications_running: bool = True
+    ) -> None:
+        """Wait for the proxies to be ready to serve requests."""
+        proxy_handles = ray.get(self._controller.get_proxies.remote())
+        serving_refs = [
+            handle.serving.remote(
+                wait_for_applications_running=wait_for_applications_running
             )
+            for handle in proxy_handles.values()
+        ]
 
-            deployment_args_proto = DeploymentArgs()
-            deployment_args_proto.deployment_name = deployment_args["deployment_name"]
-            deployment_args_proto.deployment_config = deployment_args[
-                "deployment_config_proto_bytes"
-            ]
-            deployment_args_proto.replica_config = deployment_args[
-                "replica_config_proto_bytes"
-            ]
-            deployment_args_proto.deployer_job_id = deployment_args["deployer_job_id"]
-            if deployment_args["route_prefix"]:
-                deployment_args_proto.route_prefix = deployment_args["route_prefix"]
-            deployment_args_proto.ingress = deployment_args["ingress"]
-            if deployment_args["docs_path"]:
-                deployment_args_proto.docs_path = deployment_args["docs_path"]
+        done, pending = ray.wait(
+            serving_refs,
+            timeout=HTTP_PROXY_TIMEOUT,
+            num_returns=len(serving_refs),
+        )
 
-            deployment_args_list.append(deployment_args_proto.SerializeToString())
+        if len(pending) > 0:
+            raise TimeoutError(f"Proxies not available after {HTTP_PROXY_TIMEOUT}s.")
+
+        # Ensure the proxies are either serving or dead.
+        for ref in done:
+            try:
+                ray.get(ref, timeout=1)
+            except ray.exceptions.RayActorError:
+                pass
+            except Exception:
+                raise TimeoutError(
+                    f"Proxies not available after {HTTP_PROXY_TIMEOUT}s."
+                )
+
+    @_ensure_connected
+    def deploy_applications(
+        self,
+        built_apps: Sequence[BuiltApplication],
+        *,
+        wait_for_ingress_deployment_creation: bool = True,
+        wait_for_applications_running: bool = True,
+    ) -> List[DeploymentHandle]:
+        name_to_deployment_args_list = {}
+        for app in built_apps:
+            deployment_args_list = []
+            for deployment in app.deployments:
+                if deployment.logging_config is None and app.logging_config:
+                    deployment = deployment.options(logging_config=app.logging_config)
+
+                is_ingress = deployment.name == app.ingress_deployment_name
+                deployment_args = get_deploy_args(
+                    deployment.name,
+                    ingress=is_ingress,
+                    replica_config=deployment._replica_config,
+                    deployment_config=deployment._deployment_config,
+                    version=deployment._version or get_random_string(),
+                    route_prefix=app.route_prefix if is_ingress else None,
+                )
+
+                deployment_args_proto = DeploymentArgs()
+                deployment_args_proto.deployment_name = deployment_args[
+                    "deployment_name"
+                ]
+                deployment_args_proto.deployment_config = deployment_args[
+                    "deployment_config_proto_bytes"
+                ]
+                deployment_args_proto.replica_config = deployment_args[
+                    "replica_config_proto_bytes"
+                ]
+                deployment_args_proto.deployer_job_id = deployment_args[
+                    "deployer_job_id"
+                ]
+                if deployment_args["route_prefix"]:
+                    deployment_args_proto.route_prefix = deployment_args["route_prefix"]
+                deployment_args_proto.ingress = deployment_args["ingress"]
+
+                deployment_args_list.append(deployment_args_proto.SerializeToString())
+
+            name_to_deployment_args_list[app.name] = deployment_args_list
+
+        # Validate applications before sending to controller
+        self._check_ingress_deployments(built_apps)
 
         ray.get(
-            self._controller.deploy_application.remote(
-                built_app.name, deployment_args_list
+            self._controller.deploy_applications.remote(name_to_deployment_args_list)
+        )
+
+        handles = []
+        for app in built_apps:
+            # The deployment state is not guaranteed to be created after
+            # deploy_application returns; the application state manager will
+            # need another reconcile iteration to create it.
+            if wait_for_ingress_deployment_creation:
+                self._wait_for_deployment_created(app.ingress_deployment_name, app.name)
+
+            if wait_for_applications_running:
+                self._wait_for_application_running(app.name)
+                if app.route_prefix is not None:
+                    url_part = " at " + self._root_url + app.route_prefix
+                else:
+                    url_part = ""
+                logger.info(f"Application '{app.name}' is ready{url_part}.")
+
+            handles.append(
+                self.get_handle(
+                    app.ingress_deployment_name, app.name, check_exists=False
+                )
             )
-        )
 
-        # The deployment state is not guaranteed to be created after
-        # deploy_application returns; the application state manager will
-        # need another reconcile iteration to create it.
-        self._wait_for_deployment_created(
-            built_app.ingress_deployment_name, built_app.name
-        )
-        handle = self.get_handle(
-            built_app.ingress_deployment_name, built_app.name, check_exists=False
-        )
-
-        if blocking:
-            self._wait_for_application_running(built_app.name)
-            if route_prefix is not None:
-                url_part = " at " + self._root_url + route_prefix
-            else:
-                url_part = ""
-            logger.info(f"Application '{built_app.name}' is ready{url_part}.")
-
-        return handle
+        return handles
 
     @_ensure_connected
     def deploy_apps(
@@ -336,15 +422,53 @@ class ServeControllerClient:
         if _blocking:
             timeout_s = 60
 
+            if isinstance(config, ServeDeploySchema):
+                app_names = {app.name for app in config.applications}
+            else:
+                app_names = {config.name}
+
             start = time.time()
             while time.time() - start < timeout_s:
-                curr_status = self.get_serve_status()
-                if curr_status.app_status.status == ApplicationStatus.RUNNING:
+                statuses = self.list_serve_statuses()
+                app_to_status = {
+                    status.name: status.app_status.status
+                    for status in statuses
+                    if status.name in app_names
+                }
+                if len(app_names) == len(app_to_status) and set(
+                    app_to_status.values()
+                ) == {ApplicationStatus.RUNNING}:
                     break
+
                 time.sleep(CLIENT_POLLING_INTERVAL_S)
             else:
                 raise TimeoutError(
                     f"Serve application isn't running after {timeout_s}s."
+                )
+
+            self.wait_for_proxies_serving(wait_for_applications_running=True)
+
+    def _check_ingress_deployments(
+        self, built_apps: Sequence[BuiltApplication]
+    ) -> None:
+        """Check @serve.ingress of deployments across applications.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments in any single application.
+        """
+        for app in built_apps:
+            num_ingress_deployments = 0
+            for deployment in app.deployments:
+                if inspect.isclass(deployment.func_or_class) and issubclass(
+                    deployment.func_or_class, ASGIAppReplicaWrapper
+                ):
+                    num_ingress_deployments += 1
+
+            if num_ingress_deployments > 1:
+                raise RayServeException(
+                    f'Found multiple FastAPI deployments in application "{app.name}".'
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
                 )
 
     @_ensure_connected
@@ -403,6 +527,14 @@ class ServeControllerClient:
             ray.get(self._controller.get_serve_status.remote(name))
         )
         return StatusOverview.from_proto(proto)
+
+    @_ensure_connected
+    def list_serve_statuses(self) -> List[StatusOverview]:
+        statuses_bytes = ray.get(self._controller.list_serve_statuses.remote())
+        return [
+            StatusOverview.from_proto(StatusOverviewProto.FromString(status_bytes))
+            for status_bytes in statuses_bytes
+        ]
 
     @_ensure_connected
     def get_all_deployment_statuses(self) -> List[DeploymentStatusInfo]:
@@ -469,14 +601,14 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed replica information for replica.
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
 
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self._controller.record_multiplexed_replica_info.remote(info)
+        self._controller.record_request_routing_info.remote(info)
 
     @_ensure_connected
     def update_global_logging_config(self, logging_config: LoggingConfig):

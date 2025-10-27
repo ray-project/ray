@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+This script compares benchmark results from two release directories one by one.
+
+Usage:
+python3 release/release_logs/compare_perf_metrics <old-dir> <new-dir>
+"""
+
 import json
 import pathlib
 import argparse
@@ -27,37 +34,43 @@ def parse_args():
 
 
 def main(old_dir_name, new_dir_name):
+    old_files = list(walk(old_dir_name))
+    new_files = list(walk(new_dir_name))
 
-    old_paths = paths_without_root_dir(walk(old_dir_name))
-    new_paths = paths_without_root_dir(walk(new_dir_name))
-    to_compare, missing_in_new, missing_in_old = get_compare_list(old_paths, new_paths)
+    old_by_name = group_by_filename(old_files, old_dir_name)
+    new_by_name = group_by_filename(new_files, new_dir_name)
 
-    for path in missing_in_new:
-        print(new_dir_name, "does not have", path)
-
-    for path in missing_in_old:
-        print(old_dir_name, "does not have", path)
+    all_filenames = set(old_by_name.keys()) | set(new_by_name.keys())
 
     throughput_regressions = []
     latency_regressions = []
     missing_in_new = []
     missing_in_old = []
-    for path in to_compare:
-        old = pathlib.Path(old_dir_name, *path.parts)
-        new = pathlib.Path(new_dir_name, *path.parts)
 
-        throughput, latency, new, old = get_regressions(old, new)
+    for filename in sorted(all_filenames):
+        old_path = old_by_name.get(filename)
+        new_path = new_by_name.get(filename)
+
+        if not old_path:
+            print(f"{old_dir_name} is missing {filename}")
+            continue
+        if not new_path:
+            print(f"{new_dir_name} is missing {filename}")
+            continue
+
+        # Compare the two files
+        throughput, latency, missing_new_metrics, missing_old_metrics = get_regressions(old_path, new_path)
 
         throughput_regressions.extend(throughput)
         latency_regressions.extend(latency)
-        missing_in_new.extend(new)
-        missing_in_old.extend(old)
+        missing_in_new.extend(missing_new_metrics)
+        missing_in_old.extend(missing_old_metrics)
 
-    for perf_metric in missing_in_new:
-        print(f"{new} does not have {perf_metric}")
+    for metric in missing_in_new:
+        print(f"{new_path} does not have {metric}")
 
-    for perf_metric in missing_in_old:
-        print(f"{old} does not have {perf_metric}")
+    for metric in missing_in_old:
+        print(f"{old_path} does not have {metric}")
 
     throughput_regressions.sort()
     for _, regression in throughput_regressions:
@@ -78,9 +91,20 @@ def walk(dir_name):
             stack.extend(root.iterdir())
 
 
-def paths_without_root_dir(paths):
-    for p in paths:
-        yield pathlib.Path(*p.parts[1:])
+def group_by_filename(paths, base_dir):
+    """
+    Return a dict mapping filenames to full paths.
+    If there are duplicates, logging warning and ignore later ones.
+    """
+    file_map = {}
+    for path in paths:
+        name = path.name
+        rel_path = path.relative_to(base_dir)
+        if name not in file_map:
+            file_map[name] = path
+        else:
+            print(f"Warning: duplicate filename {name} found at {rel_path}")
+    return file_map
 
 
 def get_compare_list(old, new):
@@ -92,7 +116,6 @@ def get_compare_list(old, new):
         old_set.difference(new_set),
         new_set.difference(old_set),
     )
-
 
 def get_regressions(old_path, new_path):
 

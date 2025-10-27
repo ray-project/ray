@@ -7,8 +7,8 @@ then be sourced to run bazel test with.
 export WANDB_API_KEY=abcd
 export COMET_API_KEY=efgh
 """
-import boto3
 import json
+import subprocess
 import sys
 
 AWS_AIR_SECRETS_ARN = (
@@ -17,22 +17,38 @@ AWS_AIR_SECRETS_ARN = (
 )
 
 
-def get_ray_air_secrets(client):
-    raw_string = client.get_secret_value(SecretId=AWS_AIR_SECRETS_ARN)["SecretString"]
-    return json.loads(raw_string)
+def get_ray_air_secrets():
+    output = subprocess.check_output(
+        [
+            "aws",
+            "secretsmanager",
+            "get-secret-value",
+            "--region",
+            "us-west-2",
+            "--secret-id",
+            AWS_AIR_SECRETS_ARN,
+        ]
+    )
+
+    parsed_output = json.loads(output)
+    return json.loads(parsed_output["SecretString"])
 
 
 SERVICES = {
     "wandb_key": "WANDB_API_KEY",
     "comet_ml_token": "COMET_API_KEY",
+    "snowflake_schema": "SNOWFLAKE_SCHEMA",
+    "snowflake_database": "SNOWFLAKE_DATABASE",
+    "snowflake_user": "SNOWFLAKE_USER",
+    "snowflake_account": "SNOWFLAKE_ACCOUNT",
+    "snowflake_warehouse": "SNOWFLAKE_WAREHOUSE",
+    "snowflake_private_key": "SNOWFLAKE_PRIVATE_KEY",
 }
 
 
 def main():
-
     try:
-        client = boto3.client("secretsmanager", region_name="us-west-2")
-        ray_air_secrets = get_ray_air_secrets(client)
+        ray_air_secrets = get_ray_air_secrets()
     except Exception as e:
         print(f"Could not get Ray AIR secrets: {e}")
         sys.exit(1)

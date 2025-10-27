@@ -30,12 +30,10 @@ from distutils.util import strtobool
 import cloudpickle
 import numpy as np
 import pandas as pd
-
 from ludwig.api import LudwigModel
 from ludwig.backend import LocalBackend
-from ludwig.constants import VECTOR, COLUMN, NAME, PROC_COLUMN
-from ludwig.data.dataset_synthesizer import DATETIME_FORMATS
-from ludwig.data.dataset_synthesizer import build_synthetic_dataset
+from ludwig.constants import COLUMN, NAME, PROC_COLUMN, VECTOR
+from ludwig.data.dataset_synthesizer import DATETIME_FORMATS, build_synthetic_dataset
 from ludwig.experiment import experiment_cli
 from ludwig.features.feature_utils import compute_feature_hash
 from ludwig.utils.data_utils import read_csv, replace_file_extension

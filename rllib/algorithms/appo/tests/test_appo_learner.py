@@ -77,7 +77,7 @@ class TestAPPOLearner(unittest.TestCase):
         algo_config.validate()
 
         learner_group = algo_config.build_learner_group(env=algo.env_runner.env)
-        learner_group.update_from_batch(batch=train_batch.as_multi_agent())
+        learner_group.update(batch=train_batch.as_multi_agent())
 
         algo.stop()
 

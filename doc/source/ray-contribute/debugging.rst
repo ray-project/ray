@@ -67,9 +67,9 @@ If it worked, you should see as the first line in ``raylet.err``:
 
 Backend event stats
 -------------------
-The ``raylet`` process also periodically dumps event stats to the ``debug_state.txt`` log
-file if the ``RAY_event_stats=1`` environment variable is set. To also enable regular
-printing of the stats to log files, you can additional set ``RAY_event_stats_print_interval_ms=1000``.
+The ``raylet`` process also periodically dumps event stats to ``debug_state.txt`` and its log
+file if ``RAY_event_stats=1`` environment variable is set. To alter the interval at which
+Ray writes stats to log files, you can set ``RAY_event_stats_print_interval_ms``.
 
 Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample
 of what the event stats look like:

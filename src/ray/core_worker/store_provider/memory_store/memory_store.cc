@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+
+#include <algorithm>
 #include <condition_variable>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace core {
@@ -75,11 +81,11 @@ class GetRequest {
 GetRequest::GetRequest(absl::flat_hash_set<ObjectID> object_ids,
                        size_t num_objects,
                        bool remove_after_get,
-                       bool abort_if_any_object_is_exception_)
+                       bool abort_if_any_object_is_exception)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
       remove_after_get_(remove_after_get),
-      abort_if_any_object_is_exception_(abort_if_any_object_is_exception_) {
+      abort_if_any_object_is_exception_(abort_if_any_object_is_exception) {
   RAY_CHECK(num_objects_ <= object_ids_.size());
 }
 
@@ -131,39 +137,32 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    ReferenceCounter *counter,
-    std::shared_ptr<raylet::RayletClient> raylet_client,
+    ReferenceCounterInterface *counter,
+    std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
       ref_counter_(counter),
-      raylet_client_(std::move(raylet_client)),
+      raylet_ipc_client_(std::move(raylet_ipc_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
-  std::shared_ptr<RayObject> ptr;
-  {
-    absl::MutexLock lock(&mu_);
-    auto iter = objects_.find(object_id);
-    if (iter != objects_.end()) {
-      ptr = iter->second;
-    } else {
-      object_async_get_requests_[object_id].push_back(callback);
-    }
-    if (ptr != nullptr) {
-      ptr->SetAccessed();
-    }
+  absl::MutexLock lock(&mu_);
+  auto iter = objects_.find(object_id);
+  if (iter == objects_.end()) {
+    object_async_get_requests_[object_id].push_back(std::move(callback));
+    return;
   }
-  // It's important for performance to run the callback outside the lock.
-  if (ptr != nullptr) {
-    io_context_.post([callback = std::move(callback), ptr]() { callback(ptr); },
-                     "CoreWorkerMemoryStore.GetAsync.Callback");
-  }
+  auto &object_ptr = iter->second;
+  object_ptr->SetAccessed();
+  io_context_.post(
+      [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
+      "CoreWorkerMemoryStore.GetAsync.Callback");
 }
 
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
@@ -181,15 +180,18 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
   } else {
-    object_entry = std::make_shared<RayObject>(
-        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+    object_entry = std::make_shared<RayObject>(object.GetData(),
+                                               object.GetMetadata(),
+                                               object.GetNestedRefs(),
+                                               true,
+                                               object.GetTensorTransport());
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
@@ -199,7 +201,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return true;  // Object already exists in the store, which is fine.
+      return;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -237,6 +239,8 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
+    } else {
+      return;
     }
   }
 
@@ -251,8 +255,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         }
       },
       "CoreWorkerMemoryStore.Put.get_async_callbacks");
-
-  return true;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
@@ -267,7 +269,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                  ctx,
                  remove_after_get,
                  results,
-                 /*abort_if_any_object_is_exception=*/true);
+                 /*abort_if_any_object_is_exception=*/true,
+                 /*at_most_num_objects=*/true);
 }
 
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
@@ -276,11 +279,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       const WorkerContext &ctx,
                                       bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
-                                      bool abort_if_any_object_is_exception) {
+                                      bool abort_if_any_object_is_exception,
+                                      bool at_most_num_objects) {
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
-  int count = 0;
+  int num_found = 0;
 
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
@@ -289,7 +293,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
     absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
-    for (size_t i = 0; i < object_ids.size() && count < num_objects; i++) {
+    for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
@@ -300,13 +304,17 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
         }
-        count += 1;
+        num_found += 1;
         if (abort_if_any_object_is_exception && iter->second->IsException() &&
             !iter->second->IsInPlasmaError()) {
           existing_objects_has_exception = true;
         }
       } else {
         remaining_ids.insert(object_id);
+      }
+      // Only wait sets at_most_num_objects to false.
+      if (num_found >= num_objects && at_most_num_objects) {
+        break;
       }
     }
 
@@ -319,11 +327,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
     // Return if all the objects are obtained, or any existing objects are known to have
     // exception.
-    if (remaining_ids.empty() || count >= num_objects || existing_objects_has_exception) {
+    if (remaining_ids.empty() || num_found >= num_objects ||
+        existing_objects_has_exception) {
       return Status::OK();
     }
 
-    size_t required_objects = num_objects - (object_ids.size() - remaining_ids.size());
+    size_t required_objects = num_objects - num_found;
 
     // Otherwise, create a GetRequest to track remaining objects.
     get_request = std::make_shared<GetRequest>(std::move(remaining_ids),
@@ -337,10 +346,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
   bool should_notify_raylet =
-      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+      (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerBlocked());
   }
 
   bool done = false;
@@ -371,7 +380,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyWorkerUnblocked());
   }
 
   {
@@ -442,7 +451,8 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
                                    int num_objects,
                                    int64_t timeout_ms,
                                    const WorkerContext &ctx,
-                                   absl::flat_hash_set<ObjectID> *ready) {
+                                   absl::flat_hash_set<ObjectID> *ready,
+                                   absl::flat_hash_set<ObjectID> *plasma_object_ids) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
@@ -452,18 +462,21 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
                         ctx,
                         false,
                         &result_objects,
-                        /*abort_if_any_object_is_exception=*/false);
+                        /*abort_if_any_object_is_exception=*/false,
+                        /*at_most_num_objects=*/false);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);
   }
-
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
-      ready->insert(id_vector[i]);
+      if (result_objects[i]->IsInPlasmaError()) {
+        plasma_object_ids->insert(id_vector[i]);
+      } else if (ready->size() < static_cast<size_t>(num_objects)) {
+        ready->insert(id_vector[i]);
+      }
     }
   }
-
   return Status::OK();
 }
 
@@ -584,9 +597,8 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
 
 void CoreWorkerMemoryStore::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_object_store_memory.Record(
-      num_local_objects_bytes_,
-      {{ray::stats::LocationKey, ray::stats::kObjectLocWorkerHeap}});
+  object_store_memory_gauge_.Record(num_local_objects_bytes_,
+                                    {{stats::LocationKey, "WORKER_HEAP"}});
 }
 
 }  // namespace core

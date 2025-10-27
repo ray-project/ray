@@ -1,24 +1,24 @@
 import logging
 import os
-import sys
-import unittest.mock
-import tempfile
 import shutil
+import sys
+import tempfile
+import unittest.mock
 from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
-from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import wait_for_condition
+from ray._private.ray_constants import DEFAULT_RESOURCES, RAY_OVERRIDE_DASHBOARD_URL
 from ray._private.services import get_node_ip_address
-from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import (
     get_current_unused_port,
     run_string_as_driver,
-    wait_for_condition,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -302,7 +302,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     node2 = cluster.add_node(node_ip_address="127.0.0.3")
     address = cluster.address
     password = cluster.redis_password
-    assert address.split(":")[0] == "127.0.0.2"
+    assert parse_address(address)[0] == "127.0.0.2"
     assert node1.node_manager_port != node2.node_manager_port
     info = ray.init(address, _redis_password=password, _node_ip_address="127.0.0.3")
     assert info["node_ip_address"] == "127.0.0.3"
@@ -364,20 +364,20 @@ def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluste
         with patch(
             "ray._private.services.node_ip_address_from_perspective"
         ) as mocked_node_ip_address:  # noqa
-            # Mock the node_ip_address_from_perspective will return the
-            # IP that's not assigned to ray start.
+            # Mock the node_ip_address_from_perspective to return a different IP
+            # address than the one that will be passed to ray start.
             mocked_node_ip_address.return_value = "134.31.31.31"
+            print("IP address passed to ray start:", ray_start_ip)
+            print("Mock local IP address:", get_node_ip_address())
+
             cluster = ray_start_cluster
             cluster.add_node(node_ip_address=ray_start_ip)
-            print(get_node_ip_address())
-            print(ray_start_ip)
 
-            # If the IP is not correctly configured, it will hang.
+            # If the IP address is not correctly configured, it will hang.
             ray.init(address=cluster.address)
-            assert (
-                _get_node_id_from_node_ip(get_node_ip_address())
-                == ray.get_runtime_context().get_node_id()
-            )
+            [node_info] = ray.nodes()
+            assert node_info["NodeManagerAddress"] == ray_start_ip
+            assert node_info["NodeID"] == ray.get_runtime_context().get_node_id()
 
 
 @pytest.fixture
@@ -448,11 +448,4 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
