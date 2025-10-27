@@ -355,6 +355,7 @@ class FileBasedDatasource(Datasource):
     ) -> "pyarrow.PythonFile":
         import pyarrow as pa
         import snappy
+        from pyarrow.fs import HadoopFileSystem
 
         stream = io.BytesIO()
         if isinstance(filesystem.unwrap(), HadoopFileSystem):
