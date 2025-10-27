@@ -222,8 +222,8 @@ class ApplicationTargetState:
     target_capacity_direction: Optional[TargetCapacityDirection]
     deleting: bool
     api_type: APIType
-    external_scaler_enabled: bool = False
     serialized_application_autoscaling_policy_def: Optional[bytes]
+    external_scaler_enabled: bool = False
 
 
 class ApplicationState:
