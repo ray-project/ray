@@ -355,7 +355,10 @@ class FileBasedDatasource(Datasource):
         import snappy
 
         stream = io.BytesIO()
-        snappy.stream_decompress(src=file, dst=stream)
+        if isinstance(filesystem.unwrap(), HadoopFileSystem):
+            snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
+        else:
+            snappy.stream_decompress(src=file, dst=stream)
         stream.seek(0)
 
         return pa.PythonFile(stream, mode="r")
