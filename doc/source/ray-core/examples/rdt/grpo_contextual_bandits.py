@@ -263,7 +263,6 @@ class Learner:
         # Clip the gradients to prevent exploding gradients and stabilize training.
         nn.utils.clip_grad_norm_(self.model.parameters(), GRAD_CLIP_NORM)
         self.optim.step()
-        self.policy_version += 1
 
         return {
             "loss": loss.detach().item(),
