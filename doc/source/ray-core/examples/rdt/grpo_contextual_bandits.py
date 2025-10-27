@@ -377,6 +377,8 @@ def train(total_steps: int) -> None:
     )
 
     # Pre-fill the ReplayBuffer before starting GRPO.
+    # Generator is a single-threaded actor, so this generate call won't execute until after the 
+    # above update_weights call has completed.
     generator.generate.remote(sample_unit_vector(batch_size=BATCH_SIZE))
     step_results = []
     losses, rewards, clip_fractions = [], [], []
