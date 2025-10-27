@@ -78,7 +78,7 @@ class Result(ResultV1):
             raise RuntimeError(
                 f"Failed to restore the Result object: "
                 f"{CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the "
-                f"experiment folder!"
+                f"experiment folder. Make sure that this is an output directory created by a Ray Train run."
             )
 
         checkpoint_manager = CheckpointManager(
