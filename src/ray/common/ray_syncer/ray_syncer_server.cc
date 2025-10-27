@@ -49,7 +49,7 @@ RayServerBidiReactor::RayServerBidiReactor(
   if (auth_token_.has_value() && !auth_token_->empty()) {
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();
-    auto it = metadata.find(ray::rpc::kAuthTokenKey);
+    auto it = metadata.find(kAuthTokenKey);
     if (it == metadata.end()) {
       RAY_LOG(WARNING) << "Missing authorization header in syncer connection from node "
                        << NodeID::FromBinary(GetRemoteNodeID());
