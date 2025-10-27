@@ -1,4 +1,5 @@
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,8 +13,13 @@ from click.testing import CliRunner
 from networkx import topological_sort
 
 from ci.raydepsets.cli import (
+    DEFAULT_UV_FLAGS,
     DependencySetManager,
+    _flatten_flags,
     _get_depset,
+    _override_uv_flags,
+    _remove_flags,
+    _uv_binary,
     build,
 )
 from ci.raydepsets.tests.utils import (
@@ -64,299 +70,304 @@ def _invoke_build(tmpdir: str, config_path: str, name: Optional[str] = None):
 
 
 class TestCli(unittest.TestCase):
-    # def test_cli_load_fail_no_config(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         result = _invoke_build(tmpdir, "fake_path/test.depsets.yaml")
-    #         assert result.exit_code == 1
-    #         assert isinstance(result.exception, FileNotFoundError)
-    #         assert "No such file or directory" in str(result.exception)
+    def test_cli_load_fail_no_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            result = _invoke_build(tmpdir, "fake_path/test.depsets.yaml")
+            assert result.exit_code == 1
+            assert isinstance(result.exception, FileNotFoundError)
+            assert "No such file or directory" in str(result.exception)
 
-    # def test_dependency_set_manager_init(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         assert manager is not None
-    #         assert manager.workspace.dir == tmpdir
-    #         assert len(manager.config.depsets) > 0
-    #         assert len(manager.build_graph.nodes) > 0
+    def test_dependency_set_manager_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            assert manager is not None
+            assert manager.workspace.dir == tmpdir
+            assert len(manager.config.depsets) > 0
+            assert len(manager.build_graph.nodes) > 0
 
-    # def test_uv_binary_exists(self):
-    #     assert _uv_binary() is not None
+    def test_uv_binary_exists(self):
+        assert _uv_binary() is not None
 
-    # def test_uv_version(self):
-    #     result = subprocess.run(
-    #         [_uv_binary(), "--version"],
-    #         stdout=subprocess.PIPE,
-    #         stderr=subprocess.PIPE,
-    #     )
-    #     assert result.returncode == 0
-    #     assert "uv 0.8.17" in result.stdout.decode("utf-8")
-    #     assert result.stderr.decode("utf-8") == ""
+    def test_uv_version(self):
+        result = subprocess.run(
+            [_uv_binary(), "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert result.returncode == 0
+        assert "uv 0.8.17" in result.stdout.decode("utf-8")
+        assert result.stderr.decode("utf-8") == ""
 
-    # def test_compile(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         save_file_as(
-    #             Path(tmpdir) / "requirements_compiled_test.txt",
-    #             Path(tmpdir) / "requirements_compiled.txt",
-    #         )
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=["requirement_constraints_test.txt"],
-    #             requirements=["requirements_test.txt"],
-    #             append_flags=["--no-annotate", "--no-header"],
-    #             name="ray_base_test_depset",
-    #             output="requirements_compiled.txt",
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled.txt"
-    #         output_text = output_file.read_text()
-    #         output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
-    #         output_text_valid = output_file_valid.read_text()
-    #         assert output_text == output_text_valid
+    def test_compile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled.txt",
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
 
-    # def test_compile_update_package(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         compiled_file = Path(
-    #             _runfiles.Rlocation(f"{tmpdir}/requirement_constraints_test.txt")
-    #         )
-    #         replace_in_file(compiled_file, "emoji==2.9.0", "emoji==2.10.0")
-    #         output_file = Path(
-    #             _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
-    #         )
-    #         save_file_as(compiled_file, output_file)
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=["requirement_constraints_test.txt"],
-    #             requirements=["requirements_test.txt"],
-    #             append_flags=["--no-annotate", "--no-header"],
-    #             name="ray_base_test_depset",
-    #             output="requirements_compiled.txt",
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled.txt"
-    #         output_text = output_file.read_text()
-    #         output_file_valid = Path(tmpdir) / "requirements_compiled_test_update.txt"
-    #         output_text_valid = output_file_valid.read_text()
-    #         assert output_text == output_text_valid
+    def test_compile_update_package(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            compiled_file = Path(
+                _runfiles.Rlocation(f"{tmpdir}/requirement_constraints_test.txt")
+            )
+            replace_in_file(compiled_file, "emoji==2.9.0", "emoji==2.10.0")
+            output_file = Path(
+                _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
+            )
+            save_file_as(compiled_file, output_file)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test_update.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
 
-    # def test_compile_with_append_and_override_flags(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=["requirement_constraints_test.txt"],
-    #             requirements=["requirements_test.txt"],
-    #             append_flags=["--no-annotate", "--python-version 3.10"],
-    #             override_flags=["--extra-index-url https://dummyurl.com"],
-    #             name="ray_base_test_depset",
-    #             output="requirements_compiled.txt",
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled.txt"
-    #         output_text = output_file.read_text()
-    #         assert "--python-version 3.10" in output_text
-    #         assert "--extra-index-url https://dummyurl.com" in output_text
-    #         assert (
-    #             "--extra-index-url https://download.pytorch.org/whl/cu128"
-    #             not in output_text
-    #         )
+    def test_compile_with_append_and_override_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--python-version 3.10"],
+                override_flags=["--extra-index-url https://dummyurl.com"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
+            assert "--extra-index-url https://dummyurl.com" in output_text
+            assert (
+                "--extra-index-url https://download.pytorch.org/whl/cu128"
+                not in output_text
+            )
 
-    # def test_compile_by_depset_name(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
-    #         result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
-    #         output_fp = Path(tmpdir) / "requirements_compiled.txt"
-    #         assert output_fp.is_file()
-    #         assert result.exit_code == 0
+    def test_compile_by_depset_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            result = _invoke_build(tmpdir, "test.depsets.yaml", "ray_base_test_depset")
+            output_fp = Path(tmpdir) / "requirements_compiled.txt"
+            assert output_fp.is_file()
+            assert result.exit_code == 0
 
-    #         assert (
-    #             "Dependency set ray_base_test_depset compiled successfully"
-    #             in result.output
-    #         )
+            assert (
+                "Dependency set ray_base_test_depset compiled successfully"
+                in result.output
+            )
 
-    # def test_subset(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         # Add six to requirements_test_subset.txt
-    #         save_packages_to_file(
-    #             Path(tmpdir) / "requirements_test_subset.txt",
-    #             ["six==1.16.0"],
-    #         )
-    #         manager = _create_test_manager(tmpdir)
-    #         # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
-    #         manager.compile(
-    #             constraints=["requirement_constraints_test.txt"],
-    #             requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-    #             append_flags=["--no-annotate", "--no-header"],
-    #             name="general_depset__py311_cpu",
-    #             output="requirements_compiled_general.txt",
-    #         )
-    #         # Subset general_depset with requirements_test.txt (should lock emoji & pyperclip)
-    #         manager.subset(
-    #             source_depset="general_depset__py311_cpu",
-    #             requirements=["requirements_test.txt"],
-    #             append_flags=["--no-annotate", "--no-header"],
-    #             name="subset_general_depset__py311_cpu",
-    #             output="requirements_compiled_subset_general.txt",
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
-    #         output_text = output_file.read_text()
-    #         output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
-    #         output_text_valid = output_file_valid.read_text()
+    def test_subset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = _create_test_manager(tmpdir)
+            # Compile general_depset with requirements_test.txt and requirements_test_subset.txt
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Subset general_depset with requirements_test.txt (should lock emoji & pyperclip)
+            manager.subset(
+                source_depset="general_depset__py311_cpu",
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="subset_general_depset__py311_cpu",
+                output="requirements_compiled_subset_general.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_subset_general.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
 
-    #         assert output_text == output_text_valid
+            assert output_text == output_text_valid
 
-    # def test_subset_does_not_exist(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         # Add six to requirements_test_subset.txt
-    #         save_packages_to_file(
-    #             Path(tmpdir) / "requirements_test_subset.txt",
-    #             ["six==1.16.0"],
-    #         )
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=["requirement_constraints_test.txt"],
-    #             requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-    #             append_flags=["--no-annotate", "--no-header"],
-    #             name="general_depset__py311_cpu",
-    #             output="requirements_compiled_general.txt",
-    #         )
+    def test_subset_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            # Add six to requirements_test_subset.txt
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_test_subset.txt",
+                ["six==1.16.0"],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt", "requirements_test_subset.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
 
-    #         with self.assertRaises(RuntimeError) as e:
-    #             manager.subset(
-    #                 source_depset="general_depset__py311_cpu",
-    #                 requirements=["requirements_compiled_test.txt"],
-    #                 append_flags=["--no-annotate", "--no-header"],
-    #                 name="subset_general_depset__py311_cpu",
-    #                 output="requirements_compiled_subset_general.txt",
-    #             )
-    #         assert (
-    #             "Requirement requirements_compiled_test.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
-    #             in str(e.exception)
-    #         )
+            with self.assertRaises(RuntimeError) as e:
+                manager.subset(
+                    source_depset="general_depset__py311_cpu",
+                    requirements=["requirements_compiled_test.txt"],
+                    append_flags=["--no-annotate", "--no-header"],
+                    name="subset_general_depset__py311_cpu",
+                    output="requirements_compiled_subset_general.txt",
+                )
+            assert (
+                "Requirement requirements_compiled_test.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
+                in str(e.exception)
+            )
 
-    # def test_check_if_subset_exists(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         source_depset = Depset(
-    #             name="general_depset__py311_cpu",
-    #             operation="compile",
-    #             requirements=["requirements_1.txt", "requirements_2.txt"],
-    #             constraints=["requirement_constraints_1.txt"],
-    #             output="requirements_compiled_general.txt",
-    #             append_flags=[],
-    #             override_flags=[],
-    #             config_name="test.depsets.yaml",
-    #         )
-    #         with self.assertRaises(RuntimeError) as e:
-    #             manager.check_subset_exists(
-    #                 source_depset=source_depset,
-    #                 requirements=["requirements_3.txt"],
-    #             )
-    #         assert (
-    #             "Requirement requirements_3.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
-    #             in str(e.exception)
-    #         )
+    def test_check_if_subset_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            source_depset = Depset(
+                name="general_depset__py311_cpu",
+                operation="compile",
+                requirements=["requirements_1.txt", "requirements_2.txt"],
+                constraints=["requirement_constraints_1.txt"],
+                output="requirements_compiled_general.txt",
+                append_flags=[],
+                override_flags=[],
+                config_name="test.depsets.yaml",
+            )
+            with self.assertRaises(RuntimeError) as e:
+                manager.check_subset_exists(
+                    source_depset=source_depset,
+                    requirements=["requirements_3.txt"],
+                )
+            assert (
+                "Requirement requirements_3.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
+                in str(e.exception)
+            )
 
-    # def test_compile_bad_requirements(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         with self.assertRaises(RuntimeError) as e:
-    #             manager.compile(
-    #                 constraints=[],
-    #                 requirements=["requirements_test_bad.txt"],
-    #                 name="general_depset",
-    #                 output="requirements_compiled_general.txt",
-    #             )
-    #         assert "File not found: `requirements_test_bad.txt" in str(e.exception)
+    def test_compile_bad_requirements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError) as e:
+                manager.compile(
+                    constraints=[],
+                    requirements=["requirements_test_bad.txt"],
+                    name="general_depset",
+                    output="requirements_compiled_general.txt",
+                )
+            assert "File not found: `requirements_test_bad.txt" in str(e.exception)
 
-    # def test_get_path(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         assert (
-    #             manager.get_path("requirements_test.txt")
-    #             == Path(tmpdir) / "requirements_test.txt"
-    #         )
+    def test_get_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            assert (
+                manager.get_path("requirements_test.txt")
+                == Path(tmpdir) / "requirements_test.txt"
+            )
 
-    # def test_append_uv_flags_exist_in_output(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=[],
-    #             requirements=["requirements_test.txt"],
-    #             name="general_depset",
-    #             output="requirements_compiled_general.txt",
-    #             append_flags=["--python-version=3.10"],
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-    #         output_text = output_file.read_text()
-    #         assert "--python-version=3.10" in output_text
+    def test_append_uv_flags_exist_in_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                append_flags=["--python-version=3.10"],
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--python-version=3.10" in output_text
 
-    # def test_append_uv_flags_with_space_in_flag(self):
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         copy_data_to_tmpdir(tmpdir)
-    #         manager = _create_test_manager(tmpdir)
-    #         manager.compile(
-    #             constraints=[],
-    #             requirements=["requirements_test.txt"],
-    #             name="general_depset",
-    #             output="requirements_compiled_general.txt",
-    #             append_flags=["--python-version 3.10"],
-    #         )
-    #         output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-    #         output_text = output_file.read_text()
-    #         assert "--python-version 3.10" in output_text
+    def test_append_uv_flags_with_space_in_flag(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                append_flags=["--python-version 3.10"],
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--python-version 3.10" in output_text
 
-    # def test_override_uv_flag_single_flag(self):
-    #     expected_flags = DEFAULT_UV_FLAGS.copy()
-    #     expected_flags.remove("--index-strategy")
-    #     expected_flags.remove("unsafe-best-match")
-    #     expected_flags.extend(["--index-strategy", "first-index"])
-    #     assert (
-    #         _override_uv_flags(
-    #             ["--index-strategy first-index"],
-    #             DEFAULT_UV_FLAGS.copy(),
-    #         )
-    #         == expected_flags
-    #     )
+    def test_override_uv_flag_single_flag(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--index-strategy")
+        expected_flags.remove("unsafe-best-match")
+        expected_flags.extend(["--index-strategy", "first-index"])
+        assert (
+            _override_uv_flags(
+                ["--index-strategy first-index"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
 
-    # def test_override_uv_flag_multiple_flags(self):
-    #     expected_flags = DEFAULT_UV_FLAGS.copy()
-    #     expected_flags.remove("--unsafe-package")
-    #     expected_flags.remove("setuptools")
-    #     expected_flags.extend(["--unsafe-package", "dummy"])
-    #     assert (
-    #         _override_uv_flags(
-    #             ["--unsafe-package dummy"],
-    #             DEFAULT_UV_FLAGS.copy(),
-    #         )
-    #         == expected_flags
-    #     )
+    def test_override_uv_flag_multiple_flags(self):
+        expected_flags = DEFAULT_UV_FLAGS.copy()
+        expected_flags.remove("--unsafe-package")
+        expected_flags.remove("setuptools")
+        expected_flags.extend(["--unsafe-package", "dummy"])
+        assert (
+            _override_uv_flags(
+                ["--unsafe-package dummy"],
+                DEFAULT_UV_FLAGS.copy(),
+            )
+            == expected_flags
+        )
 
-    # def test_flatten_flags(self):
-    #     assert _flatten_flags(["--no-annotate", "--no-header"]) == [
-    #         "--no-annotate",
-    #         "--no-header",
-    #     ]
-    #     assert _flatten_flags(
-    #         [
-    #             "--no-annotate",
-    #             "--no-header",
-    #             "--extra-index-url https://download.pytorch.org/whl/cu128",
-    #         ]
-    #     ) == [
-    #         "--no-annotate",
-    #         "--no-header",
-    #         "--extra-index-url",
-    #         "https://download.pytorch.org/whl/cu128",
-    #     ]
+    def test_flatten_flags(self):
+        assert _flatten_flags(["--no-annotate", "--no-header"]) == [
+            "--no-annotate",
+            "--no-header",
+        ]
+        assert _flatten_flags(
+            [
+                "--no-annotate",
+                "--no-header",
+                "--extra-index-url https://download.pytorch.org/whl/cu128",
+            ]
+        ) == [
+            "--no-annotate",
+            "--no-header",
+            "--extra-index-url",
+            "https://download.pytorch.org/whl/cu128",
+        ]
 
     def test_remove_flags(self):
+        assert _remove_flags(
+            ["--no-annotate", "--no-header", "--emit-index-url"], ["--emit-index-url"]
+        ) == ["--no-annotate", "--no-header"]
+
+    def test_remove_flags_integration(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -376,7 +387,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=[],
                 requirements=["requirements_test.txt"],
-                remove_flags=["--"],
+                remove_flags=["--emit-index-url"],
                 name="remove_flag_test_depset",
                 output="requirements_compiled_remove_flag_test_depset.txt",
             )
@@ -385,6 +396,13 @@ class TestCli(unittest.TestCase):
             )
             output_text = output_file.read_text()
             assert "--remove-flag-test" not in output_text
+
+    def test_remove_flags_doesnt_exist(self):
+        with self.assertRaises(ValueError) as e:
+            _remove_flags(
+                ["--no-annotate", "--no-header", "--emit-index-url"], ["--emit"]
+            )
+        assert "Remove flag --emit not found in args" in str(e.exception)
 
     def test_build_graph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
