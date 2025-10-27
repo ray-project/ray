@@ -771,9 +771,10 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
-  if (it->second.on_object_ref_delete) {
-    it->second.on_object_ref_delete(it->first);
+  for (const auto &callback : it->second.object_ref_deleted_callbacks) {
+    callback(it->first);
   }
+
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
@@ -814,14 +815,14 @@ void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetObjectRefDeletedCallback(
-    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+bool ReferenceCounter::AddObjectRefDeletedCallback(
+    const ObjectID &object_id, std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
   }
-  it->second.on_object_ref_delete = callback;
+  it->second.object_ref_deleted_callbacks.push_back(std::move(callback));
   return true;
 }
 
@@ -1260,12 +1261,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
           WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
-        auto inserted = inner_it->second.mutable_borrow()
-                            ->stored_in_objects.emplace(object_id, owner_address)
-                            .second;
-        // This should be the first time that we have stored this object ID
-        // inside this return ID.
-        RAY_CHECK(inserted);
+        inner_it->second.mutable_borrow()->stored_in_objects.emplace(object_id,
+                                                                     owner_address);
       }
       PRINT_REF_COUNT(inner_it);
     }
