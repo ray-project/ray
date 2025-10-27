@@ -96,6 +96,7 @@ class RuntimeContext(object):
     def get_node_id(self) -> str:
         """Get the ID for the node that this process is running on.
 
+        This can be called from within a driver, task, or actor.
         When called from a driver that is connected to a remote Ray cluster using
         Ray Client, this returns the ID of the head node.
 
