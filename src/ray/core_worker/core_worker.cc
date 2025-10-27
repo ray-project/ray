@@ -2115,7 +2115,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.allow_out_of_order_execution,
       actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
-      actor_creation_options.labels);
+      actor_creation_options.labels,
+      is_detached);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -2162,11 +2163,36 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::OK();
   }
 
+  auto ref_is_detached_actor = [this](const std::string &object_id) {
+    auto ref_object_id = ObjectID::FromBinary(object_id);
+    if (ObjectID::IsActorID(ref_object_id)) {
+      auto ref_actor_id = ObjectID::ToActorID(ref_object_id);
+      if (auto ref_actor_handle = actor_manager_->GetActorHandleIfExists(ref_actor_id)) {
+        if (ref_actor_handle->IsDetached()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   if (task_spec.MaxActorRestarts() != 0) {
     bool actor_restart_warning = false;
     for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-      if (task_spec.ArgByRef(i) || !task_spec.ArgInlinedRefs(i).empty()) {
+      if (task_spec.ArgByRef(i)) {
         actor_restart_warning = true;
+        break;
+      }
+      if (!task_spec.ArgInlinedRefs(i).empty()) {
+        for (const auto &ref : task_spec.ArgInlinedRefs(i)) {
+          if (!ref_is_detached_actor(ref.object_id())) {
+            // There's an inlined ref that's not a detached actor, so we want to
+            // show the warning.
+            actor_restart_warning = true;
+            break;
+          }
+        }
+      }
+      if (actor_restart_warning) {
         break;
       }
     }
@@ -2687,6 +2713,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     // Mark this object as containing other object IDs. The ref counter will
     // keep the inner IDs in scope until the outer one is out of scope.
     if (!contained_object_ids.empty() && !options_.is_local_mode) {
+      // Due to response loss caused by network failures,
+      // this method may be called multiple times for the same return object
+      // but it's fine since AddNestedObjectIds is idempotent.
+      // See https://github.com/ray-project/ray/issues/57997
       reference_counter_->AddNestedObjectIds(
           object_id, contained_object_ids, owner_address);
     }
@@ -3845,8 +3875,8 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                                        rpc::RemoteCancelTaskReply *reply,
+void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
+                                        rpc::CancelRemoteTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),

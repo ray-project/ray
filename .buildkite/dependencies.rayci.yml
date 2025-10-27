@@ -19,31 +19,23 @@ steps:
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 
-  - label: ":tapioca: build: raydepsets: compile LLM dependencies"
-    key: raydepsets_compile_llm_dependencies
+  - label: ":tapioca: build: raydepsets: compile all dependencies"
+    key: raydepsets_compile_all_dependencies
     tags: always
     instance_type: small
     commands:
+      # TODO: add raydepsets build all command
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depsets.yaml --check
-      - chown -R 2000:100 /artifact-mount
-      - cp ./python/deplocks/llm/* /artifact-mount/
-    job_env: manylinux
-    depends_on: manylinux
-
-  - label: ":tapioca: build: raydepsets: compile ray img dependencies"
-    key: raydepsets_compile_rayimg_dependencies
-    tags: always
-    instance_type: medium
-    commands:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux
 
-  - label: ":tapioca: build: raydepsets: compile multimodal inference release test dependencies"
-    key: raydepsets_compile_multimodal_inference_release_test_dependencies
+  - label: ":tapioca: build: raydepsets: compile doc dependencies"
+    key: raydepsets_compile_doc_dependencies
     tags: always
     instance_type: medium
     commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml --check
     job_env: manylinux
     depends_on: manylinux

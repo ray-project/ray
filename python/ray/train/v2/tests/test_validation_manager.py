@@ -49,7 +49,6 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     # Call before_controller_shutdown
     vm.before_controller_shutdown()
     assert mock_wait.call_count == 2
-    # modoru: interesting test 2 levels
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
         unittest.mock.call({checkpoint1: {"score": 1}}),
         unittest.mock.call({checkpoint2: {"score": 1}, checkpoint3: {"score": 1}}),
