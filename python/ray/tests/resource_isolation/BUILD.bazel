@@ -16,6 +16,7 @@ py_test(
     tags = [
         "cgroup",
         "exclusive",
+        "no_windows",
         "team:core",
     ],
     target_compatible_with = [
@@ -34,6 +35,7 @@ py_test(
     tags = [
         "cgroup",
         "exclusive",
+        "no_windows",
         "team:core",
     ],
     deps = [
