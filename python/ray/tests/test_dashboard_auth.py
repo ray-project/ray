@@ -35,8 +35,15 @@ def test_dashboard_post_requires_auth_with_valid_token(cleanup_env):
 
         # POST with valid auth should succeed
         headers = {"Authorization": f"Bearer {test_token}"}
-        response = requests.get(f"http://{dashboard_url}/api/cluster_status")
+        response = requests.post(
+            f"http://{dashboard_url}/api/component_activities",
+            json={"test": "data"},
+            headers=headers,
+        )
+        assert response.status_code == 403
+
         # GET should work without auth
+        response = requests.get(f"http://{dashboard_url}/api/cluster_status")
         assert response.status_code == 200
 
     finally:
