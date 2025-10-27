@@ -19,11 +19,11 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-#include "ray/protobuf/test_service.grpc.pb.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
-#include "ray/rpc/grpc_client.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/tests/grpc_test_common.h"
+#include "src/ray/protobuf/test_service.grpc.pb.h"
+#include "src/ray/rpc/grpc_client.h"
+#include "src/ray/rpc/grpc_server.h"
+#include "src/ray/rpc/tests/grpc_test_common.h"
 
 namespace ray {
 namespace rpc {
