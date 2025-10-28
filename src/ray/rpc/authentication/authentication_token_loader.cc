@@ -101,9 +101,9 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
     std::string path_str(env_token_path);
     if (!path_str.empty()) {
       std::string token_str = TrimWhitespace(ReadTokenFromFile(path_str));
-      RAY_USER_CHECK(!token_str.empty())
-          << "Ray Setup Error: RAY_AUTH_TOKEN_PATH is set but file cannot be opened or is empty: "
-          << path_str;
+      RAY_USER_CHECK(!token_str.empty()) << "Ray Setup Error: RAY_AUTH_TOKEN_PATH is set "
+                                            "but file cannot be opened or is empty: "
+                                         << path_str;
       RAY_LOG(DEBUG) << "Loaded authentication token from file: " << path_str;
       return AuthenticationToken(token_str);
     }
