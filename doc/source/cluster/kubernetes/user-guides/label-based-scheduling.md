@@ -191,7 +191,7 @@ The selector matches if *all* key-operator pairs evaluate to true.
 Ray automatically adds labels to nodes to describe aspects like the underlying compute.
 
 * `ray.io/node-id`: The unique ID of the Ray node.
-* `ray.io/node-group`: The name of the group (e.g. `head` or `large-cpu-group`).
+* `ray.io/node-group`: The name of the group such as `head` or `large-cpu-group`.
 * `ray.io/accelerator-type`: The type of accelerator, such as A100 or TPU-V6E.
 
 When running on Google Cloud TPUs, Ray automatically detects and adds the following labels. These are critical for scheduling distributed workloads that must span an entire TPU "slice" (a set of interconnected hosts).
