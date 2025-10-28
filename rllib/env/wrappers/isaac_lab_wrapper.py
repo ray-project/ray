@@ -22,7 +22,7 @@ def _get_simulation_app():
 
 
 def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"):
-    cfg_entry_point = gym.spec(env_name.split(":")[-1]).kwargs.get(env_cfg_entry_point_key)
+    cfg_entry_point = gym.spec(env_name).kwargs.get(env_cfg_entry_point_key)
     if isinstance(cfg_entry_point, str):
         mod_name, attr_name = cfg_entry_point.split(":")
         mod = importlib.import_module(mod_name)
