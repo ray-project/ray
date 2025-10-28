@@ -1,13 +1,17 @@
+from isaaclab.app import AppLauncher
+app_launcher = AppLauncher()
+simulation_app = app_launcher.app
+
+import logging
 import importlib
 from typing import Union, Optional
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
-from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
 from ray.rllib.utils.annotations import PublicAPI
 
-# Import configuration classes:
+
 from isaaclab.envs import DirectRLEnvCfg, ManagerBasedRLEnvCfg
+
 
 def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"):
     cfg_entry_point = gym.spec(env_name.split(":")[-1]).kwargs.get(env_cfg_entry_point_key)
@@ -30,7 +34,7 @@ class IsaacLabEnv(gym.Env):
     """A `gym.Env` wrapper for the `Isaac_lab` ."""
 
     def __init__(self, env_name: str, env_cfg: Optional[Union[DirectRLEnvCfg, ManagerBasedRLEnvCfg]] = None):
-        super(IsaacLabEnv, self).__init__()
+        super(IsaacLabEnv, self).__init__() 
         self._env_cfg = _get_cfg_entry_point(env_name)
         
         # Merge configurations: env_cfg takes precedence over self._env_cfg
@@ -83,4 +87,50 @@ class IsaacLabEnv(gym.Env):
                     setattr(merged, key, value)
         
         return merged
+    
+    
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        return self._env.reset(seed=seed, options=options)
+    
+    def step(self, action):
+        return self._env.step(action)
+    
+    def render(self, mode='human'):
+        return self._env.render(mode=mode)
+    
+    @property
+    def unwrapped(self):
+        return self._env.unwrapped
+    
+    def close(self):
+        return self._env.close()
+    
+    def seed(self, seed: Optional[int] = None):
+        return self._env.seed(seed=seed)
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to the wrapped environment."""
+        return getattr(self._env, name)
 
+
+
+if __name__ == "__main__":
+    env = IsaacLabEnv(env_name="Isaac-Ant-v0")
+    print(f"[INFO] Environment created successfully!")
+    print(f"[INFO] Action space: {env.action_space}")
+    print(f"[INFO] Observation space: {env.observation_space}")
+    print(f"[INFO] Number of environments: {env.unwrapped.num_envs}")
+         
+        # Sample a state from the environment
+    print("\n[INFO] Sampling state from environment...")
+    obs, info = env.reset()
+    print(f"[INFO] Sampled observation shape: {obs.shape if hasattr(obs, 'shape') else type(obs)}")
+    print(f"[INFO] Sampled observation type: {type(obs)}")
+    if hasattr(obs, 'shape') and len(obs.shape) > 1:
+        print(f"[INFO] Number of environments in observation: {obs.shape[0]}")
+        
+        # Sample a random action and step
+    action = env.action_space.sample()
+    print(f"[INFO] Sampled action shape: {action.shape if hasattr(action, 'shape') else type(action)}")
+    env.close()
+    simulation_app.close()
