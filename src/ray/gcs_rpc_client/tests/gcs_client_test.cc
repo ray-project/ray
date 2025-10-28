@@ -220,7 +220,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto status = stub->CheckAlive(&context, request, &reply);
       // If it is in memory, we don't have the new token until we connect again.
       if (!((!no_redis_ && status.ok()) ||
-            (no_redis_ && GrpcStatusToRayStatus(status).IsAuthError()))) {
+            (no_redis_ && GrpcStatusToRayStatus(status).IsUnauthenticated()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -991,7 +991,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   auto status = stub->GetClusterId(&context, request, &reply);
 
   // We expect the wrong cluster ID
-  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsAuthError());
+  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsUnauthenticated());
 }
 
 TEST_P(GcsClientTest, TestGcsAuth) {
