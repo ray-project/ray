@@ -24,3 +24,4 @@ clickhouse-connect
 pybase64
 hudi==0.4.0
 datasketches
+pyhive[hive]
