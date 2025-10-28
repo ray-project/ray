@@ -513,7 +513,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         ":grpc_services",
         ":metrics",
-        "//src/ray/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",
