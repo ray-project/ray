@@ -728,7 +728,7 @@ This example shows how to implement predictive scaling based on historical patte
 
 ##### Define the deployment
 
-The following example creates a simple text processing deployment that you can scale externally:
+The following example creates a simple text processing deployment that you can scale externally. Save this code to a file named `external_scaler_predictive.py`:
 
 ```{literalinclude} ../doc_code/external_scaler_predictive.py
 :language: python
@@ -738,9 +738,9 @@ The following example creates a simple text processing deployment that you can s
 
 ##### Configure external scaling
 
-Before using the external scaling API, enable it in your application configuration by setting `external_scaler_enabled: true`:
+Before using the external scaling API, enable it in your application configuration by setting `external_scaler_enabled: true`. Save this configuration to a file named `external_scaler_config.yaml`:
 
-```{literalinclude} ../doc_code/external_scaler_predictive.yaml
+```{literalinclude} ../doc_code/external_scaler_config.yaml
 :language: yaml
 :start-after: __config_begin__
 :end-before: __config_end__
@@ -752,9 +752,7 @@ External scaling and built-in autoscaling are mutually exclusive. You can't use 
 
 ##### Implement the scaling logic
 
-The external scaling API requires authentication using a bearer token. You can obtain this token from the Ray dashboard UI (typically at `http://localhost:8265`) in the Serve section.
-
-The following script implements predictive scaling based on time of day and historical traffic patterns:
+The following script implements predictive scaling based on time of day and historical traffic patterns. Save this script to a file named `external_scaler_predictive_client.py`:
 
 ```{literalinclude} ../doc_code/external_scaler_predictive_client.py
 :language: python
@@ -763,10 +761,32 @@ The following script implements predictive scaling based on time of day and hist
 ```
 
 The script uses the external scaling API endpoint to scale deployments:
-- **API endpoint**: `POST http://localhost:8000/api/v1/applications/{application_name}/deployments/{deployment_name}/scale`
+- **API endpoint**: `POST http://localhost:8265/api/v1/applications/{application_name}/deployments/{deployment_name}/scale`
 - **Request body**: `{"target_num_replicas": <number>}` (must conform to the [`ScaleDeploymentRequest`](../api/doc/ray.serve.schema.ScaleDeploymentRequest.rst) schema)
 
-##### Important considerations
+The scaling client continuously adjusts the number of replicas based on the time of day:
+- Business hours (9 AM - 5 PM): 10 replicas
+- Off-peak hours: 3 replicas
+
+##### Run the example
+
+Follow these steps to run the complete example:
+
+1. Start the Ray Serve application with the configuration:
+
+```bash
+serve run external_scaler_config.yaml
+```
+
+2. Run the predictive scaling client in a separate terminal:
+
+```bash
+python external_scaler_predictive_client.py
+```
+
+The client adjusts replica counts automatically based on the time of day. You can monitor the scaling behavior in the Ray dashboard or by checking the application logs.
+
+#### Important considerations
 
 Understanding how the external scaler interacts with your deployments helps you build reliable scaling logic:
 
@@ -783,27 +803,3 @@ Understanding how the external scaler interacts with your deployments helps you 
   The response follows the [`ServeInstanceDetails`](../api/doc/ray.serve.schema.ServeInstanceDetails.rst) schema, which includes an `applications` field containing a dictionary with application names as keys. Each application includes detailed information about all its deployments, including current replica counts. Use this information to make informed scaling decisions. For example, you might scale up gradually by adding a percentage of existing replicas rather than jumping to a fixed number.
 
 - **Initial replica count**: When you deploy an application for the first time, Ray Serve creates the number of replicas specified in the `num_replicas` field of your deployment configuration. The external scaler can then adjust this count dynamically based on your scaling logic.
-
-##### Run the example
-
-Follow these steps to run the complete example:
-
-1. Start the Ray Serve application:
-
-```bash
-serve run external_scaler_predictive:app
-```
-
-2. apply the config yaml file here
-
-3. Edit `external_scaler_predictive_client.py`.
-
-4. Run the predictive scaling client in a separate terminal:
-
-```bash
-python external_scaler_predictive_client.py
-```
-
-The scaling client continuously adjusts the number of replicas based on the time of day:
-- Business hours (9 AM - 5 PM): 10 replicas
-- Off-peak hours: 3 replicas
