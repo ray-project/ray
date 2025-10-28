@@ -51,6 +51,7 @@ from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
+    ApplicationArgs as ApplicationArgsProto,
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     DeploymentLanguage,
@@ -236,7 +237,7 @@ class ApplicationState:
         autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
-        external_scaler_enabled: bool = False,
+        external_scaler_enabled: bool,
     ):
         """
         Initialize an ApplicationState instance.
@@ -1104,6 +1105,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
+                    checkpoint_data.external_scaler_enabled,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
@@ -1117,7 +1119,7 @@ class ApplicationStateManager:
     def deploy_apps(
         self,
         name_to_deployment_args: Dict[str, List[Dict]],
-        name_to_application_args: Dict[str, Dict],
+        name_to_application_args: Dict[str, ApplicationArgsProto],
     ) -> None:
         live_route_prefixes: Dict[str, str] = {
             app_state.route_prefix: app_name
@@ -1148,10 +1150,10 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
-            application_args = name_to_application_args.get(name, {})
-            external_scaler_enabled = application_args.get(
-                "external_scaler_enabled", False
+            application_args = name_to_application_args.get(
+                name, ApplicationArgsProto(external_scaler_enabled=False)
             )
+            external_scaler_enabled = application_args.external_scaler_enabled
 
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(

@@ -800,10 +800,9 @@ class ServeController:
 
         name_to_application_args = {}
         for name, application_args_bytes in name_to_application_args_list.items():
-            args = ApplicationArgs.FromString(application_args_bytes)
-            name_to_application_args[name] = {
-                "external_scaler_enabled": bool(args.external_scaler_enabled)
-            }
+            name_to_application_args[name] = ApplicationArgs.FromString(
+                application_args_bytes
+            ).external_scaler_enabled
 
         self.application_state_manager.deploy_apps(
             name_to_deployment_args, name_to_application_args
