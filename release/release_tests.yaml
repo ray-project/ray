@@ -79,7 +79,8 @@
 #######################
 # Baseline test
 #######################
-- name: hello_world
+- name: ctest_hello_world
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -108,7 +109,8 @@
       cluster:
         ray_version: 2.50.0
 
-- name: hello_world_custom_byod
+- name: py310_hello_world_custom_byod
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -134,7 +136,8 @@
       cluster:
         ray_version: 2.50.0
 
-- name: hello_world_custom_byod_depset_only
+- name: py310_hello_world_custom_byod_depset_only
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -157,7 +160,8 @@
 #######################
 # Cluster scaling tests
 #######################
-- name: cluster_tune_scale_up_down
+- name: py310_cluster_tune_scale_up_down
+  python: "3.10"
   group: Cluster tests
   working_dir: cluster_tests
 
