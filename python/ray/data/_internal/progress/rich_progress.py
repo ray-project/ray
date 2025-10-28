@@ -113,7 +113,7 @@ class RichSubProgressBar(BaseProgressBar):
         return {}
 
     def __setstate__(self, state):
-        self.enabled = False  # Progress bar is disabled on remote nodes.
+        self._enabled = False  # Progress bar is disabled on remote nodes.
 
 
 class RichExecutionProgressManager(BaseExecutionProgressManager):
