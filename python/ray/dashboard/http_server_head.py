@@ -172,10 +172,6 @@ class HttpServerDashboardHead:
         if not auth_utils.is_token_auth_enabled():
             return await handler(request)
 
-        # Skip if request method doesn't require auth (GET, HEAD)
-        if not auth_utils.should_authenticate_request(request.method):
-            return await handler(request)
-
         # Extract and validate token
         auth_header = request.headers.get("Authorization", "")
 
@@ -280,8 +276,8 @@ class HttpServerDashboardHead:
         app = aiohttp.web.Application(
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
-                self.auth_middleware,
                 self.metrics_middleware,
+                self.auth_middleware,
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
                 self.cache_control_static_middleware,

@@ -6,6 +6,7 @@ import pytest
 import requests
 
 import ray
+from ray._raylet import Config
 from ray.cluster_utils import Cluster
 
 
@@ -20,30 +21,25 @@ def cleanup_env():
         del os.environ["RAY_AUTH_TOKEN"]
 
 
-def test_dashboard_post_requires_auth_with_valid_token(cleanup_env):
-    """Test that POST requests succeed with valid token when auth is enabled."""
+def test_dashboard_request_requires_auth_with_valid_token(cleanup_env):
+    """Test that requests succeed with valid token when auth is enabled."""
     test_token = "test_token_12345678901234567890123456789012"
     os.environ["RAY_auth_mode"] = "token"
     os.environ["RAY_AUTH_TOKEN"] = test_token
-
+    Config.initialize("")
     cluster = Cluster()
     cluster.add_node()
 
     try:
-        ray.init(address=cluster.address)
-        dashboard_url = ray._private.worker._global_node.webui_url
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
 
-        # POST with valid auth should succeed
+        # Request with valid auth should succeed
         headers = {"Authorization": f"Bearer {test_token}"}
-        response = requests.post(
+        response = requests.get(
             f"http://{dashboard_url}/api/component_activities",
-            json={"test": "data"},
             headers=headers,
         )
-        assert response.status_code == 403
-
-        # GET should work without auth
-        response = requests.get(f"http://{dashboard_url}/api/cluster_status")
         assert response.status_code == 200
 
     finally:
@@ -51,23 +47,21 @@ def test_dashboard_post_requires_auth_with_valid_token(cleanup_env):
         cluster.shutdown()
 
 
-def test_dashboard_post_requires_auth_missing_token(cleanup_env):
-    """Test that POST requests fail without token when auth is enabled."""
+def test_dashboard_request_requires_auth_missing_token(cleanup_env):
+    """Test that requests fail without token when auth is enabled."""
     test_token = "test_token_12345678901234567890123456789012"
     os.environ["RAY_auth_mode"] = "token"
     os.environ["RAY_AUTH_TOKEN"] = test_token
-
+    Config.initialize("")
     cluster = Cluster()
     cluster.add_node()
 
     try:
-        ray.init(address=cluster.address)
-        dashboard_url = ray._private.worker._global_node.webui_url
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
 
-        # POST without auth should fail with 401
-        # We need to find a POST endpoint to test
-        # For now, let's test with a generic endpoint
-        response = requests.post(
+        # GET without auth should fail with 401
+        response = requests.get(
             f"http://{dashboard_url}/api/component_activities",
             json={"test": "data"},
         )
@@ -78,54 +72,28 @@ def test_dashboard_post_requires_auth_missing_token(cleanup_env):
         cluster.shutdown()
 
 
-def test_dashboard_post_requires_auth_invalid_token(cleanup_env):
-    """Test that POST requests fail with invalid token when auth is enabled."""
+def test_dashboard_request_requires_auth_invalid_token(cleanup_env):
+    """Test that requests fail with invalid token when auth is enabled."""
     correct_token = "test_token_12345678901234567890123456789012"
     wrong_token = "wrong_token_00000000000000000000000000000000"
     os.environ["RAY_auth_mode"] = "token"
     os.environ["RAY_AUTH_TOKEN"] = correct_token
-
+    Config.initialize("")
     cluster = Cluster()
     cluster.add_node()
 
     try:
-        ray.init(address=cluster.address)
-        dashboard_url = ray._private.worker._global_node.webui_url
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
 
-        # POST with wrong token should fail with 403
+        # Request with wrong token should fail with 403
         headers = {"Authorization": f"Bearer {wrong_token}"}
-        response = requests.post(
+        response = requests.get(
             f"http://{dashboard_url}/api/component_activities",
             json={"test": "data"},
             headers=headers,
         )
         assert response.status_code == 403
-
-    finally:
-        ray.shutdown()
-        cluster.shutdown()
-
-
-def test_dashboard_get_no_auth_required(cleanup_env):
-    """Test that GET requests don't require auth even when token mode is enabled."""
-    test_token = "test_token_12345678901234567890123456789012"
-    os.environ["RAY_auth_mode"] = "token"
-    os.environ["RAY_AUTH_TOKEN"] = test_token
-
-    cluster = Cluster()
-    cluster.add_node()
-
-    try:
-        ray.init(address=cluster.address)
-        dashboard_url = ray._private.worker._global_node.webui_url
-
-        # GET without auth should succeed
-        response = requests.get(f"http://{dashboard_url}/")
-        assert response.status_code == 200
-
-        # GET to API endpoint should also succeed
-        response = requests.get(f"http://{dashboard_url}/api/cluster_status")
-        assert response.status_code == 200
 
     finally:
         ray.shutdown()
@@ -140,15 +108,15 @@ def test_dashboard_auth_disabled(cleanup_env):
     cluster.add_node()
 
     try:
-        ray.init(address=cluster.address)
-        dashboard_url = ray._private.worker._global_node.webui_url
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
 
-        # POST without auth should succeed when auth is disabled
-        response = requests.post(
+        # GET without auth should succeed when auth is disabled
+        response = requests.get(
             f"http://{dashboard_url}/api/component_activities", json={"test": "data"}
         )
         # Should not return 401 or 403
-        assert response.status_code not in [401, 403]
+        assert response.status_code == 200
 
     finally:
         ray.shutdown()
