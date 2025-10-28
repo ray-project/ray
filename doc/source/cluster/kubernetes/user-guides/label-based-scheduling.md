@@ -21,7 +21,7 @@ Full autoscaling support for Tasks, Actors, and placement groups with label sele
 ## Overview
 
 There are three scheduling steps to understand when using KubeRay with label-based scheduling:
-1. **The Ray Workload**: A Ray application requests resources with a `label_selector`, specifying that we want to schedule on a Node with those labels. Example:
+1. **The Ray workload**: A Ray application requests resources with a `label_selector`, specifying that you want to schedule on a node with those labels. Example:
 ```py
 @ray.remote(num_gpus=1, label_selector={"ray.io/accelerator-type": "A100"})
 def gpu_task():
