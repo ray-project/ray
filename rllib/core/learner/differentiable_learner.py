@@ -1,16 +1,17 @@
 import abc
 import logging
-import numpy
 from typing import (
+    TYPE_CHECKING,
     Any,
     Collection,
     Dict,
     Iterable,
     Optional,
     Tuple,
-    TYPE_CHECKING,
     Union,
 )
+
+import numpy
 
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
@@ -22,19 +23,19 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
-    MODULE_TRAIN_BATCH_SIZE_MEAN,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -124,7 +125,7 @@ class DifferentiableLearner(Checkpointable):
         if self._is_built:
             logger.debug("DifferentiableLearner already built. Skipping built.")
 
-        # If a dvice was passed, set the `DifferentiableLearner`'s device.
+        # If a device was passed, set the `DifferentiableLearner`'s device.
         if device:
             self._device = device
 

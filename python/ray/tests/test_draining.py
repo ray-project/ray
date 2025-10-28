@@ -427,14 +427,21 @@ def test_draining_reason(ray_start_cluster, graceful):
 
     # Simulate autoscaler terminates the worker node after the draining deadline.
     cluster.remove_node(node2, graceful)
-    try:
-        ray.get(actor.ping.remote())
-        raise
-    except ray.exceptions.ActorDiedError as e:
-        assert e.preempted
-        if graceful:
-            assert "The actor died because its node has died." in str(e)
-            assert "the actor's node was preempted: " + drain_reason_message in str(e)
+
+    def check_actor_died_error():
+        try:
+            ray.get(actor.ping.remote())
+            return False
+        except ray.exceptions.ActorDiedError as e:
+            assert e.preempted
+            if graceful:
+                assert "The actor died because its node has died." in str(e)
+                assert "the actor's node was preempted: " + drain_reason_message in str(
+                    e
+                )
+        return True
+
+    wait_for_condition(check_actor_died_error)
 
 
 def test_drain_node_actor_restart(ray_start_cluster):

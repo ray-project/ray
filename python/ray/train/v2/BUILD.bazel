@@ -551,7 +551,7 @@ py_test(
 
 py_test(
     name = "test_util",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_util.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
