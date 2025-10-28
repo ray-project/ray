@@ -116,19 +116,13 @@ namespace gcs {
 
 class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               RegisterSelf,
-              (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
+              (rpc::GcsNodeInfo && local_node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(const NodeID &, GetSelfId, (), (const, override));
-  MOCK_METHOD(const rpc::GcsNodeInfo &, GetSelfInfo, (), (const, override));
   MOCK_METHOD(void,
               AsyncRegister,
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void,
-              AsyncCheckSelfAlive,
-              (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,
@@ -143,16 +137,36 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
+              AsyncGetAllNodeAddressAndLiveness,
+              (const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+               int64_t timeout_ms,
+               const std::vector<NodeID> &node_ids),
+              (override));
+  MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
               (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
                StatusCallback done),
               (override));
+  MOCK_METHOD(
+      void,
+      AsyncSubscribeToNodeAddressAndLivenessChange,
+      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+       StatusCallback done),
+      (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
+  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+              GetNodeAddressAndLiveness,
+              (const NodeID &node_id, bool filter_dead_nodes),
+              (const, override));
   MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &),
               GetAll,
+              (),
+              (const, override));
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &),
+              GetAllNodeAddressAndLiveness,
               (),
               (const, override));
   MOCK_METHOD(Status,

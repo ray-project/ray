@@ -130,25 +130,34 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   return task_event;
 }
 
-/// Convert a TaskExecutionEvent to a TaskEvents.
+/// Convert a TaskLifecycleEvent to a TaskEvents.
 ///
-/// \param event The TaskExecutionEvent to convert.
+/// \param event The TaskLifecycleEvent to convert.
 /// \return The output TaskEvents to populate.
-rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event) {
+rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
 
   rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  task_state_update->set_node_id(event.node_id());
-  task_state_update->set_worker_id(event.worker_id());
-  task_state_update->set_worker_pid(event.worker_pid());
-  *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
+  if (!event.node_id().empty()) {
+    task_state_update->set_node_id(event.node_id());
+  }
+  if (!event.worker_id().empty()) {
+    task_state_update->set_worker_id(event.worker_id());
+  }
+  // worker pid can never be 0
+  if (event.worker_pid() != 0) {
+    task_state_update->set_worker_pid(event.worker_pid());
+  }
+  if (event.has_ray_error_info()) {
+    *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
+  }
 
-  for (const auto &[state, timestamp] : event.task_state()) {
-    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
-    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+  for (const auto &state_transition : event.state_transitions()) {
+    int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
+    (*task_state_update->mutable_state_ts_ns())[state_transition.state()] = ns;
   }
   return task_event;
 }
@@ -193,7 +202,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  if (event.has_profile_events()) {
+    *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  }
   return task_event;
 }
 
@@ -212,8 +223,8 @@ std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
       task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
       break;
     }
-    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
-      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
+    case rpc::events::RayEvent::TASK_LIFECYCLE_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_lifecycle_event()));
       break;
     }
     case rpc::events::RayEvent::TASK_PROFILE_EVENT: {

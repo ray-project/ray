@@ -15,6 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/observability/metric_interface.h"
 
 namespace ray {
@@ -40,14 +41,16 @@ class FakeMetric : public MetricInterface {
 
   void Record(double value, stats::TagsType tags) override = 0;
 
-  const absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
-      &GetTagToValue() const {
+  absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
+  GetTagToValue() const {
+    absl::MutexLock lock(&mutex_);
     return tag_to_value_;
   }
 
  protected:
-  absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>
-      tag_to_value_;
+  absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double> tag_to_value_
+      ABSL_GUARDED_BY(mutex_);
+  mutable absl::Mutex mutex_;
 };
 
 class FakeCounter : public FakeMetric {
@@ -56,6 +59,7 @@ class FakeCounter : public FakeMetric {
   ~FakeCounter() = default;
 
   void Record(double value, stats::TagsType tags) override {
+    absl::MutexLock lock(&mutex_);
     absl::flat_hash_map<std::string, std::string> tags_map;
     for (const auto &tag : tags) {
       tags_map[tag.first.name()] = tag.second;
@@ -71,12 +75,29 @@ class FakeGauge : public FakeMetric {
   ~FakeGauge() = default;
 
   void Record(double value, stats::TagsType tags) override {
+    absl::MutexLock lock(&mutex_);
     absl::flat_hash_map<std::string, std::string> tags_map;
     for (const auto &tag : tags) {
       tags_map[tag.first.name()] = tag.second;
     }
     // record the last value of the tag set
-    tag_to_value_.emplace(std::move(tags_map), value);
+    tag_to_value_[std::move(tags_map)] = value;
+  }
+};
+
+class FakeHistogram : public FakeMetric {
+ public:
+  FakeHistogram() {}
+  ~FakeHistogram() = default;
+
+  void Record(double value, stats::TagsType tags) override {
+    absl::MutexLock lock(&mutex_);
+    absl::flat_hash_map<std::string, std::string> tags_map;
+    for (const auto &tag : tags) {
+      tags_map[tag.first.name()] = tag.second;
+    }
+    // record the last value of the tag set
+    tag_to_value_[std::move(tags_map)] = value;
   }
 };
 
