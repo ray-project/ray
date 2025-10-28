@@ -108,7 +108,6 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
     } else {
       // Empty token means no auth required
       auth_token = rpc::AuthenticationToken("");
-      ;
     }
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
