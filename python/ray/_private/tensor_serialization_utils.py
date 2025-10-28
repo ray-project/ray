@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Optional
 
 
 class TensorObjRestoreWarning(UserWarning):
@@ -61,61 +61,60 @@ def _is_namedtuple_instance(obj) -> bool:
 def _walk_and_transform(
     obj: Any,
     convert_node: Callable[[Any], Any],
-    _visited: Optional[Set[int]] = None,
+    _cache: Optional[dict] = None,
 ) -> Any:
     """
-    Recursively traverses obj and applies convert_node to each node.
-    Stops recursing into a node if convert_node returns a new object.
-    Handles circular references and supports dict/list/tuple/custom objects.
+    Recursively transforms obj using convert_node.
+    Uses _cache to handle circular references and ensure consistent conversion.
     """
-    if _visited is None:
-        _visited = set()
+    if _cache is None:
+        _cache = {}
 
     obj_id = id(obj)
-    if obj_id in _visited:
-        return obj
+    if obj_id in _cache:
+        return _cache[obj_id]
 
+    # Tentatively cache placeholder to break cycles
+    _cache[obj_id] = obj
+
+    # Try conversion first
     converted = convert_node(obj)
     if converted is not obj:
+        _cache[obj_id] = converted
         return converted
 
-    should_recurse = isinstance(obj, (dict, list, tuple)) or _is_restorable(obj)
-
-    if should_recurse:
-        _visited.add(obj_id)
+    # Recurse based on type
+    result = obj
 
     if isinstance(obj, dict):
         new_dict = {
-            k: _walk_and_transform(v, convert_node, _visited) for k, v in obj.items()
+            k: _walk_and_transform(v, convert_node, _cache) for k, v in obj.items()
         }
         orig_type = type(obj)
         if orig_type is dict:
-            return new_dict
-
-        try:
-            if orig_type.__module__ == "collections" or (
-                orig_type.__module__ == "collections.abc"
-                and orig_type.__name__ in ("Counter", "OrderedDict", "defaultdict")
-            ):
+            result = new_dict
+        elif orig_type.__name__ in (
+            "defaultdict",
+            "OrderedDict",
+            "Counter",
+        ) and orig_type.__module__.startswith("collections"):
+            try:
                 if orig_type.__name__ == "defaultdict":
                     factory = getattr(obj, "default_factory", None)
-                    return orig_type(factory, new_dict)
+                    result = orig_type(factory, new_dict)
                 else:
-                    return orig_type(new_dict)
-        except Exception:
-            pass
-
-        return new_dict
+                    result = orig_type(new_dict)
+            except Exception:
+                result = new_dict
+        else:
+            result = new_dict
 
     elif isinstance(obj, (list, tuple)) and not _is_namedtuple_instance(obj):
-        converted_items = [
-            _walk_and_transform(item, convert_node, _visited) for item in obj
-        ]
-        return type(obj)(converted_items)
+        items = [_walk_and_transform(item, convert_node, _cache) for item in obj]
+        result = type(obj)(items)
 
     elif _is_restorable(obj):
         typ = type(obj)
-        # Warn if __init__ is non-trivial
         if typ.__init__ is not object.__init__:
             warnings.warn(
                 f"Reconstructing instance of {typ.__module__}.{typ.__qualname__} "
@@ -123,20 +122,19 @@ def _walk_and_transform(
                 TensorObjRestoreWarning,
                 stacklevel=3,
             )
-
         try:
             new_obj = object.__new__(typ)
             new_obj.__dict__ = {
-                k: _walk_and_transform(v, convert_node, _visited)
+                k: _walk_and_transform(v, convert_node, _cache)
                 for k, v in obj.__dict__.items()
             }
-            return new_obj
+            result = new_obj
         except Exception:
-            return obj
+            pass
 
-    else:
-        # Return primitives or unsupported types as-is.
-        return obj
+    # Final cache update
+    _cache[obj_id] = result
+    return result
 
 
 def _to_numpy_node(node):
