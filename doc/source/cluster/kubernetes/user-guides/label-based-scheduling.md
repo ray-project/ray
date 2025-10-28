@@ -7,7 +7,7 @@ This guide explains how to use label-based scheduling for Ray clusters on Kubern
 Label-based scheduling is an essential tool for heterogeneous clusters, where your RayCluster might contain different types of nodes for different purposes, such as:
 
 * Nodes with different accelerator types like A100 GPUs or Trillium TPU.
-* Nodes with different CPU families (e.g. Intel vs. AMD).
+* Nodes with different CPU families like Intel or AMD.
 * Nodes with different instance types related to cost and availability, such as spot or on-demand instances.
 * Nodes in different failure domains or with region/zone requirements.
 
