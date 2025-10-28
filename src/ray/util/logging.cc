@@ -297,6 +297,8 @@ void RayLog::InitSeverityThreshold(RayLogLevel severity_threshold) {
       severity_threshold = RayLogLevel::WARNING;
     } else if (data == "error") {
       severity_threshold = RayLogLevel::ERROR;
+    } else if (data == "user_fatal") {
+      severity_threshold = RayLogLevel::USER_FATAL;
     } else if (data == "fatal") {
       severity_threshold = RayLogLevel::FATAL;
     } else {
@@ -601,7 +603,7 @@ RayLog::~RayLog() {
   }
   logger->flush();
 
-  if (severity_ == RayLogLevel::FATAL || severity_ == RayLogLevel::USER_FATAL) {
+  if (IsFatal()) {
     std::_Exit(EXIT_FAILURE);
   }
 }
