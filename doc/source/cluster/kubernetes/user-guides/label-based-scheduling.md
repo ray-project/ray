@@ -69,7 +69,7 @@ kubectl label node kind-control-plane \
   cloud.google.com/gke-accelerator="nvidia-tesla-a100"
 ```
 
-```{admonition} This quickstart uses Kind for simplicity. In a real-world scenario, you would use a cloud provider's Kubernetes service (like GKE or EKS) that has different machine types (e.g. GPU nodes and spot instances) available. The nodeSelector fields in the example YAML are for GKE and will be ignored by Kind.
+```{admonition} This quickstart uses Kind for simplicity. In a real-world scenario, you would use a cloud provider's Kubernetes service (like GKE or EKS) that has different machine types, like GPU nodes and spot instances, available. Kind ignores the `nodeSelector` fields for GKE in the example YAML.
 ```
 
 ### Step 2: Install the KubeRay operator
