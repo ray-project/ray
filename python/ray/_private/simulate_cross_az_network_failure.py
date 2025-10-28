@@ -46,7 +46,7 @@ nohup setsid bash -lc '
   sudo iptables -w -D INPUT  -s 127.0.0.0/8 -d 127.0.0.0/8 -j ACCEPT
   sudo iptables -w -D OUTPUT -p tcp --sport 22 -j ACCEPT
   sudo iptables -w -D INPUT  -p tcp --dport 22 -j ACCEPT
-'
+' &>/dev/null &
 """
 
 
