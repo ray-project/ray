@@ -172,48 +172,6 @@ helm uninstall kuberay-operator
 kind delete cluster
 ```
 
-## Additional configurations
-
-### 1. Label syntax and operators
-
-The `label_selector` dictionary is a map of `key: operator_string`.
-The selector matches if *all* key-operator pairs evaluate to true.
-
-| Operator    | Syntax         | Example                                 | Description                                 |
-| :---        | :---           | :---                                    | :---                                        |
-| **Equal** | `"value"`      | `{"cpu-family": "intel"}`               | The label `cpu-family` must be `intel`.       |
-| **Not Equal**| `"!value"`     | `{"ray.io/region": "!us-central2"}`     | The label `ray.io/region` must not be `us-central2`. |
-| **In** | `"in(v1,v2)"`  | `{"cpu-family": "in(intel,amd)"}`       | The label `cpu-family` must be `intel` or `amd`. |
-| **Not In** | `"!in(v1,v2)"` | `{"instance-type": "!in(small,medium)"}`| The label `instance-type` must not be `small` or `medium`. |
-
-### 2. Default labels
-
-Ray automatically adds labels to nodes to describe aspects like the underlying compute.
-
-* `ray.io/node-id`: The unique ID of the Ray node.
-* `ray.io/node-group`: The name of the group such as `head` or `large-cpu-group`.
-* `ray.io/accelerator-type`: The type of accelerator, such as A100 or TPU-V6E.
-
-When running on Google Cloud TPUs, Ray automatically detects and adds the following labels. These are critical for scheduling distributed workloads that must span an entire TPU "slice" (a set of interconnected hosts).
-
-* `ray.io/tpu-slice-name`: The name of the TPU Pod or slice. Ray uses this to ensure all workers of a job land on the *same* slice.
-* `ray.io/tpu-worker-id`: The integer worker ID within the slice.
-* `ray.io/tpu-topology`: The physical topology of the slice.
-* `ray.io/tpu-pod-type`: The TPU pod type, which defines the size and TPU generation such as `v4-8` or `v5p-16`.
-
-You can use these labels to schedule a `placement_group` that requests an entire TPU slice. For example, to request all TPU devices on a `v6e-16` slice:
-
-```py
-# Request 4 bundles, one for each TPU VM in the v6e-16 slice.
-pg = placement_group(
-    [{"TPU": 4}] * 4,
-    strategy="SPREAD",
-    bundle_label_selector=[{
-        "ray.io/tpu-pod-type": "v6e-16"
-    }] * 4
-)
-ray.get(pg.ready())
-```
-
 ## Next steps
 * See [Use labels to control scheduling](:std:ref:`Use labels to control scheduling`) for more details on label selectors in Ray.
+* See [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html) for instructions on how to configure the Ray autoscaler with KubeRay.
