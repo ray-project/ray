@@ -91,6 +91,7 @@
 
   run:
     timeout: 1800
+    num_retries: 3
     script: python hello_world.py
 
   variations:
