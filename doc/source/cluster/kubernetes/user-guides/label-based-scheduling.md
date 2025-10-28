@@ -186,7 +186,7 @@ The selector matches if *all* key-operator pairs evaluate to true.
 | **In** | `"in(v1,v2)"`  | `{"cpu-family": "in(intel,amd)"}`       | The label `cpu-family` must be `intel` or `amd`. |
 | **Not In** | `"!in(v1,v2)"` | `{"instance-type": "!in(small,medium)"}`| The label `instance-type` must not be `small` or `medium`. |
 
-### 2. Default Labels
+### 2. Default labels
 
 Ray automatically adds labels to nodes to describe aspects like the underlying compute.
 
