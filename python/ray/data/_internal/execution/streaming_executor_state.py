@@ -307,7 +307,7 @@ class OpState:
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (
-            self.op.internal_queue_num_blocks()
+            self.op.internal_input_queue_num_blocks()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -322,7 +322,7 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.internal_queue_num_bytes()
+            self.op.internal_input_queue_num_bytes()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -638,14 +638,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-        # Drain upstream output queue if current operator is execution finished.
-        # This is needed when the limit is reached, and `mark_execution_finished`
-        # is called manually.
-        if op.execution_finished():
-            for idx, dep in enumerate(op.input_dependencies):
-                upstream_state = topology[dep]
-                # Drain upstream output queue
-                upstream_state.output_queue.clear()
 
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
@@ -667,13 +659,20 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
-            continue
+
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+        # Drain external input queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for input_queue in op_state.input_queues:
+                # Drain input queue
+                input_queue.clear()
 
 
 def get_eligible_operators(
