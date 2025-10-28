@@ -28,7 +28,7 @@ def gpu_task():
     pass
 ```
 
-2. **The RayCluster CR**: The RayCluster CRD defines the types of nodes available for scheduling (or scaling with autoscaling) through the `HeadGroupSpec` and `WorkerGroupSpecs`. To set Ray node labels for a given group, users can specify them under a top-level `Labels` field. When KubeRay creates a Pod for this group, these labels are set in the Ray runtime environment. For RayClusters with autoscaling enabled, these labels are also added to the autoscaling configuration to be used for scheduling Ray workloads. Example:
+2. **The RayCluster CR**: The RayCluster CRD defines the types of nodes available for scheduling (or scaling with autoscaling) through `HeadGroupSpec` and `WorkerGroupSpecs`. To set Ray node labels for a given group, you can specify them under a top-level `Labels` field. When KubeRay creates a Pod for this group, it sets these labels in the Ray runtime environment. For RayClusters with autoscaling enabled, KubeRay also adds these labels to the autoscaling configuration use for scheduling Ray workloads. Example:
 ```yaml
 headGroupSpec:
     labels:
