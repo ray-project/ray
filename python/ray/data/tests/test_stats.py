@@ -105,6 +105,8 @@ def gen_expected_metrics(
             "'average_num_outputs_per_task': N",
             "'average_num_inputs_per_task': N",
             "'num_output_blocks_per_task_s': N",
+            "'average_total_task_completion_time_s': N",
+            "'average_task_completion_excl_backpressure_time_s': N",
             "'average_bytes_per_output': N",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -157,10 +159,8 @@ def gen_expected_metrics(
                 "'block_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
-            (
-                "'task_completion_time_without_backpressure': "
-                f"{'N' if task_backpressure else 'Z'}"
-            ),
+            "'task_completion_time_s': N",
+            "'task_completion_time_excl_backpressure_s': N",
             (
                 "'block_size_bytes': "
                 f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
@@ -185,6 +185,8 @@ def gen_expected_metrics(
             "'average_num_outputs_per_task': None",
             "'average_num_inputs_per_task': None",
             "'num_output_blocks_per_task_s': None",
+            "'average_total_task_completion_time_s': None",
+            "'average_task_completion_excl_backpressure_time_s': None",
             "'average_bytes_per_output': None",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -237,8 +239,9 @@ def gen_expected_metrics(
                 "'block_completion_time': "
                 f"{gen_histogram_values(histogram_buckets_s, 'N')}"
             ),
+            ("'task_completion_time_s': " f"{'N' if task_backpressure else 'Z'}"),
             (
-                "'task_completion_time_without_backpressure': "
+                "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
             (
@@ -527,7 +530,7 @@ def test_large_args_scheduling_strategy(
     #     )
 
     map_extra_metrics = gen_extra_metrics_str(
-        LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
+        LARGE_ARGS_EXTRA_METRICS,
         verbose_stats_logs,
     )
     # if verbose_stats_logs:
@@ -768,6 +771,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_num_outputs_per_task: N,\n"
         "      average_num_inputs_per_task: N,\n"
         "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -808,7 +813,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_output_backpressure_time: Z,\n"
         f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        "      task_completion_time_s: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
         f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
         f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
@@ -905,6 +911,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_num_outputs_per_task: N,\n"
         "      average_num_inputs_per_task: N,\n"
         "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -945,7 +953,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_output_backpressure_time: Z,\n"
         f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        "      task_completion_time_s: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
         f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
         f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
@@ -997,6 +1006,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_num_outputs_per_task: N,\n"
         "            average_num_inputs_per_task: N,\n"
         "            num_output_blocks_per_task_s: N,\n"
+        "            average_total_task_completion_time_s: N,\n"
+        "            average_task_completion_excl_backpressure_time_s: N,\n"
         "            average_bytes_per_output: N,\n"
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"
@@ -1037,7 +1048,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            task_output_backpressure_time: Z,\n"
         f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
         f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "            task_completion_time_without_backpressure: N,\n"
+        "            task_completion_time_s: N,\n"
+        "            task_completion_time_excl_backpressure_s: N,\n"
         f"            block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
         f"            block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "            num_alive_actors: Z,\n"
@@ -1681,7 +1693,7 @@ def test_runtime_metrics(ray_start_regular_shared):
     assert total_percent == 100
 
     for time_s, percent in metrics_dict.values():
-        assert time_s < total_time
+        assert time_s <= total_time
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
