@@ -41,6 +41,17 @@ applications:
         num_replicas: 1
 """
 
+CONFIG_FILE_TEXT_EXTERNAL_SCALER_DISABLED = """
+applications:
+  - name: test_app
+    route_prefix: /
+    import_path: ray.dashboard.modules.serve.tests.test_serve_dashboard.deployment_app
+    external_scaler_enabled: False
+    deployments:
+      - name: hello_world
+        num_replicas: 1
+"""
+
 
 def deploy_config_multi_app(config: Dict, url: str):
     put_response = requests.put(url, json=config, timeout=30)
@@ -960,6 +971,94 @@ class TestScaleDeploymentEndpoint:
         )
         assert error_response.status_code == 400
         assert "invalid request body" in error_response.json()["error"].lower()
+
+    def test_external_scaler_enabled_switchback(self, ray_start_stop):
+        """Test switching external_scaler_enabled on and off without restarting Serve.
+
+        This test verifies that:
+        1. Scaling fails when external_scaler_enabled is False
+        2. Scaling succeeds when external_scaler_enabled is True
+        3. The switchback (False -> True -> False) works correctly
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+
+            config_disabled_file = tmp_path / "config_disabled.yaml"
+            config_enabled_file = tmp_path / "config_enabled.yaml"
+            config_disabled_file.write_text(CONFIG_FILE_TEXT_EXTERNAL_SCALER_DISABLED)
+            config_enabled_file.write_text(CONFIG_FILE_TEXT)
+
+            # Step 1: Deploy with external_scaler_enabled=False
+            self._run_serve_deploy(config_disabled_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 2: Try to scale - should fail
+            response = requests.post(
+                SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                    app_name="test_app", deployment_name="hello_world"
+                ),
+                json={"target_num_replicas": 3},
+                timeout=30,
+            )
+            assert response.status_code == 412
+            assert (
+                "Current value: external_scaler_enabled=false. To use this API, redeploy your application with 'external_scaler_enabled: true' in the config."
+                in response.json()["error"]
+            )
+
+            # Verify replicas didn't change
+            assert self._get_deployment_details().target_num_replicas == 1
+
+            # Step 3: Enable external_scaler_enabled
+            self._run_serve_deploy(config_enabled_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 4: Scale - should succeed
+            self._scale_and_verify_deployment(3, verify_actual_replicas=True)
+
+            # Step 5: Disable external_scaler_enabled again
+            self._run_serve_deploy(config_disabled_file)
+
+            # The deployment should maintain 3 replicas from the previous scale operation
+            # but external scaler should be disabled
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=3,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 6: Try to scale again - should fail
+            response = requests.post(
+                SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                    app_name="test_app", deployment_name="hello_world"
+                ),
+                json={"target_num_replicas": 5},
+                timeout=30,
+            )
+            assert response.status_code == 412
+            assert (
+                "Current value: external_scaler_enabled=false. To use this API, redeploy your application with 'external_scaler_enabled: true' in the config."
+                in response.json()["error"]
+            )
+
+            # Verify replicas stayed at 3
+            assert self._get_deployment_details().target_num_replicas == 3
 
 
 @pytest.mark.skipif(

@@ -802,7 +802,7 @@ class ServeController:
         for name, application_args_bytes in name_to_application_args_list.items():
             name_to_application_args[name] = ApplicationArgs.FromString(
                 application_args_bytes
-            ).external_scaler_enabled
+            )
 
         self.application_state_manager.deploy_apps(
             name_to_deployment_args, name_to_application_args
@@ -819,7 +819,7 @@ class ServeController:
         and could be removed if the Java code was refactored
         to use the new bulk deploy_applications API.
         """
-        self.deploy_applications({name: deployment_args_list}, {name: {}})
+        self.deploy_applications({name: deployment_args_list}, {})
 
     def apply_config(
         self,

@@ -1190,7 +1190,7 @@ class ApplicationStateManager:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
         """
-        self.deploy_apps({name: deployment_args}, {name: {}})
+        self.deploy_apps({name: deployment_args}, {})
 
     def apply_app_configs(
         self,
