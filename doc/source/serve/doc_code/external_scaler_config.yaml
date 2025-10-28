@@ -1,7 +1,7 @@
 # __external_scaler_config_begin__
 applications:
   - name: my-app
-    import_path: my_module:app
+    import_path: external_scaler_predictive:app
     external_scaler_enabled: true
     deployments:
       - name: TextProcessor
