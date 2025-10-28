@@ -420,7 +420,7 @@ class PhysicalOperator(Operator):
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
         internal_queue_size = (
-            self.internal_queue_size()
+            self.internal_queue_num_blocks()
             if isinstance(self, InternalQueueOperatorMixin)
             else 0
         )
@@ -702,13 +702,12 @@ class PhysicalOperator(Operator):
     def min_max_resource_requirements(
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
-        """Returns the min and max resources to start the operator and make progress.
+        """Returns lower/upper boundary of resource requirements for this operator:
 
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its minimum usage.
-
-        This method is used by the resource manager to reserve minimum resources and to
-        ensure that it doesn't over-provision resources.
+        - Minimal: lower bound (min) of resources required to start this operator
+        (for most operators this is 0, except the ones that utilize actors)
+        - Maximum: upper bound (max) of how many resources this operator could
+        utilize.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 
@@ -806,6 +805,11 @@ class PhysicalOperator(Operator):
         )
         return upstream_op_num_outputs
 
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        """Max value of how many tasks this operator could run
+        concurrently (if limited)"""
+        return None
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
@@ -827,27 +831,23 @@ def estimate_total_num_of_blocks(
 
     if (
         upstream_op_num_outputs > 0
-        and metrics.num_inputs_received > 0
-        and metrics.num_tasks_finished > 0
+        and metrics.average_num_inputs_per_task
+        and metrics.average_num_outputs_per_task
+        and metrics.average_rows_outputs_per_task
     ):
         estimated_num_tasks = total_num_tasks
         if estimated_num_tasks is None:
             estimated_num_tasks = (
-                upstream_op_num_outputs
-                / metrics.num_inputs_received
-                * num_tasks_submitted
+                upstream_op_num_outputs / metrics.average_num_inputs_per_task
             )
 
         estimated_num_output_bundles = round(
-            estimated_num_tasks
-            * metrics.num_outputs_of_finished_tasks
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_num_outputs_per_task
         )
         estimated_output_num_rows = round(
-            estimated_num_tasks
-            * metrics.rows_task_outputs_generated
-            / metrics.num_tasks_finished
+            estimated_num_tasks * metrics.average_rows_outputs_per_task
         )
+
         return (
             estimated_num_tasks,
             estimated_num_output_bundles,
