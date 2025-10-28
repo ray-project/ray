@@ -69,7 +69,7 @@ kubectl label node kind-control-plane \
   cloud.google.com/gke-accelerator="nvidia-tesla-a100"
 ```
 
-```{admonition} This quickstart uses Kind for simplicity. In a real-world scenario, you would use a cloud provider's Kubernetes service (like GKE or EKS) that has different machine types, like GPU nodes and spot instances, available. Kind ignores the `nodeSelector` fields for GKE in the example YAML.
+```{admonition} This quickstart uses Kind for simplicity. In a real-world scenario, you would use a cloud provider's Kubernetes service (like GKE or EKS) that has different machine types, like GPU nodes and spot instances, available.
 ```
 
 ### Step 2: Install the KubeRay operator
@@ -126,7 +126,7 @@ ray.get(test_task.remote())
   ray.get(my_actor.ready.remote())
 ```
 
-* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but NOT `ray.io/region: us-central2`. Because the strategy is "SPREAD", this placement group should require two Ray nodes with the desired labels to be scaled.
+* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but NOT `ray.io/region: us-central2`. Since the strategy is "SPREAD", we expect two separate Ray nodes with the desired labels to scale up, one node for each placement group bundle.
 ```py
   import ray
   from ray.util.placement_group import placement_group
