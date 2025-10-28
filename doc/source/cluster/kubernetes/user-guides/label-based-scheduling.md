@@ -104,7 +104,7 @@ kubectl get configmaps
 
 The RayCluster has 1 head Pod and 1 worker Pod already scaled. The head Pod has two containers: a Ray head container and a Ray autoscaler sidecar container. Additionally, the [ray-cluster-label-selector.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster-label-selector.yaml) includes a ConfigMap named `ray-example` that contains three Python scripts: `example_task.py`, `example_actor.py`, and `example_placement_group.py`, which all showcase label-based scheduling.
 
-* `example_task.py` is a Python script that creates a simple Task requiring a node with the labels `ray.io/market-type: on-demand` and `cpu-family: in(intel,amd)`. The `in` operator expresses that the cpu-family can be either Intel or AMD.
+* `example_task.py` is a Python script that creates a simple task requiring a node with the `ray.io/market-type: on-demand` and `cpu-family: in(intel,amd)` labels. The `in` operator expresses that the cpu-family can be either Intel or AMD.
 ```py
 import ray
 @ray.remote(num_cpus=1, label_selector={"ray.io/market-type": "on-demand", "cpu-family": "in(intel,amd)"})
