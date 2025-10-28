@@ -19,6 +19,5 @@ srcs:
   - python/requirements/ml/rllib-test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON
-  - PYTHON
 tags:
   - cr.ray.io/rayproject/docgpubuild-py$PYTHON
