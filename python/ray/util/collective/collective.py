@@ -45,8 +45,6 @@ try:
 except ImportError:
     _NIXL_AVAILABLE = False
 
-# try:
-#     from ray.util.collective.collective_group.
 
 def nccl_available():
     global _LOG_NCCL_WARNING
