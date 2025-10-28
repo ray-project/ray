@@ -755,8 +755,8 @@ Before using the external scaling API, enable it in your application configurati
 
 ```{literalinclude} ../doc_code/external_scaler_config.yaml
 :language: yaml
-:start-after: __config_begin__
-:end-before: __config_end__
+:start-after: __external_scaler_config_begin__
+:end-before: __external_scaler_config_end__
 ```
 
 :::{warning}
