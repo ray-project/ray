@@ -113,6 +113,11 @@ def _walk_and_transform(
         items = [_walk_and_transform(item, convert_node, _cache) for item in obj]
         result = type(obj)(items)
 
+    elif _is_namedtuple_instance(obj):
+        typ = type(obj)
+        items = [_walk_and_transform(item, convert_node, _cache) for item in obj]
+        result = typ(*items)
+
     elif _is_restorable(obj):
         typ = type(obj)
         if typ.__init__ is not object.__init__:
