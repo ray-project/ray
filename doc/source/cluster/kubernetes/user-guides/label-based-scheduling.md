@@ -57,7 +57,7 @@ This quickstart demonstrates all three steps working together.
 
 ### Step 1: [Optional] Create a Kubernetes cluster with Kind
 
-If you do not already have a Kubernetes cluster, create a new cluster with Kind for testing. If you're already using a cloud provider's Kubernetes service such as GKE, skip this step.
+If you don't already have a Kubernetes cluster, create a new cluster with Kind for testing. If you're already using a cloud provider's Kubernetes service such as GKE, skip this step.
 
 ```bash
 kind create cluster --image=kindest/node:v1.26.0
