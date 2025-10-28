@@ -4,7 +4,7 @@ applications:
     import_path: my_module:app
     external_scaler_enabled: true
     deployments:
-      - name: my-deployment
+      - name: TextProcessor
         num_replicas: 1
 # __external_scaler_config_end__
 
