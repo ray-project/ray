@@ -154,7 +154,7 @@ kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/example_actor.py
 # Step 5.4: Create the placement group. This should cause the Ray autoscaler to scale two nodes in spot-group.
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/example_placement_group.py
 
-# Step 5.5: List all nodes in the Ray cluster. The nodes scaled for the Task, Actor, and placement group should be annotated with
+# Step 5.5: List all nodes in the Ray cluster. The nodes scaled for the task, actor, and placement group should be annotated with
 #           the expected Ray node labels.
 kubectl exec -it $HEAD_POD -- ray list nodes
 ```
