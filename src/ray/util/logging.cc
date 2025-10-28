@@ -569,8 +569,11 @@ bool RayLog::IsFatal() const { return is_fatal_; }
 
 RayLog::~RayLog() {
   if (IsFatal()) {
-    msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
-    expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
+    // Only add stack trace for internal fatal errors, not user-facing errors
+    if (severity_ == RayLogLevel::FATAL) {
+      msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
+      expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
+    }
     const char *callback_label = (severity_ == RayLogLevel::USER_FATAL)
                                      ? "RAY_USER_ERROR"
                                      : "RAY_FATAL_CHECK_FAILED";
