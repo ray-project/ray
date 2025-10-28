@@ -172,7 +172,7 @@ helm uninstall kuberay-operator
 kind delete cluster
 ```
 
-## Additional Configurations
+## Additional configurations
 
 ### 1. Label syntax and operators
 
