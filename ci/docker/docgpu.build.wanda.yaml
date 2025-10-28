@@ -1,5 +1,5 @@
-name: "docgpubuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_gpu"]
+name: "docgpubuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON"]
 dockerfile: ci/docker/docgpu.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -17,5 +17,7 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
   - python/requirements/ml/rllib-requirements.txt
   - python/requirements/ml/rllib-test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON
 tags:
-  - cr.ray.io/rayproject/docgpubuild
+  - cr.ray.io/rayproject/docgpubuild-py$PYTHON
