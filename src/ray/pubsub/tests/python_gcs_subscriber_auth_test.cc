@@ -40,7 +40,13 @@ class MockInternalPubSubGcsService final : public rpc::InternalPubSubGcsService:
       const rpc::GcsSubscriberCommandBatchRequest *request,
       rpc::GcsSubscriberCommandBatchReply *reply) override {
     if (should_accept_requests_) {
-      subscribe_count_++;
+      for (const auto &command : request->commands()) {
+        if (command.has_subscribe_message()) {
+          subscribe_count_++;
+        } else if (command.has_unsubscribe_message()) {
+          unsubscribe_count_++;
+        }
+      }
       return grpc::Status::OK;
     } else {
       return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Authentication failed");
@@ -62,11 +68,13 @@ class MockInternalPubSubGcsService final : public rpc::InternalPubSubGcsService:
 
   int subscribe_count() const { return subscribe_count_; }
   int poll_count() const { return poll_count_; }
+  int unsubscribe_count() const { return unsubscribe_count_; }
 
  private:
   bool should_accept_requests_;
   std::atomic<int> subscribe_count_{0};
   std::atomic<int> poll_count_{0};
+  std::atomic<int> unsubscribe_count_{0};
 };
 
 class PythonGcsSubscriberAuthTest : public ::testing::Test {
@@ -158,7 +166,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokens) {
                            << status.ToString();
   EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokens) {
@@ -175,7 +183,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokens) {
   ASSERT_FALSE(status.ok()) << "Subscribe should fail with mismatched tokens";
   EXPECT_TRUE(status.IsRpcError()) << "Status should be RpcError";
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, ClientTokenServerNoAuth) {
@@ -194,7 +202,7 @@ TEST_F(PythonGcsSubscriberAuthTest, ClientTokenServerNoAuth) {
       << status.ToString();
   EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, ServerTokenClientNoAuth) {
@@ -211,7 +219,7 @@ TEST_F(PythonGcsSubscriberAuthTest, ServerTokenClientNoAuth) {
       << "Subscribe should fail when server requires token but client doesn't provide it";
   EXPECT_TRUE(status.IsRpcError()) << "Status should be RpcError";
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensPoll) {
@@ -236,7 +244,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensPoll) {
   // At least one poll should have been made
   EXPECT_GE(mock_service_ptr_->poll_count(), 1);
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
@@ -250,7 +258,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
   auto subscriber = CreateSubscriber();
 
   // Subscribe will fail, but let's try anyway
-  subscriber->Subscribe();
+  ASSERT_FALSE(subscriber->Subscribe().ok());
 
   // Test polling with mismatched tokens - use very short timeout
   std::string key_id;
@@ -264,7 +272,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
         << "Status should be Invalid or RpcError: " << status.ToString();
   }
 
-  subscriber->Close();
+  ASSERT_TRUE(subscriber->Close().ok());
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
@@ -277,11 +285,13 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   auto subscriber = CreateSubscriber();
   Status status = subscriber->Subscribe();
   ASSERT_TRUE(status.ok()) << "Subscribe should succeed: " << status.ToString();
+  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
 
   // Close should succeed with matching tokens
-  status = subscriber->Close();
-  ASSERT_TRUE(status.ok()) << "Close should succeed with matching tokens: "
-                           << status.ToString();
+  ASSERT_TRUE(subscriber->Close().ok())
+      << "Close should succeed with matching tokens: " << status.ToString();
+  // This assertion will fail until auth is added to `Close()` and the mock is updated.
+  EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, NoAuthRequired) {
@@ -324,8 +334,8 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
   ASSERT_TRUE(status2.ok()) << "Second subscriber should succeed: " << status2.ToString();
   EXPECT_EQ(mock_service_ptr_->subscribe_count(), 2);
 
-  subscriber1->Close();
-  subscriber2->Close();
+  ASSERT_TRUE(subscriber1->Close().ok());
+  ASSERT_TRUE(subscriber2->Close().ok());
 }
 
 }  // namespace pubsub
