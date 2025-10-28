@@ -10,6 +10,8 @@ class TensorObjRestoreWarning(UserWarning):
 
 warnings.filterwarnings("once", category=TensorObjRestoreWarning)
 
+# `_zero_copy_maker_key` and `_zero_copy_maker_value` identify the tensor;
+# `_zero_copy_data` stores the NumPy array, `_ZERO_COPY_PLACEMENT` the device placement.
 _ZERO_COPY_MAKER_KEY = "_ray_zc_k_"
 _ZERO_COPY_MAKER_VALUE = "_ray_zc_v_"
 _ZERO_COPY_DATA = "_ray_zc_d_"

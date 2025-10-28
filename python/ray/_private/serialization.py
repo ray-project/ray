@@ -162,9 +162,7 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
-        # Enable zero-copy deserialization of PyTorch tensors if the environment variable is set.
-        # `_zero_copy_maker_key` and `_zero_copy_maker_value` together identify a serialized tensor;
-        # `_zero_copy_payload` stores the underlying NumPy array data.
+        # Enable zero-copy serialization of tensors if the environment variable is set.
         self._enable_zero_copy_tensors = (
             os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1"
         )
