@@ -79,7 +79,7 @@
 #######################
 # Baseline test
 #######################
-- name: ctest_hello_world
+- name: hello_world
   python: "3.10"
   team: reef
   group: hello_world
