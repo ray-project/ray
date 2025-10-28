@@ -24,7 +24,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -413,14 +412,13 @@ class StreamingExecutor(Executor, threading.Thread):
         self, op: PhysicalOperator, tags: Dict[str, str]
     ):
         if self._resource_manager.op_resource_allocator_enabled():
-            ora = self._resource_manager.op_resource_allocator
-            assert isinstance(ora, ReservationOpResourceAllocator)
-            if op in ora._output_budgets:
-                max_bytes_to_read = ora._output_budgets[op]
-                if math.isinf(max_bytes_to_read):
+            resource_allocator = self._resource_manager.op_resource_allocator
+            output_budget_bytes = resource_allocator.get_output_budget(op)
+            if output_budget_bytes is not None:
+                if math.isinf(output_budget_bytes):
                     # Convert inf to -1 to represent unlimited bytes to read
-                    max_bytes_to_read = -1
-                self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
+                    output_budget_bytes = -1
+                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
