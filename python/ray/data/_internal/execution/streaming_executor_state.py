@@ -387,7 +387,9 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(self, resource_manager: ResourceManager, verbose: bool = False) -> str:
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
