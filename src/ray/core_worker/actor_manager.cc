@@ -52,7 +52,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
 std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
-  RAY_CHECK(it != actor_handles_.end() && it->second != nullptr)
+  RAY_CHECK(it != actor_handles_.end())
       << "Cannot find an actor handle of id, " << actor_id
       << ". This method should be called only when you ensure actor handles exists.";
   return it->second;
@@ -116,8 +116,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
 
 bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
-  return actor_handles_.find(actor_id) != actor_handles_.end() &&
-         actor_handles_.at(actor_id) != nullptr;
+  return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
 std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
@@ -140,14 +139,11 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
+    // Assumes actor_id is unique
     if (actor_handles_.contains(actor_id)) {
       RAY_LOG(WARNING) << "Actor handle already exists for actor id: " << actor_id;
       return false;
     }
-
-    // Else, place a sentinel value in the map to indicate that the
-    // actor handle is being created to prevent uncaught double creation.
-    actor_handles_.emplace(actor_id, nullptr);
   }
 
   // Detached actor doesn't need ref counting.
@@ -191,14 +187,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
-    // check if the actor handle is a sentinel value
-    auto it = actor_handles_.find(actor_id);
-    if (it != actor_handles_.end() && it->second == nullptr) {
-      actor_handles_.insert_or_assign(actor_id, std::move(actor_handle));
-      inserted = true;
-    } else {
-      inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
-    }
+    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
 
   if (is_self) {
@@ -285,12 +274,9 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> actor_handle_ids;
   for (const auto &handle : actor_handles_) {
-    // ignore sentinels
-    if (handle.second != nullptr) {
-      auto actor_id = handle.first;
-      auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
-      actor_handle_ids.push_back(actor_handle_id);
-    }
+    auto actor_id = handle.first;
+    auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
+    actor_handle_ids.push_back(actor_handle_id);
   }
   return actor_handle_ids;
 }
@@ -302,7 +288,7 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
     if (it != cached_actor_name_to_ids_.end()) {
       absl::MutexLock lock(&mutex_);
       auto handle_it = actor_handles_.find(it->second);
-      RAY_CHECK(handle_it != actor_handles_.end() && handle_it->second != nullptr);
+      RAY_CHECK(handle_it != actor_handles_.end());
       return it->second;
     }
   }
