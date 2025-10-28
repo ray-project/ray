@@ -379,6 +379,31 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
 
+TEST(UserErrorTest, TestUserCheck) {
+  // RAY_USER_CHECK should not exit the application when condition is true
+  RAY_USER_CHECK(true) << "This should not trigger";
+  // RAY_USER_CHECK should exit the application when condition is false
+  // and should NOT contain "bug in Ray" message
+  ASSERT_DEATH(
+    { RAY_USER_CHECK(false) << "Custom user error message"; },
+    testing::AllOf(
+      testing::HasSubstr("Custom user error message"),
+      testing::Not(testing::HasSubstr("bug in Ray"))
+    )
+  );
+}
+
+TEST(UserErrorTest, TestUserError) {
+  // RAY_USER_ERROR should always fail with user message
+  ASSERT_DEATH(
+    { RAY_USER_ERROR() << "Token authentication is enabled but token is missing"; },
+    testing::AllOf(
+      testing::HasSubstr("Token authentication is enabled but token is missing"),
+      testing::Not(testing::HasSubstr("bug in Ray"))
+    )
+  );
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

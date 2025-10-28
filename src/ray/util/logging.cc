@@ -269,6 +269,8 @@ static spdlog::level::level_enum GetMappedSeverity(RayLogLevel severity) {
     return spdlog::level::warn;
   case RayLogLevel::ERROR:
     return spdlog::level::err;
+  case RayLogLevel::USER_FATAL:
+    return spdlog::level::critical;
   case RayLogLevel::FATAL:
     return spdlog::level::critical;
   default:
@@ -530,7 +532,7 @@ void RayLog::AddFatalLogCallbacks(
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     : is_enabled_(severity >= severity_threshold_),
       severity_(severity),
-      is_fatal_(severity == RayLogLevel::FATAL) {
+      is_fatal_(severity == RayLogLevel::FATAL || severity == RayLogLevel::USER_FATAL) {
   if (is_fatal_) {
 #ifdef _WIN32
     int pid = _getpid();
@@ -569,8 +571,11 @@ RayLog::~RayLog() {
   if (IsFatal()) {
     msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
+    const char *callback_label = (severity_ == RayLogLevel::USER_FATAL)
+                                     ? "RAY_USER_ERROR"
+                                     : "RAY_FATAL_CHECK_FAILED";
     for (const auto &callback : fatal_log_callbacks_) {
-      callback("RAY_FATAL_CHECK_FAILED", expose_fatal_osstream_.str());
+      callback(callback_label, expose_fatal_osstream_.str());
     }
   }
 
@@ -593,7 +598,7 @@ RayLog::~RayLog() {
   }
   logger->flush();
 
-  if (severity_ == RayLogLevel::FATAL) {
+  if (severity_ == RayLogLevel::FATAL || severity_ == RayLogLevel::USER_FATAL) {
     std::_Exit(EXIT_FAILURE);
   }
 }
