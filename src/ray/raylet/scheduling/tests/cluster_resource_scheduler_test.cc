@@ -2002,13 +2002,13 @@ TEST_F(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest) {
   const std::vector<FallbackMap> fallback_strategy_map = {
       {{"label_selector", {{"ray.io/accelerator-type", "A100"}}}},
       {{"label_selector", {{"ray.io/accelerator-type", "TPU"}}}}};
-  std::vector<ray::FallbackOptions> prepared_fallback_strategy;
+  std::vector<ray::FallbackOption> prepared_fallback_strategy;
   std::transform(fallback_strategy_map.begin(),
                  fallback_strategy_map.end(),
                  std::back_inserter(prepared_fallback_strategy),
                  [](const FallbackMap &nested_map) {
                    const auto &inner_map = nested_map.at("label_selector");
-                   return ray::FallbackOptions(ray::LabelSelector(inner_map));
+                   return ray::FallbackOption(ray::LabelSelector(inner_map));
                  });
 
   // Create the task spec with the label selectors.
@@ -2090,13 +2090,13 @@ TEST_F(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest) {
   const std::vector<FallbackMap> fallback_strategy_map = {
       {{"label_selector", {{"ray.io/accelerator-type", "A100"}}}},
   };
-  std::vector<ray::FallbackOptions> infeasible_fallback_strategy;
+  std::vector<ray::FallbackOption> infeasible_fallback_strategy;
   std::transform(fallback_strategy_map.begin(),
                  fallback_strategy_map.end(),
                  std::back_inserter(infeasible_fallback_strategy),
                  [](const FallbackMap &nested_map) {
                    const auto &inner_map = nested_map.at("label_selector");
-                   return ray::FallbackOptions(ray::LabelSelector(inner_map));
+                   return ray::FallbackOption(ray::LabelSelector(inner_map));
                  });
 
   TaskSpecBuilder spec_builder;
@@ -2175,10 +2175,10 @@ TEST_F(ClusterResourceSchedulerTest,
   std::unordered_map<std::string, std::string> primary_map = {
       {"accelerator-type", "A100"}};
   ray::LabelSelector primary_selector(primary_map);
-  std::vector<ray::FallbackOptions> fallback_strategy;
+  std::vector<ray::FallbackOption> fallback_strategy;
   std::unordered_map<std::string, std::string> fallback_map = {
       {"accelerator-type", "B200"}};
-  fallback_strategy.push_back(ray::FallbackOptions(ray::LabelSelector(fallback_map)));
+  fallback_strategy.push_back(ray::FallbackOption(ray::LabelSelector(fallback_map)));
 
   spec_builder.SetCommonTaskSpec(RandomTaskId(),
                                  "fallback_test_task",
@@ -2250,10 +2250,10 @@ TEST_F(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority) 
   std::unordered_map<std::string, std::string> primary_map = {
       {"accelerator-type", "A100"}};
   ray::LabelSelector primary_selector(primary_map);
-  std::vector<ray::FallbackOptions> fallback_strategy;
+  std::vector<ray::FallbackOption> fallback_strategy;
   std::unordered_map<std::string, std::string> fallback_map = {
       {"accelerator-type", "B200"}};
-  fallback_strategy.push_back(ray::FallbackOptions(ray::LabelSelector(fallback_map)));
+  fallback_strategy.push_back(ray::FallbackOption(ray::LabelSelector(fallback_map)));
 
   spec_builder.SetCommonTaskSpec(RandomTaskId(),
                                  "fallback_test_task",
@@ -2331,10 +2331,10 @@ TEST_F(ClusterResourceSchedulerTest, FallbackReturnsNilForGCSIfAllNodesUnavailab
   std::unordered_map<std::string, std::string> primary_map = {
       {"accelerator-type", "A100"}};
   ray::LabelSelector primary_selector(primary_map);
-  std::vector<ray::FallbackOptions> fallback_strategy;
+  std::vector<ray::FallbackOption> fallback_strategy;
   std::unordered_map<std::string, std::string> fallback_map = {
       {"accelerator-type", "B200"}};
-  fallback_strategy.push_back(ray::FallbackOptions(ray::LabelSelector(fallback_map)));
+  fallback_strategy.push_back(ray::FallbackOption(ray::LabelSelector(fallback_map)));
 
   spec_builder.SetCommonTaskSpec(RandomTaskId(),
                                  "fallback_test_task",

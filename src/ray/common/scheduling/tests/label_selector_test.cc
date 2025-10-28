@@ -89,7 +89,6 @@ TEST(LabelSelectorTest, ToStringMap) {
   using ::testing::ElementsAre;
   using ::testing::IsEmpty;
   using ::testing::Pair;
-  using ::testing::UnorderedElementsAre;
 
   // Unpopulated label selector.
   LabelSelector empty_selector;
@@ -119,11 +118,5 @@ TEST(LabelSelectorTest, ToStringMap) {
   EXPECT_EQ(string_map.at("env"), "!dev");
   EXPECT_EQ(string_map.at("tier"), "in(dev,prod,staging)");
   EXPECT_EQ(string_map.at("team"), "!in(A100,B200)");
-
-  EXPECT_THAT(string_map,
-              UnorderedElementsAre(Pair("region", "us-west"),
-                                   Pair("env", "!dev"),
-                                   Pair("tier", "in(dev,prod,staging)"),
-                                   Pair("team", "!in(A100,B200)")));
 }
 }  // namespace ray

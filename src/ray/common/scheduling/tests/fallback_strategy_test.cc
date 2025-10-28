@@ -33,9 +33,9 @@ TEST(FallbackStrategyTest, OptionsConstructionAndEquality) {
   auto selector_c =
       LabelSelector(std::map<std::string, std::string>{{"region", "us-west-2"}});
 
-  FallbackOptions options_a(selector_a);
-  FallbackOptions options_b(selector_b);
-  FallbackOptions options_c(selector_c);
+  FallbackOption options_a(selector_a);
+  FallbackOption options_b(selector_b);
+  FallbackOption options_c(selector_c);
 
   // Test FallbackOption equality
   EXPECT_EQ(options_a, options_b);
@@ -43,7 +43,7 @@ TEST(FallbackStrategyTest, OptionsConstructionAndEquality) {
 
   // Test FallbackOption from proto constructor
   rpc::LabelSelector selector_a_proto = selector_a.ToProto();
-  FallbackOptions options_from_proto(selector_a_proto);
+  FallbackOption options_from_proto(selector_a_proto);
 
   EXPECT_EQ(options_a, options_from_proto);
 }
@@ -51,13 +51,13 @@ TEST(FallbackStrategyTest, OptionsConstructionAndEquality) {
 TEST(FallbackStrategyTest, OptionsToProto) {
   auto selector =
       LabelSelector(std::map<std::string, std::string>{{"accelerator-type", "A100"}});
-  FallbackOptions options(selector);
+  FallbackOption options(selector);
 
-  rpc::FallbackOptions proto;
+  rpc::FallbackOption proto;
   options.ToProto(&proto);
 
   ASSERT_TRUE(proto.has_label_selector());
-  FallbackOptions options_from_proto(proto.label_selector());
+  FallbackOption options_from_proto(proto.label_selector());
   EXPECT_EQ(options, options_from_proto);
   EXPECT_EQ(options_from_proto.label_selector.ToStringMap().at("accelerator-type"),
             "A100");
@@ -68,11 +68,11 @@ TEST(FallbackStrategyTest, OptionsHashing) {
   auto selector_b = LabelSelector(std::map<std::string, std::string>{{"key1", "val1"}});
   auto selector_c = LabelSelector(std::map<std::string, std::string>{{"key2", "val2"}});
 
-  FallbackOptions options_a(selector_a);
-  FallbackOptions options_b(selector_b);
-  FallbackOptions options_c(selector_c);
+  FallbackOption options_a(selector_a);
+  FallbackOption options_b(selector_b);
+  FallbackOption options_c(selector_c);
 
-  absl::Hash<FallbackOptions> hasher;
+  absl::Hash<FallbackOption> hasher;
   EXPECT_EQ(hasher(options_a), hasher(options_b));
   EXPECT_FALSE(hasher(options_a) == hasher(options_c));
 }
@@ -83,18 +83,16 @@ TEST(FallbackStrategyTest, ParseAndSerializeStrategy) {
   auto selector2 =
       LabelSelector(std::map<std::string, std::string>{{"cpu-family", "intel"}});
 
-  auto original_list = std::make_shared<std::vector<FallbackOptions>>();
+  auto original_list = std::make_shared<std::vector<FallbackOption>>();
   original_list->emplace_back(selector1);
   original_list->emplace_back(selector2);
 
   // Serialize to FallbackStrategy proto
-  auto serialized_proto_ptr = SerializeFallbackStrategy(*original_list);
-
-  ASSERT_NE(serialized_proto_ptr, nullptr);
-  ASSERT_EQ(serialized_proto_ptr->options_size(), 2);
+  auto serialized_proto = SerializeFallbackStrategy(*original_list);
+  ASSERT_EQ(serialized_proto.options_size(), 2);
 
   // Parse the proto back into the FallbackStrategy C++ struct vector
-  auto parsed_list = ParseFallbackStrategy(serialized_proto_ptr->options());
+  auto parsed_list = ParseFallbackStrategy(serialized_proto.options());
 
   // Validate options are parsed successfully
   ASSERT_NE(parsed_list, nullptr);
@@ -117,10 +115,8 @@ TEST(FallbackStrategyTest, EmptyFallbackStrategy) {
   ASSERT_NE(parsed_list, nullptr);
   EXPECT_TRUE(parsed_list->empty());
 
-  auto serialized_proto_ptr = SerializeFallbackStrategy(*parsed_list);
-
-  ASSERT_NE(serialized_proto_ptr, nullptr);
-  EXPECT_EQ(serialized_proto_ptr->options_size(), 0);
+  auto serialized_proto = SerializeFallbackStrategy(*parsed_list);
+  EXPECT_EQ(serialized_proto.options_size(), 0);
 }
 
 }  // namespace ray

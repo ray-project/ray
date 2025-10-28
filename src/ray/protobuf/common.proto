@@ -1087,12 +1087,14 @@ message LabelSelector {
   repeated LabelSelectorConstraint label_constraints = 1;
 }
 
-message FallbackOptions {
+// A single fallback option. Defines requirements for a Task or Actor to use for scheduling.
+message FallbackOption {
   LabelSelector label_selector = 1;
 }
 
+// Fallback strategy is a list of fallback options to try in-order when scheduling on a node.
 message FallbackStrategy {
-  repeated FallbackOptions options = 1;
+  repeated FallbackOption options = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

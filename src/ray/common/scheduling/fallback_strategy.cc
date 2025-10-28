@@ -21,15 +21,15 @@
 
 namespace ray {
 
-void FallbackOptions::ToProto(rpc::FallbackOptions *proto) const {
+void FallbackOption::ToProto(rpc::FallbackOption *proto) const {
   RAY_CHECK(proto != nullptr);
   *proto->mutable_label_selector() = label_selector.ToProto();
   // When a new option is added, add its serialization here.
 }
 
-std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
-    const google::protobuf::RepeatedPtrField<rpc::FallbackOptions> &strategy_proto_list) {
-  auto strategy_list = std::make_shared<std::vector<FallbackOptions>>();
+std::shared_ptr<std::vector<FallbackOption>> ParseFallbackStrategy(
+    const google::protobuf::RepeatedPtrField<rpc::FallbackOption> &strategy_proto_list) {
+  auto strategy_list = std::make_shared<std::vector<FallbackOption>>();
   strategy_list->reserve(strategy_proto_list.size());
 
   for (const auto &strategy_proto : strategy_proto_list) {
@@ -39,11 +39,11 @@ std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
   return strategy_list;
 }
 
-std::unique_ptr<rpc::FallbackStrategy> SerializeFallbackStrategy(
-    const std::vector<FallbackOptions> &strategy_list) {
-  auto strategy_proto = std::make_unique<rpc::FallbackStrategy>();
+rpc::FallbackStrategy SerializeFallbackStrategy(
+    const std::vector<FallbackOption> &strategy_list) {
+  rpc::FallbackStrategy strategy_proto;
   for (const auto &options : strategy_list) {
-    options.ToProto(strategy_proto->add_options());
+    options.ToProto(strategy_proto.add_options());
   }
 
   return strategy_proto;

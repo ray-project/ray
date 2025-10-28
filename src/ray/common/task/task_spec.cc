@@ -83,7 +83,7 @@ void TaskSpecification::ComputeResources() {
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
   // Parse fallback strategy from proto to list of fallback options if specified.
-  // FallbackOptions parse the map of label selectors to the LabelSelector type.
+  // FallbackOption parses the map of label selectors to the LabelSelector type.
   fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
 
   if (!IsActorTask()) {
@@ -327,7 +327,7 @@ const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
-const std::vector<FallbackOptions> &TaskSpecification::GetFallbackStrategy() const {
+const std::vector<FallbackOption> &TaskSpecification::GetFallbackStrategy() const {
   return *fallback_strategy_;
 }
 

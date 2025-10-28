@@ -39,8 +39,8 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data
   if (data.has_placement_group_id()) {
     data_.set_placement_group_id(data.placement_group_id());
   }
-  *data_.mutable_label_selector() =
-      ray::LabelSelector(data.label_selector()).ToStringMap();
+  data_.mutable_label_selector()->insert(data.label_selector().begin(),
+                                         data.label_selector().end());
 }
 
 std::string RayActorDefinitionEvent::GetEntityId() const { return data_.actor_id(); }

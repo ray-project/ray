@@ -38,13 +38,13 @@ struct SchedulingClassDescriptor {
                                      FunctionDescriptor fd,
                                      int64_t d,
                                      rpc::SchedulingStrategy sched_strategy,
-                                     std::vector<FallbackOptions> fallback_strategy_p);
+                                     std::vector<FallbackOption> fallback_strategy_p);
   ResourceSet resource_set;
   LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
-  std::vector<FallbackOptions> fallback_strategy;
+  std::vector<FallbackOption> fallback_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const;
   std::string DebugString() const;

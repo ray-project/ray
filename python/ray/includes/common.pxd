@@ -245,11 +245,11 @@ cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
         void AddConstraint(const c_string& key, const c_string& value) nogil except +
 
 cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
-    cdef cppclass CFallbackOptions "ray::FallbackOptions":
+    cdef cppclass CFallbackOption "ray::FallbackOption":
         CLabelSelector label_selector
 
-        CFallbackOptions() nogil except +
-        CFallbackOptions(CLabelSelector) nogil except +
+        CFallbackOption() nogil except +
+        CFallbackOption(CLabelSelector) nogil except +
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -359,7 +359,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      const unordered_map[c_string, c_string] &labels,
                      CLabelSelector label_selector,
                      CTensorTransport tensor_transport,
-                     c_vector[CFallbackOptions] fallback_strategy)
+                     c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -381,7 +381,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
-            c_vector[CFallbackOptions] fallback_strategy)
+            c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

@@ -76,7 +76,7 @@ struct TaskOptions {
       std::unordered_map<std::string, std::string> labels_p = {},
       LabelSelector label_selector_p = {},
       rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
-      std::vector<FallbackOptions> fallback_strategy_p = {})
+      std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -111,8 +111,8 @@ struct TaskOptions {
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
   LabelSelector label_selector;
-  // A list of label selectors defining fallback scheduling strategies.
-  std::vector<FallbackOptions> fallback_strategy;
+  // A list of fallback options defining scheduling strategies.
+  std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
 };
@@ -139,7 +139,7 @@ struct ActorCreationOptions {
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
                        LabelSelector label_selector_p = {},
-                       std::vector<FallbackOptions> fallback_strategy_p = {})
+                       std::vector<FallbackOption> fallback_strategy_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -220,7 +220,7 @@ struct ActorCreationOptions {
   // The label constraints of the node to schedule this actor.
   const LabelSelector label_selector;
   // A list of scheduling options defining fallback strategies for scheduling.
-  const std::vector<FallbackOptions> fallback_strategy;
+  const std::vector<FallbackOption> fallback_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

@@ -273,7 +273,7 @@ const LabelSelector &LeaseSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
-const std::vector<FallbackOptions> &LeaseSpecification::GetFallbackStrategy() const {
+const std::vector<FallbackOption> &LeaseSpecification::GetFallbackStrategy() const {
   return *fallback_strategy_;
 }
 
@@ -307,7 +307,7 @@ void LeaseSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
-  // Parse fallback strategy from proto to list of FallbackOptions if specified.
+  // Parse fallback strategy from proto to list of FallbackOption if specified.
   fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
 
   // Copy dependencies from message

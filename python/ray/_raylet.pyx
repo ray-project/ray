@@ -87,7 +87,7 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
-    CFallbackOptions,
+    CFallbackOption,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
@@ -862,7 +862,7 @@ cdef int prepare_label_selector(
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
-        c_vector[CFallbackOptions] *fallback_strategy_vector) except -1:
+        c_vector[CFallbackOption] *fallback_strategy_vector) except -1:
 
     cdef dict label_selector_dict
     cdef CLabelSelector c_label_selector
@@ -884,7 +884,7 @@ cdef int prepare_fallback_strategy(
         prepare_label_selector(label_selector_dict, &c_label_selector)
 
         fallback_strategy_vector.push_back(
-             CFallbackOptions(c_label_selector)
+             CFallbackOption(c_label_selector)
         )
 
     return 0
@@ -3681,7 +3681,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
-            c_vector[CFallbackOptions] c_fallback_strategy
+            c_vector[CFallbackOption] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3792,7 +3792,7 @@ cdef class CoreWorker:
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
-            c_vector[CFallbackOptions] c_fallback_strategy
+            c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3956,7 +3956,7 @@ cdef class CoreWorker:
             CLabelSelector c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
-            c_vector[CFallbackOptions] c_fallback_strategy
+            c_vector[CFallbackOption] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,

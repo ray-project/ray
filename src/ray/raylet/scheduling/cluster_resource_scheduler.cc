@@ -302,8 +302,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   }
 
   scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
-  std::optional<std::reference_wrapper<const LabelSelector>>
-      highest_priority_unavailable_label_selector{};
+  const LabelSelector *highest_priority_unavailable_label_selector = nullptr;
   bool any_selector_is_feasible = false;
 
   // Try each label selector in order until a node is found.
@@ -337,7 +336,6 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     if (!best_feasible_node.IsNil()) {
       // A feasible node was found.
       any_selector_is_feasible = true;
-
       if (IsSchedulableOnNode(best_feasible_node,
                               lease_spec.GetRequiredPlacementResources().GetResourceMap(),
                               label_selector,
@@ -351,7 +349,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       // but continue to check for the next fallback.
       if (highest_priority_unavailable_node.IsNil()) {
         highest_priority_unavailable_node = best_feasible_node;
-        highest_priority_unavailable_label_selector = selector_ref;
+        highest_priority_unavailable_label_selector = &label_selector;
       }
     }
   }
@@ -371,11 +369,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         requires_object_store_memory);
 
     // Use the label selector from the highest-priority fallback that was feasible.
-    const auto &selector_for_local_check =
-        highest_priority_unavailable_label_selector.has_value()
-            ? highest_priority_unavailable_label_selector.value().get()
-            : lease_spec.GetLabelSelector();
-    resource_request.SetLabelSelector(selector_for_local_check);
+    // There must be at least one feasible node and selector.
+    RAY_CHECK(highest_priority_unavailable_label_selector != nullptr);
+    resource_request.SetLabelSelector(*highest_priority_unavailable_label_selector);
 
     if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
                                                         resource_request)) {

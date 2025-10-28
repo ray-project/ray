@@ -28,37 +28,36 @@ namespace ray {
 
 /// This struct holds all the information for a single fallback option in the fallback
 /// strategy list. It is designed to be extensible.
-struct FallbackOptions {
-  FallbackOptions() = default;
+struct FallbackOption {
+  FallbackOption() = default;
 
   LabelSelector label_selector;
   // To add a new option, add a new field here.
 
-  explicit FallbackOptions(const rpc::LabelSelector &proto_selector)
+  explicit FallbackOption(const rpc::LabelSelector &proto_selector)
       : label_selector(proto_selector) {}
 
-  explicit FallbackOptions(LabelSelector selector)
-      : label_selector(std::move(selector)) {}
+  explicit FallbackOption(LabelSelector selector) : label_selector(std::move(selector)) {}
 
-  // Return a FallbackOptions proto message.
-  void ToProto(rpc::FallbackOptions *proto) const;
+  // Return a FallbackOption proto message.
+  void ToProto(rpc::FallbackOption *proto) const;
 };
 
-inline bool operator==(const FallbackOptions &lhs, const FallbackOptions &rhs) {
+inline bool operator==(const FallbackOption &lhs, const FallbackOption &rhs) {
   return lhs.label_selector == rhs.label_selector;
 }
 
 template <typename H>
-H AbslHashValue(H h, const FallbackOptions &opts) {
+H AbslHashValue(H h, const FallbackOption &opts) {
   return H::combine(std::move(h), opts.label_selector);
 }
 
-// Parse FallbackStrategy from FallbackOptions vector.
-std::shared_ptr<std::vector<FallbackOptions>> ParseFallbackStrategy(
-    const google::protobuf::RepeatedPtrField<rpc::FallbackOptions> &strategy_proto_list);
+// Parse FallbackStrategy from FallbackOption vector.
+std::shared_ptr<std::vector<FallbackOption>> ParseFallbackStrategy(
+    const google::protobuf::RepeatedPtrField<rpc::FallbackOption> &strategy_proto_list);
 
-// Return a FallbackStrategy message, which is a repeated FallbackOptions proto.
-std::unique_ptr<rpc::FallbackStrategy> SerializeFallbackStrategy(
-    const std::vector<FallbackOptions> &strategy_list);
+// Return a FallbackStrategy message, which is a repeated FallbackOption proto.
+rpc::FallbackStrategy SerializeFallbackStrategy(
+    const std::vector<FallbackOption> &strategy_list);
 
 }  // namespace ray
