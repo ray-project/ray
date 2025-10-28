@@ -107,6 +107,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
       auth_token = rpc::AuthenticationToken(server_token);
     } else {
       // Empty token means no auth required
+      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
       auth_token = std::nullopt;
     }
 
