@@ -32,6 +32,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hive_datasource import HiveDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
@@ -2760,6 +2761,174 @@ def read_sql(
         if not datasource.supports_sharding(override_num_blocks):
             raise ValueError(
                 "Database does not support sharding. Please set override_num_blocks to 1."
+            )
+
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hive(
+    sql: str,
+    *,
+    host: str,
+    port: int = 10000,
+    database: str = "default",
+    auth: str = "NONE",
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    configuration: Optional[dict] = None,
+    kerberos_service_name: str = "hive",
+    shard_keys: Optional[list[str]] = None,
+    shard_hash_fn: str = "MD5",
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read data from Apache Hive using HiveServer2.
+
+    This function uses PyHive to connect to HiveServer2 and execute SQL queries.
+    It supports parallel reading through sharding for improved performance on large datasets.
+
+    .. note::
+
+        This function requires the ``pyhive`` package. Install it with:
+
+        .. code-block:: bash
+
+            pip install pyhive
+
+    .. note::
+
+        Parallel reading is supported when ``shard_keys`` are provided and the database
+        supports the required operations (``MOD``, ``ABS``, ``MD5``/``hash``). If sharding
+        isn't supported, the read operation executes in a single task.
+
+    Examples:
+        Read a Hive table with default authentication:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_hive(
+                sql="SELECT * FROM sales WHERE year = 2023",
+                host="hive.example.com",
+                port=10000,
+                database="analytics"
+            )
+
+        Read with LDAP authentication:
+
+        .. testcode::
+            :skipif: True
+
+            ds = ray.data.read_hive(
+                sql="SELECT user_id, action FROM events",
+                host="hive.example.com",
+                auth="LDAP",
+                username="analyst",
+                password="secret"
+            )
+
+        Read with parallel sharding for better performance:
+
+        .. testcode::
+            :skipif: True
+
+            ds = ray.data.read_hive(
+                sql="SELECT * FROM large_table",
+                host="hive.example.com",
+                shard_keys=["user_id"],
+                override_num_blocks=10
+            )
+
+        Read with Kerberos authentication:
+
+        .. testcode::
+            :skipif: True
+
+            ds = ray.data.read_hive(
+                sql="SELECT * FROM secure_data",
+                host="hive.example.com",
+                auth="KERBEROS",
+                kerberos_service_name="hive"
+            )
+
+    Args:
+        sql: The HiveQL query to execute.
+        host: HiveServer2 host address.
+        port: HiveServer2 port. Defaults to 10000.
+        database: Hive database name. Defaults to "default".
+        auth: Authentication mechanism. Options: "NONE", "NOSASL", "KERBEROS", "LDAP",
+            or "CUSTOM". Defaults to "NONE".
+        username: Username for LDAP authentication.
+        password: Password for LDAP authentication.
+        configuration: Optional Hive configuration parameters as a dictionary.
+        kerberos_service_name: Kerberos service name. Defaults to "hive".
+        shard_keys: Column names to use for parallel sharding. When provided with
+            ``override_num_blocks > 1``, enables parallel reading.
+        shard_hash_fn: Hash function for sharding. Defaults to "MD5". Other options
+            include "hash" and "SHA" depending on Hive version.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            When used with ``shard_keys``, enables parallel reading.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`Dataset` containing the queried Hive data.
+
+    References:
+        - PyHive: https://github.com/dropbox/PyHive
+        - HiveServer2: https://cwiki.apache.org/confluence/display/Hive/HiveServer2+Overview
+        - Hive Authentication: https://cwiki.apache.org/confluence/display/Hive/Setting+Up+HiveServer2
+    """
+    datasource = HiveDatasource(
+        host=host,
+        port=port,
+        database=database,
+        auth=auth,
+        username=username,
+        password=password,
+        configuration=configuration,
+        kerberos_service_name=kerberos_service_name,
+        sql=sql,
+        shard_keys=shard_keys,
+        shard_hash_fn=shard_hash_fn,
+    )
+
+    if override_num_blocks and override_num_blocks > 1:
+        if shard_keys is None:
+            raise ValueError("shard_keys must be provided when override_num_blocks > 1")
+
+        if not datasource.supports_sharding(override_num_blocks):
+            raise ValueError(
+                "Hive does not support sharding with the provided query. "
+                "Please set override_num_blocks to 1 or ensure the query supports "
+                "MOD, ABS, and hash functions."
             )
 
     return read_datasource(
