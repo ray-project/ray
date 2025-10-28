@@ -66,7 +66,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: same event loop tests"
@@ -81,8 +81,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-    depends_on: "servebuild"
+        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+    depends_on: "servebuild-multipy"
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
     if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
@@ -214,8 +214,8 @@ steps:
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve
-        --build-name docgpubuild
-        --only-tags gpu
+        --build-name docgpubuild-py3.10
+        --only-tags gpu --python-version 3.10
     depends_on: docgpubuild
 
   - label: ":ray-serve: serve: flaky tests"
