@@ -1,6 +1,7 @@
 import pickle
 import uuid
 import warnings
+import os
 from typing import TYPE_CHECKING, List
 
 import ray
@@ -22,23 +23,18 @@ class DSBackend:
     initialization of the DS client, receiving tensors, and managing DS metadata.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 2379, device_id: int = -1):
+    def __init__(self):
         """Initialize the DS backend.
-
         Creates a DS client with connection to DS worker.
-
-        Args:
-            host: DS Worker host address
-            port: DS Worker port
-            device_id: Device ID to bind to
         """
-        if device_id == -1:
-            npu_ids = ray.get_runtime_context().get_accelerator_ids()["NPU"]
-            if len(npu_ids) > 1:
-                device_id = int(npu_ids[0])
-                warnings.warn(
-                    f"Data system requires exactly 1 NPU, but detected {len(npu_ids)} NPUs. Will use the first NPU (ID: {npu_ids[0]}) to connect to the data system"
-                )
+        host = "localhost"
+        port = 2379
+        npu_ids = os.environ["ASCEND_RT_VISIBLE_DEVICES"]
+        if len(npu_ids) > 1:
+            device_id = int(npu_ids[0])
+            warnings.warn(
+                f"Data system requires exactly 1 NPU, but detected {len(npu_ids)} NPUs. Will use the first NPU (ID: {npu_ids[0]}) to connect to the data system"
+            )
 
         self._ds_client = DsTensorClient(
             host=host, port=port, device_id=device_id, connect_timeout_ms=60000
