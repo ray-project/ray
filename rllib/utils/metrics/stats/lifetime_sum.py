@@ -5,6 +5,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 import numpy as np
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -96,7 +97,7 @@ class LifetimeSumStats(StatsBase):
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
-        state["lifetime_sum"] = self._lifetime_sum
+        state["lifetime_sum"] = single_value_to_cpu(self._lifetime_sum)
         state["track_throughputs"] = self.track_throughputs
         return state
 
@@ -124,6 +125,9 @@ class LifetimeSumStats(StatsBase):
             isinstance(value, float) and np.isnan(value)
         ):
             return
+
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach()
 
         self._lifetime_sum += value
 

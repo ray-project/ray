@@ -136,6 +136,9 @@ class PercentilesStats(StatsBase):
         ):
             raise ValueError("NaN values are not allowed in PercentilesStats")
 
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach()
+
         self.values.append(value)
 
     def merge(self, incoming_stats: List["PercentilesStats"]):
@@ -168,11 +171,7 @@ class PercentilesStats(StatsBase):
         Returns:
             The result of reducing the internal values list on CPU.
         """
-        # Convert GPU tensors to CPU if needed
-        if torch and len(self.values) > 0 and isinstance(self.values[0], torch.Tensor):
-            values = batch_values_to_cpu(self.values)
-        else:
-            values = list(self.values)
+        values = batch_values_to_cpu(self.values)
 
         values.sort()
 
@@ -189,11 +188,7 @@ class PercentilesStats(StatsBase):
         Returns:
             The reduced value on CPU.
         """
-        # Convert GPU tensors to CPU if needed
-        if torch and len(self.values) > 0 and isinstance(self.values[0], torch.Tensor):
-            values = batch_values_to_cpu(self.values)
-        else:
-            values = list(self.values)
+        values = batch_values_to_cpu(self.values)
 
         values.sort()
 

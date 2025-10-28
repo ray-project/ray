@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -48,8 +49,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         state = super().get_state()
         state = {
             **state,
-            # Make sure we don't return any tensors here.
-            "values": self.values,
+            "values": batch_values_to_cpu(self.values),
             "window": self._window,
         }
         return state
@@ -79,7 +79,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     def reduce(self, compile: bool = True) -> Union[Any, "SeriesStats"]:
         """Reduces the internal values list according to the constructor settings."""
         if self._window is None:
-            reduced_values = self.values
+            reduced_values = batch_values_to_cpu(self.values)
         else:
             reduced_values = self.window_reduce()
 
@@ -120,6 +120,9 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()
+
+        if torch and isinstance(value, torch.Tensor):
+            value = value.detach()
 
         if self._window is None:
             if not self.values:

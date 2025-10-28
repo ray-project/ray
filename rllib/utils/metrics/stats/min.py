@@ -22,7 +22,8 @@ class MinStats(SeriesStats):
         clean_values = values[~torch.isnan(values)]
         if len(clean_values) == 0:
             return torch.tensor(float("nan"), device=values.device)
+        # Cast to float32 to avoid errors from Long tensors
         return torch.min(clean_values.float())
 
     def __repr__(self) -> str:
-        return f"MinStats({self.peek()}; window={self._window}; len={len(self)}"
+        return f"MinStats({self.peek()}; window={self._window}; len={len(self)})"

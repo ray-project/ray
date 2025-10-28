@@ -5,6 +5,7 @@ import numpy as np
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -78,6 +79,10 @@ class EmaStats(StatsBase):
         if (torch and torch.is_tensor(value) and torch.isnan(value)) or np.isnan(value):
             return
 
+        if torch and isinstance(value, torch.Tensor):
+            # Detach the value from the graph to avoid unnecessary computation
+            value = value.detach()
+
         # If internal value is NaN, replace it with the incoming value
         if (
             torch and torch.is_tensor(self._value) and torch.isnan(self._value)
@@ -112,7 +117,7 @@ class EmaStats(StatsBase):
             value = self._value
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
-            value = value.detach().cpu().item()
+            value = single_value_to_cpu(value)
 
         return value if compile else [value]
 

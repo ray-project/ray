@@ -12,6 +12,7 @@ from ray.rllib.utils.metrics.stats import (
     EmaStats,
     PercentilesStats,
     ItemSeriesStats,
+    SeriesStats,
 )
 from ray.rllib.utils.framework import try_import_torch
 
@@ -35,12 +36,16 @@ def get_device(use_gpu):
         (ItemStats, [{}], [5], 5),
         (MeanStats, [{"window": 4}, {}], [2, 4, 6], 4.0),
         (MaxStats, [{"window": 4}, {}], [1, 5, 3], 5),
-        (SumStats, [{"window": 4}, {}], [2, 4, 6], 12),
+        (MinStats, [{"window": 4}, {}], [1, 5, 3], 1),
+        (SumStats, [{"window": 4}, {}], [1, 5, 3], 9),
         (LifetimeSumStats, [{}], [10, 20], 30),
         (EmaStats, [{"ema_coeff": 0.01}], [10, 20], 10.1),
     ],
 )
-def test_peek_and_reduce(stats_class, init_kwargs_list, setup_values, expected_reduced):
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_peek_and_reduce(
+    stats_class, init_kwargs_list, setup_values, expected_reduced, use_gpu
+):
     for init_kwargs in init_kwargs_list:
         stats = stats_class(**init_kwargs)
         for value in setup_values:
@@ -61,6 +66,7 @@ def test_peek_and_reduce(stats_class, init_kwargs_list, setup_values, expected_r
 
         # Test with PyTorch tensors of different dtypes (for numeric stats only)
         if torch is not None and stats_class is not ItemStats:
+            device = get_device(use_gpu)
             dtypes_to_test = [
                 torch.float32,
                 torch.float64,
@@ -75,13 +81,33 @@ def test_peek_and_reduce(stats_class, init_kwargs_list, setup_values, expected_r
                     decimals = 1
                 else:
                     decimals = 5
-                # Test with tensors of this dtype
                 tensor_stats = stats_class(**init_kwargs)
                 for val in setup_values:
-                    tensor_val = torch.tensor(val, dtype=dtype)
+                    tensor_val = torch.tensor(val, dtype=dtype, device=device)
                     tensor_stats.push(tensor_val)
 
+                # Verify tensors stay on device before reduce
+                if isinstance(tensor_stats, SeriesStats) or isinstance(
+                    tensor_stats, PercentilesStats
+                ):
+                    for value in tensor_stats.values:
+                        if torch and isinstance(value, torch.Tensor):
+                            assert value.device.type == device.type
+                elif (
+                    isinstance(tensor_stats, EmaStats)
+                    and torch
+                    and isinstance(tensor_stats._value, torch.Tensor)
+                ):
+                    assert tensor_stats._value.device.type == device.type
+                elif (
+                    isinstance(tensor_stats, LifetimeSumStats)
+                    and torch
+                    and isinstance(tensor_stats._lifetime_sum, torch.Tensor)
+                ):
+                    assert tensor_stats._lifetime_sum.device.type == device.type
+
                 result = tensor_stats.reduce(compile=True)
+                assert isinstance(result, (int, float))
                 check(result, expected_reduced, decimals=decimals)
 
                 tensor_stats_with_nan = stats_class(**init_kwargs)
@@ -89,26 +115,59 @@ def test_peek_and_reduce(stats_class, init_kwargs_list, setup_values, expected_r
                 if stats_class is not LifetimeSumStats:
                     # Test with some NaN values mixed in
                     for val in setup_values:
-                        tensor_val = torch.tensor(val, dtype=dtype)
+                        tensor_val = torch.tensor(val, dtype=dtype, device=device)
                         tensor_stats_with_nan.push(tensor_val)
 
-                    nan_tensor_val = torch.tensor(float("nan"))
+                    nan_tensor_val = torch.tensor(float("nan"), device=device)
                     tensor_stats_with_nan.push(nan_tensor_val)
 
                     result_with_nan = tensor_stats_with_nan.reduce(compile=True)
                     # Result should still be valid (stats should handle NaN)
+                    assert isinstance(result_with_nan, (int, float))
                     check(result_with_nan, expected_reduced, decimals=decimals)
 
 
-def test_peek_and_reduce_percentiles_stats():
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_peek_and_reduce_percentiles_stats(use_gpu):
+    # Test with regular Python values
+    values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
-    for value in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+    for value in values:
         stats.push(value)
 
-    check(stats.peek(compile=False), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    check(stats.peek(compile=False), values)
     check(stats.peek(compile=True), {0: 1, 50: 5.5, 100: 10})
     result = stats.reduce(compile=True)
     check(result, {0: 1, 50: 5.5, 100: 10})
+
+    # Test with PyTorch tensors on the specified device
+    if torch is not None:
+        device = get_device(use_gpu)
+        dtypes_to_test = [
+            torch.float32,
+            torch.float64,
+            torch.int32,
+            torch.int64,
+            torch.float16,
+        ]
+
+        for dtype in dtypes_to_test:
+            tensor_stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
+
+            for val in values:
+                tensor_val = torch.tensor(val, dtype=dtype, device=device)
+                tensor_stats.push(tensor_val)
+
+            # Verify tensors stay on device before reduce
+            for value in tensor_stats.values:
+                if torch and isinstance(value, torch.Tensor):
+                    assert value.device.type == device.type
+
+            result = tensor_stats.reduce(compile=True)
+            # Check the percentile values with tolerance
+            check(result[0], 1, decimals=1)
+            check(result[50], 5.5, decimals=1)
+            check(result[100], 10, decimals=1)
 
 
 def test_peek_and_reduce_item_series_stats():
@@ -633,253 +692,6 @@ def test_ema_stats_error_message():
 
     with pytest.raises(ValueError, match="We can only merge OR push"):
         stats.peek()
-
-
-class StatsGPUTests:
-    """Tests to ensure GPU tensors stay on GPU until reduce/peek, and CPU tensors work correctly."""
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_mean_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MeanStats(window=3)
-
-        stats.push(torch.tensor(2.0, device=device))
-        stats.push(torch.tensor(4.0, device=device))
-        stats.push(torch.tensor(6.0, device=device))
-
-        assert len(stats.values) == 3
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        result = stats.peek()
-        assert isinstance(result, float)
-        check(result, 4.0)
-
-        result = stats.reduce(compile=True)
-        assert isinstance(result, float)
-        check(result, 4.0)
-        assert len(stats.values) == 0
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_sum_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = SumStats(window=3)
-
-        stats.push(torch.tensor(2.0, device=device))
-        stats.push(torch.tensor(4.0, device=device))
-        stats.push(torch.tensor(6.0, device=device))
-
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        check(stats.peek(), 12.0)
-        check(stats.reduce(compile=True), 12.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_max_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MaxStats(window=5)
-
-        stats.push(torch.tensor(1.0, device=device))
-        stats.push(torch.tensor(5.0, device=device))
-        stats.push(torch.tensor(3.0, device=device))
-
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        check(stats.peek(), 5.0)
-        check(stats.reduce(compile=True), 5.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_min_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MinStats(window=5)
-
-        stats.push(torch.tensor(5.0, device=device))
-        stats.push(torch.tensor(1.0, device=device))
-        stats.push(torch.tensor(3.0, device=device))
-
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        check(stats.peek(), 1.0)
-        check(stats.reduce(compile=True), 1.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_ema_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        ema_coeff = 0.1
-        stats = EmaStats(ema_coeff=ema_coeff)
-
-        stats.push(torch.tensor(10.0, device=device))
-
-        assert isinstance(stats._value, torch.Tensor)
-        assert stats._value.device.type == device.type
-
-        stats.push(torch.tensor(20.0, device=device))
-
-        assert isinstance(stats._value, torch.Tensor)
-        assert stats._value.device.type == device.type
-
-        result = stats.peek()
-        assert isinstance(result, float)
-        check(result, 11.0)
-
-        stats.push(torch.tensor(30.0, device=device))
-        check(stats.peek(), 12.9)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_percentiles_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
-
-        for i in range(1, 6):
-            stats.push(torch.tensor(float(i), device=device))
-
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        result = stats.peek(compile=True)
-        assert isinstance(result, dict)
-        check(result[0], 1.0)
-        check(result[50], 3.0)
-        check(result[100], 5.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_lifetime_sum_stats_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = LifetimeSumStats()
-
-        stats.push(torch.tensor(10.0, device=device))
-
-        assert isinstance(stats._lifetime_sum, torch.Tensor)
-        assert stats._lifetime_sum.device.type == device.type
-
-        stats.push(torch.tensor(20.0, device=device))
-
-        assert isinstance(stats._lifetime_sum, torch.Tensor)
-        assert stats._lifetime_sum.device.type == device.type
-
-        result = stats.peek()
-        assert isinstance(result, float)
-        check(result, 30.0)
-
-        result = stats.reduce(compile=True)
-        assert isinstance(result, float)
-        check(result, 30.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_series_stats_no_window_tensors(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MeanStats(window=None)
-
-        stats.push(torch.tensor(10.0, device=device))
-        check(stats.peek(), 10.0)
-
-        stats.push(torch.tensor(20.0, device=device))
-        check(stats.peek(), 15.0)
-
-        stats.push(torch.tensor(30.0, device=device))
-        check(stats.peek(), 20.0)
-
-        assert isinstance(stats.values[0], torch.Tensor)
-        assert stats.values[0].device.type == device.type
-
-    def test_mixed_cpu_gpu_not_mixed(self):
-        if not torch.cuda.is_available():
-            pytest.skip("GPU not available")
-
-        device = torch.device("cuda")
-        stats = MeanStats(window=5)
-
-        stats.push(torch.tensor(2.0, device=device))
-        stats.push(torch.tensor(4.0, device=device))
-
-        for value in stats.values:
-            assert value.device.type == "cuda"
-
-        stats_cpu = MeanStats(window=5)
-        stats_cpu.push(torch.tensor(2.0))
-        stats_cpu.push(torch.tensor(4.0))
-
-        for value in stats_cpu.values:
-            assert value.device.type == "cpu"
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_reduce_performance(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = SumStats(window=100)
-
-        for i in range(100):
-            stats.push(torch.tensor(float(i), device=device))
-
-        for value in stats.values:
-            assert isinstance(value, torch.Tensor)
-            assert value.device.type == device.type
-
-        result = stats.reduce(compile=True)
-        expected = sum(range(100))
-        check(result, expected)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_nan_handling(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MeanStats(window=5)
-
-        stats.push(torch.tensor(1.0, device=device))
-        stats.push(torch.tensor(float("nan"), device=device))
-        stats.push(torch.tensor(3.0, device=device))
-
-        result = stats.peek()
-        check(result, 2.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_window_overflow(self, use_gpu):
-        device = get_device(use_gpu)
-        stats = MeanStats(window=3)
-
-        for i in range(1, 6):
-            stats.push(torch.tensor(float(i), device=device))
-
-        assert len(stats.values) == 3
-        check(stats.peek(), 4.0)
-
-    @pytest.mark.parametrize("use_gpu", [True, False])
-    def test_batch_tensors_to_cpu(self, use_gpu):
-        device = get_device(use_gpu)
-        from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
-
-        tensors = [
-            torch.tensor(1.0, device=device),
-            torch.tensor(2.0, device=device),
-            torch.tensor(3.0, device=device),
-        ]
-
-        cpu_values = batch_values_to_cpu(tensors)
-
-        assert isinstance(cpu_values, list)
-        assert len(cpu_values) == 3
-        check(cpu_values, [1.0, 2.0, 3.0])
-
-    def test_batch_non_tensors(self):
-        from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
-
-        values = [1.0, 2.0, 3.0]
-        result = batch_values_to_cpu(values)
-
-        assert isinstance(result, list)
-        check(result, [1.0, 2.0, 3.0])
-
-    def test_batch_empty_list(self):
-        from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
-
-        result = batch_values_to_cpu([])
-        assert result == []
 
 
 if __name__ == "__main__":

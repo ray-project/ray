@@ -52,7 +52,7 @@ class MeanStats(SeriesStats):
         self.values.append(value)
 
     def reduce(self, compile: bool = True) -> Union[Any, "MeanStats"]:
-        reduced_values = self.window_reduce()
+        reduced_values = self.window_reduce()  # Values are on CPU already after this
         self._set_values([])
 
         if compile:
