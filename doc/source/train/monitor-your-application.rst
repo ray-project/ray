@@ -1,13 +1,13 @@
 .. _monitoring-your-application:
 
-System metrics
+Ray Train metrics 
 --------------
 Ray Train exports Prometheus metrics for CPU, memory, GPU, disk, and network. You can use these metrics to monitor Ray Train runs.
 The Ray dashboard displays these metrics in Grafana panels.
 
 The following table lists the Prometheus metrics emitted by Ray Train:
 
-.. list-table:: Ray Train Metrics
+.. list-table:: Train Metrics
     :header-rows: 1
 
     * - Prometheus Metric
