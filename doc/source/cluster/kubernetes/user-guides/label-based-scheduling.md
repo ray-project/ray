@@ -114,7 +114,7 @@ ray.init()
 ray.get(test_task.remote())
 ```
 
-* `example_actor.py` is a Python script that creates a simple Actor requiring a node with the labels `ray.io/accelerator-type: A100`. The `ray.io/accelerator-type` label is set by default by Ray when the underlying compute can be detected.
+* `example_actor.py` is a Python script that creates a simple actor requiring a node with the`ray.io/accelerator-type: A100` label. Ray sets the `ray.io/accelerator-type` label by default when it can detect the underlying compute.
 ```py
   import ray
   @ray.remote(num_gpus=1, label_selector={"ray.io/accelerator-type": "A100"})
