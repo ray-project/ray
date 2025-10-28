@@ -9,7 +9,10 @@ steps:
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
-    matrix: ["3.9", "3.12"]
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.12"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
@@ -36,7 +39,7 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
       setup:
-        python: ["3.9"]
+        python: ["3.9", "3.10"]
         extra: ["serve", "default"]
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -157,7 +160,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve
         --parallelism-per-worker 2
-        --build-name minbuild-default-py3.9
+        --build-name minbuild-default-py3.10
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
@@ -171,6 +174,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --parallelism-per-worker 2
         --build-name minbuild-serve-py3.9
+        --test-env=EXPECTED_PYTHON_VERSION=3.9
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
     depends_on: minbuild-serve
