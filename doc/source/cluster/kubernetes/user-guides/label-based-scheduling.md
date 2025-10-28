@@ -15,7 +15,7 @@ The Ray scheduler uses a `label_selector` specified in the `@ray.remote` decorat
 
 
 ```{admonition} Label selectors are an experimental feature in Ray 2.49.1.
-Full autoscaling support for Tasks, Actors, and placement groups with label selectors is available in Ray 2.51.0 and KubeRay v1.5.0.
+Full autoscaling support for tasks, actors, and placement groups with label selectors is available in Ray 2.51.0 and KubeRay v1.5.0.
 ```
 
 ## Overview
