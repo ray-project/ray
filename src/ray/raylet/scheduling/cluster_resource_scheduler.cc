@@ -303,7 +303,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
   std::optional<std::reference_wrapper<const LabelSelector>>
-      highest_priority_unavailable_label_selector = std::nullopt;
+      highest_priority_unavailable_label_selector{};
   bool any_selector_is_feasible = false;
 
   // Try each label selector in order until a node is found.
