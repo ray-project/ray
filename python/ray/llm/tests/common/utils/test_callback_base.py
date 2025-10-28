@@ -6,7 +6,10 @@ from ray.llm._internal.common.callbacks.base import (
     CallbackBase,
 )
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
-from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    ModelLoadingConfig,
+)
 
 
 class TestingCallback(CallbackBase):

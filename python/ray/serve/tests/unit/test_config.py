@@ -813,7 +813,17 @@ def test_autoscaling_policy_serializations(policy):
     ).autoscaling_config.policy.get_policy()
 
     if policy is None:
-        assert deserialized_autoscaling_policy == default_autoscaling_policy
+        # Compare function attributes instead of function objects since
+        # cloudpickle.register_pickle_by_value() causes deserialization to
+        # create a new function object rather than returning the same object
+        assert (
+            deserialized_autoscaling_policy.__name__
+            == default_autoscaling_policy.__name__
+        )
+        assert (
+            deserialized_autoscaling_policy.__module__
+            == default_autoscaling_policy.__module__
+        )
     else:
         # Compare function behavior instead of function objects
         # since serialization/deserialization creates new function objects

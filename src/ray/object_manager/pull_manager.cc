@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -342,9 +341,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
-        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+        pull_manager_object_request_time_ms_histogram_.Record(
             absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
-            "StartToCancel");
+            {{"Type", "StartToCancel"}});
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -608,13 +607,13 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
 
     auto it = object_pull_requests_.find(object_id);
     RAY_CHECK(it != object_pull_requests_.end());
-    ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+    pull_manager_object_request_time_ms_histogram_.Record(
         absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
-        "StartToPin");
+        {{"Type", "StartToPin"}});
     if (it->second.activate_time_ms > 0) {
-      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+      pull_manager_object_request_time_ms_histogram_.Record(
           absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
-          "MemoryAvailableToPin");
+          {{"Type", "MemoryAvailableToPin"}});
     }
     return true;
   }
@@ -727,30 +726,29 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
 
 void PullManager::RecordMetrics() const {
   absl::MutexLock lock(&active_objects_mu_);
-  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_available_, "Available");
-  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_being_pulled_,
-                                                    "BeingPulled");
-  ray::stats::STATS_pull_manager_usage_bytes.Record(pinned_objects_size_, "Pinned");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      get_request_bundles_.requests.size(), "Get");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      wait_request_bundles_.requests.size(), "Wait");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      task_argument_bundles_.requests.size(), "TaskArgs");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(next_req_id_,
-                                                          "CumulativeTotal");
-  ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
-  ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
-                                                 "Active");
-  ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
-  ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
-  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
-
-  ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
-                                                        "Success");
-  ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
-                                                        "Failure");
+  pull_manager_usage_bytes_gauge_.Record(num_bytes_available_, {{"Type", "Available"}});
+  pull_manager_usage_bytes_gauge_.Record(num_bytes_being_pulled_,
+                                         {{"Type", "BeingPulled"}});
+  pull_manager_usage_bytes_gauge_.Record(pinned_objects_size_, {{"Type", "Pinned"}});
+  pull_manager_requested_bundles_gauge_.Record(get_request_bundles_.requests.size(),
+                                               {{"Type", "Get"}});
+  pull_manager_requested_bundles_gauge_.Record(wait_request_bundles_.requests.size(),
+                                               {{"Type", "Wait"}});
+  pull_manager_requested_bundles_gauge_.Record(task_argument_bundles_.requests.size(),
+                                               {{"Type", "TaskArgs"}});
+  pull_manager_requested_bundles_gauge_.Record(next_req_id_,
+                                               {{"Type", "CumulativeTotal"}});
+  pull_manager_requests_gauge_.Record(object_pull_requests_.size(), {{"Type", "Queued"}});
+  pull_manager_requests_gauge_.Record(active_object_pull_requests_.size(),
+                                      {{"Type", "Active"}});
+  pull_manager_requests_gauge_.Record(pinned_objects_.size(), {{"Type", "Pinned"}});
+  pull_manager_active_bundles_gauge_.Record(num_active_bundles_);
+  pull_manager_retries_total_gauge_.Record(num_retries_total_);
+  pull_manager_retries_total_gauge_.Record(num_tries_total_);
+  pull_manager_num_object_pins_gauge_.Record(num_succeeded_pins_total_,
+                                             {{"Type", "Success"}});
+  pull_manager_num_object_pins_gauge_.Record(num_failed_pins_total_,
+                                             {{"Type", "Failure"}});
 }
 
 std::string PullManager::DebugString() const {

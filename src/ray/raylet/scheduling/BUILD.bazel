@@ -36,6 +36,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 
@@ -123,6 +124,7 @@ ray_cc_library(
         "//src/ray/common:ray_syncer",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/stats:stats_metric",

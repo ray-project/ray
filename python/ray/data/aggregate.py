@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pyarrow.compute as pc
@@ -889,6 +889,88 @@ class Unique(AggregateFnV2):
             return {x}
 
 
+@PublicAPI
+class ValueCounter(AggregateFnV2):
+    """Counts the number of times each value appears in a column.
+
+    This aggregation computes value counts for a specified column, similar to pandas'
+    `value_counts()` method. It returns a dictionary with two lists: "values" containing
+    the unique values found in the column, and "counts" containing the corresponding
+    count for each value.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ValueCounter
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count occurrences of each category
+            result = ds.aggregate(ValueCounter(on="category"))
+            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+
+    Args:
+        on: The name of the column to count values in. Must be provided.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "value_counter({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"value_counter({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+
+        col_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        return col_accessor.value_counts()
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new_accumulator: Dict[str, List],
+    ) -> Dict[str, List]:
+
+        values = current_accumulator["values"]
+        counts = current_accumulator["counts"]
+
+        # Build a value → index map once (avoid repeated lookups)
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+            if v_new in value_to_index:
+                idx = value_to_index[v_new]
+                counts[idx] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return current_accumulator
+
+
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 
@@ -1287,3 +1369,100 @@ class ApproximateQuantile(AggregateFnV2):
 
     def finalize(self, accumulator: bytes) -> List[float]:
         return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
+
+
+@PublicAPI(stability="alpha")
+class ApproximateTopK(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import frequent_strings_sketch
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateTopK requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return frequent_strings_sketch
+
+    def __init__(
+        self,
+        on: str,
+        k: int,
+        log_capacity: int = 15,
+        alias_name: Optional[str] = None,
+    ):
+        """
+        Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+        https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
+
+        Guarantees:
+            - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
+            - Reported counts may have an error of at most ± N / (2^log_capacity).
+
+
+        If log_capacity is too small for your data:
+            - Low-frequency items may be evicted from the sketch, potentially causing the top-k
+              results to miss items that should appear in the output.
+            - The error bounds increase, reducing the accuracy of the reported counts.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateTopK
+
+                ds = ray.data.from_items([
+                    {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+                    {"word": "cherry"}, {"word": "apple"}
+                ])
+
+                result = ds.aggregate(ApproximateTopK(on="word", k=2))
+                # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+
+        Args:
+            on: The name of the column to aggregate.
+            k: The number of top items to return.
+            log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+                Higher values increase accuracy but use more memory. Defaults to 15.
+            alias_name: The name of the aggregate. Defaults to None.
+        """
+
+        self.k = k
+        self._log_capacity = log_capacity
+        self._frequent_strings_sketch = self._require_datasketches()
+        super().__init__(
+            alias_name if alias_name else f"approx_topk({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: self.zero(log_capacity).serialize(),
+        )
+
+    def zero(self, log_capacity: int):
+        return self._frequent_strings_sketch(lg_max_k=log_capacity)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = self.zero(self._log_capacity)
+        for value in column:
+            if value.as_py() is not None:
+                sketch.update(str(value.as_py()))
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = self.zero(self._log_capacity)
+        combined.merge(self._frequent_strings_sketch.deserialize(current_accumulator))
+        combined.merge(self._frequent_strings_sketch.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
+        from datasketches import frequent_items_error_type
+
+        frequent_items = self._frequent_strings_sketch.deserialize(
+            accumulator
+        ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
+        return [
+            {self.get_target_column(): str(item[0]), "count": int(item[1])}
+            for item in frequent_items[: self.k]
+        ]
