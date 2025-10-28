@@ -4,6 +4,7 @@ import pytest
 import ray
 from ray.data.aggregate import (
     ApproximateQuantile,
+    ApproximateTopK,
     MissingValuePercentage,
     ZeroPercentage,
 )
@@ -359,6 +360,104 @@ class TestApproximateQuantile:
 
         assert result_by_group["A"] == [2.0]
         assert result_by_group["B"] == [20.0]
+
+
+class TestApproximateTopK:
+    """Test cases for ApproximateTopK aggregation."""
+
+    def test_approximate_topk_ignores_nulls(self, ray_start_regular_shared_2_cpus):
+        """Test that null values are ignored."""
+        data = [
+            *[{"word": "apple"} for _ in range(5)],
+            *[{"word": None} for _ in range(10)],
+            *[{"word": "banana"} for _ in range(3)],
+            *[{"word": "cherry"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="word", k=2))
+        assert result["approx_topk(word)"] == [
+            {"word": "apple", "count": 5},
+            {"word": "banana", "count": 3},
+        ]
+
+    def test_approximate_topk_custom_alias(self, ray_start_regular_shared_2_cpus):
+        """Test approximate top k with custom alias."""
+        data = [
+            *[{"item": "x"} for _ in range(3)],
+            *[{"item": "y"} for _ in range(2)],
+            *[{"item": "z"} for _ in range(1)],
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="item", k=2, alias_name="top_items"))
+        assert "top_items" in result
+        assert result["top_items"] == [
+            {"item": "x", "count": 3},
+            {"item": "y", "count": 2},
+        ]
+
+    def test_approximate_topk_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test approximate top k with groupby."""
+        data = [
+            *[{"category": "A", "item": "apple"} for _ in range(5)],
+            *[{"category": "A", "item": "banana"} for _ in range(3)],
+            *[{"category": "B", "item": "cherry"} for _ in range(4)],
+            *[{"category": "B", "item": "date"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data)
+        result = (
+            ds.groupby("category").aggregate(ApproximateTopK(on="item", k=1)).take_all()
+        )
+
+        result_by_category = {
+            row["category"]: row["approx_topk(item)"] for row in result
+        }
+
+        assert result_by_category["A"] == [{"item": "apple", "count": 5}]
+        assert result_by_category["B"] == [{"item": "cherry", "count": 4}]
+
+    def test_approximate_topk_all_unique(self, ray_start_regular_shared_2_cpus):
+        """Test approximate top k when all items are unique."""
+        data = [{"id": f"item_{i}"} for i in range(10)]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="id", k=3))
+
+        # All items have count 1, so we should get exactly 3 items
+        assert len(result["approx_topk(id)"]) == 3
+        for item in result["approx_topk(id)"]:
+            assert item["count"] == 1
+
+    def test_approximate_topk_fewer_items_than_k(self, ray_start_regular_shared_2_cpus):
+        """Test approximate top k when dataset has fewer unique items than k."""
+        data = [
+            {"id": "a"},
+            {"id": "b"},
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="id", k=5))
+
+        # Should only return 2 items since that's all we have
+        assert len(result["approx_topk(id)"]) == 2
+
+    def test_approximate_topk_different_log_capacity(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """Test that different log_capacity values still produce correct top k."""
+        data = [
+            *[{"id": "frequent"} for _ in range(100)],
+            *[{"id": "common"} for _ in range(50)],
+            *[{"id": f"rare_{i}"} for i in range(50)],  # 50 unique rare items
+        ]
+        ds = ray.data.from_items(data)
+
+        # Test with smaller log_capacity
+        result_small = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=10))
+        # Test with larger log_capacity
+        result_large = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=15))
+
+        # Both should correctly identify the top 2
+        for result in [result_small, result_large]:
+            assert result["approx_topk(id)"][0] == {"id": "frequent", "count": 100}
+            assert result["approx_topk(id)"][1] == {"id": "common", "count": 50}
 
 
 if __name__ == "__main__":

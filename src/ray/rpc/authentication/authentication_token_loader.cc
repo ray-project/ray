@@ -87,7 +87,6 @@ bool AuthenticationTokenLoader::HasToken() {
 
   // Cache the result
   if (token.empty()) {
-    cached_token_ = std::nullopt;
     return false;
   } else {
     cached_token_ = std::move(token);
