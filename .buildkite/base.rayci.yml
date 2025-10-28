@@ -91,6 +91,9 @@ steps:
     tags: cibase
 
   - name: docgpubuild
+    label: "wanda: docgpubuild-py3.10"
     wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      PYTHON: "3.10"
     tags: cibase
