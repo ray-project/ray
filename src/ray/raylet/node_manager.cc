@@ -947,7 +947,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // If the leased worker's owner was on the failed node, then kill the leased
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
-        << "Killing leased worker because its owner's node died..";
+        << "Killing leased worker because its owner's node died.";
     worker->KillAsync(io_service_);
   }
 
