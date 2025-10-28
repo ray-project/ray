@@ -21,13 +21,13 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def internal_output_queue_num_blocks(self) -> int:
-        """Returns Operator's internal output queue size (in blocks)"""
+    def internal_input_queue_num_bytes(self) -> int:
+        """Returns Operator's internal input queue size (in bytes)"""
         ...
 
     @abc.abstractmethod
-    def internal_input_queue_num_bytes(self) -> int:
-        """Returns Operator's internal input queue size (in bytes)"""
+    def internal_output_queue_num_blocks(self) -> int:
+        """Returns Operator's internal output queue size (in blocks)"""
         ...
 
     @abc.abstractmethod
