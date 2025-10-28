@@ -174,7 +174,7 @@ kind delete cluster
 
 ## Additional Configurations
 
-### 1. Label Syntax and Operators
+### 1. Label syntax and operators
 
 The `label_selector` dictionary is a map of `key: operator_string`.
 The selector matches if *all* key-operator pairs evaluate to true.
