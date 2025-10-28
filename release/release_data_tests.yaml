@@ -170,7 +170,7 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --aggregate --group-by {{columns}}
+      python groupby_benchmark.py --sf 100 --aggregate --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
 
@@ -193,7 +193,7 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
 ###############
@@ -359,12 +359,12 @@
 - name: map
   run:
     timeout: 1800
-    script: python map_benchmark.py --api map --sf 10
+    script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
   run:
     timeout: 1800
-    script: python map_benchmark.py --api flat_map --sf 10
+    script: python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
 
