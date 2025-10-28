@@ -1,6 +1,6 @@
 (kuberay-label-scheduling)=
 
-# KubeRay Label-Based Scheduling
+# KubeRay label-based scheduling
 
 This guide explains how to use label-based scheduling for Ray clusters on Kubernetes. This feature allows you to direct Ray workloads (tasks, actors, or placement groups) to specific Ray nodes running on Pods using labels. Label selectors enable fine-grained control over where your workloads run in a heterogeneous cluster, helping to optimize both performance and cost.
 
