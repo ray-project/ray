@@ -20,6 +20,6 @@ PYTHON_VERSIONS = {
     "3.12": PythonVersionInfo(bin_path="cp312-cp312"),
     "3.13": PythonVersionInfo(bin_path="cp313-cp313"),
 }
-DEFAULT_PYTHON_VERSION = "3.9"
+DEFAULT_PYTHON_VERSION = "3.10"
 DEFAULT_BUILD_TYPE = "optimized"
 DEFAULT_ARCHITECTURE = "x86_64"
