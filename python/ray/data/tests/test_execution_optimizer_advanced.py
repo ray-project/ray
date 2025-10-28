@@ -163,7 +163,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
 
     assert op.name == "Write"
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert physical_op._concurrency == concurrency
+    assert physical_op._max_concurrency == concurrency
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 

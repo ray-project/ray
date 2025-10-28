@@ -15,9 +15,12 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
@@ -28,7 +31,8 @@ namespace rpc {
 class ServerCallFactory;
 
 #define RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(ObjectManagerService, METHOD, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(                     \
+      ObjectManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
@@ -76,7 +80,8 @@ class ObjectManagerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
+      const ClusterID &cluster_id,
+      const std::optional<AuthenticationToken> &auth_token) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
