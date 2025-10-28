@@ -362,7 +362,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     return scheduling::NodeID::Nil();
   }
 
-  // If the best node is not available but the local node is feasible,
+  // If the all best nodes found are not available but the local node is feasible,
   // wait on the local node.
   *is_infeasible = false;
   if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
