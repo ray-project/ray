@@ -722,7 +722,7 @@ def unify_block_metadata_schema(
 
     schemas_to_unify = []
     for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+        if m.schema is not None:
             schemas_to_unify.append(m.schema)
     return unify_schemas_with_validation(schemas_to_unify)
 
@@ -752,9 +752,7 @@ def unify_ref_bundles_schema(
 ) -> Optional["Schema"]:
     schemas_to_unify = []
     for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
+        if bundle.schema is not None:
             schemas_to_unify.append(bundle.schema)
     return unify_schemas_with_validation(schemas_to_unify)
 
