@@ -83,8 +83,6 @@ class ResourceManager:
         # the operator, including the external output buffer in OpState, and the
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
-        # Whether to print debug information.
-        self._debug = DEBUG_RESOURCE_MANAGER
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
 
@@ -266,7 +264,7 @@ class ResourceManager:
         """Return the resource usage of the given operator at the current time."""
         return self._op_usages[op]
 
-    def get_op_usage_str(self, op: PhysicalOperator) -> str:
+    def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
         usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
@@ -276,7 +274,7 @@ class ResourceManager:
             f", {self._op_running_usages[op].object_store_memory_str()} object store"
         )
 
-        if self._debug:
+        if verbose:
             usage_str += (
                 f" (in={memory_string(self._mem_op_internal[op])},"
                 f"out={memory_string(self._mem_op_outputs[op])})"

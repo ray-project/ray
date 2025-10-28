@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
+    DEBUG_RESOURCE_MANAGER,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
@@ -387,7 +388,7 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(self, resource_manager: ResourceManager) -> str:
+    def summary_str(self, resource_manager: ResourceManager, verbose: bool = False) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
@@ -409,7 +410,10 @@ class OpState:
 
         # Queued blocks
         desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(
+            self.op, 
+            verbose=verbose or DEBUG_RESOURCE_MANAGER,
+        )}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()
