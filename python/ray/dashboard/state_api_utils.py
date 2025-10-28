@@ -44,6 +44,8 @@ async def handle_list_api(
             error_message="",
             result=asdict(result),
         )
+    except ValueError as e:
+        return do_reply(success=False, error_message=str(e), result=None)
     except DataSourceUnavailable as e:
         return do_reply(success=False, error_message=str(e), result=None)
 
@@ -70,7 +72,8 @@ def options_from_req(req: aiohttp.web.Request) -> ListApiOptions:
     if limit > RAY_MAX_LIMIT_FROM_API_SERVER:
         raise ValueError(
             f"Given limit {limit} exceeds the supported "
-            f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
+            f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit, "
+            f"or set the RAY_MAX_LIMIT_FROM_API_SERVER=limit"
         )
 
     timeout = int(req.query.get("timeout", 30))
