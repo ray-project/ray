@@ -15,36 +15,32 @@ steps:
     depends_on: oss-ci-base_build-multipy
     tags: cibase
 
-  - name: servepydantic1build
-    wanda: ci/docker/servepydantic1.build.wanda.yaml
-    tags: cibase
-
   - name: servepydantic1build-multipy
     label: "wanda: servepydantic1build-py{{matrix}}"
     wanda: ci/docker/servepydantic1.build.wanda.yaml
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.12"
+    matrix: ["3.9"]
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
     tags: cibase
 
-  - name: servetracingbuild
+  - name: servetracingbuild-multipy
+    label: "wanda: servetracingbuild-py{{matrix}}"
     wanda: ci/docker/servetracing.build.wanda.yaml
+    matrix: ["3.9"]
     env:
-      PYTHON: "3.9"
+      PYTHON: "{{matrix}}"
 
   - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix}}-py39"
+    label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
-      - serve
-      - default
+      setup:
+        python: ["3.9"]
+        extra: ["serve", "default"]
     env:
-      PYTHON_VERSION: "3.9"
-      EXTRA_DEPENDENCY: "{{matrix}}"
+      PYTHON_VERSION: "{{matrix.python}}"
+      EXTRA_DEPENDENCY: "{{matrix.extra}}"
     tags: cibase
 
   # tests
@@ -215,7 +211,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --only-tags serve_tracing --build-name servetracingbuild-py3.9 --test-env=EXPECTED_PYTHON_VERSION=3.9
-    depends_on: servetracingbuild
+    depends_on: servetracingbuild-multipy
 
   - label: ":ray-serve: serve: doc gpu tests"
     tags:
