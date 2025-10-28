@@ -2805,6 +2805,11 @@ def read_hive(
 
             pip install pyhive
 
+    .. note::
+
+        Supported file formats: Parquet, Avro, Text. ORC format is not currently supported.
+        If you need to read ORC tables, consider converting them to Parquet format.
+
     .. tip::
 
         For reading with SQL queries instead of full tables, use :func:`~ray.data.read_sql`

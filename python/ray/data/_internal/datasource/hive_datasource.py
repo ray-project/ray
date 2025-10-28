@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import TYPE_CHECKING, Optional
 
 import ray
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 # PyHive documentation: https://github.com/dropbox/PyHive
 # Hive Metastore: https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL
+
+# Valid authentication methods for PyHive (must be uppercase)
+_VALID_AUTH_METHODS = {"NONE", "NOSASL", "KERBEROS", "LDAP", "CUSTOM"}
 
 
 def _get_table_location_and_format(
@@ -35,25 +39,61 @@ def _get_table_location_and_format(
     """
     from pyhive import hive
 
-    # Connect to Hive
-    connection = hive.connect(
-        host=host,
-        port=port,
-        database=database,
-        auth=auth,
-        username=username,
-        password=password,
-        configuration=configuration or {},
-        kerberos_service_name=kerberos_service_name,
-    )
+    # Validate and normalize auth parameter (PyHive requires uppercase)
+    auth_upper = auth.upper()
+    if auth_upper not in _VALID_AUTH_METHODS:
+        raise ValueError(
+            f"Invalid auth method: '{auth}'. "
+            f"Supported methods: {', '.join(sorted(_VALID_AUTH_METHODS))}"
+        )
+
+    # Connect to Hive with retry logic
+    max_retries = 3
+    connection = None
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            logger.debug(
+                f"Connecting to HiveServer2 at {host}:{port}, "
+                f"database={database}, auth={auth_upper} (attempt {attempt + 1}/{max_retries})"
+            )
+            connection = hive.connect(
+                host=host,
+                port=port,
+                auth=auth_upper,
+                username=username,
+                password=password,
+                configuration=configuration or {},
+                kerberos_service_name=kerberos_service_name,
+            )
+            break  # Connection successful
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = 2**attempt  # Exponential backoff: 1s, 2s, 4s
+                logger.warning(
+                    f"Connection attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+            else:
+                raise RuntimeError(
+                    f"Failed to connect to HiveServer2 at {host}:{port} after {max_retries} attempts. "
+                    f"Last error: {last_error}"
+                ) from last_error
 
     try:
         cursor = connection.cursor()
 
-        # Get detailed table information
-        # Escape backticks in table name to prevent SQL injection
+        # Get detailed table information using fully qualified table name
+        # Escape backticks in database and table names to prevent SQL injection
+        escaped_database = database.replace("`", "``")
         escaped_table = table.replace("`", "``")
-        cursor.execute(f"DESCRIBE FORMATTED `{escaped_table}`")
+        fully_qualified_table = f"`{escaped_database}`.`{escaped_table}`"
+
+        logger.debug(f"Executing: DESCRIBE FORMATTED {fully_qualified_table}")
+        cursor.execute(f"DESCRIBE FORMATTED {fully_qualified_table}")
         rows = cursor.fetchall()
 
         # Parse DESCRIBE FORMATTED output
@@ -192,12 +232,17 @@ def read_hive_table(
     # Map file format to Ray Data reader
     reader_map = {
         "parquet": ray.data.read_parquet,
-        "orc": ray.data.read_parquet,  # Ray Data reads ORC via Parquet reader
         "avro": ray.data.read_avro,
         "text": ray.data.read_text,
     }
 
     if file_format not in reader_map:
+        # Provide helpful error message for unsupported formats
+        if file_format == "orc":
+            raise ValueError(
+                "ORC file format is not currently supported by Ray Data. "
+                "Consider converting your Hive table to Parquet format for better compatibility."
+            )
         raise ValueError(
             f"Unsupported file format: {file_format}. "
             f"Supported formats: {list(reader_map.keys())}"
