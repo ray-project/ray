@@ -116,9 +116,10 @@ def test_groupby_with_column_expression(
     disable_fallback_to_object_extension,
     target_max_block_size_infinite_or_default,
 ):
-    from ray.data.expressions import col, udf
     import pyarrow.compute as pc
+
     from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
 
     ds = ray.data.from_items(
         [
@@ -148,15 +149,6 @@ def test_groupby_with_column_expression(
         {"group": 2, "value": 3, "min_value": 3},
         {"group": 2, "value": 4, "min_value": 3},
     ]
-
-    ds = ray.data.from_items(
-        [
-            {"group": 1, "value": 1},
-            {"group": 1, "value": 2},
-            {"group": 2, "value": 3},
-            {"group": 2, "value": 4},
-        ]
-    )
 
     rows = (
         ds.groupby("group")
