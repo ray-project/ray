@@ -100,7 +100,7 @@ It's considered good practice to check the output of your build to make sure eve
 
 Before committing any changes, make sure you run the
 [linter](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting)
-with `../scripts/format.sh` from the `doc` folder,
+with `pre-commit run` from the `doc` folder,
 to make sure your changes are formatted correctly.
 
 ### Code completion and other developer tooling

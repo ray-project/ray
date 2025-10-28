@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -32,6 +33,44 @@ namespace ray {
 
 using MessageType = protocol::MessageType;
 namespace ipc {
+
+using CleanupHandler = std::function<Status()>;
+
+class ScopedResponse {
+ public:
+  ScopedResponse() : cleanup_([]() { return Status::OK(); }) {}
+
+  explicit ScopedResponse(CleanupHandler cleanup) : cleanup_(std::move(cleanup)) {}
+
+  // Uncopyable so destructor is not called twice.
+  ScopedResponse(const ScopedResponse &) = delete;
+  ScopedResponse &operator=(const ScopedResponse &) = delete;
+
+  ScopedResponse(ScopedResponse &&other) : cleanup_(std::move(other.cleanup_)) {
+    other.cleanup_ = nullptr;
+  }
+
+  ScopedResponse &operator=(ScopedResponse &&other) {
+    if (this == &other) {
+      HandleCleanup();
+      this->cleanup_ = other.cleanup_;
+      other.cleanup_ = nullptr;
+    }
+    return *this;
+  };
+
+  ~ScopedResponse() { HandleCleanup(); }
+
+ private:
+  CleanupHandler cleanup_;
+
+  void HandleCleanup() {
+    if (cleanup_ != nullptr) {
+      Status s = cleanup_();
+      RAY_CHECK(s.ok()) << s.ToString();
+    }
+  }
+};
 
 /// Interface for interacting with the local Raylet over a socket.
 ///
@@ -105,9 +144,13 @@ class RayletIpcClientInterface {
   ///
   /// \param object_ids The IDs of the objects to pull.
   /// \param owner_addresses The owner addresses of the objects.
-  /// \return Status.
-  virtual Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                                 const std::vector<rpc::Address> &owner_addresses) = 0;
+  ///
+  /// \return Status::IOError if there's an error communicating with the raylet.
+  /// \return Status::OK if successful. The ScopedResponse will send the raylet an IPC
+  /// request to clean up the GetObjectsRequest upon destruction.
+  virtual StatusOr<ScopedResponse> AsyncGetObjects(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses) = 0;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -129,7 +172,7 @@ class RayletIpcClientInterface {
   /// Tell the Raylet to cancel the get request from this worker.
   ///
   /// \return Status.
-  virtual Status CancelGetRequest() = 0;
+  virtual Status CancelGetRequest(int64_t request_id) = 0;
 
   /// Notify the raylet that the worker is currently blocked waiting for an object
   /// to be pulled. The raylet will release the resources used by this worker.

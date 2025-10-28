@@ -1628,7 +1628,7 @@ class DeploymentRankManager:
         replicas_needing_reconfiguration = []
 
         if current_ranks != expected_ranks:
-            logger.info(
+            logger.debug(
                 f"Deployment at target replica count but ranks are not contiguous. "
                 f"Current: {current_ranks}, Expected: {expected_ranks}. "
                 "Performing minimal reassignment."
@@ -1684,7 +1684,7 @@ class DeploymentRankManager:
             # Store the old rank before updating
             old_rank = self._replica_ranks[replica_id]
 
-            logger.info(
+            logger.debug(
                 f"Reassigning replica {replica_id}: rank {old_rank} -> {new_rank}"
             )
 
@@ -1696,7 +1696,7 @@ class DeploymentRankManager:
             self._released_ranks.add(old_rank)
 
         # Log the reassignment summary
-        logger.info(
+        logger.debug(
             f"Minimal reassignment complete: {len(replicas_keeping_ranks)} replicas kept ranks, "
             f"{len(replicas_needing_ranks)} replicas reassigned"
         )
@@ -1778,7 +1778,7 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._id in self._autoscaling_state_manager._autoscaling_states
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -2156,25 +2156,24 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics.
+    def autoscale(self, decision_num_replicas: int) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas: target replica count to apply.
 
         Returns:
-            Whether the target state has changed.
+            bool: True if the target state was updated, False if no change occurred.
         """
 
         if self._target_state.deleting:
             return False
 
-        decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
-            deployment_id=self._id,
-            curr_target_num_replicas=self._target_state.target_num_replicas,
-        )
-
-        if (
-            decision_num_replicas is None
-            or decision_num_replicas == self._target_state.target_num_replicas
-        ):
+        if decision_num_replicas == self._target_state.target_num_replicas:
             return False
 
         new_info = copy(self._target_state.info)
@@ -2195,7 +2194,7 @@ class DeploymentState:
 
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -2403,7 +2402,7 @@ class DeploymentState:
                     # Assign rank during replica creation (startup process)
                     assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
 
-                    logger.info(
+                    logger.debug(
                         f"Assigned rank {assigned_rank} to new replica {replica_id.unique_id} during startup"
                     )
                     new_deployment_replica = DeploymentReplica(
@@ -2764,7 +2763,7 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._rank_manager.release_rank(replica_id)
-                logger.info(
+                logger.debug(
                     f"Released rank from replica {replica_id} in deployment {self._id}"
                 )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
@@ -2799,7 +2798,7 @@ class DeploymentState:
         if not replicas_to_reconfigure:
             return
 
-        logger.info(
+        logger.debug(
             f"Reconfiguring {len(replicas_to_reconfigure)} replicas with rank changes in deployment {self._id}"
         )
 
@@ -2816,7 +2815,7 @@ class DeploymentState:
             )
             updated_count += 1
 
-        logger.info(
+        logger.debug(
             f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 
@@ -3192,6 +3191,13 @@ class DeploymentStateManager:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
 
+    def get_deployment_target_num_replicas(
+        self, deployment_id: DeploymentID
+    ) -> Optional[int]:
+        if deployment_id not in self._deployment_states:
+            return None
+        return self._deployment_states[deployment_id].target_num_replicas
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
@@ -3325,11 +3331,6 @@ class DeploymentStateManager:
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
-            if deployment_state.should_autoscale():
-                target_state_changed = (
-                    deployment_state.autoscale() or target_state_changed
-                )
-
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
@@ -3423,6 +3424,21 @@ class DeploymentStateManager:
             self.save_checkpoint()
 
         return any_recovering
+
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+        """Autoscale the deployment to the target number of replicas.
+
+        Args:
+            deployment_id: The deployment ID.
+            target_num_replicas: The target number of replicas.
+
+        Returns:
+            True if the deployment was autoscaled, False otherwise.
+        """
+        if deployment_id not in self._deployment_states:
+            return False
+
+        return self._deployment_states[deployment_id].autoscale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,

@@ -28,8 +28,8 @@ import random
 import gc
 
 import ray
-from ray import train
-from ray.train import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
+from ray import tune
+from ray.tune import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -43,12 +43,12 @@ WARMUP_TIME_S = 45
 
 def objective(config):
     start_iteration = 0
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     # Ensure that after the node killer warmup time, we always have
     # a checkpoint to restore from.
     if (time.monotonic() - config["start_time"]) >= config["warmup_time_s"]:
         assert checkpoint
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
@@ -61,7 +61,7 @@ def objective(config):
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
                 pickle.dump(dct, f)
-            train.report(dct, checkpoint=Checkpoint.from_directory(tmpdir))
+            tune.report(dct, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 def main(bucket_uri: str):
