@@ -681,21 +681,22 @@
       env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
-    - __suffix__: gce_failure_injection
-      cluster:
-        byod:
-          # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with no limit (-1) on the number of total failures,
-          # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
-          # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
-          runtime_env:
-            - RAY_testing_rpc_failure="*=-1:10:10:1:1"
-            - RAY_testing_rpc_failure_avoid_intra_node_failures=1
-        cluster_compute: cross_az_250_350_compute_gce.yaml
-    - __suffix__: aws_failure_injection
-      env: aws
-      cluster:
-        byod:
-          runtime_env:
-            - RAY_testing_rpc_failure="*=-1:10:10:1:1"
-            - RAY_testing_rpc_failure_avoid_intra_node_failures=1
-        cluster_compute: cross_az_250_350_compute_aws.yaml
+ # TODO(#58246): Enable these variations once RAY_testing_rpc_failure is supported.
+ #   - __suffix__: gce_failure_injection
+ #     cluster:
+ #       byod:
+ #         # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with no limit (-1) on the number of total failures,
+ #         # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
+ #         # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
+ #         runtime_env:
+ #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+ #       cluster_compute: cross_az_250_350_compute_gce.yaml
+ #   - __suffix__: aws_failure_injection
+ #     env: aws
+ #     cluster:
+ #       byod:
+ #         runtime_env:
+ #           - RAY_testing_rpc_failure="*=-1:10:10:1:1"
+ #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+ #       cluster_compute: cross_az_250_350_compute_aws.yaml
