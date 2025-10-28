@@ -51,7 +51,7 @@ nodeSelector:
     cloud.google.com/gke-spot: "false"
 ```
 
-This guide's quickstart demonstrates all three steps working together.
+This quickstart demonstrates all three steps working together.
 
 ## Quickstart
 
