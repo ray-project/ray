@@ -9,7 +9,7 @@ Label-based scheduling is an essential tool for heterogeneous clusters, where yo
 * Nodes with different accelerator types like A100 GPUs or Trillium TPU.
 * Nodes with different CPU families like Intel or AMD.
 * Nodes with different instance types related to cost and availability, such as spot or on-demand instances.
-* Nodes in different failure domains or with region/zone requirements.
+* Nodes in different failure domains or with region or zone requirements.
 
 The Ray scheduler uses a `label_selector` specified in the `@ray.remote` decorator to filter against labels defined on the Ray nodes. In KubeRay, Ray node labels are set using labels defined in the RayCluster custom resource.
 
