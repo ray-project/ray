@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
-from ray._private.ray_constants import env_float
+from ray._private.ray_constants import env_float, env_bool
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -33,7 +33,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
+
+
+LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool("RAY_DATA_DEBUG_RESOURCE_MANAGER", None)
+
 
 # These are physical operators that must receive all inputs before they start
 # processing data.
@@ -273,6 +276,10 @@ class ResourceManager:
         usage_str += (
             f", {self._op_running_usages[op].object_store_memory_str()} object store"
         )
+
+        # NOTE: Config can override requested verbosity level
+        if LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE is not None:
+            verbose = LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE
 
         if verbose:
             usage_str += (
