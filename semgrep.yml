@@ -35,7 +35,6 @@ rules:
       exclude:
         # FIXME: These tests weren't run in CI, and now they're failing.
         - "python/ray/data/tests/test_arrow_serialization.py"
-        - "python/ray/data/tests/test_block.py"
         - "python/ray/data/tests/test_hash_shuffle.py"
     languages:
       - python

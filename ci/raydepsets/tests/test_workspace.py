@@ -1,11 +1,21 @@
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 
 import pytest
 
-from ci.raydepsets.tests.utils import copy_data_to_tmpdir, get_depset_by_name
-from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
+from ci.raydepsets.tests.utils import (
+    copy_data_to_tmpdir,
+    get_depset_by_name,
+    write_to_config_file,
+)
+from ci.raydepsets.workspace import (
+    BuildArgSet,
+    Depset,
+    Workspace,
+    _substitute_build_args,
+)
 
 
 def test_workspace_init():
@@ -132,6 +142,41 @@ def test_get_configs_dir():
         assert len(configs_dir) == 2
         assert f"{tmpdir}/test.depsets.yaml" in configs_dir
         assert f"{tmpdir}/test2.depsets.yaml" in configs_dir
+
+
+def test_load_configs_with_wildcard_config_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_configs(config_path=f"{tmpdir}/*.depsets.yaml")
+        assert config.depsets is not None
+        assert len(config.depsets) == 10
+
+
+def test_invalid_build_arg_set_in_config():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        depset = Depset(
+            name="invalid_build_arg_set",
+            operation="compile",
+            requirements=["requirements_test.txt"],
+            output="requirements_compiled_invalid_build_arg_set.txt",
+            config_name="test.depsets.yaml",
+        )
+        write_to_config_file(
+            tmpdir,
+            depset,
+            "test.depsets.yaml",
+            build_arg_sets=["invalid_build_arg_set"],
+        )
+        workspace = Workspace(dir=tmpdir)
+        with unittest.TestCase().assertRaises(KeyError) as e:
+            workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
+        print(str(e.exception))
+        assert (
+            "Build arg set invalid_build_arg_set not found in config test.depsets.yaml"
+            in str(e.exception)
+        )
 
 
 if __name__ == "__main__":
