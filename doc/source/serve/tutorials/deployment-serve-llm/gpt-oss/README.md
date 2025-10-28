@@ -10,7 +10,12 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy gpt-oss
 
-*gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20 B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120 B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
+*gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
 
 For more information, see the [gpt-oss collection](https://huggingface.co/collections/openai/gpt-oss-68911959590a1634ba11c7a4).
 
@@ -86,17 +91,17 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a Serve config file to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment).
+**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment).
 
 ---
 
 ## Deploy locally
 
-**Prerequisites:**
+### Prerequisites
 
 * Access to GPU compute.
 
-**Dependencies:**
+### Dependencies
 
 gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.1`.
 
@@ -107,7 +112,7 @@ pip install "vllm==0.10.1"
 
 ---
 
-### Launch
+### Launch the service
 
 Follow the instructions in [Configure Ray Serve LLM](#configure-ray-serve-llm) according to the model size you choose, and define your app in a Python module `serve_gpt_oss.py`.
 
@@ -118,7 +123,7 @@ In a terminal, run:
 serve run serve_gpt_oss:app --non-blocking
 ```
 
-Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded.
+Deployment typically takes a few minutes as Ray provisions the cluster, the vLLM server starts, and Ray Serve downloads the model.
 
 ---
 
@@ -126,7 +131,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 Your endpoint is available locally at `http://localhost:8000`. You can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-**Example curl:**
+#### Example curl
 
 
 ```python
@@ -136,7 +141,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{ "model": "my-gpt-oss", "messages": [{"role": "user", "content": "How many Rs in strawberry ?"}] }'
 ```
 
-**Example Python:**
+#### Example Python
 
 
 ```python
@@ -175,7 +180,7 @@ for chunk in response:
 
 ---
 
-### Shutdown
+### Shut down the service
 
 To shutdown your LLM service: 
 
@@ -187,15 +192,15 @@ serve shutdown -y
 
 ---
 
-## Deploy to production with Anyscale Services
+## Deploy to production with Anyscale services
 
-For production deployment, use Anyscale Services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
 
 ---
 
 ### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) for details on what each image includes.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU and runtime dependencies. See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) for details on what each image includes.
 
 Build a minimal Dockerfile:
 ```Dockerfile
@@ -209,7 +214,7 @@ RUN sudo apt-get update && \
 RUN pip install vllm==0.10.1
 ```
 
-Create your Anyscale Service configuration in a new `service.yaml` file and reference the Dockerfile with `containerfile`:
+Create your Anyscale service configuration in a new `service.yaml` file and reference the Dockerfile with `containerfile`:
 
 ```yaml
 # service.yaml
@@ -243,17 +248,17 @@ The `anyscale service deploy` command output shows both the endpoint and authent
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
 
-You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale console. Click **Query** at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
 ### Access the Serve LLM dashboard
 
-For instructions on enabling LLM-specific logging, see [Enable LLM monitoring](#enable-llm-monitoring). To open the Ray Serve LLM Dashboard from an Anyscale Service:
+For instructions on enabling LLM-specific logging, see [Enable LLM monitoring](#enable-llm-monitoring). To open the Ray Serve LLM Dashboard from an Anyscale service:
 
-1. In the Anyscale console, go to your **Service** or **Workspace**.
+1. In the Anyscale console, go to the **Service** or **Workspace** tab.
 1. Navigate to the **Metrics** tab.
-1. Expand **View in Grafana** and click **Serve LLM Dashboard**.
+1. Click **View in Grafana** and click **Serve LLM Dashboard**.
 
 ---
 
@@ -361,19 +366,19 @@ response = client.chat.completions.create(
 )
 ```
 
-**Note:** There is no reliable way to completely disable reasoning.
+**Note:** There's no reliable way to completely disable reasoning.
 
 ---
 
 ## Troubleshooting
 
-**Can't download the vocab file**  
+### Can't download the vocab file  
 ```console
 openai_harmony.HarmonyError: error downloading or loading vocab file: failed to download or load vocab
 ```
 
-The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common cause includes:
-- Corporate firewall or proxy blocks `openaipublic.blob.core.windows.net`; you may need to whitelist this domain.
+The `openai_harmony` library needs the *tiktoken* encoding files and tries to fetch them from OpenAI's public host. Common causes include:
+- Corporate firewall or proxy blocks `openaipublic.blob.core.windows.net`. You may need to whitelist this domain.
 - Intermittent network issues.
 - Race conditions when multiple processes try to download to the same cache. This can happen when [deploying multiple models at the same time](https://github.com/openai/harmony/pull/41).
 
@@ -385,11 +390,11 @@ wget -O tiktoken_encodings/cl100k_base.tiktoken "https://openaipublic.blob.core.
 export TIKTOKEN_ENCODINGS_BASE=${PWD}/tiktoken_encodings
 ```
 
-**`gpt-oss` architecture not recognized**  
+### `gpt-oss` architecture not recognized 
 ```console
 Value error, The checkpoint you are trying to load has model type `gpt_oss` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.
 ```
-Older vLLM and transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
+Older vLLM and Transformers versions don't register `gpt_oss`, raising an error when vLLM hands off to Transformers. Upgrade **vLLM ≥ 0.10.1** and let your package resolver such as `pip` handle the other dependencies.
 ```bash
 pip install -U "vllm>=0.10.1"
 ```
