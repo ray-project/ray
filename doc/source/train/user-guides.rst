@@ -9,6 +9,7 @@ Ray Train User Guides
     user-guides/data-loading-preprocessing
     user-guides/using-gpus
     user-guides/persistent-storage
+    user-guides/monitor-your-application
     user-guides/monitoring-logging
     user-guides/checkpoints
     user-guides/asynchronous-validation

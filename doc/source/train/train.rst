@@ -16,7 +16,6 @@ Ray Train: Scalable Model Training
     User Guides <user-guides>
     Examples <examples>
     Benchmarks <benchmarks>
-    Monitor your Application <monitor-your-application>
     api/api
 
 
