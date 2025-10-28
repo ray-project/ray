@@ -52,7 +52,7 @@ steps:
     key: lint-medium
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.9
+    job_env: docbuild-py3.10
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:

@@ -5,13 +5,15 @@ depends_on:
   - ray-dashboard-build
 steps:
   # builds
-  - name: minbuild-ml
-    label: "wanda: minbuild-ml-py39"
+  - name: minbuild-ml-multipy
+    label: "wanda: minbuild-ml-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
     env:
-      PYTHON_VERSION: "3.9"
+      PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: ml
+    matrix:
+      - "3.10"
     tags: cibase
 
   - name: mlbuild
@@ -235,9 +237,10 @@ steps:
       - python ./ci/env/check_minimal_install.py
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 2
-        --build-name minbuild-ml-py3.9
+        --build-name minbuild-ml-py3.10
+        --python-version 3.10
         --only-tags minimal
-    depends_on: [ "minbuild-ml", "forge" ]
+    depends_on: [ "minbuild-ml-multipy", "forge" ]
 
   - label: ":train: ml: doc tests"
     tags:
