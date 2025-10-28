@@ -4571,6 +4571,7 @@ class AlgorithmConfig(_Config):
                     rl_module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
+                    model_config=current_rl_module_spec.model_config,
                 )
 
             # Default is multi-agent and user wants to override it -> Don't use the
