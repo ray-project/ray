@@ -141,10 +141,19 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   task_event.set_job_id(event.job_id());
 
   rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
-  task_state_update->set_node_id(event.node_id());
-  task_state_update->set_worker_id(event.worker_id());
-  task_state_update->set_worker_pid(event.worker_pid());
-  *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
+  if (!event.node_id().empty()) {
+    task_state_update->set_node_id(event.node_id());
+  }
+  if (!event.worker_id().empty()) {
+    task_state_update->set_worker_id(event.worker_id());
+  }
+  // worker pid can never be 0
+  if (event.worker_pid() != 0) {
+    task_state_update->set_worker_pid(event.worker_pid());
+  }
+  if (event.has_ray_error_info()) {
+    *task_state_update->mutable_error_info() = std::move(*event.mutable_ray_error_info());
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
@@ -193,7 +202,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event) {
   task_event.set_attempt_number(event.attempt_number());
   task_event.set_job_id(event.job_id());
 
-  *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  if (event.has_profile_events()) {
+    *task_event.mutable_profile_events() = std::move(*event.mutable_profile_events());
+  }
   return task_event;
 }
 

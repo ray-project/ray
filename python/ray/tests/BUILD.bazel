@@ -581,6 +581,7 @@ py_test_module_list(
         "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
+        "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
         "test_wait.py",
