@@ -101,7 +101,7 @@ void RaySyncer::Connect(const std::string &node_id,
                     io_context_,
                     [this, remote_node_id, channel]() {
                       RAY_LOG(INFO).WithField(NodeID::FromBinary(remote_node_id))
-                          << "Connection is broken. Reconnect to node.";
+                          << "Connection to the node was broken, reconnecting.";
                       Connect(remote_node_id, channel);
                     },
                     /* delay_microseconds = */ std::chrono::milliseconds(2000));

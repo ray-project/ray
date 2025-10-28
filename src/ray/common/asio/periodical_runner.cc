@@ -27,7 +27,6 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
     : io_service_(io_service) {}
 
 PeriodicalRunner::~PeriodicalRunner() {
-  RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
   absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
