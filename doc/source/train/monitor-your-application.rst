@@ -2,7 +2,10 @@
 
 System metrics
 --------------
-Ray Train exports a number of system metrics, which provide insight into the state of Ray Train runs.
+Ray Train exports Prometheus metrics for CPU, memory, GPU, disk, and network. You can use these metrics to monitor Ray Train runs.
+The Ray dashboard displays these metrics in Grafana panels.
+
+The following table lists the Prometheus metrics emitted by Ray Train:
 
 .. list-table:: Ray Train Metrics
     :header-rows: 1
@@ -42,7 +45,7 @@ Ray Train exports a number of system metrics, which provide insight into the sta
       - The amount of shared memory per node, in bytes.
     * - `ray_node_gpus_utilization`
       - `instance`, `RayNodeType`, `GpuIndex`, `GpuDeviceName`
-      - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G) and `GpuIndex` is the index of the GPU.
+      - The GPU utilization per GPU as a percentage quantity (0..NGPU*100).
     * - `ray_node_gpus_available`
       - `instance`, `RayNodeType`, `GpuIndex`, `GpuDeviceName`
       - The number of GPUs available per node.
