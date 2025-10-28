@@ -46,12 +46,12 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         self._backpressure_concurrency_ratio = (
             self._data_context.downstream_capacity_backpressure_ratio
         )
-        self._backpressure_max_queued_bundles = (
+        self._backpressure_max_queued_blocks = (
             self._data_context.downstream_capacity_backpressure_max_queued_bundles
         )
         self._backpressure_disabled = (
             self._backpressure_concurrency_ratio is None
-            or self._backpressure_max_queued_bundles is None
+            or self._backpressure_max_queued_blocks is None
         )
 
     def _max_concurrent_tasks(self, op: "PhysicalOperator") -> int:
@@ -69,24 +69,22 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if self._backpressure_disabled:
             return True
         for output_dependency in op.output_dependencies:
-            total_enqueued_input_bundles = self._topology[
+            total_enqueued_blocks = self._topology[
                 output_dependency
-            ].total_enqueued_input_bundles()
+            ].total_enqueued_input_blocks()
 
             avg_inputs_per_task = (
                 output_dependency.metrics.num_task_inputs_processed
                 / max(output_dependency.metrics.num_tasks_finished, 1)
             )
-            outstanding_tasks = total_enqueued_input_bundles / max(
-                avg_inputs_per_task, 1
-            )
+            outstanding_tasks = total_enqueued_blocks / max(avg_inputs_per_task, 1)
             max_allowed_outstanding = (
                 self._max_concurrent_tasks(output_dependency)
                 * self._backpressure_concurrency_ratio
             )
 
             if (
-                total_enqueued_input_bundles > self._backpressure_max_queued_bundles
+                total_enqueued_blocks > self._backpressure_max_queued_blocks
                 and outstanding_tasks > max_allowed_outstanding
             ):
                 return False

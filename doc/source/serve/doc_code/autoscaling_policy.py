@@ -24,6 +24,10 @@ def scheduled_batch_processing_policy(
 
 
 # __begin_custom_metrics_autoscaling_policy__
+from typing import Any, Dict
+from ray.serve.config import AutoscalingContext
+
+
 def custom_metrics_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> tuple[int, Dict[str, Any]]:
@@ -46,8 +50,10 @@ def custom_metrics_autoscaling_policy(
 
 
 # __begin_application_level_autoscaling_policy__
-from ray.serve._private.common import DeploymentID
 from typing import Dict, Tuple
+from ray.serve.config import AutoscalingContext
+
+from ray.serve._private.common import DeploymentID
 from ray.serve.config import AutoscalingContext
 
 
