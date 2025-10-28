@@ -37,6 +37,8 @@ def clean_token_sources():
         original_content = default_token_path.read_text()
         default_token_path.unlink()
 
+    Config.initialize("")
+
     # Reset token caches (both Python and C++)
     reset_token_cache()
 
@@ -54,8 +56,12 @@ def clean_token_sources():
         default_token_path.parent.mkdir(parents=True, exist_ok=True)
         default_token_path.write_text(original_content)
 
+    if ray.is_initialized():
+        ray.shutdown()
+
     # Reset token caches again after test
     reset_token_cache()
+    Config.initialize("")
 
 
 def test_local_cluster_generates_token():
