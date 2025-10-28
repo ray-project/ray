@@ -1031,6 +1031,7 @@ class ServeController:
                     protocol=RequestProtocol.HTTP,
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                    app_name="",
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1041,6 +1042,7 @@ class ServeController:
                         targets=self.proxy_state_manager.get_targets(
                             RequestProtocol.GRPC
                         ),
+                        app_name="",
                     )
                 )
         return target_groups
