@@ -117,26 +117,26 @@ ray.get(test_task.remote())
 
 * `example_actor.py` is a Python script that creates a simple actor requiring a node with the`ray.io/accelerator-type: A100` label. Ray sets the `ray.io/accelerator-type` label by default when it can detect the underlying compute.
 ```py
-  import ray
-  @ray.remote(num_gpus=1, label_selector={"ray.io/accelerator-type": "A100"})
-  class Actor:
-    def ready(self):
-      return True
-  ray.init()
-  my_actor = Actor.remote()
-  ray.get(my_actor.ready.remote())
+import ray
+@ray.remote(num_gpus=1, label_selector={"ray.io/accelerator-type": "A100"})
+class Actor:
+  def ready(self):
+    return True
+ray.init()
+my_actor = Actor.remote()
+ray.get(my_actor.ready.remote())
 ```
 
 * `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but NOT `ray.io/region: us-central2`. Since the strategy is "SPREAD", we expect two separate Ray nodes with the desired labels to scale up, one node for each placement group bundle.
 ```py
-  import ray
-  from ray.util.placement_group import placement_group
-  ray.init()
-  pg = placement_group(
-    [{"CPU": 1}] * 2,
-    bundle_label_selector=[{"ray.io/market-type": "spot", "ray.io/region": "!us-central2"},] * 2, strategy="SPREAD"
-  )
-  ray.get(pg.ready())
+import ray
+from ray.util.placement_group import placement_group
+ray.init()
+pg = placement_group(
+  [{"CPU": 1}] * 2,
+  bundle_label_selector=[{"ray.io/market-type": "spot", "ray.io/region": "!us-central2"},] * 2, strategy="SPREAD"
+)
+ray.get(pg.ready())
 ```
 
 ### Step 5: Trigger RayCluster label-based scheduling
