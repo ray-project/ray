@@ -130,7 +130,7 @@ def _modify_context_impl(
     # podman run -v /tmp/ray:/tmp/ray
     # --cgroup-manager=cgroupfs --network=host --pid=host --ipc=host
     # --userns=keep-id --env RAY_RAYLET_PID=23478 --env RAY_JOB_ID=$RAY_JOB_ID
-    # --entrypoint python rayproject/ray:nightly-py39
+    # --entrypoint python rayproject/ray:nightly-py310
     container_command_str = " ".join(container_command)
     logger.info(f"Starting worker in container with prefix {container_command_str}")
 
