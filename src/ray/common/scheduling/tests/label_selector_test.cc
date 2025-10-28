@@ -111,6 +111,8 @@ TEST(LabelSelectorTest, ToStringMap) {
       LabelConstraint("team", LabelSelectorOperator::LABEL_NOT_IN, {"A100", "B200"}));
 
   // Validate LabelSelector is correctly converted back to a string map.
+  // We explicitly sort the values, which are stored in an unordered set,
+  // to ensure the string output is deterministic.
   auto string_map = selector.ToStringMap();
 
   ASSERT_EQ(string_map.size(), 4);

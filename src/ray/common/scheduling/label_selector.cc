@@ -45,16 +45,20 @@ google::protobuf::Map<std::string, std::string> LabelSelector::ToStringMap() con
     const std::string &key = constraint.GetLabelKey();
     const auto &values = constraint.GetLabelValues();
 
+    // Sort the values for deterministic output.
+    std::vector<std::string> sorted_values(values.begin(), values.end());
+    std::sort(sorted_values.begin(), sorted_values.end());
+
     std::string value_str;
     if (constraint.GetOperator() == LabelSelectorOperator::LABEL_IN) {
       if (values.size() == 1) {
-        value_str = *values.begin();
+        value_str = sorted_values[0];
       } else {
         value_str = "in(" + absl::StrJoin(values, ",") + ")";
       }
     } else if (constraint.GetOperator() == LabelSelectorOperator::LABEL_NOT_IN) {
       if (values.size() == 1) {
-        value_str = "!" + *values.begin();
+        value_str = "!" + sorted_values[0];
       } else {
         value_str = "!in(" + absl::StrJoin(values, ",") + ")";
       }
