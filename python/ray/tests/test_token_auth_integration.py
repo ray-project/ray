@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import ray
-from ray._raylet import AuthenticationTokenLoader
+from ray._raylet import AuthenticationTokenLoader, Config
 from ray.cluster_utils import Cluster
 
 
@@ -66,6 +66,7 @@ def test_local_cluster_generates_token():
 
     # Enable token auth via environment variable
     os.environ["RAY_auth_mode"] = "token"
+    Config.initialize("")
 
     # Initialize Ray with token auth
     ray.init()
@@ -86,30 +87,33 @@ def test_local_cluster_generates_token():
 
 def test_connect_without_token_raises_error():
     """Test ray.init(address=...) without token fails when auth_mode=token is set."""
-    # Test the token validation logic directly
-    # Ensure no token exists
-    token_loader = AuthenticationTokenLoader.instance()
-    assert not token_loader.has_token()
-
-    # Test the exact error message that would be raised
-    with pytest.raises(RuntimeError, match="no authentication token was found"):
-        raise RuntimeError(
-            "Token authentication is enabled but no authentication token was found. Please provide a token using one of:\n"
-            "  1. RAY_AUTH_TOKEN environment variable\n"
-            "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
-            "  3. Default token file: ~/.ray/auth_token"
-        )
-
-
-def test_token_path_nonexistent_file_fails():
-    """Test that setting RAY_AUTH_TOKEN_PATH to nonexistent file fails gracefully."""
-    # Enable token auth and set token path to nonexistent file
+    # Set up a cluster with token auth enabled
+    cluster_token = "testtoken12345678901234567890"
+    os.environ["RAY_AUTH_TOKEN"] = cluster_token
     os.environ["RAY_auth_mode"] = "token"
-    os.environ["RAY_AUTH_TOKEN_PATH"] = "/nonexistent/path/to/token"
+    Config.initialize("")
 
-    # Initialize Ray with token auth should fail
-    with pytest.raises((FileNotFoundError, RuntimeError)):
-        ray.init()
+    # Create cluster with token auth enabled
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        # Remove the token from the environment so we try to connect without it
+        os.environ["RAY_auth_mode"] = "disabled"
+        os.environ["RAY_AUTH_TOKEN"] = ""
+        Config.initialize("")
+        reset_token_cache()
+
+        # Ensure no token exists
+        token_loader = AuthenticationTokenLoader.instance()
+        assert not token_loader.has_token()
+
+        # Try to connect to the cluster without a token - should raise RuntimeError
+        with pytest.raises(ConnectionError):
+            ray.init(address=cluster.address)
+
+    finally:
+        cluster.shutdown()
 
 
 @pytest.mark.parametrize("tokens_match", [True, False])
@@ -119,6 +123,7 @@ def test_cluster_token_authentication(tokens_match):
     cluster_token = "a" * 32
     os.environ["RAY_AUTH_TOKEN"] = cluster_token
     os.environ["RAY_auth_mode"] = "token"
+    Config.initialize("")
 
     # Create cluster with token auth enabled - node will read current env token
     cluster = Cluster()

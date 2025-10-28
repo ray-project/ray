@@ -156,3 +156,18 @@ You can customize the emission of these statistics by overriding `record_routing
 in the definition of the deployment class. The custom request router can then get the
 updated routing stats by looking up the `routing_stats` attribute of the running
 replicas and use it in the routing policy.
+
+
+:::{warning}
+## Gotchas and limitations
+
+When you provide a custom router, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. Once the router becomes more complex, such as depending on other custom modules or packages, you need to ensure those modules are bundled into the Docker image or environment. This is because Ray Serve uses `cloudpickle` to serialize custom routers and it doesn't vendor transitive dependencies—if your router inherits from a superclass in another module or imports custom packages, those must exist in the target environment. Additionally, environment parity matters: differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
+
+### Alternatives for complex routers
+
+When your custom request router has complex dependencies or you want better control over versioning and deployment, you have several alternatives:
+
+- **Use built-in routers**: Consider using the routers shipped with Ray Serve—these are well-tested, production-ready, and guaranteed to work across different environments.
+- **Contribute to Ray Serve**: If your router is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in router by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/_private/request_router/`.
+- **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
+:::
