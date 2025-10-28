@@ -254,7 +254,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
         ray.get_actor("abc")
 
 
-def test_raylet_resubscribe_worker_death(
+def test_raylet_resubscribe_to_worker_death(
     tmp_path, ray_start_regular_with_external_redis
 ):
     """Verify that the Raylet resubscribes to worker death notifications on GCS restart."""
