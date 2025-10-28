@@ -168,10 +168,6 @@ class SerializationContext:
         self._enable_zero_copy_tensors = (
             os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1"
         )
-        if self._enable_zero_copy_tensors:
-            self._zero_copy_maker_key = "_ray_zc_key_"
-            self._zero_copy_maker_value = "_ray_zc_value_"
-            self._zero_copy_payload = "_ray_zc_payload_"
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
