@@ -7,7 +7,7 @@ from ray.llm._internal.serve.config_generator.utils.constants import (
     DEFAULT_DEPLOYMENT_CONFIGS_FILE,
     TEMPLATE_DIR,
 )
-from ray.llm._internal.serve.configs.server_models import GPUType
+from ray.llm._internal.serve.core.configs.llm_config import GPUType
 
 # All practical GPUs
 ALL_GPU_TYPES = [

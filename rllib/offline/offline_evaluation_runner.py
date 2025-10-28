@@ -389,9 +389,11 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -456,7 +458,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property

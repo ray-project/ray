@@ -39,6 +39,9 @@ class TrainFnUtils(ABC):
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ) -> None:
@@ -55,6 +58,9 @@ class TrainFnUtils(ABC):
                 Defaults to uploading the checkpoint synchronously.
                 This works when no checkpoint is provided but is not useful in that case.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            checkpoint_upload_fn: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+                utility for copying to the destination `storage_path`.
             validate_fn: If provided, Ray Train will validate the checkpoint using
                 this function.
             validate_config: Configuration passed to the validate_fn. Can contain info
@@ -136,6 +142,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ) -> None:
@@ -145,6 +154,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_dir_name,
             checkpoint_upload_mode,
             delete_local_checkpoint_after_upload,
+            checkpoint_upload_fn,
             validate_fn,
             validate_config,
         )
@@ -201,6 +211,9 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
     ) -> None:
@@ -245,10 +258,18 @@ _train_fn_utils_lock = threading.Lock()
 
 
 def get_train_fn_utils() -> TrainFnUtils:
+    """Return the Ray Train function utilities.
+
+    Returns:
+        The TrainFnUtils instance for the current worker.
+
+    Raises:
+        RuntimeError: If the Ray Train function utilities are not initialized.
+    """
     global _train_fn_utils
     with _train_fn_utils_lock:
         if _train_fn_utils is None:
-            raise RuntimeError("TrainFnUtils has not been initialized.")
+            raise RuntimeError("Ray Train function utilities not initialized.")
         return _train_fn_utils
 
 

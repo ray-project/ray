@@ -6,14 +6,15 @@ import openai
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
-from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter,
+from ray.llm._internal.serve.core.ingress.ingress import (
+    OpenAiIngress,
+    make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 
 
@@ -38,9 +39,12 @@ def create_llm_config(stream_batching_interval_ms: Optional[int] = None):
 
 
 @pytest.fixture(name="client")
-def create_router(llm_config: LLMConfig):
-    ServerDeployment = LLMServer.as_deployment()
-    RouterDeployment = LLMRouter.as_deployment(llm_configs=[llm_config])
+def create_oai_client(llm_config: LLMConfig):
+    ServerDeployment = serve.deployment(LLMServer)
+
+    ingress_options = OpenAiIngress.get_deployment_options(llm_configs=[llm_config])
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    RouterDeployment = serve.deployment(ingress_cls, **ingress_options)
     server = ServerDeployment.bind(llm_config, engine_cls=MockVLLMEngine)
     router = RouterDeployment.bind(llm_deployments=[server])
     serve.run(router)
@@ -51,7 +55,7 @@ def create_router(llm_config: LLMConfig):
     serve.shutdown()
 
 
-class TestRouter:
+class TestOpenAiIngress:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
     @pytest.mark.parametrize("stream", [True, False])
@@ -163,47 +167,6 @@ class TestRouter:
 
         assert text
 
-    def test_router_with_num_router_replicas_config(self):
-        """Test the router with num_router_replicas config."""
-        # Test with no num_router_replicas config.
-        llm_configs = [
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-            )
-        ]
-        llm_router_deployment = LLMRouter.as_deployment(llm_configs=llm_configs)
-        autoscaling_config = llm_router_deployment._deployment_config.autoscaling_config
-        assert autoscaling_config.min_replicas == 2
-        assert autoscaling_config.initial_replicas == 2
-        assert autoscaling_config.max_replicas == 2
-
-        # Test with num_router_replicas config on multiple llm configs.
-        llm_configs = [
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-                experimental_configs={
-                    "num_router_replicas": 3,
-                },
-            ),
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="llm_model_id",
-                ),
-                experimental_configs={
-                    "num_router_replicas": 5,
-                },
-            ),
-        ]
-        llm_router_deployment = LLMRouter.as_deployment(llm_configs=llm_configs)
-        autoscaling_config = llm_router_deployment._deployment_config.autoscaling_config
-        assert autoscaling_config.min_replicas == 5
-        assert autoscaling_config.initial_replicas == 5
-        assert autoscaling_config.max_replicas == 5
-
     @pytest.mark.asyncio
     async def test_check_health(self, llm_config: LLMConfig):
         """Test health check functionality."""
@@ -214,7 +177,7 @@ class TestRouter:
         server.check_health = MagicMock()
         server.check_health.remote = AsyncMock()
 
-        router = LLMRouter(llm_deployments=[server])
+        router = OpenAiIngress(llm_deployments=[server])
 
         await router.check_health()
 

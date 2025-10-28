@@ -24,7 +24,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -51,7 +50,6 @@ from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
-    BatchFormat,
     Block,
     BlockAccessor,
     CallableClass,
@@ -114,54 +112,25 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    columns = op.cols
-    columns_rename = op.cols_rename
-    exprs = op.exprs
-
     def _project_block(block: Block) -> Block:
         try:
-            block_accessor = BlockAccessor.for_block(block)
-            if not block_accessor.num_rows():
-                return block
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
 
-            # 1. evaluate / add expressions
-            if exprs:
-                block_accessor = BlockAccessor.for_block(block)
-                # Add/update with expression results
-                result_block = block
-                for name, expr in exprs.items():
-                    # Use expr.name if available, otherwise fall back to the dict key name
-                    actual_name = expr.name if expr.name is not None else name
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    # fill_column handles both scalars and arrays
-                    result_block = result_block_accessor.fill_column(
-                        actual_name, result
-                    )
-                block = result_block
-
-            # 2. (optional) column projection
-            if columns:
-                block = BlockAccessor.for_block(block).select(columns)
-
-            # 3. (optional) rename
-            if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
-                )
-
-            return block
+            return eval_projection(op.exprs, block)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
-
     map_transformer = MapTransformer(
         [
-            BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block)),
+            BlockMapTransformFn(
+                _generate_transform_fn_for_map_block(_project_block),
+                disable_block_shaping=(len(op.exprs) == 0),
+            )
         ]
     )
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -200,6 +169,7 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        min_rows_per_bundle=op.target_num_rows_per_block,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
@@ -218,26 +188,24 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    expression = op._filter_expr
+    predicate_expr = op._predicate_expr
     compute = get_compute(op._compute)
-    if expression is not None:
+    if predicate_expr is not None:
 
-        def filter_batch_fn(block: "pa.Table") -> "pa.Table":
-            try:
-                return block.filter(expression)
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        def filter_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                filtered_block = block_accessor.filter(predicate_expr)
+                yield filtered_block
 
         init_fn = None
-        transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(filter_batch_fn),
-            batch_size=None,
-            batch_format=BatchFormat.ARROW,
-            zero_copy_batch=True,
+        transform_fn = BlockMapTransformFn(
+            filter_block_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
-
     else:
         udf_is_callable_class = isinstance(op._fn, CallableClass)
         filter_fn, init_fn = _get_udf(

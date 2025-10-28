@@ -14,92 +14,16 @@
 
 #include <chrono>
 #include <memory>
-#include <vector>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/rpc/tests/grpc_test_common.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
-class TestServiceHandler {
- public:
-  void HandlePing(PingRequest request,
-                  PingReply *reply,
-                  SendReplyCallback send_reply_callback) {
-    RAY_LOG(INFO) << "Got ping request, no_reply=" << request.no_reply();
-    request_count++;
-    while (frozen) {
-      RAY_LOG(INFO) << "Server is frozen...";
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-    RAY_LOG(INFO) << "Handling and replying request.";
-    if (request.no_reply()) {
-      RAY_LOG(INFO) << "No reply!";
-      return;
-    }
-    send_reply_callback(
-        ray::Status::OK(),
-        /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
-        /*reply_failure=*/
-        [this]() {
-          RAY_LOG(INFO) << "Reply failed.";
-          reply_failure_count++;
-        });
-  }
-
-  void HandlePingTimeout(PingTimeoutRequest request,
-                         PingTimeoutReply *reply,
-                         SendReplyCallback send_reply_callback) {
-    while (frozen) {
-      RAY_LOG(INFO) << "Server is frozen...";
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-    RAY_LOG(INFO) << "Handling and replying request.";
-    send_reply_callback(
-        ray::Status::OK(),
-        /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
-        /*reply_failure=*/
-        [this]() {
-          RAY_LOG(INFO) << "Reply failed.";
-          reply_failure_count++;
-        });
-  }
-
-  std::atomic<int> request_count{0};
-  std::atomic<int> reply_failure_count{0};
-  std::atomic<bool> frozen{false};
-};
-
-class TestGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit TestGrpcService(instrumented_io_context &handler_io_service_,
-                           TestServiceHandler &handler)
-      : GrpcService(handler_io_service_), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
-        TestService, Ping, /*max_active_rpcs=*/1, AuthType::NO_AUTH);
-    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
-        TestService, PingTimeout, /*max_active_rpcs=*/1, AuthType::NO_AUTH);
-  }
-
- private:
-  /// The grpc async service object.
-  TestService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  TestServiceHandler &service_handler_;
-};
 
 class TestGrpcServerClientFixture : public ::testing::Test {
  public:
@@ -129,7 +53,8 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           client_io_service_work_(client_io_service_.get_executor());
       client_io_service_.run();
     });
-    client_call_manager_.reset(new ClientCallManager(client_io_service_, false));
+    client_call_manager_.reset(
+        new ClientCallManager(client_io_service_, false, /*local_address=*/""));
     grpc_client_.reset(new GrpcClient<TestService>(
         "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   }
@@ -218,6 +143,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
                                                    false,
+                                                   /*local_address=*/"",
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -253,6 +179,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
                                                    false,
+                                                   /*local_address=*/"",
                                                    ClusterID::Nil(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
@@ -283,8 +210,8 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   // Reinit client with infinite timeout.
-  client_call_manager_.reset(
-      new ClientCallManager(client_io_service_, false, ClusterID::FromRandom()));
+  client_call_manager_.reset(new ClientCallManager(
+      client_io_service_, false, /*local_address=*/"", ClusterID::FromRandom()));
   grpc_client_.reset(new GrpcClient<TestService>(
       "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
   // Send again, this request should be replied. If any leaking happened, this call won't
@@ -323,6 +250,7 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
 }
+
 }  // namespace rpc
 }  // namespace ray
 
