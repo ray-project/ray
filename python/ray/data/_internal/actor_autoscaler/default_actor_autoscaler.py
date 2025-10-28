@@ -132,9 +132,8 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         """Validate autoscaling configuration.
 
         Args:
-            autoscaling_config: The autoscaling configuration to validate.
-            max_actor_concurrency: The maximum concurrency per actor.
-            max_tasks_in_flight_per_actor: The maximum tasks in flight per actor.
+            actor_pool: Actor pool to validate configuration thereof.
+            op: ``PhysicalOperator`` using target actor pool.
         """
         max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
         max_concurrency = actor_pool.max_actor_concurrency()
