@@ -196,7 +196,7 @@ Ray automatically adds labels to nodes to describe aspects like the underlying c
 
 When running on Google Cloud TPUs, Ray automatically detects and adds the following labels. These are critical for scheduling distributed workloads that must span an entire TPU "slice" (a set of interconnected hosts).
 
-* `ray.io/tpu-slice-name`: The name of the TPU Pod or slice. This is used to ensure all workers of a job land on the *same* slice.
+* `ray.io/tpu-slice-name`: The name of the TPU Pod or slice. Ray uses this to ensure all workers of a job land on the *same* slice.
 * `ray.io/tpu-worker-id`: The integer worker ID within the slice.
 * `ray.io/tpu-topology`: The physical topology of the slice.
 * `ray.io/tpu-pod-type`: The TPU pod type, which defines the size and TPU generation such as `v4-8` or `v5p-16`.
