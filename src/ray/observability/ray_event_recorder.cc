@@ -36,6 +36,10 @@ RayEventRecorder::RayEventRecorder(
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);
+  if (!RayConfig::instance().enable_ray_event()) {
+    RAY_LOG(INFO) << "Ray event recording is disabled. Skipping start exporting events.";
+    return;
+  }
   RAY_CHECK(!exporting_started_)
       << "RayEventRecorder::StartExportingEvents() should be called only once.";
   exporting_started_ = true;
@@ -74,6 +78,9 @@ void RayEventRecorder::ExportEvents() {
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
+  if (!RayConfig::instance().enable_ray_event()) {
+    return;
+  }
   if (data_list.size() + buffer_.size() > max_buffer_size_) {
     size_t events_to_remove = data_list.size() + buffer_.size() - max_buffer_size_;
     // Record dropped events from the buffer

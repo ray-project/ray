@@ -2,6 +2,7 @@ import copy
 import unittest
 
 import numpy as np
+
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
     PrioritizedEpisodeReplayBuffer,
@@ -353,7 +354,8 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

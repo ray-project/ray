@@ -1,6 +1,8 @@
 import os
 import platform
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from typing import Set
 
@@ -11,6 +13,7 @@ import ray
 import ray._common.utils as utils
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
+from ray._common.test_utils import wait_for_condition
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 # These tests are intended to run in CI inside a container.
@@ -21,7 +24,6 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 # Run these commands locally before running the test suite:
 #
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
-#  echo "+cpu +memory" | sudo tee -a /sys/fs/cgroup/resource_isolation_test/cgroup.subtree_control
 #  sudo chown -R $(whoami):$(whoami) /sys/fs/cgroup/resource_isolation_test/
 #  sudo chmod -R u+rwx /sys/fs/cgroup/resource_isolation_test/
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
@@ -68,6 +70,22 @@ _TEST_CGROUP = _BASE_CGROUP / "test"
 _LEAF_GROUP = _BASE_CGROUP / "leaf"
 
 _MOUNT_FILE_PATH = "/proc/mounts"
+
+# The names are here to help debug test failures. Tests should
+# only use the size of this list. These processes are expected to be moved
+# into the the system cgroup.
+_EXPECTED_DASHBOARD_MODULES = [
+    "ray.dashboard.modules.usage_stats.usage_stats_head.UsageStatsHead",
+    "ray.dashboard.modules.metrics.metrics_head.MetricsHead",
+    "ray.dashboard.modules.data.data_head.DataHead",
+    "ray.dashboard.modules.event.event_head.EventHead",
+    "ray.dashboard.modules.job.job_head.JobHead",
+    "ray.dashboard.modules.node.node_head.NodeHead",
+    "ray.dashboard.modules.reporter.reporter_head.ReportHead",
+    "ray.dashboard.modules.serve.serve_head.ServeHead",
+    "ray.dashboard.modules.state.state_head.StateHead",
+    "ray.dashboard.modules.train.train_head.TrainHead",
+]
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -224,7 +242,7 @@ def cleanup_test_suite():
         ) as base_subtree_control_file:
             base_subtree_control_file.write("-cpu -memory")
             base_subtree_control_file.flush()
-        # 2) Move processes back into the leaf cgroup.
+        # 2) Move processes back into the root cgroup.
         with open(_ROOT_CGROUP / "cgroup.procs", "w") as root_procs_file, open(
             _LEAF_GROUP / "cgroup.procs", "r"
         ) as leaf_procs_file:
@@ -232,6 +250,15 @@ def cleanup_test_suite():
             for line in leaf_cgroup_lines:
                 root_procs_file.write(line.strip())
                 root_procs_file.flush()
+        # 3) Move the current process back into the _ROOT_CGROUP
+        with open(_ROOT_CGROUP / "cgroup.procs", "w") as root_procs_file, open(
+            _TEST_CGROUP / "cgroup.procs", "r"
+        ) as test_procs_file:
+            test_cgroup_lines = test_procs_file.readlines()
+            for line in test_cgroup_lines:
+                root_procs_file.write(line.strip())
+                root_procs_file.flush()
+
         # 3) Delete the cgroups.
         os.rmdir(_LEAF_GROUP)
         os.rmdir(_TEST_CGROUP)
@@ -312,6 +339,35 @@ def assert_cgroup_hierarchy_exists_for_node(
         )
 
 
+def assert_process_in_not_moved_into_ray_cgroups(
+    node_id: str,
+    resource_isolation_config: ResourceIsolationConfig,
+    pid: str,
+):
+    """Asserts that the system processes were created in the correct cgroup.
+
+    Args:
+        node_id: used to construct the path of the cgroup subtree
+        resource_isolation_config: used to construct the path of the cgroup
+            subtree
+        pid:
+    """
+    base_cgroup_for_node = resource_isolation_config.cgroup_path
+    node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
+    cgroup_procs_file_paths = [
+        node_cgroup / "system" / "leaf" / "cgroup.procs",
+        node_cgroup / "user" / "non-ray" / "cgroup.procs",
+        node_cgroup / "user" / "workers" / "cgroup.procs",
+    ]
+    found_pid = False
+    for file_path in cgroup_procs_file_paths:
+        with open(file_path, "r") as cgroup_procs_file:
+            lines = cgroup_procs_file.readlines()
+            for line in lines:
+                found_pid = found_pid or (line.strip() == pid)
+    assert not found_pid
+
+
 def assert_system_processes_are_in_system_cgroup(
     node_id: str,
     resource_isolation_config: ResourceIsolationConfig,
@@ -336,7 +392,7 @@ def assert_system_processes_are_in_system_cgroup(
         lines = cgroup_procs_file.readlines()
         assert (
             len(lines) == expected_count
-        ), f"Expected only system process passed into the raylet. Found {lines}"
+        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard module in which case you need to update _EXPECTED_DASHBOARD_MODULES"
 
 
 def assert_worker_processes_are_in_workers_cgroup(
@@ -380,6 +436,30 @@ def assert_cgroup_hierarchy_cleaned_up_for_node(
     assert (
         not node_cgroup.is_dir()
     ), f"Root cgroup node at {node_cgroup} was not deleted. Cgroup cleanup failed. You may have to manually delete the cgroup subtree."
+
+
+def create_driver_in_internal_namespace():
+    """
+    Returns a driver process that is a part of the '_ray_internal_' namespace.
+    If the driver is part of the '_ray_internal_' namespace, it will NOT
+    be moved into the workers cgroup by the raylet when it registers.
+    The Dashboard ServeHead and JobHead modules are drivers that are
+    technically system processes and use the '_ray_internal_' namespace and therefore
+    must not be moved into the workers cgroup on registration.
+    """
+
+    driver_code = textwrap.dedent(
+        """
+        import ray
+        import time
+        ray.init(namespace='_ray_internal_')
+        time.sleep(3600)
+    """
+    ).strip()
+
+    second_driver_proc = subprocess.Popen(["python", "-c", driver_code])
+
+    return second_driver_proc
 
 
 # The following tests check for cgroup setup and cleanup with the
@@ -431,9 +511,6 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     assert result.exit_code == 0
     resource_isolation_config.add_object_store_memory(object_store_memory)
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
-    assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
-    )
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -443,15 +520,30 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         def get_pid(self):
             return os.getpid()
 
+    second_driver_proc = create_driver_in_internal_namespace()
+
     actor_refs = []
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
+
+    assert_system_processes_are_in_system_cgroup(
+        node_id,
+        resource_isolation_config,
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START) + len(_EXPECTED_DASHBOARD_MODULES),
+    )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
+    assert_process_in_not_moved_into_ray_cgroups(
+        node_id, resource_isolation_config, second_driver_proc.pid
+    )
+
+    second_driver_proc.kill()
+    wait_for_condition(lambda: second_driver_proc.wait(), timeout=5)
     runner.invoke(scripts.stop)
     assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
 
@@ -492,9 +584,6 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         object_store_memory=object_store_memory,
     )
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
-    assert_system_processes_are_in_system_cgroup(
-        node_id, resource_isolation_config, len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
-    )
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -508,8 +597,14 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     for _ in range(num_cpus):
         actor_refs.append(Actor.remote())
     worker_pids = set()
+    worker_pids.add(str(os.getpid()))
     for actor in actor_refs:
         worker_pids.add(str(ray.get(actor.get_pid.remote())))
+    assert_system_processes_are_in_system_cgroup(
+        node_id,
+        resource_isolation_config,
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT) + len(_EXPECTED_DASHBOARD_MODULES),
+    )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
