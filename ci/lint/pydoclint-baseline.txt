@@ -194,8 +194,6 @@ python/ray/_private/services.py
     DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
-    DOC101: Function `determine_plasma_store_config`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `determine_plasma_store_config`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [temp_dir: str].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.
@@ -1483,9 +1481,6 @@ python/ray/llm/_internal/common/utils/cloud_utils.py
 python/ray/llm/_internal/common/utils/download_utils.py
     DOC201: Function `get_model_location_on_disk` does not have a return section in docstring
     DOC201: Method `CloudModelDownloader.get_model` does not have a return section in docstring
---------------------
-python/ray/llm/_internal/serve/configs/openai_api_models.py
-    DOC201: Function `to_model_metadata` does not have a return section in docstring
 --------------------
 python/ray/llm/_internal/serve/observability/metrics/middleware.py
     DOC106: Function `_get_route_details`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
