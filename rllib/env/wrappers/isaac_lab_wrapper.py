@@ -1,7 +1,3 @@
-from isaaclab.app import AppLauncher
-app_launcher = AppLauncher()
-simulation_app = app_launcher.app
-
 import logging
 import importlib
 from typing import Union, Optional
@@ -10,7 +6,19 @@ import numpy as np
 from ray.rllib.utils.annotations import PublicAPI
 
 
-from isaaclab.envs import DirectRLEnvCfg, ManagerBasedRLEnvCfg
+# Lazy initialization of simulation app to avoid eager initialization
+_simulation_app = None
+_app_launcher = None
+
+
+def _get_simulation_app():
+    """Lazy initialization of the Isaac Lab simulation app."""
+    global _simulation_app, _app_launcher
+    if _simulation_app is None:
+        from isaaclab.app import AppLauncher
+        _app_launcher = AppLauncher()
+        _simulation_app = _app_launcher.app
+    return _simulation_app
 
 
 def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"):
@@ -33,8 +41,11 @@ def _get_cfg_entry_point(env_name, env_cfg_entry_point_key="env_cfg_entry_point"
 class IsaacLabEnv(gym.Env):
     """A `gym.Env` wrapper for the `Isaac_lab` ."""
 
-    def __init__(self, env_name: str, env_cfg: Optional[Union[DirectRLEnvCfg, ManagerBasedRLEnvCfg]] = None):
+    def __init__(self, env_name: str, env_cfg: dict = None):
         super(IsaacLabEnv, self).__init__() 
+        # Lazy initialization of simulation app when actually creating the environment
+        _get_simulation_app()
+        
         self._env_cfg = _get_cfg_entry_point(env_name)
         
         # Merge configurations: env_cfg takes precedence over self._env_cfg
@@ -103,7 +114,17 @@ class IsaacLabEnv(gym.Env):
         return self._env.unwrapped
     
     def close(self):
-        return self._env.close()
+        self._env.close()
+        # Close the simulation app if it was initialized
+        global _simulation_app, _app_launcher
+        if _simulation_app is not None:
+            try:
+                _simulation_app.close()
+            except Exception:
+                pass  # May already be closed
+            finally:
+                _simulation_app = None
+                _app_launcher = None
     
     def seed(self, seed: Optional[int] = None):
         return self._env.seed(seed=seed)
@@ -133,4 +154,3 @@ if __name__ == "__main__":
     action = env.action_space.sample()
     print(f"[INFO] Sampled action shape: {action.shape if hasattr(action, 'shape') else type(action)}")
     env.close()
-    simulation_app.close()
