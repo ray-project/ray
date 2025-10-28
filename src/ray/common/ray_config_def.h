@@ -533,6 +533,11 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 /// using OpenCensus.
 RAY_CONFIG(bool, enable_open_telemetry, false)
 
+/// Whether to disable the OpenTelemetry SDK logs. They are disabled by default
+/// to prevent noisy gRPC errors during shutdown.
+/// See https://github.com/ray-project/ray/issues/58256 for details.
+RAY_CONFIG(bool, disable_open_telemetry_sdk_log, true)
+
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.
 RAY_CONFIG(bool, enable_ray_event, false)

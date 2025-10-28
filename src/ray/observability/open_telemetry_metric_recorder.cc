@@ -17,6 +17,7 @@
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
 #include <opentelemetry/nostd/variant.h>
+#include <opentelemetry/sdk/common/global_log_handler.h>
 #include <opentelemetry/sdk/metrics/aggregation/histogram_aggregation.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h>
 #include <opentelemetry/sdk/metrics/instruments.h>
@@ -88,7 +89,10 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
 }
 
 OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
-  // Default constructor
+  if (RayConfig::instance().disable_open_telemetry_sdk_log()) {
+    opentelemetry::sdk::common::internal_log::GlobalLogHandler::SetLogLevel(
+        opentelemetry::sdk::common::internal_log::LogLevel::None);
+  }
   meter_provider_ = std::make_shared<opentelemetry::sdk::metrics::MeterProvider>();
   opentelemetry::metrics::Provider::SetMeterProvider(
       opentelemetry::nostd::shared_ptr<opentelemetry::metrics::MeterProvider>(
