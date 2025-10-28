@@ -134,8 +134,14 @@ def _walk_and_transform(
                 for k, v in obj.__dict__.items()
             }
             result = new_obj
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(
+                f"Failed to reconstruct object of type {typ.__module__}.{typ.__qualname__}. "
+                f"Falling back to original object without transforming its contents. "
+                f"This may lead to inconsistent tensor states. Error: {e}",
+                TensorObjRestoreWarning,
+                stacklevel=3,
+            )
 
     # Final cache update
     _cache[obj_id] = result
