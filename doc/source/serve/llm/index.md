@@ -37,6 +37,7 @@ Quickstart <quick-start>
 Examples <examples>
 User Guides <user-guides/index>
 Architecture <architecture/index>
+Benchmarks <benchmarks>
 Troubleshooting <troubleshooting>
 ```
 
