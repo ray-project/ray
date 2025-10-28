@@ -1,4 +1,4 @@
-.. _monitoring-your-application:
+.. _monitor-your-application:
 
 Ray Train metrics 
 --------------
