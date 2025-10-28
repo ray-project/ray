@@ -1,6 +1,4 @@
-import logging
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -9,304 +7,391 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators.map_operator import Project
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data.expressions import Expr
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _ColumnReferenceCollector,
+    _ColumnRefRebindingVisitor,
+    _is_col_expr,
+)
+from ray.data.expressions import (
+    AliasExpr,
+    ColumnExpr,
+    Expr,
+    StarExpr,
+)
 
-logger = logging.getLogger(__name__)
+
+def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
+    """
+    Extract all column names referenced by the given expressions.
+
+    Recursively traverses expression trees to find all ColumnExpr nodes
+    and collects their names.
+
+    Example: For expression "col1 + col2", returns {"col1", "col2"}
+    """
+    # If any expression is star(), we need all columns
+    if any(isinstance(expr, StarExpr) for expr in exprs):
+        # TODO (goutam): Instead of using None to refer to All columns, resolve the AST against the schema.
+        # https://github.com/ray-project/ray/issues/57720
+        return None
+
+    collector = _ColumnReferenceCollector()
+    for expr in exprs or []:
+        collector.visit(expr)
+
+    return collector.get_column_refs()
 
 
-@dataclass(frozen=True)
-class _ProjectSpec:
-    cols: Optional[List[str]]
-    cols_remap: Optional[Dict[str, str]]
-    exprs: Optional[Dict[str, Expr]]
+def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
+    """
+    Check if an expression is a simple column rename.
+
+    Returns (source_name, target_name) if the expression is of form:
+        col("source").alias("dest")
+
+    Returns None for other expression types.
+    """
+    if (
+        isinstance(expr, AliasExpr)
+        and isinstance(expr.expr, ColumnExpr)
+        and expr._is_rename
+    ):
+        target_name = expr.name
+        source_name = expr.expr.name
+        return source_name, target_name
+
+    return None
+
+
+def _analyze_upstream_project(
+    upstream_project: Project,
+) -> Tuple[Set[str], dict[str, Expr], Set[str]]:
+    """
+    Analyze what the upstream project produces and identifies removed columns.
+
+    Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
+    """
+    output_column_names = {
+        expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
+    }
+
+    # Compose column definitions in the form of a mapping of
+    #   - Target column name
+    #   - Target expression
+    output_column_defs = {
+        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
+    }
+
+    # Identify upstream input columns removed by renaming (ie not propagated into
+    # its output)
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(
+        upstream_project.exprs
+    )
+
+    return (
+        output_column_names,
+        output_column_defs,
+        set(upstream_column_renaming_map.keys()),
+    )
+
+
+def _validate_fusion(
+    downstream_project: Project,
+    upstream_has_all: bool,
+    upstream_output_columns: Set[str],
+    removed_by_renames: Set[str],
+) -> Tuple[bool, Set[str]]:
+    """
+    Validate if fusion is possible without rewriting expressions.
+
+    Args:
+        downstream_project: The downstream Project operator
+        upstream_has_all: True if the upstream Project has all columns, False otherwise
+        upstream_output_columns: Set of column names that are available in the upstream Project
+        removed_by_renames: Set of column names that are removed by renames in the upstream Project
+
+    Returns:
+        Tuple of (is_valid, missing_columns)
+        - is_valid: True if all expressions can be fused, False otherwise
+        - missing_columns: Set of column names that are referenced but not available
+
+    Example: Downstream refs "x" but upstream renamed "x" to "y" and dropped "x"
+             → (False, {"x"})
+    """
+    missing_columns = set()
+
+    for expr in downstream_project.exprs:
+        if isinstance(expr, StarExpr):
+            continue
+
+        column_refs = _collect_referenced_columns([expr])
+        column_refs_set = set(column_refs or [])
+
+        columns_from_original = column_refs_set - (
+            column_refs_set & upstream_output_columns
+        )
+
+        # Validate accessibility
+        if not upstream_has_all and columns_from_original:
+            # Example: Upstream selects ["a", "b"], Downstream refs "c" → can't fuse
+            missing_columns.update(columns_from_original)
+
+        if any(col in removed_by_renames for col in columns_from_original):
+            # Example: Upstream renames "x" to "y" (dropping "x"), Downstream refs "x" → can't fuse
+            removed_cols = {
+                col for col in columns_from_original if col in removed_by_renames
+            }
+            missing_columns.update(removed_cols)
+
+    is_valid = len(missing_columns) == 0
+    return is_valid, missing_columns
+
+
+def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
+    """
+    Attempt to merge two consecutive Project operations into one.
+
+    Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
+    """
+    upstream_has_star: bool = upstream_project.has_star_expr()
+
+    # TODO add validations that
+    #   - exprs only depend on input attrs (ie no dep on output of other exprs)
+
+    # Analyze upstream
+    (
+        upstream_output_cols,
+        upstream_column_defs,
+        upstream_input_cols_removed,
+    ) = _analyze_upstream_project(upstream_project)
+
+    # Validate fusion possibility
+    is_valid, missing_columns = _validate_fusion(
+        downstream_project,
+        upstream_has_star,
+        upstream_output_cols,
+        upstream_input_cols_removed,
+    )
+
+    if not is_valid:
+        # Raise KeyError to match expected error type in tests
+        raise KeyError(
+            f"Column(s) {sorted(missing_columns)} not found. "
+            f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
+        )
+
+    # Following invariants are upheld for each ``Project`` logical op:
+    #
+    #   1. ``Project``s list of expressions are bound to op's input columns **only**
+    #   (ie there could be no inter-dependency b/w expressions themselves)
+    #
+    #   2. `Each of expressions on the `Project``s list constitutes an output
+    #   column definition, where column's name is derived from ``expr.name`` and
+    #   column itself is derived by executing that expression against the op's
+    #   input block.
+    #
+    # Therefore to abide by and satisfy aforementioned invariants, when fusing
+    # 2 ``Project`` operators, following scenarios are considered:
+    #
+    #   1. Composition: downstream including (and potentially renaming) upstream
+    #      output columns (this is the case when downstream holds ``StarExpr``).
+    #
+    #   2. Projection: downstream projecting upstream output columns (by for ex,
+    #      only selecting & transforming some of the upstream output columns).
+    #
+
+    # Upstream output column refs inside downstream expressions need to be bound
+    # to upstream output column definitions to satisfy invariant #1 (common for both
+    # composition/projection cases)
+    v = _ColumnRefRebindingVisitor(upstream_column_defs)
+
+    rebound_downstream_exprs = [
+        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
+    ]
+
+    if not downstream_project.has_star_expr():
+        # Projection case: this is when downstream is a *selection* (ie, not including
+        # the upstream columns with ``StarExpr``)
+        #
+        # Example:
+        #   Upstream: Project([col("a").alias("b")])
+        #   Downstream: Project([col("b").alias("c")])
+        #
+        #   Result: Project([col("a").alias("c")])
+        new_exprs = rebound_downstream_exprs
+    else:
+        # Composition case: downstream has ``StarExpr`` (entailing that downstream
+        # output will be including all of the upstream output columns)
+        #
+        # Example 1:
+        #   Upstream: [star(), col("a").alias("b")],
+        #   Downstream: [star(), col("b").alias("c")]
+        #
+        #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
+        #
+        # Example 2:
+        #   Input (columns): ["a", "b"]
+        #   Upstream: [star({"b": "z"}), col("a").alias("x")],
+        #   Downstream: [star({"x": "y"}), col("z")]
+        #
+        #   Result: [star(), col("a").alias("y"), col("b").alias("z")]
+
+        # Extract downstream's input column rename map (downstream inputs are
+        # upstream's outputs)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(
+            downstream_project.exprs
+        )
+        # Collect upstream output column expression "projected" to become
+        # downstream expressions
+        projected_upstream_output_col_exprs = []
+
+        # When fusing 2 projections
+        for e in upstream_project.exprs:
+            # NOTE: We have to filter out upstream output columns that are
+            #       being *renamed* by downstream expression
+            if e.name not in downstream_input_column_rename_map:
+                projected_upstream_output_col_exprs.append(e)
+
+        new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
+
+    return Project(
+        upstream_project.input_dependency,
+        exprs=new_exprs,
+        ray_remote_args=downstream_project._ray_remote_args,
+    )
+
+
+def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
+    return [e for e in exprs if not isinstance(e, StarExpr)]
 
 
 class ProjectionPushdown(Rule):
-    """Optimization rule that pushes down projections across the graph.
+    """
+    Optimization rule that pushes projections (column selections) down the query plan.
 
-    This rule looks for `Project` operators that are immediately
-    preceded by a `Read` operator and sets the
-    projected columns on the `Read` operator.
-
-    If there are redundant Project operators, it removes the `Project` operator from
-    the graph.
+    This rule performs two optimizations:
+    1. Fuses consecutive Project operations to eliminate redundant projections
+    2. Pushes projections into data sources (e.g., Read operations) to enable
+       column pruning at the storage layer
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        new_dag = dag._apply_transform(self._pushdown_project)
-
+        new_dag = dag._apply_transform(self._try_fuse_projects)
+        new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
-    def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
-        if isinstance(op, Project):
-            # Push-down projections into read op
-            if cls._supports_projection_pushdown(op):
-                project_op: Project = op
-                target_op: LogicalOperatorSupportsProjectionPushdown = (
-                    op.input_dependency
-                )
+    def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
+        """
+        Optimize a single Project operator.
 
-                return cls._try_combine(target_op, project_op)
+        Steps:
+        1. Iteratively fuse with upstream Project operations
+        2. Push the resulting projection into the data source if possible
+        """
+        if not isinstance(op, Project):
+            return op
 
-            # Otherwise, fuse projections into a single op
-            elif isinstance(op.input_dependency, Project):
-                outer_op: Project = op
-                inner_op: Project = op.input_dependency
+        # Step 1: Iteratively fuse with upstream Project operations
+        current_project: Project = op
 
-                return cls._fuse(inner_op, outer_op)
+        if not isinstance(current_project.input_dependency, Project):
+            return op
 
-        return op
+        upstream_project: Project = current_project.input_dependency  # type: ignore[assignment]
+
+        fused = _try_fuse(upstream_project, current_project)
+
+        return fused
 
     @classmethod
-    def _supports_projection_pushdown(cls, op: Project) -> bool:
-        # NOTE: Currently only projecting into Parquet is supported
-        input_op = op.input_dependency
-        return (
+    def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
+
+        if not isinstance(op, Project):
+            return op
+
+        current_project: Project = op
+
+        # Step 2: Push projection into the data source if supported
+        input_op = current_project.input_dependency
+        if (
             isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
             and input_op.supports_projection_pushdown()
-        )
+        ):
+            if current_project.has_star_expr():
+                # If project has a star, then projection is not feasible
+                required_columns = None
+            else:
+                # Otherwise, collect required columns to push projection down
+                # into the reader
+                required_columns = _collect_referenced_columns(current_project.exprs)
 
-    @staticmethod
-    def _fuse(inner_op: Project, outer_op: Project) -> Project:
-        # Combine expressions from both operators
-        combined_exprs = _combine_expressions(inner_op.exprs, outer_op.exprs)
-
-        # Only combine projection specs if there are no expressions
-        # When expressions are present, they take precedence
-        if combined_exprs:
-            # When expressions are present, preserve column operations from outer operation
-            # The logical order is: expressions first, then column operations
-            outer_cols = outer_op.cols
-            outer_cols_rename = outer_op.cols_rename
-
-            # If outer operation has no column operations, fall back to inner operation
-            if outer_cols is None and outer_cols_rename is None:
-                outer_cols = inner_op.cols
-                outer_cols_rename = inner_op.cols_rename
-
-            return Project(
-                inner_op.input_dependency,
-                cols=outer_cols,
-                cols_rename=outer_cols_rename,
-                exprs=combined_exprs,
-                # Give precedence to outer operator's ray_remote_args
-                ray_remote_args={
-                    **inner_op._ray_remote_args,
-                    **outer_op._ray_remote_args,
-                },
-            )
-        else:
-            # Fall back to original behavior for column-only projections
-            inner_op_spec = _get_projection_spec(inner_op)
-            outer_op_spec = _get_projection_spec(outer_op)
-
-            new_spec = _combine_projection_specs(
-                prev_spec=inner_op_spec, new_spec=outer_op_spec
+            # Check if it's a simple projection that could be pushed into
+            # read as a whole
+            is_projection = all(
+                _is_col_expr(expr) for expr in _filter_out_star(current_project.exprs)
             )
 
-            return Project(
-                inner_op.input_dependency,
-                cols=new_spec.cols,
-                cols_rename=new_spec.cols_remap,
-                exprs=None,
-                ray_remote_args={
-                    **inner_op._ray_remote_args,
-                    **outer_op._ray_remote_args,
-                },
-            )
+            if is_projection:
+                # NOTE: We only can rename output columns when it's a simple
+                #       projection and Project operator is discarded (otherwise
+                #       it might be holding expression referencing attributes
+                #       by original their names prior to renaming)
+                #
+                # TODO fix by instead rewriting exprs
+                output_column_rename_map = _extract_input_columns_renaming_mapping(
+                    current_project.exprs
+                )
 
-    @staticmethod
-    def _try_combine(
-        target_op: LogicalOperatorSupportsProjectionPushdown,
-        project_op: Project,
-    ) -> LogicalOperator:
-        # For now, don't push down expressions into `Read` operators
-        # Only handle traditional column projections
-        if project_op.exprs:
-            # Cannot push expressions into `Read`, return unchanged
-            return project_op
+                # Apply projection of columns to the read op
+                return input_op.apply_projection(
+                    required_columns, output_column_rename_map
+                )
+            else:
+                # Otherwise just apply projection without renaming
+                projected_input_op = input_op.apply_projection(required_columns, None)
 
-        target_op_spec = _get_projection_spec(target_op)
-        project_op_spec = _get_projection_spec(project_op)
+                # Has transformations: Keep Project on top of optimized Read
+                return Project(
+                    projected_input_op,
+                    exprs=current_project.exprs,
+                    ray_remote_args=current_project._ray_remote_args,
+                )
 
-        new_spec = _combine_projection_specs(
-            prev_spec=target_op_spec, new_spec=project_op_spec
-        )
-
-        logger.debug(
-            f"Pushing projection down into read operation "
-            f"projection columns = {new_spec.cols} (before: {target_op_spec.cols}), "
-            f"remap = {new_spec.cols_remap} (before: {target_op_spec.cols_remap})"
-        )
-
-        return target_op.apply_projection(new_spec.cols)
+        return current_project
 
 
-def _combine_expressions(
-    inner_exprs: Optional[Dict[str, Expr]], outer_exprs: Optional[Dict[str, Expr]]
-) -> Optional[Dict[str, Expr]]:
-    """Combine expressions from two Project operators.
-
-    Args:
-        inner_exprs: Expressions from the inner (upstream) Project operator
-        outer_exprs: Expressions from the outer (downstream) Project operator
-
-    Returns:
-        Combined dictionary of expressions, or None if no expressions
+def _extract_input_columns_renaming_mapping(
+    projection_exprs: List[Expr],
+) -> Dict[str, str]:
+    """Fetches renaming mapping of all input columns names being renamed (replaced).
+    Format is source column name -> new column name.
     """
-    if not inner_exprs and not outer_exprs:
-        return None
 
-    combined = {}
-
-    # Add expressions from inner operator
-    if inner_exprs:
-        combined.update(inner_exprs)
-
-    # Add expressions from outer operator
-    if outer_exprs:
-        combined.update(outer_exprs)
-
-    return combined if combined else None
-
-
-def _get_projection_spec(op: Union[Project, Read]) -> _ProjectSpec:
-    assert op is not None
-
-    if isinstance(op, Project):
-        return _ProjectSpec(
-            cols=op.cols,
-            cols_remap=op.cols_rename,
-            exprs=op.exprs,
-        )
-    elif isinstance(op, Read):
-        assert op.supports_projection_pushdown()
-
-        return _ProjectSpec(
-            cols=op.get_current_projection(),
-            cols_remap=None,
-            exprs=None,
-        )
-    else:
-        raise ValueError(
-            f"Operation doesn't have projection spec (supported Project, "
-            f"Read, got: {op.__class__})"
-        )
-
-
-def _combine_projection_specs(
-    prev_spec: _ProjectSpec, new_spec: _ProjectSpec
-) -> _ProjectSpec:
-    combined_cols_remap = _combine_columns_remap(
-        prev_spec.cols_remap,
-        new_spec.cols_remap,
-    )
-
-    # Validate resulting remapping against existing projection (if any)
-    _validate(combined_cols_remap, prev_spec.cols)
-
-    new_projection_cols: Optional[List[str]]
-
-    if prev_spec.cols is None and new_spec.cols is None:
-        # If both projections are unset, resulting is unset
-        new_projection_cols = None
-    elif prev_spec.cols is not None and new_spec.cols is None:
-        # If previous projection is set, but the new unset -- fallback to
-        # existing projection
-        new_projection_cols = prev_spec.cols
-    else:
-        # If new is set (and previous is either set or not)
-        #   - Reconcile new projection
-        #   - Project combined column remapping
-        assert new_spec.cols is not None
-
-        new_projection_cols = new_spec.cols
-
-        # Remap new projected columns into the schema before remapping (from the
-        # previous spec)
-        if prev_spec.cols_remap and new_projection_cols:
-            # Inverse remapping
-            inv_cols_remap = {v: k for k, v in prev_spec.cols_remap.items()}
-            new_projection_cols = [
-                inv_cols_remap.get(col, col) for col in new_projection_cols
-            ]
-
-        prev_cols_set = set(prev_spec.cols or [])
-        new_cols_set = set(new_projection_cols or [])
-
-        # Validate new projection is a proper subset of the previous one
-        if prev_cols_set and new_cols_set and not new_cols_set.issubset(prev_cols_set):
-            raise ValueError(
-                f"Selected columns '{new_cols_set}' needs to be a subset of "
-                f"'{prev_cols_set}'"
-            )
-
-    # Project remaps to only map relevant columns
-    if new_projection_cols is not None and combined_cols_remap is not None:
-        projected_cols_remap = {
-            k: v for k, v in combined_cols_remap.items() if k in new_projection_cols
-        }
-    else:
-        projected_cols_remap = combined_cols_remap
-
-    # Combine expressions from both specs
-    combined_exprs = _combine_expressions(prev_spec.exprs, new_spec.exprs)
-
-    return _ProjectSpec(
-        cols=new_projection_cols, cols_remap=projected_cols_remap, exprs=combined_exprs
+    return dict(
+        [
+            _get_renaming_mapping(expr)
+            for expr in _filter_out_star(projection_exprs)
+            if _is_renaming_expr(expr)
+        ]
     )
 
 
-def _combine_columns_remap(
-    prev_remap: Optional[Dict[str, str]], new_remap: Optional[Dict[str, str]]
-) -> Optional[Dict[str, str]]:
+def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
+    assert _is_renaming_expr(expr)
 
-    if not new_remap and not prev_remap:
-        return None
+    alias: AliasExpr = expr
 
-    new_remap = new_remap or {}
-    base_remap = prev_remap or {}
-
-    filtered_new_remap = dict(new_remap)
-    # Apply new remapping to the base remap
-    updated_base_remap = {
-        # NOTE: We're removing corresponding chained mapping from the remap
-        k: filtered_new_remap.pop(v, v)
-        for k, v in base_remap.items()
-    }
-
-    resolved_remap = dict(updated_base_remap)
-    resolved_remap.update(filtered_new_remap)
-
-    return resolved_remap
+    return alias.expr.name, alias.name
 
 
-def _validate(remap: Optional[Dict[str, str]], projection_cols: Optional[List[str]]):
-    if not remap:
-        return
+def _is_renaming_expr(expr: Expr) -> bool:
+    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
 
-    # Verify that the remapping is a proper bijection (ie no
-    # columns are renamed into the same new name)
-    prev_names_map = {}
-    for prev_name, new_name in remap.items():
-        if new_name in prev_names_map:
-            raise ValueError(
-                f"Identified projections with conflict in renaming: '{new_name}' "
-                f"is mapped from multiple sources: '{prev_names_map[new_name]}' "
-                f"and '{prev_name}'."
-            )
+    assert not is_renaming or isinstance(
+        expr.expr, ColumnExpr
+    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
 
-        prev_names_map[new_name] = prev_name
-
-    # Verify that remapping only references columns available in the projection
-    if projection_cols is not None:
-        invalid_cols = [key for key in remap.keys() if key not in projection_cols]
-
-        if invalid_cols:
-            raise ValueError(
-                f"Identified projections with invalid rename "
-                f"columns: {', '.join(invalid_cols)}"
-            )
+    return is_renaming

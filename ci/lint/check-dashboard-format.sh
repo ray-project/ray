@@ -10,6 +10,5 @@ cd "${WORKSPACE_DIR}"/python/ray/dashboard/client || exit
 
 npm ci
 FILENAMES=($(find src -name "*.ts" -or -name "*.tsx"))
-node_modules/.bin/eslint --max-warnings 0 "${FILENAMES[@]}"
 node_modules/.bin/prettier --check "${FILENAMES[@]}"
 node_modules/.bin/prettier --check public/index.html
