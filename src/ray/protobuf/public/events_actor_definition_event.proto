@@ -16,8 +16,6 @@ syntax = "proto3";
 
 package ray.rpc.events;
 
-import "src/ray/protobuf/common.proto";
-
 message ActorDefinitionEvent {
   // The ID of the actor that was created.
   bytes actor_id = 1;
