@@ -411,16 +411,28 @@ class UnityCatalogConnector:
         *,
         base_url: str,
         token: str,
-        path: str,
+        path: Optional[str] = None,
+        table: Optional[str] = None,
+        table_full_name: Optional[str] = None,
         region: Optional[str] = None,
         data_format: Optional[str] = None,
         custom_datasource: Optional[Type[Datasource]] = None,
         operation: str = "READ",
         reader_kwargs: Optional[Dict] = None,
     ):
+        # Validate that at least one path parameter is provided
+        if path is None and table is None and table_full_name is None:
+            raise ValueError(
+                "Must provide one of: 'path', 'table', or 'table_full_name' parameter. "
+                "Use 'path' for tables (catalog.schema.table) or volumes (catalog.schema.volume/path)."
+            )
+
+        # Determine the actual path to use (priority: path > table > table_full_name)
+        actual_path = path or table or table_full_name
+
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self.path = path
+        self.path = actual_path
         self.data_format = data_format.lower() if data_format else None
         self.custom_datasource = custom_datasource
         self.region = region
@@ -428,7 +440,7 @@ class UnityCatalogConnector:
         self.reader_kwargs = reader_kwargs or {}
 
         # Determine if this is a table or volume path
-        self._is_volume = self._detect_volume_path(path)
+        self._is_volume = self._detect_volume_path(actual_path)
 
         # Warn about volumes private preview status and known issues
         if self._is_volume:
@@ -863,9 +875,9 @@ class UnityCatalogConnector:
             # https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html
             if creds.aws_credentials:
                 env_vars["AWS_ACCESS_KEY_ID"] = creds.aws_credentials.access_key_id
-                env_vars["AWS_SECRET_ACCESS_KEY"] = (
-                    creds.aws_credentials.secret_access_key
-                )
+                env_vars[
+                    "AWS_SECRET_ACCESS_KEY"
+                ] = creds.aws_credentials.secret_access_key
                 env_vars["AWS_SESSION_TOKEN"] = creds.aws_credentials.session_token
                 if self.region:
                     env_vars["AWS_REGION"] = self.region
