@@ -2713,6 +2713,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     // Mark this object as containing other object IDs. The ref counter will
     // keep the inner IDs in scope until the outer one is out of scope.
     if (!contained_object_ids.empty() && !options_.is_local_mode) {
+      // Due to response loss caused by network failures,
+      // this method may be called multiple times for the same return object
+      // but it's fine since AddNestedObjectIds is idempotent.
+      // See https://github.com/ray-project/ray/issues/57997
       reference_counter_->AddNestedObjectIds(
           object_id, contained_object_ids, owner_address);
     }

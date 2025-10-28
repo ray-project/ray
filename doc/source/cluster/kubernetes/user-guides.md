@@ -14,6 +14,7 @@ user-guides/k8s-cluster-setup
 user-guides/storage
 user-guides/config
 user-guides/configuring-autoscaling
+user-guides/label-based-scheduling
 user-guides/kuberay-gcs-ft
 user-guides/kuberay-gcs-persistent-ft
 user-guides/gke-gcs-bucket
