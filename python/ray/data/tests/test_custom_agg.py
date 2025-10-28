@@ -374,7 +374,7 @@ class TestApproximateTopK:
             *[{"word": "cherry"} for _ in range(2)],
         ]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(ApproximateTopK(on="word", top_k_items=2))
+        result = ds.aggregate(ApproximateTopK(on="word", k=2))
         assert result["approx_topk(word)"] == [
             {"word": "apple", "count": 5},
             {"word": "banana", "count": 3},
@@ -388,9 +388,7 @@ class TestApproximateTopK:
             *[{"item": "z"} for _ in range(1)],
         ]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(
-            ApproximateTopK(on="item", top_k_items=2, alias_name="top_items")
-        )
+        result = ds.aggregate(ApproximateTopK(on="item", k=2, alias_name="top_items"))
         assert "top_items" in result
         assert result["top_items"] == [
             {"item": "x", "count": 3},
@@ -407,9 +405,7 @@ class TestApproximateTopK:
         ]
         ds = ray.data.from_items(data)
         result = (
-            ds.groupby("category")
-            .aggregate(ApproximateTopK(on="item", top_k_items=1))
-            .take_all()
+            ds.groupby("category").aggregate(ApproximateTopK(on="item", k=1)).take_all()
         )
 
         result_by_category = {
@@ -423,7 +419,7 @@ class TestApproximateTopK:
         """Test approximate top k when all items are unique."""
         data = [{"id": f"item_{i}"} for i in range(10)]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(ApproximateTopK(on="id", top_k_items=3))
+        result = ds.aggregate(ApproximateTopK(on="id", k=3))
 
         # All items have count 1, so we should get exactly 3 items
         assert len(result["approx_topk(id)"]) == 3
@@ -437,7 +433,7 @@ class TestApproximateTopK:
             {"id": "b"},
         ]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(ApproximateTopK(on="id", top_k_items=5))
+        result = ds.aggregate(ApproximateTopK(on="id", k=5))
 
         # Should only return 2 items since that's all we have
         assert len(result["approx_topk(id)"]) == 2
@@ -454,13 +450,9 @@ class TestApproximateTopK:
         ds = ray.data.from_items(data)
 
         # Test with smaller log_capacity
-        result_small = ds.aggregate(
-            ApproximateTopK(on="id", top_k_items=2, log_capacity=10)
-        )
+        result_small = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=10))
         # Test with larger log_capacity
-        result_large = ds.aggregate(
-            ApproximateTopK(on="id", top_k_items=2, log_capacity=15)
-        )
+        result_large = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=15))
 
         # Both should correctly identify the top 2
         for result in [result_small, result_large]:

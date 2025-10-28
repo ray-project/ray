@@ -1386,7 +1386,7 @@ class ApproximateTopK(AggregateFnV2):
     def __init__(
         self,
         on: str,
-        top_k_items: int,
+        k: int,
         log_capacity: int = 15,
         alias_name: Optional[str] = None,
     ):
@@ -1416,18 +1416,18 @@ class ApproximateTopK(AggregateFnV2):
                     {"word": "cherry"}, {"word": "apple"}
                 ])
 
-                result = ds.aggregate(ApproximateTopK(on="word", top_k_items=2))
+                result = ds.aggregate(ApproximateTopK(on="word", k=2))
                 # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
 
         Args:
             on: The name of the column to aggregate.
-            top_k_items: The number of top items to return.
+            k: The number of top items to return.
             log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
                 Higher values increase accuracy but use more memory. Defaults to 15.
             alias_name: The name of the aggregate. Defaults to None.
         """
 
-        self.top_k_items = top_k_items
+        self.k = k
         self._log_capacity = log_capacity
         self._frequent_strings_sketch = self._require_datasketches()
         super().__init__(
@@ -1464,5 +1464,5 @@ class ApproximateTopK(AggregateFnV2):
         ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
         return [
             {self.get_target_column(): str(item[0]), "count": int(item[1])}
-            for item in frequent_items[: self.top_k_items]
+            for item in frequent_items[: self.k]
         ]
