@@ -51,7 +51,9 @@ def _get_table_location_and_format(
         cursor = connection.cursor()
 
         # Get detailed table information
-        cursor.execute(f"DESCRIBE FORMATTED {table}")
+        # Escape backticks in table name to prevent SQL injection
+        escaped_table = table.replace("`", "``")
+        cursor.execute(f"DESCRIBE FORMATTED `{escaped_table}`")
         rows = cursor.fetchall()
 
         # Parse DESCRIBE FORMATTED output
@@ -205,7 +207,10 @@ def read_hive_table(
 
     # Add partition columns to reader kwargs if available
     if partition_cols and "partitioning" not in reader_kwargs:
+        from ray.data.datasource.partitioning import Partitioning
+
         logger.info(f"Table is partitioned by: {partition_cols}")
+        reader_kwargs["partitioning"] = Partitioning("hive", field_names=partition_cols)
 
     # Add filesystem to reader kwargs if provided
     if filesystem and "filesystem" not in reader_kwargs:
