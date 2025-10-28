@@ -24,7 +24,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -277,8 +276,9 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            # Reset the scheduling loop duration gauge.
-            self._sched_loop_duration_s.set(0, tags={"dataset": self._dataset_id})
+            # Reset the scheduling loop duration gauge + resource manager budgets/usages.
+            self._resource_manager.update_usages()
+            self.update_metrics(0)
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress manager with a finishing message.
@@ -387,7 +387,12 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
         budget = self._resource_manager.get_budget(op)
-        if budget is not None:
+        if budget is None:
+            cpu_budget = 0
+            gpu_budget = 0
+            memory_budget = 0
+            object_store_memory_budget = 0
+        else:
             # Convert inf to -1 to represent unlimited budget in metrics
             cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
             gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
@@ -397,23 +402,23 @@ class StreamingExecutor(Executor, threading.Thread):
                 if math.isinf(budget.object_store_memory)
                 else budget.object_store_memory
             )
-            self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-            self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-            self._memory_budget_gauge.set(memory_budget, tags=tags)
-            self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
+
+        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
+        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
+        self._memory_budget_gauge.set(memory_budget, tags=tags)
+        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
 
     def _update_max_bytes_to_read_metric(
         self, op: PhysicalOperator, tags: Dict[str, str]
     ):
         if self._resource_manager.op_resource_allocator_enabled():
-            ora = self._resource_manager.op_resource_allocator
-            assert isinstance(ora, ReservationOpResourceAllocator)
-            if op in ora._output_budgets:
-                max_bytes_to_read = ora._output_budgets[op]
-                if math.isinf(max_bytes_to_read):
+            resource_allocator = self._resource_manager.op_resource_allocator
+            output_budget_bytes = resource_allocator.get_output_budget(op)
+            if output_budget_bytes is not None:
+                if math.isinf(output_budget_bytes):
                     # Convert inf to -1 to represent unlimited bytes to read
-                    max_bytes_to_read = -1
-                self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
+                    output_budget_bytes = -1
+                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -611,7 +616,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": op_state.total_enqueued_input_bundles(),
+                    "queued_blocks": op_state.total_enqueued_input_blocks(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
