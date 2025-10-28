@@ -730,10 +730,6 @@ class _OutputQueue(ABC):
     def size_bytes(self) -> int:
         pass
 
-    @abstractmethod
-    def __len__(self) -> int:
-        pass
-
 
 class _OrderedOutputQueue(_OutputQueue):
     """An queue that returns finished tasks in submission order."""
@@ -742,7 +738,7 @@ class _OrderedOutputQueue(_OutputQueue):
         self._task_outputs: Dict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_output_index: int = 0
         self._completed_tasks: Set[int] = set()
-        self._size: int = 0
+        self._size_bytes: int = 0
         self._num_blocks: int = 0
 
     def notify_task_output_ready(self, task_index: int, output: RefBundle):
@@ -787,9 +783,6 @@ class _OrderedOutputQueue(_OutputQueue):
     def size_bytes(self) -> int:
         return self._size_bytes
 
-    def __len__(self) -> int:
-        return self._size
-
 
 class _UnorderedOutputQueue(_OutputQueue):
     """An queue that does not guarantee output order of finished tasks."""
@@ -812,9 +805,6 @@ class _UnorderedOutputQueue(_OutputQueue):
         self._num_blocks -= len(next_bundle.blocks)
         self._size_bytes -= next_bundle.size_bytes()
         return next_bundle
-
-    def __len__(self) -> int:
-        return len(self._queue)
 
     def num_blocks(self) -> int:
         return self._num_blocks

@@ -573,10 +573,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
             # 2) Check Internal Output Queue is empty
-            assert op.internal_input_queue_num_blocks() == 0, error_msg.format(
+            assert op.internal_output_queue_num_blocks() == 0, error_msg.format(
                 "Internal Output",
                 op.name,
-                op.internal_input_queue_num_blocks(),
+                op.internal_output_queue_num_blocks(),
             )
 
         # 3) Check that External Input Queue is empty
