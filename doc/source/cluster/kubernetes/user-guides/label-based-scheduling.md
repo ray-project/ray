@@ -126,7 +126,7 @@ ray.get(test_task.remote())
   ray.get(my_actor.ready.remote())
 ```
 
-* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the labels `ray.io/market-type: spot` and NOT `ray.io/region: us-central2`. Since the strategy is "SPREAD", this placement group should require two Ray nodes with the desired labels to be scaled.
+* `example_placement_group.py` is a Python script that creates a placement group requiring two bundles of 1 CPU with the `ray.io/market-type: spot` label but NOT `ray.io/region: us-central2`. Because the strategy is "SPREAD", this placement group should require two Ray nodes with the desired labels to be scaled.
 ```py
   import ray
   from ray.util.placement_group import placement_group
