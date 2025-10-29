@@ -768,7 +768,6 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
         availability_zone="some-az",
         actor_name=replica_id.to_full_id_str(),
         max_ongoing_requests=1,
-        actor_id_str=replica_id.to_full_id_str(),
     )
 
 

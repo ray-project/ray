@@ -1074,7 +1074,6 @@ class DeploymentReplica:
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
     ) -> RunningReplicaInfo:
-        handle = self._actor.actor_handle
         return RunningReplicaInfo(
             replica_id=self._replica_id,
             node_id=self.actor_node_id,
@@ -1086,7 +1085,6 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
-            actor_id_str=str(handle._actor_id),
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
