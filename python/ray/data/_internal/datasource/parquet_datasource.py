@@ -473,7 +473,7 @@ class ParquetDatasource(Datasource):
         predicate_expr: Expr,
     ) -> "ParquetDatasource":
         from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _ColumnRefRebindingVisitor,
+            _ColumnSubstitutionVisitor,
         )
         from ray.data.expressions import col
 
@@ -481,11 +481,13 @@ class ParquetDatasource(Datasource):
         # Handle column renaming for Ray Data expressions
         if self._data_columns_rename_map:
             # Create mapping from new column names to old column names
+            # It's new to old mapping because we need to visit the predicate expression (which has all the new cols)
+            # and map them to the old columns so that the filtering can be pushed into the read tasks.
             column_mapping = {
                 new_col: col(old_col)
                 for old_col, new_col in self._data_columns_rename_map.items()
             }
-            visitor = _ColumnRefRebindingVisitor(column_mapping)
+            visitor = _ColumnSubstitutionVisitor(column_mapping)
             predicate_expr = visitor.visit(predicate_expr)
 
         # Combine with existing predicate using AND

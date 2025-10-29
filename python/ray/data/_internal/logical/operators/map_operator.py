@@ -271,6 +271,7 @@ class Filter(AbstractUDFMap):
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         if self.is_expression_based():
+            # TODO: Use a truncated expression prefix here instead of <expression>.
             return f"{op_name}(<expression>)"
         return super()._get_operator_name(op_name, fn)
 
