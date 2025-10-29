@@ -21,13 +21,16 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
-rpc::LabelSelector LabelSelector::ToProto() const {
-  rpc::LabelSelector result;
+void LabelSelector::ToProto(rpc::LabelSelector *proto) const {
+  RAY_CHECK(proto != nullptr);
+  proto->clear_label_constraints();
+
   for (const auto &constraint : constraints_) {
-    auto *proto_constraint = result.add_label_constraints();
+    auto *proto_constraint = proto->add_label_constraints();
     proto_constraint->set_label_key(constraint.GetLabelKey());
     proto_constraint->set_operator_(
         static_cast<rpc::LabelSelectorOperator>(constraint.GetOperator()));
@@ -35,7 +38,6 @@ rpc::LabelSelector LabelSelector::ToProto() const {
       proto_constraint->add_label_values(val);
     }
   }
-  return result;
 }
 
 google::protobuf::Map<std::string, std::string> LabelSelector::ToStringMap() const {

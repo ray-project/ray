@@ -1531,7 +1531,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
       auto *ls = new_resource_requests_by_count->mutable_request()->add_label_selectors();
       // Parse label_selector map to proto format.
       ray::LabelSelector label_selector(label_selectors[i]);
-      *ls = label_selector.ToProto();
+      label_selector.ToProto(ls);
     }
   }
 

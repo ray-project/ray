@@ -42,7 +42,8 @@ TEST(FallbackStrategyTest, OptionsConstructionAndEquality) {
   EXPECT_FALSE(options_a == options_c);
 
   // Test FallbackOption from proto constructor
-  rpc::LabelSelector selector_a_proto = selector_a.ToProto();
+  rpc::LabelSelector selector_a_proto;
+  selector_a.ToProto(&selector_a_proto);
   FallbackOption options_from_proto(selector_a_proto);
 
   EXPECT_EQ(options_a, options_from_proto);

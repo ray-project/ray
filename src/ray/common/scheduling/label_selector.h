@@ -92,7 +92,7 @@ class LabelSelector {
   }
 
   // Convert LabelSelector object to rpc::LabelSelector proto message.
-  rpc::LabelSelector ToProto() const;
+  void ToProto(rpc::LabelSelector *proto) const;
 
   // Convert the LabelSelector object back into a string map.
   google::protobuf::Map<std::string, std::string> ToStringMap() const;

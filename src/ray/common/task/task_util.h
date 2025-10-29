@@ -191,7 +191,7 @@ class TaskSpecBuilder {
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
     message_->mutable_labels()->insert(labels.begin(), labels.end());
-    *message_->mutable_label_selector() = label_selector.ToProto();
+    label_selector.ToProto(message_->mutable_label_selector());
     *message_->mutable_fallback_strategy() = SerializeFallbackStrategy(fallback_strategy);
     message_->set_tensor_transport(tensor_transport);
     return *this;

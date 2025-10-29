@@ -23,7 +23,7 @@ namespace ray {
 
 void FallbackOption::ToProto(rpc::FallbackOption *proto) const {
   RAY_CHECK(proto != nullptr);
-  *proto->mutable_label_selector() = label_selector.ToProto();
+  label_selector.ToProto(proto->mutable_label_selector());
   // When a new option is added, add its serialization here.
 }
 
