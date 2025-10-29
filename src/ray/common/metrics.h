@@ -73,4 +73,17 @@ inline ray::stats::Gauge GetObjectStoreMemoryGaugeMetric() {
   };
 }
 
+inline ray::stats::Histogram GetSchedulerPlacementTimeSHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"scheduler_placement_time_s",
+      /*description=*/
+      "The time it takes for a worklod (task, actor, placement group) to "
+      "be placed. This is the time from when the tasks dependencies are "
+      "resolved to when it actually reserves resources on a node to run.",
+      /*unit=*/"s",
+      /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"WorkloadType"},
+  };
+}
+
 }  // namespace ray

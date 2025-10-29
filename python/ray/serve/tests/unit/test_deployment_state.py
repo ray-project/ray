@@ -310,6 +310,10 @@ class MockReplicaActorWrapper:
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
 
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return None
+
 
 def deployment_info(
     version: Optional[str] = None,
