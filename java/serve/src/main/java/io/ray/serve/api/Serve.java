@@ -308,7 +308,7 @@ public class Serve {
    * @return A handle that can be used to call the application.
    */
   public static DeploymentHandle run(Application target) {
-    return run(target, true, Constants.SERVE_DEFAULT_APP_NAME, null, null);
+    return run(target, true, Constants.SERVE_DEFAULT_APP_NAME, null, null, false);
   }
 
   /**
@@ -320,6 +320,8 @@ public class Serve {
    *     cluster (it will delete all others).
    * @param routePrefix Route prefix for HTTP requests. Defaults to '/'.
    * @param config
+   * @param externalScalerEnabled If true, indicates that an external autoscaler will manage replica
+   *     scaling for this application. Defaults to false.
    * @return A handle that can be used to call the application.
    */
   public static DeploymentHandle run(
@@ -327,7 +329,8 @@ public class Serve {
       boolean blocking,
       String name,
       String routePrefix,
-      Map<String, String> config) {
+      Map<String, String> config,
+      boolean externalScalerEnabled) {
 
     if (StringUtils.isBlank(name)) {
       throw new RayServeException("Application name must a non-empty string.");
@@ -355,7 +358,13 @@ public class Serve {
                   : RandomStringUtils.randomAlphabetic(6));
     }
 
-    client.deployApplication(name, routePrefix, deployments, ingressDeployment.getName(), blocking);
+    client.deployApplication(
+        name,
+        routePrefix,
+        deployments,
+        ingressDeployment.getName(),
+        blocking,
+        externalScalerEnabled);
     return client.getDeploymentHandle(ingressDeployment.getName(), name, true);
   }
 

@@ -810,7 +810,12 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_application(
+        self,
+        name: str,
+        deployment_args_list: List[bytes],
+        application_args: bytes = b"",
+    ) -> None:
         """
         Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
@@ -819,7 +824,10 @@ class ServeController:
         and could be removed if the Java code was refactored
         to use the new bulk deploy_applications API.
         """
-        self.deploy_applications({name: deployment_args_list}, {})
+        self.deploy_applications(
+            {name: deployment_args_list},
+            {name: application_args} if application_args else {},
+        )
 
     def apply_config(
         self,
