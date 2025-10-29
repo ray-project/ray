@@ -178,7 +178,7 @@ However, use your best judgement whether what you are logging should be reported
 
 .. testcode::
 
-    logger.log_value("some_items", value="a", reduce="item_series)
+    logger.log_value("some_items", value="a", reduce="item_series")
     logger.log_value("some_items", value="b", reduce="item_series")
     logger.log_value("some_items", value="c", reduce="item_series")
     logger.log_value("some_items", value="d", reduce="item_series")
