@@ -176,11 +176,10 @@ class GPUObjectStore:
         self._object_freed_cv = threading.Condition(self._lock)
 
         # These are only used for NIXL. Will be removed in the future.
-        self._nixl_meta_lock = threading.Lock()
         # Mapping from object ID to the NIXL managed meta.
         self._managed_meta_nixl: Dict[str, Any] = {}
         # Mapping from NIXL managed meta to the number of objects that contain it.
-        self._managed_meta_counts_nixl: Dict[Any, int] = {}
+        self._managed_meta_counts_nixl: Dict[Any, int] = defaultdict[Any, int](int)
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
@@ -278,6 +277,34 @@ class GPUObjectStore:
                     return dst_obj_id
             return None
 
+    def record_managed_meta_nixl(self, obj_id: str, meta: Any):
+        """Record the NIXL managed meta for the given object ID."""
+        with self._lock:
+            self._managed_meta_nixl[obj_id] = meta
+            self._managed_meta_counts_nixl[meta] += 1
+
+    def record_and_get_meta_if_duplicate(
+        self, src_obj_id: str, src_gpu_object: List["torch.Tensor"]
+    ) -> Optional[str]:
+        """Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is."""
+        with self._lock:
+            duplicate_obj_id = self.get_duplicate_objects(src_obj_id, src_gpu_object)
+            if duplicate_obj_id is not None:
+                meta = self._managed_meta_nixl[duplicate_obj_id]
+                self._managed_meta_counts_nixl[meta] += 1
+                self._managed_meta_nixl[src_obj_id] = meta
+                return meta
+            return None
+
+    def remove_managed_meta_nixl(self, obj_id: str):
+        """Remove the NIXL managed meta for the given object ID and return the count of the managed meta after removal."""
+        with self._lock:
+            meta = self._managed_meta_nixl.pop(obj_id)
+            self._managed_meta_counts_nixl[meta] -= 1
+            if self._managed_meta_counts_nixl[meta] == 0:
+                self._managed_meta_counts_nixl.pop(meta)
+            return self._managed_meta_counts_nixl[meta]
+
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
     ) -> List["torch.Tensor"]:
@@ -361,5 +388,5 @@ class GPUObjectStore:
         """
         Return the number of NIXL managed meta in the GPU object store.
         """
-        with self._nixl_meta_lock:
+        with self._lock:
             return len(self._managed_meta_nixl)

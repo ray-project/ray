@@ -56,14 +56,11 @@ class NixlTensorTransport(TensorTransportManager):
         nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
         device = None
         tensor_meta = []
-        duplicate_obj_id = gpu_object_store.get_duplicate_objects(obj_id, gpu_object)
-        if duplicate_obj_id is not None:
-            with gpu_object_store._nixl_meta_lock:
-                meta = gpu_object_store._managed_meta_nixl[duplicate_obj_id]
-                gpu_object_store._managed_meta_counts_nixl[meta] += 1
-                gpu_object_store._managed_meta_nixl[obj_id] = meta
-
-            return meta
+        duplicate_meta = gpu_object_store.record_and_get_meta_if_duplicate(
+            obj_id, gpu_object
+        )
+        if duplicate_meta is not None:
+            return duplicate_meta
         if gpu_object:
             reg_descs, serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
                 gpu_object
@@ -85,10 +82,8 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
-        with gpu_object_store._nixl_meta_lock:
-            gpu_object_store._managed_meta_nixl[obj_id] = ret
-            gpu_object_store._managed_meta_counts_nixl[ret] = 1
-            return ret
+        gpu_object_store.record_managed_meta_nixl(obj_id, ret)
+        return ret
 
     @staticmethod
     def get_tensor_transport_metadata(
@@ -175,17 +170,11 @@ class NixlTensorTransport(TensorTransportManager):
     def garbage_collect(obj_id: str, tensor_transport_meta: NixlTransportMetadata):
         from ray._private.worker import global_worker
         from ray.util.collective.collective import get_group_handle
-        from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-        with gpu_object_store._nixl_meta_lock:
-            meta = gpu_object_store._managed_meta_nixl[obj_id]
-            gpu_object_store._managed_meta_counts_nixl[meta] -= 1
-
-            if gpu_object_store._managed_meta_counts_nixl[meta] == 0:
-                descs = tensor_transport_meta.nixl_reg_descs
-                if descs is not None:
-                    nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
-                    nixl_backend.deregister_memory(descs)
-                gpu_object_store._managed_meta_counts_nixl.pop(meta)
-            gpu_object_store._managed_meta_nixl.pop(obj_id)
+        count = gpu_object_store.remove_managed_meta_nixl(obj_id)
+        if count == 0:
+            descs = tensor_transport_meta.nixl_reg_descs
+            if descs is not None:
+                nixl_backend = get_group_handle(NIXL_GROUP_NAME)
+                nixl_backend.deregister_memory(descs)
