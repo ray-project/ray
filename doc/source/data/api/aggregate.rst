@@ -29,4 +29,4 @@ compute aggregations.
     MissingValuePercentage
     ZeroPercentage
     ApproximateQuantile
-    
+    ApproximateTopK

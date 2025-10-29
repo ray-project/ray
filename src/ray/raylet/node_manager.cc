@@ -452,7 +452,7 @@ void NodeManager::RegisterGcs() {
                     << "GCS consider this node to be dead. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB.";
-              } else if (status.IsAuthError()) {
+              } else if (status.IsUnauthenticated()) {
                 RAY_LOG(FATAL)
                     << "GCS returned an authentication error. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
@@ -1278,10 +1278,6 @@ Status NodeManager::RegisterForNewDriver(
   worker->SetProcess(Process::FromPid(pid));
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
-  Status s = cgroup_manager_->AddProcessToWorkersCgroup(std::to_string(pid));
-  RAY_CHECK(s.ok()) << absl::StrFormat(
-      "Failed to move the driver process into the workers cgroup with error %s",
-      s.ToString());
   return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
 }
 
