@@ -435,7 +435,9 @@ class TestCloudFileSystem:
         # Create temp directory for testing
         with tempfile.TemporaryDirectory() as tempdir:
             # Test downloading model
-            with patch.object(CloudFileSystem, "download_files") as mock_download:
+            with patch.object(
+                CloudFileSystem, "download_files_parallel"
+            ) as mock_download:
                 CloudFileSystem.download_model(tempdir, "gs://bucket/model", False)
 
                 # Check that hash file was processed
@@ -443,7 +445,7 @@ class TestCloudFileSystem:
                 with open(os.path.join(tempdir, "refs", "main"), "r") as f:
                     assert f.read() == "abcdef1234567890"
 
-                # Check that download_files was called correctly
+                # Check that download_files_parallel was called correctly
                 mock_download.assert_called_once()
                 call_args = mock_download.call_args[1]
                 assert call_args["path"] == os.path.join(
@@ -451,6 +453,8 @@ class TestCloudFileSystem:
                 )
                 assert call_args["bucket_uri"] == "gs://bucket/model"
                 assert call_args["substrings_to_include"] == []
+                assert call_args["suffixes_to_exclude"] is None
+                assert call_args["chunk_size"] == 64 * 1024 * 1024
 
     @patch("pyarrow.fs.copy_files")
     def test_upload_files(self, mock_copy_files):
@@ -697,6 +701,172 @@ class TestLoraMirrorConfig:
         )
         assert config.max_total_tokens == 1000
         assert config.sync_args == ["--exclude", "*.tmp"]
+
+
+class TestCloudFileSystemFilterFiles:
+    """Tests for the _filter_files method."""
+
+    def test_filter_files_no_filters(self):
+        """Test filtering files with no inclusion or exclusion filters."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+
+        # Create mock file infos
+        file_info1 = MagicMock()
+        file_info1.type = pa_fs.FileType.File
+        file_info1.path = "bucket/model/file1.txt"
+
+        file_info2 = MagicMock()
+        file_info2.type = pa_fs.FileType.File
+        file_info2.path = "bucket/model/subdir/file2.json"
+
+        dir_info = MagicMock()
+        dir_info.type = pa_fs.FileType.Directory
+        dir_info.path = "bucket/model/subdir"
+
+        mock_fs.get_file_info.return_value = [file_info1, file_info2, dir_info]
+
+        # Test filtering with no filters
+        result = CloudFileSystem._filter_files(
+            fs=mock_fs, source_path="bucket/model", destination_path="/local/dest"
+        )
+
+        # Should include all files, exclude directories
+        expected = [
+            ("bucket/model/file1.txt", "/local/dest/file1.txt"),
+            ("bucket/model/subdir/file2.json", "/local/dest/subdir/file2.json"),
+        ]
+        assert sorted(result) == sorted(expected)
+
+        # Verify filesystem was called correctly
+        mock_fs.get_file_info.assert_called_once()
+        call_args = mock_fs.get_file_info.call_args[0][0]
+        assert call_args.base_dir == "bucket/model"
+        assert call_args.recursive is True
+
+    def test_filter_files_with_inclusion_substrings(self):
+        """Test filtering files with inclusion substrings."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+
+        # Create mock file infos
+        file_info1 = MagicMock()
+        file_info1.type = pa_fs.FileType.File
+        file_info1.path = "bucket/model/config.json"
+
+        file_info2 = MagicMock()
+        file_info2.type = pa_fs.FileType.File
+        file_info2.path = "bucket/model/weights.bin"
+
+        file_info3 = MagicMock()
+        file_info3.type = pa_fs.FileType.File
+        file_info3.path = "bucket/model/tokenizer.json"
+
+        mock_fs.get_file_info.return_value = [file_info1, file_info2, file_info3]
+
+        # Test filtering with inclusion substrings
+        result = CloudFileSystem._filter_files(
+            fs=mock_fs,
+            source_path="bucket/model",
+            destination_path="/local/dest",
+            substrings_to_include=["config", "tokenizer"],
+        )
+
+        # Should only include files with "config" or "tokenizer" in path
+        expected = [
+            ("bucket/model/config.json", "/local/dest/config.json"),
+            ("bucket/model/tokenizer.json", "/local/dest/tokenizer.json"),
+        ]
+        assert sorted(result) == sorted(expected)
+
+    def test_filter_files_with_exclusion_suffixes(self):
+        """Test filtering files with exclusion suffixes."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+
+        # Create mock file infos
+        file_info1 = MagicMock()
+        file_info1.type = pa_fs.FileType.File
+        file_info1.path = "bucket/model/model.bin"
+
+        file_info2 = MagicMock()
+        file_info2.type = pa_fs.FileType.File
+        file_info2.path = "bucket/model/config.json"
+
+        file_info3 = MagicMock()
+        file_info3.type = pa_fs.FileType.File
+        file_info3.path = "bucket/model/temp.tmp"
+
+        file_info4 = MagicMock()
+        file_info4.type = pa_fs.FileType.File
+        file_info4.path = "bucket/model/log.txt"
+
+        mock_fs.get_file_info.return_value = [
+            file_info1,
+            file_info2,
+            file_info3,
+            file_info4,
+        ]
+
+        # Test filtering with exclusion suffixes
+        result = CloudFileSystem._filter_files(
+            fs=mock_fs,
+            source_path="bucket/model",
+            destination_path="/local/dest",
+            suffixes_to_exclude=[".tmp", ".txt"],
+        )
+
+        # Should exclude files ending with .tmp or .txt
+        expected = [
+            ("bucket/model/model.bin", "/local/dest/model.bin"),
+            ("bucket/model/config.json", "/local/dest/config.json"),
+        ]
+        assert sorted(result) == sorted(expected)
+
+    def test_filter_files_with_both_filters(self):
+        """Test filtering files with both inclusion and exclusion filters."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+
+        # Create mock file infos
+        file_info1 = MagicMock()
+        file_info1.type = pa_fs.FileType.File
+        file_info1.path = "bucket/model/config.json"
+
+        file_info2 = MagicMock()
+        file_info2.type = pa_fs.FileType.File
+        file_info2.path = "bucket/model/config.tmp"
+
+        file_info3 = MagicMock()
+        file_info3.type = pa_fs.FileType.File
+        file_info3.path = "bucket/model/weights.bin"
+
+        file_info4 = MagicMock()
+        file_info4.type = pa_fs.FileType.File
+        file_info4.path = "bucket/model/tokenizer.json"
+
+        mock_fs.get_file_info.return_value = [
+            file_info1,
+            file_info2,
+            file_info3,
+            file_info4,
+        ]
+
+        # Test filtering with both inclusion and exclusion
+        result = CloudFileSystem._filter_files(
+            fs=mock_fs,
+            source_path="bucket/model",
+            destination_path="/local/dest",
+            substrings_to_include=["config", "tokenizer"],
+            suffixes_to_exclude=[".tmp"],
+        )
+
+        # Should include files with "config" or "tokenizer" but exclude .tmp files
+        expected = [
+            ("bucket/model/config.json", "/local/dest/config.json"),
+            ("bucket/model/tokenizer.json", "/local/dest/tokenizer.json"),
+        ]
+        assert sorted(result) == sorted(expected)
 
 
 class TestCloudFileSystemAzureSupport:

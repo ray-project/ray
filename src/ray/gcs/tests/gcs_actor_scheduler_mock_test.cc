@@ -26,6 +26,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/counter_map.h"
 
@@ -84,7 +85,8 @@ class GcsActorSchedulerMockTest : public Test {
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
-        *worker_client_pool_);
+        *worker_client_pool_,
+        fake_scheduler_placement_time_s_histogram_);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
@@ -105,6 +107,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::unique_ptr<rpc::RayletClientPool> client_pool;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   MockCallback schedule_failure_handler;
