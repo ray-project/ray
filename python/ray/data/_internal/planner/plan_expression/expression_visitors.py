@@ -1,22 +1,27 @@
 from dataclasses import replace
 from typing import Dict, List, TypeVar
 
-from pyiceberg.expressions import (
-    And,
-    BooleanExpression,
-    EqualTo,
-    GreaterThan,
-    GreaterThanOrEqual,
-    In,
-    IsNull,
-    LessThan,
-    LessThanOrEqual,
-    Not,
-    NotEqualTo,
-    NotIn,
-    NotNull,
-    Or,
-)
+from ray.util import log_once
+
+try:
+    from pyiceberg.expressions import (
+        And,
+        BooleanExpression,
+        EqualTo,
+        GreaterThan,
+        GreaterThanOrEqual,
+        In,
+        IsNull,
+        LessThan,
+        LessThanOrEqual,
+        Not,
+        NotEqualTo,
+        NotIn,
+        NotNull,
+        Or,
+    )
+except ImportError:
+    log_once("pyiceberg is not installed, some expression visitors will be unavailable")
 
 from ray.data.expressions import (
     AliasExpr,
