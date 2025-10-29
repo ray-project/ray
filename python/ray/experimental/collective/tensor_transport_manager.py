@@ -129,10 +129,11 @@ class TensorTransportManager(ABC):
 
     @staticmethod
     @abstractmethod
-    def garbage_collect(tensor_transport_meta: TensorTransportMetadata):
+    def garbage_collect(obj_id: str, tensor_transport_meta: TensorTransportMetadata):
         """
         Garbage collect for the tensor transport after the GPU object is freed.
 
         Args:
+            obj_id: The ID of the GPU object to garbage collect.
             tensor_transport_meta: The tensor transport metadata.
         """

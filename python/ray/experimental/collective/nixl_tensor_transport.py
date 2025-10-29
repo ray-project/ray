@@ -87,13 +87,28 @@ class NixlTensorTransport(TensorTransportManager):
 
             from ray._private.worker import global_worker
 
-            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+            gpu_object_manager = global_worker.gpu_object_manager
+            gpu_object_store = gpu_object_manager.gpu_object_store
             # NOTE: We do not specify a timeout here because the user task that returns
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-
-            return NixlTensorTransport.extract_tensor_transport_metadata(gpu_object)
+            duplicate_obj_id = gpu_object_store.get_duplicate_objects(
+                obj_id, gpu_object
+            )
+            print(f"Duplicate object {duplicate_obj_id}")
+            if duplicate_obj_id is not None:
+                meta = gpu_object_store._managed_meta_nixl[duplicate_obj_id]
+                gpu_object_store._managed_meta_counts_nixl[meta] += 1
+                gpu_object_store._managed_meta_nixl[obj_id] = meta
+                print(
+                    f"Duplicate object {duplicate_obj_id} found, incrementing reference count to {gpu_object_store._managed_meta_counts_nixl[meta]}"
+                )
+                return meta
+            meta = NixlTensorTransport.extract_tensor_transport_metadata(gpu_object)
+            gpu_object_store._managed_meta_nixl[obj_id] = meta
+            gpu_object_store._managed_meta_counts_nixl[meta] = 1
+            return meta
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
@@ -155,11 +170,23 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def garbage_collect(tensor_transport_meta: NixlTransportMetadata):
+    def garbage_collect(obj_id: str, tensor_transport_meta: NixlTransportMetadata):
+        from ray._private.worker import global_worker
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
-        descs = tensor_transport_meta.nixl_reg_descs
-        if descs is not None:
-            nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
-            nixl_backend.deregister_memory(descs)
+        print("hihihi")
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+        meta = gpu_object_store._managed_meta_nixl[obj_id]
+        gpu_object_store._managed_meta_counts_nixl[meta] -= 1
+        print(
+            f"decrementing reference count of tensor_transport_meta to {gpu_object_store._managed_meta_counts_nixl[meta]}"
+        )
+        if gpu_object_store._managed_meta_counts_nixl[meta] == 0:
+            print("reference count of tensor_transport_meta is 0, deregistering memory")
+            descs = tensor_transport_meta.nixl_reg_descs
+            if descs is not None:
+                nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
+                nixl_backend.deregister_memory(descs)
+            gpu_object_store._managed_meta_counts_nixl.pop(meta)
+        gpu_object_store._managed_meta_nixl.pop(obj_id)

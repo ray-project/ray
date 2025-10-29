@@ -178,5 +178,7 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
-    def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
+    def garbage_collect(
+        obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
+    ):
         pass
