@@ -6,7 +6,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster InstanceId), `InstanceId` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
 
 .. list-table:: Ray System Metrics
    :header-rows: 1
@@ -47,12 +47,24 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_node_disk_free`
      - `InstanceId`
      - The amount of disk space available per node, in bytes.
+   * - `ray_node_disk_write_iops`
+     - `InstanceId`, `RayNodeType`
+     - The disk write operations per second per node.
    * - `ray_node_disk_io_write_speed`
      - `InstanceId`
      - The disk write throughput per node, in bytes per second.
+   * - `ray_node_disk_read_iops`
+     - `InstanceId`, `RayNodeType`
+     - The disk read operations per second per node.
    * - `ray_node_disk_io_read_speed`
      - `InstanceId`
      - The disk read throughput per node, in bytes per second.
+   * - `ray_node_mem_available`
+     - `InstanceId`, `RayNodeType`
+     - The amount of physical memory available per node, in bytes.
+   * - `ray_node_mem_shared_bytes`
+     - `InstanceId`, `RayNodeType`
+     - The amount of shared memory per node, in bytes.
    * - `ray_node_mem_used`
      - `InstanceId`
      - The amount of physical memory used per node, in bytes.
@@ -65,9 +77,18 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_component_cpu_percentage`
      - `Component`, `InstanceId`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_node_gram_available`
+     - `InstanceId`, `RayNodeType`, `GpuIndex`, `GpuDeviceName`
+     - The amount of GPU memory available per GPU, in megabytes.
    * - `ray_node_gram_used`
      - `InstanceId`, `GpuDeviceName`, `GpuIndex`
      - The amount of GPU memory used per GPU, in bytes.
+   * - `ray_node_network_received`
+     - `InstanceId`, `RayNodeType`
+     - The total network traffic received per node, in bytes.
+   * - `ray_node_network_sent`
+     - `InstanceId`, `RayNodeType`
+     - The total network traffic sent per node, in bytes.
    * - `ray_node_network_receive_speed`
      - `InstanceId`
      - The network receive throughput per node, in bytes per second.
