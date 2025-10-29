@@ -119,7 +119,6 @@ class AggregatorAgent(
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
-                    events_filter_fn=self._can_expose_event,
                     preserve_proto_field_name=PRESERVE_PROTO_FIELD_NAME,
                 ),
                 event_buffer=self._event_buffer,
