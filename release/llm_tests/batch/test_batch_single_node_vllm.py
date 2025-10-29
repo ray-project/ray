@@ -2,20 +2,22 @@
 """
 Single-node vLLM baseline benchmark for Ray Data LLM batch inference.
 
-Uses the public processor API (like the multi-node test) to avoid internal
-import collisions. Measures throughput and supports env-driven thresholds and
+Measures throughput and supports env-driven thresholds and
 JSON artifact output.
 """
 import json
 import os
-import time
 import sys
 
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 from ray.llm._internal.batch.benchmark.dataset import ShareGPTDataset
+from ray.llm._internal.batch.benchmark.benchmark_processor import (
+    Mode,
+    VLLM_SAMPLING_PARAMS,
+    benchmark,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -75,53 +77,35 @@ def test_single_node_baseline_benchmark():
     batch_size = 64
     concurrency = 1
 
-    cfg = vLLMEngineProcessorConfig(
-        model_source=model,
-        engine_kwargs=dict(
-            pipeline_parallel_size=1,
-            tensor_parallel_size=1,
-            distributed_executor_backend="mp",
-        ),
-        tokenize=False,
-        detokenize=False,
-        apply_chat_template=False,
-        concurrency=concurrency,
-        batch_size=batch_size,
-    )
-
-    processor = build_llm_processor(
-        cfg,
-        preprocess=lambda row: dict(
-            prompt=row["prompt"],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=128,
-                detokenize=True,
-            ),
-        ),
-        postprocess=lambda row: dict(resp=row["generated_text"]),
-    )
-
     print(
         f"\nBenchmark: {model}, batch={batch_size}, concurrency={concurrency}, TP=1, PP=1"
     )
 
-    # Measure end-to-end time for a single pass
-    start = time.perf_counter()
-    out = processor(ds).count()
-    elapsed = time.perf_counter() - start
+    # Use benchmark processor to run a single-node vLLM benchmark
+    result = benchmark(
+        Mode.VLLM_ENGINE,
+        ds,
+        batch_size=batch_size,
+        concurrency=concurrency,
+        model=model,
+        sampling_params=VLLM_SAMPLING_PARAMS,
+        pipeline_parallel_size=1,
+        tensor_parallel_size=1,
+        distributed_executor_backend="mp",
+    )
+
+    result.show()
 
     # Assertions and metrics
-    assert out == len(prompts)
-    throughput = out / elapsed if elapsed > 0 else 0.0
-    assert throughput > 0
+    assert result.samples == len(prompts)
+    assert result.throughput > 0
 
     print("\n" + "=" * 60)
     print("BENCHMARK METRICS")
     print("=" * 60)
-    print(f"BENCHMARK_THROUGHPUT: {throughput:.4f} req/s")
-    print(f"BENCHMARK_LATENCY: {elapsed:.4f} s")
-    print(f"BENCHMARK_SAMPLES: {out}")
+    print(f"BENCHMARK_THROUGHPUT: {result.throughput:.4f} req/s")
+    print(f"BENCHMARK_LATENCY: {result.elapsed_s:.4f} s")
+    print(f"BENCHMARK_SAMPLES: {result.samples}")
     print("=" * 60)
 
     # Optional thresholds to fail on regressions
@@ -129,12 +113,12 @@ def test_single_node_baseline_benchmark():
     max_latency_s = _get_float_env("RAY_LLM_BENCHMARK_MAX_LATENCY_S")
     if min_throughput is not None:
         assert (
-            throughput >= min_throughput
-        ), f"Throughput regression: {throughput:.4f} < {min_throughput:.4f} req/s"
+            result.throughput >= min_throughput
+        ), f"Throughput regression: {result.throughput:.4f} < {min_throughput:.4f} req/s"
     if max_latency_s is not None:
         assert (
-            elapsed <= max_latency_s
-        ), f"Latency regression: {elapsed:.4f} > {max_latency_s:.4f} s"
+            result.elapsed_s <= max_latency_s
+        ), f"Latency regression: {result.elapsed_s:.4f} > {max_latency_s:.4f} s"
 
     # Optional JSON artifact emission for downstream ingestion
     artifact_path = os.getenv("RAY_LLM_BENCHMARK_ARTIFACT_PATH")
@@ -143,9 +127,9 @@ def test_single_node_baseline_benchmark():
             "model": model,
             "batch_size": batch_size,
             "concurrency": concurrency,
-            "samples": int(out),
-            "throughput_req_per_s": float(throughput),
-            "elapsed_s": float(elapsed),
+            "samples": int(result.samples),
+            "throughput_req_per_s": float(result.throughput),
+            "elapsed_s": float(result.elapsed_s),
         }
         try:
             os.makedirs(os.path.dirname(artifact_path), exist_ok=True)
