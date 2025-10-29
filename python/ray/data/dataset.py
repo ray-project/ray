@@ -4025,8 +4025,9 @@ class Dataset:
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: "SaveMode" = SaveMode.APPEND,
-        identifier_fields: Optional[List[str]] = None,
         overwrite_filter: Optional["Expr"] = None,
+        upsert_kwargs: Optional[Dict[str, Any]] = None,
+        overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4059,7 +4060,7 @@ class Dataset:
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"},
                     mode=SaveMode.UPSERT,
-                    identifier_fields=["id"]
+                    upsert_kwargs={"join_cols": ["id"]},
                 )
 
                 # Schema evolution is automatic - new columns are added automatically
@@ -4090,18 +4091,21 @@ class Dataset:
             mode: Write mode using SaveMode enum. Options:
 
                 * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
-                * SaveMode.UPSERT: Update existing rows that match on identifier_fields, or insert
-                  new rows if they don't exist in the table.
+                * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
+                  or insert new rows if they don't exist in the table.
                 * SaveMode.OVERWRITE: Replace all existing data in the table with new data, or replace
                   data matching overwrite_filter if specified.
 
-            identifier_fields: List of column names to use as unique identifiers for upsert
-                operations. Required when mode is SaveMode.UPSERT. The system uses these columns
-                to determine which rows to update versus insert.
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
+            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert() method.
+                Supported parameters: when_matched_update_all (bool), when_not_matched_insert_all (bool),
+                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
+                Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
+                for details.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4121,8 +4125,9 @@ class Dataset:
             catalog_kwargs=catalog_kwargs,
             snapshot_properties=snapshot_properties,
             mode=mode,
-            identifier_fields=identifier_fields,
             overwrite_filter=overwrite_filter,
+            upsert_kwargs=upsert_kwargs,
+            overwrite_kwargs=overwrite_kwargs,
         )
 
         self.write_datasink(
