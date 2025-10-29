@@ -904,7 +904,14 @@ class _StatsManager:
                 state,
                 per_node_metrics,
             )
-            self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
+            try:
+                self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
+            except Exception as e:
+                logger.warning(
+                    f"Error occurred during update_execution_metrics.remote call to _StatsActor: {e}",
+                    exc_info=True,
+                )
+                return
             # NOTE: Each dataset_tag is handled by at most 1 thread. Therefore,
             # updating the dictionary is thread-safe as long as:
             # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_to_stats_actor`)
@@ -929,7 +936,14 @@ class _StatsManager:
             > self.UPDATE_ITERATION_METRICS_INTERVAL_S
         ):
             args = (stats, dataset_tag)
-            self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
+            try:
+                self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
+            except Exception as e:
+                logger.warning(
+                    f"Error occurred during update_iteration_metrics.remote call to _StatsActor: {e}",
+                    exc_info=True,
+                )
+                return
             self._iteration_last_updated[dataset_tag] = now
 
     def clear_iteration_metrics(self, dataset_tag: str):
