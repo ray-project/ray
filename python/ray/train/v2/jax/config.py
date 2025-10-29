@@ -26,7 +26,6 @@ class JaxConfig(BackendConfig):
     def backend_cls(self):
         return _JaxBackend
 
-
 def _setup_jax_distributed_environment(
     master_addr_with_port: str, num_workers: int, index: int, use_tpu: bool
 ):
@@ -52,6 +51,7 @@ def _setup_jax_distributed_environment(
     # TODO(lehui): Add env vars for JAX on GPU.
 
     import jax
+
 
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
