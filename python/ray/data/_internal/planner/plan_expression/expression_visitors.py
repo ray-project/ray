@@ -1,7 +1,22 @@
 from dataclasses import replace
 from typing import Dict, List, TypeVar
 
-from pyiceberg.expressions import BooleanExpression
+from pyiceberg.expressions import (
+    And,
+    BooleanExpression,
+    EqualTo,
+    GreaterThan,
+    GreaterThanOrEqual,
+    In,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+    Not,
+    NotEqualTo,
+    NotIn,
+    NotNull,
+    Or,
+)
 
 from ray.data.expressions import (
     AliasExpr,
@@ -18,6 +33,23 @@ from ray.data.expressions import (
 )
 
 T = TypeVar("T")
+
+# Map Ray Data operations to Iceberg operations
+RAY_DATA_OPERATION_TO_ICEBERG = {
+    Operation.EQ: EqualTo,
+    Operation.NE: NotEqualTo,
+    Operation.GT: GreaterThan,
+    Operation.GE: GreaterThanOrEqual,
+    Operation.LT: LessThan,
+    Operation.LE: LessThanOrEqual,
+    Operation.AND: And,
+    Operation.OR: Or,
+    Operation.IN: In,
+    Operation.NOT_IN: NotIn,
+    Operation.IS_NULL: IsNull,
+    Operation.IS_NOT_NULL: NotNull,
+    Operation.NOT: Not,
+}
 
 
 class _ExprVisitorBase(_ExprVisitor[None]):
@@ -380,19 +412,6 @@ class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
 
     def visit_binary(self, expr: "BinaryExpr") -> "BooleanExpression":
         """Convert a binary operation to an Iceberg expression."""
-        from pyiceberg.expressions import (
-            And,
-            EqualTo,
-            GreaterThan,
-            GreaterThanOrEqual,
-            In,
-            LessThan,
-            LessThanOrEqual,
-            NotEqualTo,
-            NotIn,
-            Or,
-        )
-
         # Handle IN/NOT_IN specially since they don't visit the right operand
         # (the right operand is a list literal that can't be converted)
         if expr.op in (Operation.IN, Operation.NOT_IN):
@@ -402,53 +421,32 @@ class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
                     f"{expr.op.name} operation requires right operand to be a literal list, "
                     f"got {type(expr.right).__name__}"
                 )
-            op_class = In if expr.op == Operation.IN else NotIn
-            return op_class(left, expr.right.value)
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, expr.right.value)
 
         # For all other operations, visit both operands
         left = self.visit(expr.left)
         right = self.visit(expr.right)
 
-        # Map Ray Data operations to Iceberg operations
-        operation_map = {
-            Operation.EQ: EqualTo,
-            Operation.NE: NotEqualTo,
-            Operation.GT: GreaterThan,
-            Operation.GE: GreaterThanOrEqual,
-            Operation.LT: LessThan,
-            Operation.LE: LessThanOrEqual,
-            Operation.AND: And,
-            Operation.OR: Or,
-        }
-
-        if expr.op in operation_map:
-            return operation_map[expr.op](left, right)
+        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, right)
         else:
             # Arithmetic operations are not supported in filter expressions
             raise ValueError(
                 f"Unsupported binary operation for Iceberg filters: {expr.op}. "
-                f"Iceberg filters support: EQ, NE, GT, GE, LT, LE, AND, OR, IN, NOT_IN. "
+                f"Iceberg filters support: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}. "
                 f"Arithmetic operations (ADD, SUB, MUL, DIV) cannot be used in filters."
             )
 
     def visit_unary(self, expr: "UnaryExpr") -> "BooleanExpression":
         """Convert a unary operation to an Iceberg expression."""
-        from pyiceberg.expressions import IsNull, Not, NotNull
-
         operand = self.visit(expr.operand)
 
-        operation_map = {
-            Operation.IS_NULL: IsNull,
-            Operation.IS_NOT_NULL: NotNull,
-            Operation.NOT: Not,
-        }
-
-        if expr.op in operation_map:
-            return operation_map[expr.op](operand)
+        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](operand)
         else:
             raise ValueError(
                 f"Unsupported unary operation for Iceberg: {expr.op}. "
-                f"Supported operations: IS_NULL, IS_NOT_NULL, NOT"
+                f"Supported operations: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}"
             )
 
     def visit_alias(self, expr: "AliasExpr") -> "BooleanExpression":
