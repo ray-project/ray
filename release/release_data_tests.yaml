@@ -652,7 +652,7 @@
 ###############
 
 - name: llm_batch_single_node_baseline_benchmark
-  group: data-llm
+  group: llm-batch
   working_dir: llm_tests/batch
   frequency: weekly
   team: data
