@@ -308,7 +308,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # Fusion
-            MapBatches(InputData([]), lambda x: x),
+            MapBatches(InputData([]), lambda x: x, udf_modifying_row_count=False),
             True,
         ),
         (
@@ -337,7 +337,9 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
+    mapped_ds = ds.map_batches(
+        lambda x: x, batch_size=2, udf_modifying_row_count=False
+    ).map_batches(
         lambda x: x,
         batch_size=5,
     )
@@ -383,6 +385,7 @@ def test_map_batches_with_batch_size_specified_fusion(
     mapped_ds = ds.map_batches(
         lambda x: x,
         batch_size=upstream_batch_size,
+        udf_modifying_row_count=False,
     ).map_batches(
         lambda x: x,
         batch_size=downstream_batch_size,
