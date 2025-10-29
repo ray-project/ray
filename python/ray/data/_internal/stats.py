@@ -827,9 +827,7 @@ class _StatsManager:
         # can be running concurrently.
         self._update_last_updated_lock: threading.Lock = threading.Lock()
 
-    def _get_or_create_stats_actor(
-        self, skip_cache: bool = False
-    ) -> ActorHandle:
+    def _get_or_create_stats_actor(self, skip_cache: bool = False) -> ActorHandle:
         if ray._private.worker._global_node is None:
             raise RuntimeError(
                 "Global node is not initialized. Driver might be not connected to Ray."
