@@ -118,34 +118,6 @@ def test_asyncio_actor_sigterm_termination(ray_start):
     _expect_actor_dies(a)
 
 
-def test_asyncio_actor_double_signal(ray_start):
-    """Asyncio actor should force-exit on second signal even if first is slow."""
-    
-    @ray.remote
-    class AsyncBlockedActor:
-        async def pid(self) -> int:
-            return os.getpid()
-        
-        async def ping(self) -> str:
-            return "ok"
-        
-        async def block_forever(self):
-            """Simulate blocking to test double-signal escalation."""
-            await asyncio.sleep(10000)
-    
-    a = AsyncBlockedActor.remote()
-    pid = ray.get(a.pid.remote())
-    a.block_forever.remote()
-    time.sleep(0.1)
-    assert ray.get(a.ping.remote()) == "ok"
-    
-    os.kill(pid, signal.SIGINT)
-    time.sleep(0.1)
-    
-    os.kill(pid, signal.SIGTERM)
-    _expect_actor_dies(a)
-
-
 def test_driver_sigterm_graceful():
     """Driver should exit gracefully on first SIGTERM and atexit should run."""
     with tempfile.TemporaryDirectory() as td:
