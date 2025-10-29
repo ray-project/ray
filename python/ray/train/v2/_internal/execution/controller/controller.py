@@ -68,6 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
+from ray.train.v2.api.report_config import CheckpointView
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -583,8 +584,8 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int
+        self, current_report_index: int, view: CheckpointView = CheckpointView.VALIDATED
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index
+            current_report_index, view
         )
