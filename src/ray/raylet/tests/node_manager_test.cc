@@ -942,7 +942,7 @@ INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
 
-TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request;
   rpc::RequestWorkerLeaseReply reply1;
@@ -981,6 +981,82 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
   ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
             WorkerID::FromBinary(reply1.worker_address().worker_id()));
   ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+}
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+
+  // Create a task dependency to test that lease dependencies are requested/pulled only
+  // once for a lease even if HandleRequestWorkerLease is called multiple times.
+  ObjectID object_dep = ObjectID::FromRandom();
+  auto *object_ref_dep = lease_spec.GetMutableMessage().add_dependencies();
+  object_ref_dep->set_object_id(object_dep.Binary());
+
+  rpc::Address owner_addr;
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      object_dep, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(1));
+
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(1)
+      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+        pop_worker_callback = callback;
+      });
+  uint32_t callback_count = 0;
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_count++;
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  auto scheduling_class = lease_spec.GetSchedulingClass();
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(scheduling_class, lease_id));
+
+  // Test HandleRequestWorkerLease idempotency for leases that aren't yet granted
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_count++;
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(scheduling_class, lease_id));
+
+  // Make the dependency available and notify the local lease manager that leases are
+  // unblocked so the lease can be granted
+  auto ready_lease_ids = lease_dependency_manager_->HandleObjectLocal(object_dep);
+  ASSERT_EQ(ready_lease_ids.size(), 1);
+  ASSERT_EQ(ready_lease_ids[0], lease_id);
+  local_lease_manager_->LeasesUnblocked(ready_lease_ids);
+
+  // Grant the lease, both callbacks should be triggered
+  ASSERT_TRUE(pop_worker_callback);
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
+            WorkerID::FromBinary(reply1.worker_address().worker_id()));
+  ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+  ASSERT_EQ(callback_count, 2);
 }
 
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {

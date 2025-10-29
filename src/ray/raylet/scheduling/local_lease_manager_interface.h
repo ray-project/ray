@@ -97,6 +97,12 @@ class LocalLeaseManagerInterface {
   virtual size_t GetNumLeaseSpilled() const = 0;
   virtual size_t GetNumWaitingLeaseSpilled() const = 0;
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
+  virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                             const LeaseID &lease_id) const = 0;
+  virtual void StoreReplyCallback(const SchedulingClass &scheduling_class,
+                                  const LeaseID &lease_id,
+                                  rpc::SendReplyCallback send_reply_callback,
+                                  rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 
 /// A noop local lease manager. It is a no-op class. We need this because there's no
@@ -177,7 +183,14 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
   size_t GetNumLeaseSpilled() const override { return 0; }
   size_t GetNumWaitingLeaseSpilled() const override { return 0; }
   size_t GetNumUnschedulableLeaseSpilled() const override { return 0; }
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override {
+    return false;
+  }
+  void StoreReplyCallback(const SchedulingClass &scheduling_class,
+                          const LeaseID &lease_id,
+                          rpc::SendReplyCallback send_reply_callback,
+                          rpc::RequestWorkerLeaseReply *reply) override {}
 };
-
 }  // namespace raylet
 }  // namespace ray
