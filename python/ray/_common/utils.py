@@ -3,6 +3,7 @@ import binascii
 import errno
 import importlib
 import inspect
+import logging
 import os
 import random
 import string
@@ -12,7 +13,12 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
+from ray._raylet import GcsClient
+from ray.core.generated import gcs_pb2
+
 import psutil
+
+logger = logging.getLogger(__name__)
 
 
 def import_module_and_attr(
@@ -214,27 +220,74 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def get_user_temp_dir():
+def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
+    """
+    Get the ray temp directory.
+
+    If a temp dir was specified for this cluster, this function will
+    retrieve the information from GCS. Otherwise, it will fallback to the
+    default ray temp directory.
+
+    Args:
+        gcs_address: The address of the GCS server.
+        node_id: The ID of the node to fetch the temp dir for.
+
+    Returns:
+        The path to the ray temp directory.
+    """
+    # Attempt to fetch temp dir as specified by --temp-dir at creation time.
+    if gcs_address is not None and node_id is not None:
+        gcs_client = GcsClient(gcs_address)
+        node_info = None
+        for id, node_info in gcs_client.get_all_node_info(
+            filters=[
+                ("node_id", "=", node_id),
+                ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
+            ]
+        ).items():
+            if id.hex() == node_id:
+                node_info = node_info
+                break
+        if node_info is not None:
+            if "temp_dir" in node_info:
+                return node_info["temp_dir"]
+
+    # fallback to default ray temp dir
+    tmp_dir = None
     if "RAY_TMPDIR" in os.environ:
-        return os.environ["RAY_TMPDIR"]
+        tmp_dir = os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
-        return os.environ["TMPDIR"]
+        tmp_dir = os.environ["TMPDIR"]
     elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
-        tempdir = os.path.join(os.sep, "tmp")
+        tmp_dir = os.path.join(os.sep, "tmp")
     else:
-        tempdir = tempfile.gettempdir()
-    return tempdir
+        tmp_dir = tempfile.gettempdir()
+
+    return os.path.join(tmp_dir, "ray")
+
+
+def get_user_temp_dir():
+    """
+    get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+
+    Note: There should not be a notion of user temp dir. Instead,
+    user specified temp directories for ray should overwrite /tmp/ray.
+    """
+    return resolve_user_ray_temp_dir(None, None)
 
 
 def get_ray_temp_dir():
+    """
+    get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+    """
     return os.path.join(get_user_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
+        temp_dir = resolve_user_ray_temp_dir(None, None)
     return os.path.join(temp_dir, "ray_current_cluster")
 
 
@@ -366,3 +419,23 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     return byte_str.decode(encode_type)
+
+
+# Apply decorators lazily to avoid circular imports
+try:
+    from ray.util.annotations import Deprecated, DeveloperAPI
+
+    # Apply DeveloperAPI decorator
+    globals()["resolve_user_ray_temp_dir"] = DeveloperAPI(resolve_user_ray_temp_dir)
+
+    # Apply Deprecated decorators
+    globals()["get_user_temp_dir"] = Deprecated(
+        message="get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
+    )(get_user_temp_dir)
+
+    globals()["get_ray_temp_dir"] = Deprecated(
+        message="get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
+    )(get_ray_temp_dir)
+except ImportError:
+    # If we still can't import (shouldn't happen), skip annotations
+    pass
