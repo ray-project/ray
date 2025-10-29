@@ -820,8 +820,10 @@ class _StatsManager:
 
         # Mapping from dataset_tag -> last updated (seconds from unix epoch). Defaulting
         # to 0 will be fine since unix epoch always increases.
-        self._execution_last_updated: Dict[str, float] = defaultdict(int)
-        self._iteration_last_updated: Dict[str, float] = defaultdict(int)
+        self._execution_last_updated: Dict[str, float] = {}
+        self._iteration_last_updated: Dict[str, float] = {}
+
+        self._stats_lock: threading.Lock = threading.Lock()
 
     def _get_or_create_stats_actor(
         self, skip_cache: bool = False
@@ -900,11 +902,19 @@ class _StatsManager:
                 per_node_metrics,
             )
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
+            # NOTE: Each dataset_tag is handled by at most 1 thread. Therefore,
+            # updating the dictionary is thread-safe as long as:
+            # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_to_stats_actor`)
+            # 2) dataset_tag is updated by the same and only 1 thread
             self._execution_last_updated[dataset_tag] = now
 
     def clear_last_execution_stats(self, dataset_tag: str):
-        if dataset_tag in self._execution_last_updated:
-            del self._execution_last_updated[dataset_tag]
+        # NOTE: This must be thread-safe because multiple datasets can
+        # be running at the same time. Decreasing the size of the dictionary
+        # is not thread-safe
+        with self._stats_lock:
+            if dataset_tag in self._execution_last_updated:
+                del self._execution_last_updated[dataset_tag]
 
     def update_iteration_metrics(
         self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False
@@ -920,8 +930,9 @@ class _StatsManager:
             self._iteration_last_updated[dataset_tag] = now
 
     def clear_iteration_metrics(self, dataset_tag: str):
-        if dataset_tag in self._iteration_last_updated:
-            del self._iteration_last_updated[dataset_tag]
+        with self._stats_lock:
+            if dataset_tag in self._iteration_last_updated:
+                del self._iteration_last_updated[dataset_tag]
 
     def register_dataset_to_stats_actor(
         self,
@@ -938,6 +949,13 @@ class _StatsManager:
             topology: Optional Topology representing the DAG structure to export
             data_context: The DataContext attached to the dataset
         """
+
+        # NOTE: This must be thread-safe because multiple datasets can
+        # be running at the same time. Increasing the size of the dictionary
+        # is not thread-safe. This is called before dataset execution.
+        with self._stats_lock:
+            self._execution_last_updated[dataset_tag] = 0.0
+            self._iteration_last_updated[dataset_tag] = 0.0
 
         # NOTE: In some cases (for ex, when registering dataset) actor might be gone
         #       (for ex, when prior driver disconnects) and therefore to avoid using
