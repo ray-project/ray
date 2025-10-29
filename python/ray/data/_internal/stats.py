@@ -823,6 +823,9 @@ class _StatsManager:
         self._execution_last_updated: Dict[str, float] = {}
         self._iteration_last_updated: Dict[str, float] = {}
 
+        # NOTE: Updating self._execution_last_updated and self._iteration_last_updated
+        # must be thread-safe. They must be thread-safe because multiple datasets
+        # can be running concurrently.
         self._stats_lock: threading.Lock = threading.Lock()
 
     def _get_or_create_stats_actor(
