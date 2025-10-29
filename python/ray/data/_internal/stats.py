@@ -818,8 +818,7 @@ class _StatsManager:
         self._stats_actor_handle: Optional[ActorHandle] = None
         self._stats_actor_cluster_id = None
 
-        # Mapping from dataset_tag -> last updated (seconds from unix epoch). Defaulting
-        # to 0 will be fine since unix epoch always increases.
+        # Mapping from dataset_tag -> last updated (seconds from unix epoch).
         self._execution_last_updated: Dict[str, float] = {}
         self._iteration_last_updated: Dict[str, float] = {}
 
