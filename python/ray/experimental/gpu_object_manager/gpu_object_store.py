@@ -122,10 +122,6 @@ def __ray_free__(
         gpu_object_manager = global_worker.gpu_object_manager
         gpu_object_store = gpu_object_manager.gpu_object_store
         gpu_object_store.pop_object(obj_id)
-        # NOTE: This may have to change if we support lineage reconstruction for RDT
-        # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
-        # the NIXL ray.put / ray.get
-        gpu_object_manager.managed_gpu_object_metadata.pop(obj_id, None)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
