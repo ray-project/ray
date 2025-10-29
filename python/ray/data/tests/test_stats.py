@@ -2232,7 +2232,7 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
     # Each thread handles 1 dataset.
     assert register_dataset_calls == num_threads
 
-    # Since interval is set to 3 minutes (default timeout), the number of execution
+    # Since interval is set to high timeout, the number of execution
     # calls will update on the first update (cold start), and on shutdown,
     # which is 2 for each thread.
     assert execution_calls == 2 * num_threads
