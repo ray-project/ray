@@ -579,13 +579,12 @@ class RunningReplicaInfo:
     node_ip: Optional[str]
     availability_zone: Optional[str]
     actor_name: str
+    actor_id_str: str
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
-
-    actor_id_str: str
 
     def __post_init__(self):
         # Set hash value when object is constructed.
