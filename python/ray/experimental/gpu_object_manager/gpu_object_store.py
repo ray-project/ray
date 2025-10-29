@@ -114,7 +114,6 @@ def __ray_free__(
         from ray._private.worker import global_worker
         from ray.experimental.collective import get_tensor_transport_manager
 
-        print("ray_free")
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )

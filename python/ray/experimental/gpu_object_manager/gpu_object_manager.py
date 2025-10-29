@@ -284,8 +284,6 @@ class GPUObjectManager:
             sent_dest_actors=set(),
             sent_to_src_actor_and_others_warned=False,
         )
-        print(f"Added GPU object metadata for object {obj_id}")
-        print(f"added Managed GPU object metadata: {self.managed_gpu_object_metadata}")
 
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
         obj_id = obj_ref.hex()

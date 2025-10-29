@@ -96,14 +96,11 @@ class NixlTensorTransport(TensorTransportManager):
             duplicate_obj_id = gpu_object_store.get_duplicate_objects(
                 obj_id, gpu_object
             )
-            print(f"Duplicate object {duplicate_obj_id}")
             if duplicate_obj_id is not None:
                 meta = gpu_object_store._managed_meta_nixl[duplicate_obj_id]
                 gpu_object_store._managed_meta_counts_nixl[meta] += 1
                 gpu_object_store._managed_meta_nixl[obj_id] = meta
-                print(
-                    f"Duplicate object {duplicate_obj_id} found, incrementing reference count to {gpu_object_store._managed_meta_counts_nixl[meta]}"
-                )
+
                 return meta
             meta = NixlTensorTransport.extract_tensor_transport_metadata(gpu_object)
             gpu_object_store._managed_meta_nixl[obj_id] = meta
@@ -175,15 +172,11 @@ class NixlTensorTransport(TensorTransportManager):
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
 
-        print("hihihi")
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         meta = gpu_object_store._managed_meta_nixl[obj_id]
         gpu_object_store._managed_meta_counts_nixl[meta] -= 1
-        print(
-            f"decrementing reference count of tensor_transport_meta to {gpu_object_store._managed_meta_counts_nixl[meta]}"
-        )
+
         if gpu_object_store._managed_meta_counts_nixl[meta] == 0:
-            print("reference count of tensor_transport_meta is 0, deregistering memory")
             descs = tensor_transport_meta.nixl_reg_descs
             if descs is not None:
                 nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
