@@ -9,6 +9,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
+from ray import serve
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -171,6 +172,14 @@ class VLLMEngine(LLMEngine):
         if callback.ctx.run_init_node:
             await initialize_node(self.llm_config)
         await callback.run_callback("on_after_node_init")
+        
+        # Free temporary placement group if using Ray DP backend
+        dp_size = self.llm_config.engine_kwargs.get("data_parallel_size", 1)
+        dp_backend = self.llm_config.engine_kwargs.get("data_parallel_backend")
+        if dp_size > 1 and dp_backend == "ray" and callback.ctx.placement_group:
+            logger.info("Removing temporary placement group after node initialization")
+            ray.util.remove_placement_group(callback.ctx.placement_group)
+            callback.ctx.placement_group = None
 
         (
             vllm_engine_args,
