@@ -63,6 +63,29 @@ def reduce_health_check_interval(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def mock_jax_distributed(monkeypatch):
+    """Mock JAX distributed setup/shutdown to avoid TPU initialization in tests.
+
+    This prevents the RuntimeError: Unable to initialize backend 'tpu' error
+    in test environments without actual TPU hardware.
+    """
+    # Mock the setup and shutdown functions to prevent JAX TPU initialization
+    mock_setup = mock.MagicMock()
+    mock_shutdown = mock.MagicMock()
+
+    monkeypatch.setattr(
+        "ray.train.v2.jax.config._setup_jax_distributed_environment",
+        mock_setup,
+    )
+    monkeypatch.setattr(
+        "ray.train.v2.jax.config._shutdown_jax_distributed",
+        mock_shutdown,
+    )
+
+    yield
+
+
 def train_func():
     import jax
 
@@ -173,28 +196,24 @@ def test_jax_platforms_env_var_with_existing_tpu(ray_tpu_single_host, tmp_path):
         jax_platforms = os.environ.get("JAX_PLATFORMS", "")
         assert jax_platforms == "tpu,cpu"
 
-    # Mock JAX distributed setup to avoid TPU initialization
-    with mock.patch(
-        "ray.train.v2.jax.config._setup_jax_distributed_environment"
-    ), mock.patch("ray.train.v2.jax.config._shutdown_jax_distributed"):
-        trainer = JaxTrainer(
-            train_loop_per_worker=train_func_check_env,
-            scaling_config=ScalingConfig(
-                num_workers=1,
-                resources_per_worker={"TPU": 8},
-                use_tpu=True,
-                accelerator_type="TPU-V6E",
-            ),
-            run_config=RunConfig(
-                storage_path=str(tmp_path),
-                worker_runtime_env={
-                    "env_vars": {
-                        "JAX_PLATFORMS": "tpu,cpu",
-                    },
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_check_env,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            use_tpu=True,
+            accelerator_type="TPU-V6E",
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "tpu,cpu",
                 },
-            ),
-        )
-        trainer.fit()
+            },
+        ),
+    )
+    trainer.fit()
 
 
 def test_jax_platforms_env_var_with_existing_other(
@@ -209,28 +228,24 @@ def test_jax_platforms_env_var_with_existing_other(
         jax_platforms = os.environ.get("JAX_PLATFORMS", "")
         assert jax_platforms == "tpu,cpu"
 
-    # Mock JAX distributed setup to avoid TPU initialization
-    with mock.patch(
-        "ray.train.v2.jax.config._setup_jax_distributed_environment"
-    ), mock.patch("ray.train.v2.jax.config._shutdown_jax_distributed"):
-        trainer = JaxTrainer(
-            train_loop_per_worker=train_func_check_env,
-            scaling_config=ScalingConfig(
-                num_workers=1,
-                resources_per_worker={"TPU": 8},
-                use_tpu=True,
-                accelerator_type="TPU-V6E",
-            ),
-            run_config=RunConfig(
-                storage_path=str(tmp_path),
-                worker_runtime_env={
-                    "env_vars": {
-                        "JAX_PLATFORMS": "cpu",
-                    },
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_check_env,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            use_tpu=True,
+            accelerator_type="TPU-V6E",
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
                 },
-            ),
-        )
-        trainer.fit()
+            },
+        ),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":
