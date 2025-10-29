@@ -682,6 +682,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    pid,
                                    task_by_state_gauge_,
                                    actor_by_state_gauge_);
+  core_worker->Init();
   return core_worker;
 }
 
@@ -861,13 +862,15 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
                                        /*running_on_single_thread=*/true};
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         io_service.get_executor());
+    rpc::ClientCallManager client_call_manager(
+        io_service, /*record_stats=*/false, options_.node_ip_address);
     rpc::Address raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         NodeID::Nil(), options_.node_ip_address, options_.node_manager_port);
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
     rpc::RayletClient local_raylet_rpc_client(
-        raylet_address, *client_call_manager_, [] {});
+        raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

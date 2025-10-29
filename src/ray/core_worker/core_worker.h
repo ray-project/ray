@@ -208,6 +208,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   CoreWorker(CoreWorker const &) = delete;
 
+  void Init();
+
   /// Core worker's deallocation lifecycle
   ///
   /// Shutdown API must be called before deallocating a core worker.
