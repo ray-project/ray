@@ -80,6 +80,10 @@ class RAY_EXPORT PythonGcsSubscriber {
   std::deque<rpc::PubMessage> queue_ ABSL_GUARDED_BY(mu_);
   bool closed_ ABSL_GUARDED_BY(mu_) = false;
   std::shared_ptr<grpc::ClientContext> current_polling_context_ ABSL_GUARDED_BY(mu_);
+
+  // Set authentication token on a gRPC client context if token-based authentication is
+  // enabled
+  void SetAuthenticationToken(grpc::ClientContext &context);
 };
 
 /// Get the .lines() attribute of a LogBatch as a std::vector
