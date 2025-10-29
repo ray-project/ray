@@ -20,7 +20,6 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
-from ray.serve._private.config import prepare_http_options
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -534,16 +533,17 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    proxy_location = None
-    http_options = None
+    http_options = {"location": "EveryNode"}
     grpc_options = gRPCOptions()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        proxy_location = config.proxy_location
-        http_options = config.http_options.dict()
+        http_options["location"] = ProxyLocation._to_deployment_mode(
+            config.proxy_location
+        ).value
+        config_http_options = config.http_options.dict()
+        http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
-    http_options = prepare_http_options(proxy_location, http_options)
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,

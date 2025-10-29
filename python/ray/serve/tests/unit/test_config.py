@@ -10,7 +10,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     _proto_to_dict,
-    prepare_http_options,
+    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
@@ -654,67 +654,69 @@ def test_http_options():
     assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
 
 
-def test_prepare_http_options():
-    assert prepare_http_options(
+def test_prepare_imperative_http_options():
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=None,
     ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={},
     ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(**{}),
     ) == HTTPOptions(
         location=DeploymentMode.HeadOnly
     )  # in this case we can't know whether location was provided or not
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(),
     ) == HTTPOptions(location=DeploymentMode.HeadOnly)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"test": "test"},
     ) == HTTPOptions(location=DeploymentMode.EveryNode)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"host": "0.0.0.0"},
     ) == HTTPOptions(location=DeploymentMode.EveryNode, host="0.0.0.0")
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"location": "NoServer"},
     ) == HTTPOptions(location=DeploymentMode.NoServer)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.Disabled,
         http_options=None,
     ) == HTTPOptions(location=DeploymentMode.NoServer)
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
     ) == HTTPOptions(location=DeploymentMode.HeadOnly, host="0.0.0.0")
 
-    assert prepare_http_options(
+    assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"location": "NoServer"},
     ) == HTTPOptions(location=DeploymentMode.HeadOnly)
 
     with pytest.raises(ValueError, match="not a valid ProxyLocation"):
-        prepare_http_options(proxy_location="wrong", http_options=None)
+        prepare_imperative_http_options(proxy_location="wrong", http_options=None)
 
     with pytest.raises(ValueError, match="not a valid enumeration"):
-        prepare_http_options(proxy_location=None, http_options={"location": "123"})
+        prepare_imperative_http_options(
+            proxy_location=None, http_options={"location": "123"}
+        )
 
     with pytest.raises(ValueError, match="Unexpected type"):
-        prepare_http_options(proxy_location=None, http_options="wrong")
+        prepare_imperative_http_options(proxy_location=None, http_options="wrong")
 
 
 def test_with_proto():

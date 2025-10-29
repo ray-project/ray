@@ -798,30 +798,33 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
-def prepare_http_options(
+def prepare_imperative_http_options(
     proxy_location: Union[None, str, ProxyLocation],
     http_options: Union[None, dict, HTTPOptions],
 ) -> HTTPOptions:
-    """Prepare `HTTPOptions` with desired location based on the proxy location given.
+    """Prepare `HTTPOptions` with a resolved `location` based on `proxy_location` and `http_options`.
 
-    If `proxy_location` is provided `http_options.location` is determined by it.
-    Alternatively, if `http_options.location` is specified explicitly by user,
-    e.g. {"location": "NoServer"} or via HTTPOptions with or without location field
-    e.g. HTTPOptions(location=DeploymentMode.EveryNode) or HTTPOptions(), then
-    location provided by the user is used.
+    Precedence:
+    - If `proxy_location` is provided, it overrides any `location` in `http_options`.
+    - Else if `http_options` specifies a `location` explicitly (HTTPOptions(...) or dict with 'location'), keep it.
+    - Else (no `proxy_location` and no explicit `location`) set `location` to `DeploymentMode.EveryNode`.
+      A bare `HTTPOptions()` counts as an explicit default (`HeadOnly`).
 
     Args:
-        proxy_location: provided ProxyLocation or its str representation
-        http_options: provided HTTPOptions or its dict representation
+        proxy_location: Optional ProxyLocation (or its string representation).
+        http_options: Optional HTTPOptions instance or dict. If None, a new HTTPOptions() is created.
 
     Returns:
-        HTTPOptions: A new `HTTPOptions` instance with resolved location.
+        HTTPOptions: New instance with resolved location.
 
     Note:
-        Default ProxyLocation is `EveryNode`; default HTTPOptions() location is `HeadOnly`.
+        1. Default ProxyLocation (when unspecified) resolves to DeploymentMode.EveryNode.
+        2. Default HTTPOptions() location is DeploymentMode.HeadOnly.
+        3. `HTTPOptions` is used in `imperative` mode (Python API) cluster set-up.
+            `Declarative` mode (CLI / REST) uses `HTTPOptionsSchema`.
 
     Raises:
-        ValueError: If `http_options` is of an unexpected type.
+        ValueError: If http_options is not None, dict, or HTTPOptions.
     """
     if http_options is None:
         location_set_explicitly = False

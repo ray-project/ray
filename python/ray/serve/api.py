@@ -16,7 +16,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    prepare_http_options,
+    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -96,7 +96,7 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
-    http_options = prepare_http_options(proxy_location, http_options)
+    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
