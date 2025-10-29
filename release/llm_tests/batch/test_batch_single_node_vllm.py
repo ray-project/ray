@@ -33,10 +33,10 @@ def cleanup_ray_resources():
     ray.shutdown()
 
 
-def _get_float_env(name: str) -> float | None:
+def _get_float_env(name: str, default: float | None = None) -> float | None:
     value = os.getenv(name)
     if value is None or value == "":
-        return None
+        return default
     try:
         return float(value)
     except ValueError:
