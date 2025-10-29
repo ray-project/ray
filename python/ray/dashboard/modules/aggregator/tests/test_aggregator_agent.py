@@ -1,10 +1,8 @@
 import base64
 import json
 import sys
-
-from typing import Optional
 import uuid
-
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
