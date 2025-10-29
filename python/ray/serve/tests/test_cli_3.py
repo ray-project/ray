@@ -4,6 +4,7 @@ import signal
 import subprocess
 import sys
 import time
+from typing import Union
 
 import httpx
 import pytest
@@ -138,6 +139,60 @@ k8sFNode = global_f.options(
 
 
 class TestRun:
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="File path incorrect on Windows."
+    )
+    @pytest.mark.parametrize(
+        "proxy_location,expected",
+        [
+            (
+                None,
+                "EveryNode",
+            ),  # default ProxyLocation `EveryNode` is used as http_options.location is not specified
+            ("EveryNode", "EveryNode"),
+            ("HeadOnly", "HeadOnly"),
+            ("Disabled", "Disabled"),
+        ],
+    )
+    def test_proxy_location(self, ray_start_stop, tmp_path, proxy_location, expected):
+        # when the `serve run` cli command is executed
+        # without serve already running (for the first time)
+        # `proxy_location` should be set from the config file if specified
+        def is_proxy_location_correct(expected_proxy_location: str) -> bool:
+            try:
+                response = httpx.get(
+                    "http://localhost:8265/api/serve/applications/"
+                ).text
+                response_json = json.loads(response)
+                print("response_json")
+                print(response_json)
+                return response_json["proxy_location"] == expected_proxy_location
+            except httpx.HTTPError:
+                return False
+
+        def arithmetic_config(with_proxy_location: Union[str, None]) -> str:
+            config_file_name = os.path.join(
+                os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
+            )
+            with open(config_file_name, "r") as config_file:
+                arithmetic_config_dict = yaml.safe_load(config_file)
+
+            config_path = tmp_path / "config.yaml"
+            if with_proxy_location:
+                arithmetic_config_dict["proxy_location"] = with_proxy_location
+            with open(config_path, "w") as f:
+                yaml.dump(arithmetic_config_dict, f)
+            return str(config_path)
+
+        config_path = arithmetic_config(with_proxy_location=proxy_location)
+        p = subprocess.Popen(["serve", "run", config_path])
+        wait_for_condition(
+            lambda: is_proxy_location_correct(expected_proxy_location=expected),
+            timeout=10,
+        )
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
     @pytest.mark.parametrize("number_of_kill_signals", (1, 2))
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."
