@@ -74,6 +74,8 @@ message ActorHandle {
   map<string, string> labels = 15;
 
   bool enable_tensor_transport = 16;
+
+  bool is_detached = 17;
 }
 
 message PushTaskRequest {
@@ -291,7 +293,7 @@ message CancelTaskReply {
   bool attempt_succeeded = 2;
 }
 
-message RemoteCancelTaskRequest {
+message CancelRemoteTaskRequest {
   // Object ID of the remote task that should be killed.
   bytes remote_object_id = 1;
   // Whether to kill the worker.
@@ -300,7 +302,7 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {}
+message CancelRemoteTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -532,8 +534,8 @@ service CoreWorkerService {
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.
-  // Failure: TODO: needs failure behavior
-  rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
+  // Failure: Retries, it's idempotent.
+  rpc CancelRemoteTask(CancelRemoteTaskRequest) returns (CancelRemoteTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.

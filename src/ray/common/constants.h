@@ -42,6 +42,8 @@ constexpr int kRayletStoreErrorExitCode = 100;
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 
 constexpr char kClusterIdKey[] = "ray_cluster_id";
+constexpr char kAuthTokenKey[] = "authorization";
+constexpr char kBearerPrefix[] = "Bearer ";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
@@ -150,3 +152,6 @@ constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
 
 /// PID of GCS process to record metrics.
 constexpr char kGcsPidKey[] = "gcs_pid";
+
+// Prefix for namespaces which are used internally by ray.
+constexpr char kRayInternalNamespacePrefix[] = "_ray_internal_";  // NOLINT
