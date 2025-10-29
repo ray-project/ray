@@ -655,7 +655,7 @@
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: weekly
-  team: data
+  team: llm
 
   cluster:
     byod:
