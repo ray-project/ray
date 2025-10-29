@@ -1669,7 +1669,6 @@ def init(
         system_reserved_memory=system_reserved_memory,
     )
 
-    # Install signal handler for the driver process.
     ray._private.utils.install_driver_signal_handler()
 
     # If available, use RAY_ADDRESS to override if the address was left

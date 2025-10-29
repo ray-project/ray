@@ -585,6 +585,16 @@ def ray_start_no_cpu(request, maybe_setup_external_redis):
         yield res
 
 
+# Simple fixture that starts and stops Ray with default settings.
+@pytest.fixture
+def ray_start():
+    ray.init()
+    try:
+        yield
+    finally:
+        ray.shutdown()
+
+
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request, maybe_setup_external_redis):

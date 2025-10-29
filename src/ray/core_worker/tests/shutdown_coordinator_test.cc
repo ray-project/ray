@@ -190,9 +190,8 @@ TEST_F(ShutdownCoordinatorTest, SingleSignal_IntentionalSystemExit_TriggersExitN
 
   ASSERT_TRUE(initiated);
   EXPECT_EQ(fake_ptr->force_calls.load(), 0);
-  // Either graceful or exit path should have been invoked at least once.
-  EXPECT_TRUE(fake_ptr->graceful_calls.load() >= 1 ||
-              fake_ptr->worker_exit_calls.load() >= 1);
+  EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
+  EXPECT_EQ(fake_ptr->worker_exit_calls.load(), 1);
 }
 
 TEST_F(ShutdownCoordinatorTest, DoubleSignal_SecondForce_ExecutesForceShutdown) {
