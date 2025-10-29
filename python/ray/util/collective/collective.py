@@ -45,6 +45,12 @@ try:
 except ImportError:
     _NIXL_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group.hccl_collective_group import HCCLGroup
+    
+    _HCCL_AVAILABLE = True
+except ImportError:
+    _HCCL_AVAILABLE = False
 
 def nccl_available():
     global _LOG_NCCL_WARNING
@@ -71,6 +77,9 @@ def torch_distributed_available():
 def nixl_available():
     return _NIXL_AVAILABLE
 
+
+def hccl_available():
+    return _HCCL_AVAILABLE
 
 class GroupManager(object):
     """Use this class to manage the collective groups we created so far.
@@ -128,6 +137,10 @@ class GroupManager(object):
             _check_backend_availability(backend)
             logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
             g = NixlBackend()
+        elif backend == types.Backend.HCCL:
+            _check_backend_availability(backend)
+            logger.debug("Creating HCCL group: '{}'...".format(group_name))
+            g = HCCLGroup(world_size, rank, group_name)
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -821,6 +834,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NIXL:
         if not nixl_available():
             raise RuntimeError("NIXL is not available.")
+    elif backend == types.Backend.HCCL:
+        if not hccl_available():
+            raise RuntimeError("HCCL is not available.")
 
 
 def _check_inside_actor():

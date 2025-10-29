@@ -32,10 +32,6 @@ TORCH_REDUCE_OP_MAP = {
 }
 
 
-def get_master_address_metadata_key(group_name: str):
-    return f"collective_group_master_address_{group_name}"
-
-
 class TorchGLOOGroup(BaseGroup):
     def __init__(
         self,
