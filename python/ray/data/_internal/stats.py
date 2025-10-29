@@ -823,10 +823,10 @@ class _StatsManager:
         self._execution_last_updated: Dict[str, float] = {}
         self._iteration_last_updated: Dict[str, float] = {}
 
-        # NOTE: Updating self._execution_last_updated and self._iteration_last_updated
+        # NOTE: Updating `_execution_last_updated`` and `_iteration_last_updated``
         # must be thread-safe. They must be thread-safe because multiple datasets
         # can be running concurrently.
-        self._stats_lock: threading.Lock = threading.Lock()
+        self._update_last_updated_lock: threading.Lock = threading.Lock()
 
     def _get_or_create_stats_actor(
         self, skip_cache: bool = False
@@ -915,7 +915,7 @@ class _StatsManager:
         # NOTE: This must be thread-safe because multiple datasets can
         # be running at the same time. Decreasing the size of the dictionary
         # is not thread-safe
-        with self._stats_lock:
+        with self._update_last_updated_lock:
             if dataset_tag in self._execution_last_updated:
                 del self._execution_last_updated[dataset_tag]
 
@@ -933,7 +933,7 @@ class _StatsManager:
             self._iteration_last_updated[dataset_tag] = now
 
     def clear_iteration_metrics(self, dataset_tag: str):
-        with self._stats_lock:
+        with self._update_last_updated_lock:
             if dataset_tag in self._iteration_last_updated:
                 del self._iteration_last_updated[dataset_tag]
 
@@ -956,7 +956,7 @@ class _StatsManager:
         # NOTE: This must be thread-safe because multiple datasets can
         # be running at the same time. Increasing the size of the dictionary
         # is not thread-safe. This is called before dataset execution.
-        with self._stats_lock:
+        with self._update_last_updated_lock:
             self._execution_last_updated[dataset_tag] = 0.0
             self._iteration_last_updated[dataset_tag] = 0.0
 
