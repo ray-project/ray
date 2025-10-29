@@ -204,13 +204,13 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def internal_queue_num_blocks(self) -> int:
+    def internal_input_queue_num_blocks(self) -> int:
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
         return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
 
-    def internal_queue_num_bytes(self) -> int:
+    def internal_input_queue_num_bytes(self) -> int:
         return (
             self._bundle_queue.estimate_size_bytes()
             + self._block_ref_bundler.size_bytes()
