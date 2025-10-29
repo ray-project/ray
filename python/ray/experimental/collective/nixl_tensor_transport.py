@@ -44,15 +44,25 @@ class NixlTensorTransport(TensorTransportManager):
 
     @staticmethod
     def extract_tensor_transport_metadata(
+        obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
+        from ray._private.worker import global_worker
         from ray.util.collective.collective import get_group_handle
         from ray.util.collective.collective_group.nixl_backend import NixlBackend
         from ray.util.collective.types import NixlTransportMetadata
 
+        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
         device = None
         tensor_meta = []
+        duplicate_obj_id = gpu_object_store.get_duplicate_objects(obj_id, gpu_object)
+        if duplicate_obj_id is not None:
+            meta = gpu_object_store._managed_meta_nixl[duplicate_obj_id]
+            gpu_object_store._managed_meta_counts_nixl[meta] += 1
+            gpu_object_store._managed_meta_nixl[obj_id] = meta
+
+            return meta
         if gpu_object:
             reg_descs, serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
                 gpu_object
@@ -67,13 +77,16 @@ class NixlTensorTransport(TensorTransportManager):
                 tensor_meta.append((t.shape, t.dtype))
         else:
             reg_descs, serialized_descs, agent_meta = None, None, None
-        return NixlTransportMetadata(
+        ret = NixlTransportMetadata(
             tensor_meta=tensor_meta,
             tensor_device=device,
             nixl_reg_descs=reg_descs,
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
         )
+        gpu_object_store._managed_meta_nixl[obj_id] = ret
+        gpu_object_store._managed_meta_counts_nixl[ret] = 1
+        return ret
 
     @staticmethod
     def get_tensor_transport_metadata(
@@ -93,19 +106,9 @@ class NixlTensorTransport(TensorTransportManager):
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-            duplicate_obj_id = gpu_object_store.get_duplicate_objects(
+            return NixlTensorTransport.extract_tensor_transport_metadata(
                 obj_id, gpu_object
             )
-            if duplicate_obj_id is not None:
-                meta = gpu_object_store._managed_meta_nixl[duplicate_obj_id]
-                gpu_object_store._managed_meta_counts_nixl[meta] += 1
-                gpu_object_store._managed_meta_nixl[obj_id] = meta
-
-                return meta
-            meta = NixlTensorTransport.extract_tensor_transport_metadata(gpu_object)
-            gpu_object_store._managed_meta_nixl[obj_id] = meta
-            gpu_object_store._managed_meta_counts_nixl[meta] = 1
-            return meta
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype

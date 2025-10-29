@@ -126,7 +126,6 @@ def __ray_free__(
         # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
         # the NIXL ray.put / ray.get
         gpu_object_manager.managed_gpu_object_metadata.pop(obj_id, None)
-        print(f"Popped GPU object metadata for object {obj_id}")
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
@@ -260,7 +259,6 @@ class GPUObjectStore:
         """Get another object ID of the GPU object that duplicates the given GPU object."""
         with self._lock:
             if len(src_gpu_object) == 0:
-                print("Source GPU object is empty")
                 return None
             obj_id_set = set()
             for tensor in src_gpu_object:

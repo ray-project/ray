@@ -36,6 +36,7 @@ class CollectiveTensorTransport(TensorTransportManager):
 
     @staticmethod
     def extract_tensor_transport_metadata(
+        obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> CollectiveTransportMetadata:
         tensor_meta = []
