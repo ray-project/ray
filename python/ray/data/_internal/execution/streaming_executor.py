@@ -83,13 +83,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
         self._progress_manager: Optional[RichExecutionProgressManager] = None
 
-        if not self._use_rich_progress() and log_once("rich_progress_disabled"):
-            logger.info(
-                "A new progress UI is available. To enable, set "
-                "`ray.data.DataContext.get_current()."
-                "enable_rich_progress_bars = True`."
-            )
-
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
         self._execution_started = False
@@ -669,7 +662,22 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
     def _use_rich_progress(self):
-        return self._data_context.enable_rich_progress_bars
+        if not self._data_context.enable_rich_progress_bars:
+            if log_once("rich_progress_disabled"):
+                logger.info(
+                    "A new progress UI is available. To enable, set "
+                    "`ray.data.DataContext.get_current()."
+                    "enable_rich_progress_bars = True`."
+                )
+            return False
+        if self._data_context.use_ray_tqdm:
+            if log_once("rich_progress_not_distributed"):
+                logger.info(
+                    "Defaulting to tqdm progress as distributed rich "
+                    "is not supported yet."
+                )
+            return False
+        return True
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
