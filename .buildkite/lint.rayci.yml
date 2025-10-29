@@ -64,7 +64,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.9
+    job_env: docbuild-py3.10
     tags:
       - oss
       - skip-on-premerge
