@@ -35,10 +35,8 @@ def _set_jax_env_vars(use_tpu: bool):
         if "tpu" in existing_jax_platforms:
             return
         elif existing_jax_platforms:
-            # Prepend tpu to existing platforms
             os.environ["JAX_PLATFORMS"] = "tpu," + existing_jax_platforms
         else:
-            # No existing platforms, just set to "tpu"
             os.environ["JAX_PLATFORMS"] = "tpu"
 
 
