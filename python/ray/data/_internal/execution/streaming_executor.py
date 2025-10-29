@@ -662,7 +662,13 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
     def _use_rich_progress(self):
-        if not self._data_context.enable_rich_progress_bars:
+        rich_enabled = self._data_context.enable_rich_progress_bars
+        ray_tqdm = self._data_context.use_ray_tqdm
+
+        if not rich_enabled and ray_tqdm:
+            # No need to show any logs in this scenario.
+            return False
+        if not rich_enabled:
             if log_once("rich_progress_disabled"):
                 logger.info(
                     "A new progress UI is available. To enable, set "
@@ -670,7 +676,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "enable_rich_progress_bars = True`."
                 )
             return False
-        if self._data_context.use_ray_tqdm:
+        if ray_tqdm:
             if log_once("rich_progress_not_distributed"):
                 logger.info(
                     "Defaulting to tqdm progress as distributed rich "
