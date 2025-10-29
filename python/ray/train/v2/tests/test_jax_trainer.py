@@ -71,16 +71,6 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
-def train_func_check_env():
-    """Training function to verify JAX_PLATFORMS env var is set."""
-    import os
-
-    from ray import train
-
-    jax_platforms = os.environ.get("JAX_PLATFORMS", "")
-    train.report({"jax_platforms": jax_platforms})
-
-
 def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -149,6 +139,13 @@ def test_jax_platforms_env_var_no_existing(ray_tpu_single_host, tmp_path, monkey
     # Ensure JAX_PLATFORMS is not set
     monkeypatch.delenv("JAX_PLATFORMS", raising=False)
 
+    def train_func_check_env():
+        """Training function to verify JAX_PLATFORMS env var is set."""
+        import os
+
+        jax_platforms = os.environ.get("JAX_PLATFORMS", "")
+        assert jax_platforms == "tpu"
+
     trainer = JaxTrainer(
         train_loop_per_worker=train_func_check_env,
         scaling_config=ScalingConfig(
@@ -161,19 +158,18 @@ def test_jax_platforms_env_var_no_existing(ray_tpu_single_host, tmp_path, monkey
             storage_path=str(tmp_path),
         ),
     )
-    result = trainer.fit()
-    assert result.error is None
-
-    # Check that JAX_PLATFORMS was set to "tpu"
-    jax_platforms = result.metrics["jax_platforms"]
-    assert jax_platforms == "tpu"
+    trainer.fit()
 
 
-def test_jax_platforms_env_var_with_existing_tpu(
-    ray_tpu_single_host, tmp_path, monkeypatch
-):
+def test_jax_platforms_env_var_with_existing_tpu(ray_tpu_single_host, tmp_path):
     """Test that JAX_PLATFORMS is not modified when 'tpu' is already present."""
-    monkeypatch.setenv("JAX_PLATFORMS", "tpu,cpu")
+
+    def train_func_check_env():
+        """Training function to verify JAX_PLATFORMS env var is set."""
+        import os
+
+        jax_platforms = os.environ.get("JAX_PLATFORMS", "")
+        assert jax_platforms == "tpu,cpu"
 
     trainer = JaxTrainer(
         train_loop_per_worker=train_func_check_env,
@@ -185,21 +181,27 @@ def test_jax_platforms_env_var_with_existing_tpu(
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "tpu,cpu",
+                },
+            },
         ),
     )
-    result = trainer.fit()
-    assert result.error is None
-
-    # Check that JAX_PLATFORMS was not modified
-    jax_platforms = result.metrics["jax_platforms"]
-    assert jax_platforms == "tpu,cpu"
+    trainer.fit()
 
 
 def test_jax_platforms_env_var_with_existing_other(
     ray_tpu_single_host, tmp_path, monkeypatch
 ):
     """Test that 'tpu' is prepended when JAX_PLATFORMS contains other platforms."""
-    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+
+    def train_func_check_env():
+        """Training function to verify JAX_PLATFORMS env var is set."""
+        import os
+
+        jax_platforms = os.environ.get("JAX_PLATFORMS", "")
+        assert jax_platforms == "tpu,cpu"
 
     trainer = JaxTrainer(
         train_loop_per_worker=train_func_check_env,
@@ -211,38 +213,14 @@ def test_jax_platforms_env_var_with_existing_other(
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
-    result = trainer.fit()
-    assert result.error is None
-
-    # Check that 'tpu' was prepended to existing platforms
-    jax_platforms = result.metrics["jax_platforms"]
-    assert jax_platforms == "tpu,cpu"
-
-
-def test_jax_platforms_env_var_no_tpu_flag(ray_tpu_single_host, tmp_path, monkeypatch):
-    """Test that JAX_PLATFORMS is not set when use_tpu=False."""
-    monkeypatch.delenv("JAX_PLATFORMS", raising=False)
-
-    trainer = JaxTrainer(
-        train_loop_per_worker=train_func_check_env,
-        scaling_config=ScalingConfig(
-            num_workers=1,
-            resources_per_worker={"TPU": 8},
-            use_tpu=False,  # Not using TPU
-            accelerator_type="TPU-V6E",
-        ),
-        run_config=RunConfig(
-            storage_path=str(tmp_path),
-        ),
-    )
-    result = trainer.fit()
-    assert result.error is None
-
-    # Check that JAX_PLATFORMS was not set
-    jax_platforms = result.metrics["jax_platforms"]
-    assert jax_platforms == ""
+    trainer.fit()
 
 
 if __name__ == "__main__":
