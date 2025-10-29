@@ -527,7 +527,8 @@ CoreWorker::CoreWorker(
 
   // Initialize shutdown coordinator last - after all services are ready
   // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
+  auto shutdown_executor =
+      std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
   shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
       std::move(shutdown_executor), options_.worker_type);
 

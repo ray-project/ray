@@ -25,7 +25,8 @@ namespace ray {
 
 namespace core {
 
-CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(std::shared_ptr<CoreWorker> core_worker)
+CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(
+    std::shared_ptr<CoreWorker> core_worker)
     : core_worker_(core_worker) {}
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(

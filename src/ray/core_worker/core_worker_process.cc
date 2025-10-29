@@ -692,7 +692,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      : WorkerID::FromRandom()),
       io_work_(io_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
-      io_service_, /*record_stats=*/false, options.node_ip_address)),
+          io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
       service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
   if (options_.enable_logging) {
@@ -813,10 +813,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     write_locked.Get() = worker;
     // Initialize metrics agent client.
     metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1",
-        options_.metrics_agent_port,
-        io_service_,
-        *client_call_manager_);
+        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
@@ -869,7 +866,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    rpc::RayletClient local_raylet_rpc_client(raylet_address, *client_call_manager_, [] {});
+    rpc::RayletClient local_raylet_rpc_client(
+        raylet_address, *client_call_manager_, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
