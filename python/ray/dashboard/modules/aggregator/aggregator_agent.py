@@ -59,6 +59,7 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+)
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
 # will be converted to camel case.
@@ -119,7 +120,6 @@ class AggregatorAgent(
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
-                    events_filter_fn=self._can_expose_event,
                     preserve_proto_field_name=PRESERVE_PROTO_FIELD_NAME,
                 ),
                 event_buffer=self._event_buffer,
