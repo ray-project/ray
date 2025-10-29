@@ -443,6 +443,9 @@ class ParquetDatasource(Datasource):
 
         return (self._data_columns or []) + (self._partition_columns or [])
 
+    def get_current_predicate(self) -> Optional[Expr]:
+        return self._predicate_expr
+
     def apply_projection(
         self,
         columns: Optional[List[str]],
