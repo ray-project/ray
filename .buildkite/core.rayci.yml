@@ -113,7 +113,8 @@ steps:
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
         --test_tag_filters=mem_pressure -- //python/ray/tests/...
-    job_env: corebuild
+    job_env: corebuild-multipy-py3.10
+    depends_on: corebuild-multipy
 
   - label: ":ray: core: out of disk tests"
     tags:
@@ -233,9 +234,11 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --build-name corebuild-py3.10
+        --python-version 3.10
     depends_on:
       - manylinux
-      - corebuild
+      - corebuild-multipy
       - forge
 
   - label: ":ray: core: minimal tests {{matrix}}"
@@ -320,10 +323,10 @@ steps:
     instance_type: medium
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
-        --build-type asan-clang --cache-test-results --parallelism-per-worker 2
+        --build-type asan-clang --cache-test-results --parallelism-per-worker 2 --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
       - block-core-cpp-sanitizer-tests
-      - corebuild
+      - corebuild-multipy
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
@@ -331,10 +334,10 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type ubsan --except-tags no_ubsan,cgroup
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2 --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
       - block-core-cpp-sanitizer-tests
-      - corebuild
+      - corebuild-multipy
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
@@ -342,10 +345,10 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type tsan-clang --except-tags no_tsan,cgroup
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2 --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
       - block-core-cpp-sanitizer-tests
-      - corebuild
+      - corebuild-multipy
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
@@ -360,8 +363,10 @@ steps:
         --install-mask all-ray-libraries
         --run-flaky-tests
         --except-tags multi_gpu,cgroup
+        --build-name corebuild-py3.10
+        --python-version 3.10
     depends_on:
-      - corebuild
+      - corebuild-multipy
 
   - label: ":ray: core: flaky gpu tests"
     key: core_flaky_gpu_tests
@@ -407,7 +412,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-type java
         --only-tags needs_java
-    depends_on: corebuild
+        --python-version 3.10
+        --build-name corebuild-py3.10
+    depends_on: corebuild-multipy
 
   - label: ":ray: core: HA integration tests"
     tags:
@@ -421,7 +428,7 @@ steps:
       - manylinux
       - forge
       - raycpubase
-      - corebuild
+      - corebuild-multipy
 
   - label: ":ray: core: runtime env container tests"
     tags:
@@ -438,11 +445,13 @@ steps:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask all-ray-libraries
         --only-tags runtime_env_container
+        --build-name corebuild-py3.10
+        --python-version 3.10
     depends_on:
       - manylinux
       - forge
       - raycpubase
-      - corebuild
+      - corebuild-multipy
 
   - label: ":core: core: spark-on-ray tests"
     # NOTE: The Spark-on-Ray tests intentionally aren't triggered by the `java` tag to
@@ -457,8 +466,10 @@ steps:
         --test-env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
         --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
         --only-tags spark_on_ray
+        --build-name corebuild-py3.10
+        --python-version 3.10
     depends_on:
-      - corebuild
+      - corebuild-multipy
 
   # block gpu tests on premerge and microcheck
   - block: "run multi gpu tests"
