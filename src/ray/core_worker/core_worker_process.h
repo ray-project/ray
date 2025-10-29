@@ -166,6 +166,9 @@ class CoreWorkerProcessImpl {
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
+  /// XXX.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
   /// issues like https://github.com/ray-project/ray/issues/18857
