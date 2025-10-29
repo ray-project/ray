@@ -66,9 +66,11 @@ def test_actor_pool_scaling():
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
-        internal_queue_size=MagicMock(return_value=1),
+        internal_queue_num_blocks=MagicMock(return_value=1),
     )
-    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10))])
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager
@@ -148,8 +150,8 @@ def test_actor_pool_scaling():
 
     # Should scale down only once all inputs have been already dispatched AND
     # no new inputs ar expected
-    with patch(op_state.input_queues[0], "__len__", 0):
-        with patch(op, "internal_queue_size", 0):
+    with patch(op_state.input_queues[0], "num_blocks", 0, is_method=False):
+        with patch(op, "internal_input_queue_num_blocks", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
@@ -327,6 +329,92 @@ def test_actor_pool_respects_max_size(ray_start_10_cpus_shared, restore_data_con
             fn_constructor_args=(barrier,),
             compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         ).take_all()
+
+
+def test_autoscaling_config_validation_warnings(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    """Test that validation warnings are emitted when actor pool config won't allow scaling up."""
+    from unittest.mock import patch
+
+    class SimpleMapper:
+        """Simple callable class for testing autoscaling validation."""
+
+        def __call__(self, row):
+            # Map operates on rows which are dicts
+            return {"value": row["id"] * 2}
+
+    # Test #1: Invalid config (should warn)
+    #   - max_tasks_in_flight / max_concurrency == 1
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy(
+                max_tasks_in_flight_per_actor=1,
+            ),
+            max_concurrency=1,
+        )
+        # Take just one item to minimize execution time
+        ds.take_all()
+
+    # Check that warning was called with expected message
+    wanr_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+        "configured utilization threshold (200.0%) couldn't be reached with "
+        "configured max_concurrency=1 and max_tasks_in_flight_per_actor=1 "
+        "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 100%)"
+    )
+
+    assert expected_message in wanr_log_args_str
+
+    # Test #2: Provided config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 2 (default)
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy(
+                max_tasks_in_flight_per_actor=2,
+            ),
+            max_concurrency=1,
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted
+    wanr_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in wanr_log_args_str
+
+    # Test #3: Default config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 4 (default)
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper, compute=ray.data.ActorPoolStrategy()
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted
+    wanr_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in wanr_log_args_str
 
 
 if __name__ == "__main__":
