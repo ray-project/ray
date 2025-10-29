@@ -180,7 +180,10 @@ class GPUObjectStore:
         # Signal when an object is freed from the object store.
         self._object_freed_cv = threading.Condition(self._lock)
 
+        # These are only used for NIXL. Will be removed in the future.
+        # Mapping from object ID to the NIXL managed meta.
         self._managed_meta_nixl: Dict[str, Any] = {}
+        # Mapping from NIXL managed meta to the number of objects that contain it.
         self._managed_meta_counts_nixl: Dict[Any, int] = {}
 
     def has_object(self, obj_id: str) -> bool:
@@ -355,7 +358,7 @@ class GPUObjectStore:
 
     def get_num_managed_meta_nixl(self) -> int:
         """
-        Return the number of managed meta NIXL in the GPU object store.
+        Return the number of NIXL managed meta in the GPU object store.
         """
         with self._lock:
             return len(self._managed_meta_nixl)
