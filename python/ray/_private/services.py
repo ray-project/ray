@@ -21,7 +21,13 @@ from filelock import FileLock
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_ipv6,
+    node_ip_address_from_perspective,
+    parse_address,
+)
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
@@ -618,52 +624,21 @@ def resolve_ip_for_localhost(host: str):
         return host
 
 
-def node_ip_address_from_perspective(address: str):
-    """IP address by which the local node can be reached *from* the `address`.
-
-    Args:
-        address: The IP address and port of any known live service on the
-            network you care about.
-
-    Returns:
-        The IP address by which the local node can be reached from the address.
-    """
-    ip_address, port = parse_address(address)
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # This command will raise an exception if there is no internet
-        # connection.
-        s.connect((ip_address, int(port)))
-        node_ip_address = s.getsockname()[0]
-    except OSError as e:
-        node_ip_address = "127.0.0.1"
-        # [Errno 101] Network is unreachable
-        if e.errno == errno.ENETUNREACH:
-            try:
-                # try get node ip address from host name
-                host_name = socket.getfqdn(socket.gethostname())
-                node_ip_address = socket.gethostbyname(host_name)
-            except Exception:
-                pass
-    finally:
-        s.close()
-
-    return node_ip_address
-
-
 # NOTE: This API should not be used when you obtain the
 # IP address when ray.init is not called because
 # it cannot find the IP address if it is specified by
 # ray start --node-ip-address. You should instead use
 # get_cached_node_ip_address.
-def get_node_ip_address(address="8.8.8.8:53"):
+def get_node_ip_address(address=None):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
+
     if not ray_constants.ENABLE_RAY_CLUSTER:
         # Use loopback IP as the local IP address to prevent bothersome
         # firewall popups on OSX and Windows.
         # https://github.com/ray-project/ray/issues/18730.
-        return "127.0.0.1"
+        return get_localhost_ip()
+
     return node_ip_address_from_perspective(address)
 
 
@@ -1225,7 +1200,10 @@ def start_api_server(
             port = ray_constants.DEFAULT_DASHBOARD_PORT
         else:
             port_retries = 0
-            port_test_socket = socket.socket()
+            port_test_socket = socket.socket(
+                socket.AF_INET6 if is_ipv6(host) else socket.AF_INET,
+                socket.SOCK_STREAM,
+            )
             port_test_socket.setsockopt(
                 socket.SOL_SOCKET,
                 socket.SO_REUSEADDR,
