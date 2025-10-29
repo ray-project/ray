@@ -251,6 +251,7 @@ class ActorReplicaWrapper:
         self._initialization_latency_s: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
         self._rank: Optional[int] = None
         # Populated in `on_scheduled` or `recover`.
@@ -347,6 +348,10 @@ class ActorReplicaWrapper:
     @property
     def docs_path(self) -> Optional[str]:
         return self._docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -768,6 +773,7 @@ class ActorReplicaWrapper:
                         self._http_port,
                         self._grpc_port,
                         self._rank,
+                        self._route_patterns,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1125,6 +1131,10 @@ class DeploymentReplica:
     @property
     def docs_path(self) -> Optional[str]:
         return self._actor.docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._actor.route_patterns
 
     @property
     def actor_id(self) -> str:
@@ -1773,6 +1783,7 @@ class DeploymentState:
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
 
     def should_autoscale(self) -> bool:
         """
@@ -1864,6 +1875,10 @@ class DeploymentState:
     @property
     def docs_path(self) -> Optional[str]:
         return self._docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
 
     @property
     def _failed_to_start_threshold(self) -> int:
@@ -2538,9 +2553,10 @@ class DeploymentState:
                 )
 
                 # if replica version is the same as the target version,
-                # we update the docs path
+                # we update the docs path and route patterns
                 if replica.version == self._target_state.version:
                     self._docs_path = replica.docs_path
+                    self._route_patterns = replica.route_patterns
 
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
@@ -3190,6 +3206,14 @@ class DeploymentStateManager:
     def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
+
+    def get_deployment_route_patterns(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[str]]:
+        """Get route patterns for a deployment if available."""
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].route_patterns
+        return None
 
     def get_deployment_target_num_replicas(
         self, deployment_id: DeploymentID
