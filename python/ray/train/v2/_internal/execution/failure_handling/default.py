@@ -45,7 +45,12 @@ class DefaultFailurePolicy(FailurePolicy):
             f"[FailurePolicy] {decision.value}\n"
             f"  Source: {error_source}\n"
             f"  Error count: {error_count} (max allowed: {retry_limit})\n\n"
-            f"{training_failed_error}"
+            f"{training_failed_error}",
+            exc_info=(
+                type(training_failed_error),
+                training_failed_error,
+                training_failed_error.__traceback__,
+            ),
         )
 
     def _is_retryable_error(self, training_failed_error: TrainingFailedError) -> bool:
