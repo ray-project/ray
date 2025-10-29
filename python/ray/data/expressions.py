@@ -4,16 +4,18 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generic, List, TypeVar, Union
 
 import pyarrow
-from pyiceberg.expressions import BooleanExpression
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from pyiceberg.expressions import BooleanExpression
 
 
 @DeveloperAPI(stability="alpha")
