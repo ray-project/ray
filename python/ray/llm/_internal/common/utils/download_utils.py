@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from filelock import FileLock
 
+from ray.llm._internal.common.callbacks.base import CallbackBase
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -18,7 +19,7 @@ torch = try_import("torch")
 
 logger = get_logger(__name__)
 
-STREAMING_LOAD_FORMATS = ["runai_streamer", "tensorizer"]
+STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
 
 
 class NodeModelDownloadable(enum.Enum):
@@ -234,6 +235,7 @@ def download_model_files(
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
     download_extra_files: bool = True,
+    callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify
@@ -253,6 +255,7 @@ def download_model_files(
         mirror_config: Config for downloading model from cloud storage.
         download_model: What parts of the model to download.
         download_extra_files: Whether to download extra files specified in the mirror config.
+        callback: Callback to run before downloading model files.
 
     Returns:
         The local path to the downloaded model, or the original model ID
@@ -264,7 +267,10 @@ def download_model_files(
     # cannot be created by torch if the parent directory doesn't exist.
     torch_cache_home = torch.hub._get_torch_home()
     os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
-    model_path_or_id = None
+    model_path_or_id = model_id
+
+    if callback is not None:
+        callback.run_callback_sync("on_before_download_model_files_distributed")
 
     if model_id is None:
         return None

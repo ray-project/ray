@@ -93,12 +93,14 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         endpoint: str,
         executor: ThreadPoolExecutor,
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
+        preserve_proto_field_name: bool = False,
     ) -> None:
         super().__init__()
         self._endpoint = endpoint
         self._executor = executor
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session = None
+        self._preserve_proto_field_name = preserve_proto_field_name
 
         self._exposable_event_types_list = [
             event_type.strip()
@@ -130,7 +132,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             self._executor,
             lambda: [
                 json.loads(
-                    message_to_json(e, always_print_fields_with_no_presence=True)
+                    message_to_json(
+                        e,
+                        always_print_fields_with_no_presence=True,
+                        preserving_proto_field_name=self._preserve_proto_field_name,
+                    )
                 )
                 for e in filtered
             ],
