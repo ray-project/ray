@@ -902,6 +902,10 @@ class _StatsManager:
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
             self._execution_last_updated[dataset_tag] = now
 
+    def clear_last_execution_stats(self, dataset_tag: str):
+        if dataset_tag in self._execution_last_updated:
+            del self._execution_last_updated[dataset_tag]
+
     def update_iteration_metrics(
         self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False
     ):
@@ -914,6 +918,10 @@ class _StatsManager:
             args = (stats, dataset_tag)
             self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
             self._iteration_last_updated[dataset_tag] = now
+
+    def clear_iteration_metrics(self, dataset_tag: str):
+        if dataset_tag in self._iteration_last_updated:
+            del self._iteration_last_updated[dataset_tag]
 
     def register_dataset_to_stats_actor(
         self,
