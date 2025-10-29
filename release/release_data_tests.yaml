@@ -662,7 +662,7 @@
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
       type: gpu
-    cluster_compute: llm_single_node_benchmark.yaml
+    cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
     timeout: 3600
