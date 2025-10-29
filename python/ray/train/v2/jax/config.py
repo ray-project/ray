@@ -27,17 +27,18 @@ class JaxConfig(BackendConfig):
 
 
 def _set_jax_env_vars(use_tpu: bool):
-    """Set JAX environment variables based on configuration."""
-    if use_tpu:
-        # Get existing JAX_PLATFORMS if set
-        existing_jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
+    """Set JAX environment variables based on configuration.
 
-        if "tpu" in existing_jax_platforms:
-            return
-        elif existing_jax_platforms:
-            os.environ["JAX_PLATFORMS"] = "tpu," + existing_jax_platforms
-        else:
-            os.environ["JAX_PLATFORMS"] = "tpu"
+    If JAX_PLATFORMS is already set (by user or test), we trust that configuration
+    and do nothing. Otherwise, if use_tpu=True, we set it to "tpu".
+    """
+    # If user/test already set JAX_PLATFORMS, respect their choice
+    if os.environ.get("JAX_PLATFORMS"):
+        return
+
+    # Only set JAX_PLATFORMS if not already specified
+    if use_tpu:
+        os.environ["JAX_PLATFORMS"] = "tpu"
 
 
 def _setup_jax_distributed_environment(
@@ -49,7 +50,10 @@ def _setup_jax_distributed_environment(
     """
     import jax
 
-    jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
+
+    if "tpu" in jax_platforms.split(","):
+        jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 
 def _shutdown_jax_distributed():
