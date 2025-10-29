@@ -336,4 +336,4 @@ metadata:
 
 #### Guidance
 - Pick a timeout that balances expected startup work with failing fast to conserve cluster resources.
-- See the upstream discussion for implementation details: https://github.com/ray-project/kuberay/issues/4138
+- See the upstream discussion [kuberay#4138](https://github.com/ray-project/kuberay/issues/4138) for more implementation details.
