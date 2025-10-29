@@ -58,9 +58,14 @@ class MockInternalPubSubGcsService final : public rpc::InternalPubSubGcsService:
                                  rpc::GcsSubscriberPollReply *reply) override {
     if (should_accept_requests_) {
       poll_count_++;
-      // Return empty response with publisher_id
-      reply->set_publisher_id("test-publisher");
-      return grpc::Status::OK;
+      // Simulate long polling: block until deadline expires since we have no messages
+      // Real server would hold the connection open until messages arrive or timeout
+      auto deadline = context->deadline();
+      std::this_thread::sleep_until(deadline);
+
+      // Return deadline exceeded (timeout) with empty messages
+      // This simulates the real server behavior when no messages are published
+      return grpc::Status(grpc::StatusCode::DEADLINE_EXCEEDED, "Long poll timeout");
     } else {
       return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Authentication failed");
     }
