@@ -216,7 +216,7 @@ class OpState:
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (
-            self.op.internal_queue_num_blocks()
+            self.op.internal_input_queue_num_blocks()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -231,7 +231,7 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.internal_queue_num_bytes()
+            self.op.internal_input_queue_num_bytes()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -266,7 +266,9 @@ class OpState:
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
 
-    def summary_str_raw(self, resource_manager: ResourceManager) -> str:
+    def summary_str_raw(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
         # summary_str without operator information
         active = self.op.num_active_tasks()
         desc = f"Tasks: {active}"
@@ -288,7 +290,7 @@ class OpState:
 
         # Queued blocks
         desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()
@@ -297,8 +299,10 @@ class OpState:
 
         return desc
 
-    def summary_str(self, resource_manager: ResourceManager) -> str:
-        return f"- {self.op.name}: {self.summary_str_raw(resource_manager)}"
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
+        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -520,14 +524,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-        # Drain upstream output queue if current operator is execution finished.
-        # This is needed when the limit is reached, and `mark_execution_finished`
-        # is called manually.
-        if op.execution_finished():
-            for idx, dep in enumerate(op.input_dependencies):
-                upstream_state = topology[dep]
-                # Drain upstream output queue
-                upstream_state.output_queue.clear()
 
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
@@ -549,13 +545,20 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
-            continue
+
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+        # Drain external input queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for input_queue in op_state.input_queues:
+                # Drain input queue
+                input_queue.clear()
 
 
 def get_eligible_operators(

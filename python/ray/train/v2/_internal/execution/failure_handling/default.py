@@ -42,10 +42,10 @@ class DefaultFailurePolicy(FailurePolicy):
             raise ValueError(f"Unknown error type: {type(training_failed_error)}")
 
         logger.info(
-            f"[FailurePolicy] Decision: {decision}, "
-            f"Error source: {error_source}, "
-            f"Error count / maximum errors allowed: {error_count}/{retry_limit}, "
-            f"Error: {training_failed_error}"
+            f"[FailurePolicy] {decision.value}\n"
+            f"  Source: {error_source}\n"
+            f"  Error count: {error_count} (max allowed: {retry_limit})\n\n"
+            f"{training_failed_error}"
         )
 
     def _is_retryable_error(self, training_failed_error: TrainingFailedError) -> bool:
