@@ -110,7 +110,7 @@ import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tpu import slice_placement_group
 
-# Reserve a two v6e TPU slices, each with a 4x4 topology (16 chips each).
+# Reserve two v6e TPU slices, each with a 4x4 topology (16 chips each).
 # This topology typically has 4 VM workers, each with 4 chips.
 slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e", num_slices=2)
 slice_pg = slice_handle.placement_group
