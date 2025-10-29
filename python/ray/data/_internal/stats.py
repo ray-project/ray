@@ -775,7 +775,7 @@ class _StatsActor:
 _stats_actor_lock: threading.RLock = threading.RLock()
 
 
-def _get_or_create_stats_actor():
+def _get_or_create_stats_actor() -> ActorHandle:
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     if not ray.util.client.ray.is_connected():
@@ -830,7 +830,7 @@ class _StatsManager:
 
     def _get_or_create_stats_actor(
         self, skip_cache: bool = False
-    ) -> Optional[ActorHandle]:
+    ) -> ActorHandle:
         if ray._private.worker._global_node is None:
             raise RuntimeError(
                 "Global node is not initialized. Driver might be not connected to Ray."
