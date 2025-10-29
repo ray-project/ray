@@ -1101,6 +1101,9 @@ class RequestRouter(ABC):
             try:
                 replica_wrappers.append(self.create_replica_wrapper(r))
             except ValueError:
+                # NOTE(abrar): ValueError is raised when the actor handle is not found
+                # by ray.get_actor.
+
                 # Actor has died (e.g., due to node failure) but controller hasn't
                 # detected it yet. Skip this replica; controller will send an update
                 # when it detects the failure.
