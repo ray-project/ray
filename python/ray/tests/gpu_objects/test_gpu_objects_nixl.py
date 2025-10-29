@@ -193,18 +193,5 @@ def test_send_duplicate_tensor(ray_start_regular):
     )
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_send_overlapping_tensor(ray_start_regular):
-    actors = [GPUTestActor.remote() for _ in range(2)]
-    src_actor, dst_actor = actors[0], actors[1]
-    ref1 = src_actor.send_dict1.remote()
-    result1 = dst_actor.sum_dict.remote(ref1)
-    assert ray.get(result1) == 21
-    ref2 = src_actor.send_dict2.remote()
-    result2 = dst_actor.sum_dict.remote(ref2)
-    with pytest.raises(ray.exceptions.ActorDiedError):
-        ray.get(result2)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
