@@ -873,7 +873,7 @@ def read_parquet(
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
-    file_extensions: Optional[List[str]] = None,
+    file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -3793,6 +3793,9 @@ def from_huggingface(
                     filesystem=http,
                     concurrency=concurrency,
                     override_num_blocks=override_num_blocks,
+                    # The resolved HTTP URLs might not contain a `.parquet` suffix. So,
+                    # we override the default file extension filter and allow all files.
+                    file_extensions=None,
                     ray_remote_args={
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
@@ -4376,7 +4379,6 @@ def read_delta(
 
     # Get the parquet file paths from the DeltaTable
     paths = DeltaTable(path).file_uris()
-    file_extensions = ["parquet"]
 
     return read_parquet(
         paths,
@@ -4389,7 +4391,6 @@ def read_delta(
         partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
-        file_extensions=file_extensions,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **arrow_parquet_args,

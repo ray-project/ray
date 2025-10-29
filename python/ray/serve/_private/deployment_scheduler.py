@@ -599,7 +599,7 @@ class DeploymentScheduler(ABC):
             )
             target_node_id = None
 
-        actor_options = copy.copy(scheduling_request.actor_options)
+        actor_options = copy.deepcopy(scheduling_request.actor_options)
         if scheduling_request.max_replicas_per_node is not None:
             if "resources" not in actor_options:
                 actor_options["resources"] = {}
