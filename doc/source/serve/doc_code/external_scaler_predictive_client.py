@@ -74,7 +74,7 @@ def scale_deployment(app_name: str, deployment_name: str):
         logger.error(f"Request failed: {e}")
 
 
-if __name__ == "__main__":
+def main():
     logger.info(f"Starting predictive scaling for {APPLICATION_NAME}/{DEPLOYMENT_NAME}")
     while True:
         scale_deployment(APPLICATION_NAME, DEPLOYMENT_NAME)

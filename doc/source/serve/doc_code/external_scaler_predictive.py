@@ -21,7 +21,7 @@ class TextProcessor:
 app = TextProcessor.bind()
 # __serve_example_end__
 
-if __name__ == "__main__":
+def main():
     import requests
 
     serve.run(app)
