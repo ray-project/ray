@@ -7,7 +7,6 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
 )
 
-
 if __name__ == "__main__":
     # Configure an old stack default ModelV2.
     config_old_stack = (

@@ -2,8 +2,8 @@ import json
 from typing import Dict
 
 import numpy as np
-from starlette.requests import Request
 import torch
+from starlette.requests import Request
 
 from ray import serve
 from ray.rllib.core import Columns

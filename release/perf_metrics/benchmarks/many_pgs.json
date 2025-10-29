@@ -1,32 +1,31 @@
 {
-    "_dashboard_memory_usage_mb": 90.76736,
+    "_dashboard_memory_usage_mb": 99.979264,
     "_dashboard_test_success": true,
-    "_peak_memory": 2.81,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1393\t7.16GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3778\t0.97GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n3247\t0.42GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n5319\t0.36GiB\tpython distributed/test_many_pgs.py\n600\t0.2GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n4001\t0.11GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.9 -c \"from multiprocessing.spawn import sp\n3044\t0.11GiB\t/app/go/infra/activityprobe/activityprobe ray --port=5903 --metrics_server_port=9092 --raylet_addr=l\n4486\t0.1GiB\t/home/ray/anaconda3/bin/python3.9 -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/a\n3232\t0.09GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n4488\t0.09GiB\t/home/ray/anaconda3/bin/python3.9 -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/ru",
+    "_peak_memory": 2.94,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1126\t7.66GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3490\t1.1GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n5004\t0.36GiB\tpython distributed/test_many_pgs.py\n3037\t0.34GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n583\t0.19GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n4206\t0.11GiB\t/home/ray/anaconda3/bin/python3.9 -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/a\n3720\t0.11GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.9 -c \"from multiprocessing.spawn import sp\n2924\t0.1GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n4208\t0.09GiB\t/home/ray/anaconda3/bin/python3.9 -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/ru\n3623\t0.08GiB\t/home/ray/anaconda3/bin/python3.9 /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dash",
     "num_pgs": 1000,
     "perf_metrics": [
         {
             "perf_metric_name": "pgs_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 12.47149444972938
+            "perf_metric_value": 17.897951502183457
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 4.935
+            "perf_metric_value": 4.128
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 11.336
+            "perf_metric_value": 54.16
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 232.641
+            "perf_metric_value": 1212.615
         }
     ],
-    "pgs_per_second": 12.47149444972938,
-    "success": "1",
-    "time": 80.18285250663757
+    "pgs_per_second": 17.897951502183457,
+    "time": 55.872315883636475
 }

@@ -18,6 +18,11 @@
 #include <string>
 #include <utility>
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
+
 extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
@@ -50,7 +55,24 @@ RedisAsyncContext::RedisAsyncContext(
 
   // hiredis is already connected
   // use the existing native socket
-  socket_.assign(boost::asio::ip::tcp::v4(), handle);
+#ifdef _WIN32
+  boost::asio::ip::tcp protocol = (pi.iAddressFamily == AF_INET6)
+                                      ? boost::asio::ip::tcp::v6()
+                                      : boost::asio::ip::tcp::v4();
+  socket_.assign(protocol, handle);
+#else
+  struct sockaddr_storage addr;
+  socklen_t addr_len = sizeof(addr);
+  if (getsockname(c->fd, reinterpret_cast<struct sockaddr *>(&addr), &addr_len) == 0) {
+    boost::asio::ip::tcp protocol = (addr.ss_family == AF_INET6)
+                                        ? boost::asio::ip::tcp::v6()
+                                        : boost::asio::ip::tcp::v4();
+    socket_.assign(protocol, handle);
+  } else {
+    // Fallback to IPv4
+    socket_.assign(boost::asio::ip::tcp::v4(), handle);
+  }
+#endif
 
   // register hooks with the hiredis async context
   redis_async_context_->ev.addRead = CallbackAddRead;
