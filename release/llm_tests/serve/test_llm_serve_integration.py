@@ -156,6 +156,36 @@ def test_deepseek_model(model_name):
     time.sleep(1)
 
 
+@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
+def test_transcription_model(model_name):
+    """
+    Test that the transcription models can be loaded successfully.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+            model_source=model_name,
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=4),
+        ),
+        engine_kwargs=dict(
+            trust_remote_code=True,
+            gpu_memory_utilization=0.9,
+            enable_prefix_caching=True,
+            max_model_len=2048,
+            tokenizer_mode="mistral",
+            config_format="mistral",
+            load_format="mistral",
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
 @pytest.mark.asyncio(scope="function")
 @pytest.fixture
 def remote_model_app(request):
