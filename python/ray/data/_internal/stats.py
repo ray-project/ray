@@ -889,7 +889,7 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._execution_last_updated[dataset_tag])
+            or (now - self._execution_last_updated.get(dataset_tag, 0))
             > self.UPDATE_EXECUTION_METRICS_INTERVAL_S
         ):
             per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
@@ -931,7 +931,7 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._iteration_last_updated[dataset_tag])
+            or (now - self._iteration_last_updated.get(dataset_tag, 0))
             > self.UPDATE_ITERATION_METRICS_INTERVAL_S
         ):
             args = (stats, dataset_tag)
