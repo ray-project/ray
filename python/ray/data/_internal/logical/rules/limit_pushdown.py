@@ -129,6 +129,12 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows()
         ):
+            if isinstance(current_op, AbstractMap):
+                min_rows = current_op._min_rows_per_bundled_input
+                if min_rows is not None and min_rows > limit_op._limit:
+                    # Avoid pushing the limit past batch-based maps that require more
+                    # rows than the limit to produce stable outputs (e.g. schema).
+                    break
             num_rows_preserving_ops.append(current_op)
             current_op = current_op.input_dependency
 
