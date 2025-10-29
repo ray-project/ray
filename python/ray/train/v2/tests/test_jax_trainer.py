@@ -87,6 +87,11 @@ def mock_jax_distributed(monkeypatch):
 
 
 def train_func():
+    import os
+
+    # Set JAX_PLATFORMS to cpu for testing (avoid TPU initialization without hardware)
+    os.environ["JAX_PLATFORMS"] = "cpu"
+
     import jax
 
     from ray import train
