@@ -84,7 +84,7 @@ def _cleanup_ray_start(env: Optional[dict] = None):
 
 
 @pytest.fixture(autouse=True)
-def clean_token_sources():
+def clean_token_sources(cleanup_auth_token_env):
     """Clean up all token sources before and after each test."""
     # This follows the same pattern as authentication_token_loader_test.cc
     if "HOME" not in os.environ:

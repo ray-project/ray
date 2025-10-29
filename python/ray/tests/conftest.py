@@ -42,6 +42,7 @@ from ray._private.test_utils import (
     start_redis_sentinel_instance,
     teardown_tls,
 )
+from ray._raylet import AuthenticationTokenLoader, Config
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 import psutil
@@ -52,6 +53,88 @@ import psutil
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
+
+
+@pytest.fixture
+def cleanup_auth_token_env():
+    """Reset Ray authentication-related environment variables and caches."""
+
+    env_vars = ["RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"]
+    original_env = {var: os.environ.get(var) for var in env_vars}
+
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    token_file_exists = default_token_path.exists()
+    token_file_contents = default_token_path.read_text() if token_file_exists else None
+
+    AuthenticationTokenLoader.instance().reset_cache()
+    Config.initialize("")
+
+    try:
+        yield
+    finally:
+        for var, value in original_env.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+
+        if token_file_exists:
+            default_token_path.parent.mkdir(parents=True, exist_ok=True)
+            default_token_path.write_text(token_file_contents)
+        else:
+            default_token_path.unlink(missing_ok=True)
+
+        AuthenticationTokenLoader.instance().reset_cache()
+        Config.initialize("")
+
+
+@pytest.fixture
+def setup_cluster_with_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with token authentication enabled."""
+
+    test_token = "test_token_12345678901234567890123456789012"
+    os.environ["RAY_auth_mode"] = "token"
+    os.environ["RAY_AUTH_TOKEN"] = test_token
+    Config.initialize("")
+    AuthenticationTokenLoader.instance().reset_cache()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+            "token": test_token,
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster_without_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with authentication disabled."""
+
+    os.environ["RAY_auth_mode"] = "disabled"
+    Config.initialize("")
+    AuthenticationTokenLoader.instance().reset_cache()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
 
 
 @pytest.fixture(autouse=True)

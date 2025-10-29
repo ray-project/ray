@@ -69,3 +69,36 @@ class AuthenticationTokenLoader:
         variables or files on the next request.
         """
         CAuthenticationTokenLoader.instance().ResetCache()
+
+    def set_token_for_http_header(self, headers: dict):
+        """Add authentication token to HTTP headers dictionary if token auth is enabled.
+
+        This method loads the token from C++ AuthenticationTokenLoader and adds it
+        to the provided headers dictionary as the Authorization header. It only adds
+        the token if:
+        - Token authentication is enabled
+        - A token exists
+        - The Authorization header is not already set in the headers
+
+        Args:
+            headers: Dictionary of HTTP headers to modify (modified in-place)
+
+        Returns:
+            bool: True if token was added, False otherwise
+        """
+        # Don't override if user explicitly set Authorization header
+        if "Authorization" in headers:
+            return False
+
+        # Check if token exists (doesn't crash, returns bool)
+        if not self.has_token():
+            return False
+
+        # Get the token from C++ layer
+        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken()
+
+        if not token_opt.has_value() || token_opt.value().empty():
+            return False
+
+        headers["Authorization"] = token_opt.value().ToAuthorizationHeaderValue()
+        return True
