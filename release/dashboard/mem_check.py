@@ -8,7 +8,10 @@ import ray
 from ray._private.memory_monitor import MemoryMonitor, get_top_n_memory_usage
 from ray._private.test_utils import get_system_metric_for_component
 from ray.job_submission import JobSubmissionClient, JobStatus
-from ray.dashboard.modules.metrics.metrics_head import DEFAULT_PROMETHEUS_HOST, PROMETHEUS_HOST_ENV_VAR
+from ray.dashboard.modules.metrics.metrics_head import (
+    DEFAULT_PROMETHEUS_HOST,
+    PROMETHEUS_HOST_ENV_VAR,
+)
 
 # Initialize ray to avoid autosuspend.
 addr = ray.init()
@@ -64,8 +67,14 @@ if __name__ == "__main__":
         print(client.get_job_logs(job_id))
         assert False, "Job has failed."
 
-    uss_mb_for_agent_component = get_system_metric_for_component("ray_component_uss_mb", "agent", os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST))
-    assert len(uss_mb_for_agent_component) > 0, "Agent component memory metrics are not found."
+    uss_mb_for_agent_component = get_system_metric_for_component(
+        "ray_component_uss_mb",
+        "agent",
+        os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
+    )
+    assert (
+        len(uss_mb_for_agent_component) > 0
+    ), "Agent component memory metrics are not found."
     for mb in uss_mb_for_agent_component:
         print(f"Agent component memory usage: {mb} MB")
         assert mb < 500, "Agent component memory usage is too high."

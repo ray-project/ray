@@ -1085,7 +1085,9 @@ def raw_metric_timeseries(
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
-def get_system_metric_for_component(system_metric: str, component: str, prometheus_host: str = DEFAULT_PROMETHEUS_HOST) -> List[float]:
+def get_system_metric_for_component(
+    system_metric: str, component: str, prometheus_host: str = DEFAULT_PROMETHEUS_HOST
+) -> List[float]:
     session_name = ray.get_runtime_context().session_name
     query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
     resp = requests.get(f"{prometheus_host}/api/v1/query?query={quote(query)}")
