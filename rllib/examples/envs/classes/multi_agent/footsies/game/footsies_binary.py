@@ -6,10 +6,10 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from filelock import FileLock
 
 import grpc
 import requests
+from filelock import FileLock
 
 from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
