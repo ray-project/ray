@@ -2224,19 +2224,20 @@ TEST_F(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority) 
   ClusterResourceScheduler resource_scheduler(
       io_context, local_node_id, {{"CPU", 1}}, is_node_available_fn_);
 
+  absl::flat_hash_map<std::string, double> total_resources({{"CPU", 1}});
   absl::flat_hash_map<std::string, double> unavailable_resources({{"CPU", 0}});
 
   // Unavailable node, but matches main label selector.
   auto node_A = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      node_A, unavailable_resources, unavailable_resources);
+      node_A, total_resources, unavailable_resources);
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_A, {{"accelerator-type", "A100"}});
 
   // Unavailable node, matches fallback label selector.
   auto node_B = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      node_B, unavailable_resources, unavailable_resources);
+      node_B, total_resources, unavailable_resources);
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_B, {{"accelerator-type", "B200"}});
 
@@ -2305,19 +2306,20 @@ TEST_F(ClusterResourceSchedulerTest, FallbackReturnsNilForGCSIfAllNodesUnavailab
                                               is_node_available_fn_,
                                               /*is_local_node_with_raylet=*/false);
 
+  absl::flat_hash_map<std::string, double> total_resources({{"CPU", 1}});
   absl::flat_hash_map<std::string, double> unavailable_resources({{"CPU", 0}});
 
   // Unavailable node, but matches main label selector.
   auto node_A = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      node_A, unavailable_resources, unavailable_resources);
+      node_A, total_resources, unavailable_resources);
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_A, {{"accelerator-type", "A100"}});
 
   // Unavailable node, but matches fallback selector.
   auto node_B = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      node_B, unavailable_resources, unavailable_resources);
+      node_B, total_resources, unavailable_resources);
   resource_scheduler.GetClusterResourceManager().SetNodeLabels(
       node_B, {{"accelerator-type", "B200"}});
 
