@@ -195,7 +195,7 @@ class TestResourceManager:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
 
         # Mock different metrics that contribute to the resource usage.
         mock_cpu = {
@@ -296,7 +296,7 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -390,20 +390,13 @@ class TestReservationOpResourceAllocator:
         op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
-        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o4, ExecutionOptions())
 
         global_limits = ExecutionResources.zero()
 
         def mock_get_global_limits():
             nonlocal global_limits
             return global_limits
-
-        def can_submit_new_task(allocator, op):
-            """Helper to check if operator can submit new tasks based on budget."""
-            budget = allocator.get_budget(op)
-            if budget is None:
-                return True
-            return op.incremental_resource_usage().satisfies_limit(budget)
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -447,9 +440,7 @@ class TestReservationOpResourceAllocator:
         # Test budgets.
         assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
         assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
 
@@ -478,9 +469,7 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
         # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
         assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
         assert allocator.max_task_output_bytes_to_read(o2) == 138
         # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
@@ -512,9 +501,7 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
         # memory_budget[o3] = 70 + 100/2 = 120
         assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
-        # Test can_submit_new_task and max_task_output_bytes_to_read.
-        assert can_submit_new_task(allocator, o2)
-        assert can_submit_new_task(allocator, o3)
+        # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
         # max_task_output_bytes_to_read(o3) = 120 + 25 = 145
@@ -534,7 +521,7 @@ class TestReservationOpResourceAllocator:
         o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
         o4 = mock_map_op(o3, incremental_resource_usage=incremental_usage)
         o5 = mock_map_op(o4, incremental_resource_usage=incremental_usage)
-        topo, _ = build_streaming_topology(o5, ExecutionOptions())
+        topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -588,7 +575,7 @@ class TestReservationOpResourceAllocator:
             ray_remote_args={"num_cpus": 0, "num_gpus": 1},
             compute_strategy=ray.data.ActorPoolStrategy(size=8),
         )
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -618,7 +605,7 @@ class TestReservationOpResourceAllocator:
                 ExecutionResources(cpu=1, object_store_memory=1),
             )
         )
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions())
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
@@ -647,7 +634,7 @@ class TestReservationOpResourceAllocator:
         o1 = InputDataBuffer(DataContext.get_current(), input)
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -691,7 +678,7 @@ class TestReservationOpResourceAllocator:
             return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
         )
 
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
 
         global_limits = ExecutionResources(gpu=4)
         op_usages = {
@@ -735,7 +722,7 @@ class TestReservationOpResourceAllocator:
             return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 1, 0))
         )
 
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions())
 
         global_limits = ExecutionResources(gpu=4)
         op_usages = {
@@ -768,7 +755,7 @@ class TestReservationOpResourceAllocator:
             return_value=(ExecutionResources(0, 1, 0), ExecutionResources(0, 2, 0))
         )
 
-        topo, _ = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions())
 
         global_limits = ExecutionResources(gpu=1)
         op_usages = {
@@ -807,7 +794,7 @@ class TestReservationOpResourceAllocator:
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo, _ = build_streaming_topology(o5, ExecutionOptions())
+        topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -861,7 +848,7 @@ class TestReservationOpResourceAllocator:
         o5.mark_execution_finished()
         o7.mark_execution_finished()
 
-        topo, _ = build_streaming_topology(o8, ExecutionOptions())
+        topo = build_streaming_topology(o8, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -894,7 +881,7 @@ class TestReservationOpResourceAllocator:
         op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
-        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o4, ExecutionOptions())
 
         global_limits = ExecutionResources(cpu=10, object_store_memory=250)
 
@@ -986,7 +973,7 @@ class TestReservationOpResourceAllocator:
         op_internal_usage = dict.fromkeys([o1, o2, o3, o4, o5, o6, o7, o8], 0)
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4, o5, o6, o7, o8], 0)
 
-        topo, _ = build_streaming_topology(o8, ExecutionOptions())
+        topo = build_streaming_topology(o8, ExecutionOptions())
 
         global_limits = ExecutionResources.zero()
 
