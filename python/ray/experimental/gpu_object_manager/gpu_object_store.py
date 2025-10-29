@@ -265,10 +265,16 @@ class GPUObjectStore:
             for dst_obj_id in obj_id_set:
                 if dst_obj_id != src_obj_id:
                     dst_gpu_object = self._gpu_object_store[dst_obj_id][0].data
-                    assert len(src_gpu_object) == len(dst_gpu_object) and all(
+                    is_same_tensors = len(src_gpu_object) == len(
+                        dst_gpu_object
+                    ) and all(
                         t1.data_ptr() == t2.data_ptr()
                         for t1, t2 in zip(src_gpu_object, dst_gpu_object)
-                    ), "The duplicate object does not have the same tensors as the source object."
+                    )
+                    if not is_same_tensors:
+                        raise ValueError(
+                            f"The duplicate object {dst_obj_id} does not have the same tensors as the source object {src_obj_id}."
+                        )
                     return dst_obj_id
             return None
 
