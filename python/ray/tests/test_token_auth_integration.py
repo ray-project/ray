@@ -1,6 +1,7 @@
 """Integration tests for token-based authentication in Ray."""
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -18,6 +19,23 @@ def reset_token_cache():
 @pytest.fixture(autouse=True)
 def clean_token_sources():
     """Clean up all token sources before and after each test."""
+    # This follows the same pattern as authentication_token_loader_test.cc
+    if "HOME" not in os.environ:
+        # Use TEST_TMPDIR if available (Bazel sets this), otherwise use system temp
+        test_tmpdir = os.environ.get("TEST_TMPDIR")
+        if test_tmpdir:
+            temp_home = os.path.join(test_tmpdir, "ray_test_home")
+        else:
+            temp_home = "/tmp/ray_test_home"
+
+        # Create the directory if it doesn't exist
+        os.makedirs(temp_home, exist_ok=True)
+        os.environ["HOME"] = temp_home
+        home_was_set = False
+    else:
+        temp_home = None
+        home_was_set = True
+
     # Clean environment variables
     env_vars_to_clean = [
         "RAY_AUTH_TOKEN",
@@ -33,9 +51,12 @@ def clean_token_sources():
     # Clean default token file
     default_token_path = Path.home() / ".ray" / "auth_token"
     original_exists = default_token_path.exists()
+    original_content = None
     if original_exists:
         original_content = default_token_path.read_text()
         default_token_path.unlink()
+
+    Config.initialize("")
 
     # Reset token caches (both Python and C++)
     reset_token_cache()
@@ -50,19 +71,37 @@ def clean_token_sources():
             del os.environ[var]
 
     # Restore default token file
-    if original_exists:
+    if original_exists and original_content is not None:
         default_token_path.parent.mkdir(parents=True, exist_ok=True)
         default_token_path.write_text(original_content)
 
+    if ray.is_initialized():
+        ray.shutdown()
+
     # Reset token caches again after test
     reset_token_cache()
+    Config.initialize("")
+
+    # Clean up temporary HOME if we created one
+    # Only delete if we set it and it was temporary
+    if temp_home is not None and not home_was_set:
+        try:
+            if os.path.exists(temp_home):
+                shutil.rmtree(temp_home)
+        except Exception:
+            pass  # Best effort cleanup
+        # Remove the HOME env var we set
+        if "HOME" in os.environ and os.environ["HOME"] == temp_home:
+            del os.environ["HOME"]
 
 
 def test_local_cluster_generates_token():
     """Test ray.init() generates token for local cluster when auth_mode=token is set."""
     # Ensure no token exists
     default_token_path = Path.home() / ".ray" / "auth_token"
-    assert not default_token_path.exists()
+    assert (
+        not default_token_path.exists()
+    ), f"Token file already exists at {default_token_path}"
 
     # Enable token auth via environment variable
     os.environ["RAY_auth_mode"] = "token"
@@ -73,7 +112,11 @@ def test_local_cluster_generates_token():
 
     try:
         # Verify token file was created
-        assert default_token_path.exists()
+        assert default_token_path.exists(), (
+            f"Token file was not created at {default_token_path}. "
+            f"HOME={os.environ.get('HOME')}, "
+            f"Files in {default_token_path.parent}: {list(default_token_path.parent.iterdir()) if default_token_path.parent.exists() else 'directory does not exist'}"
+        )
         token = default_token_path.read_text().strip()
         assert len(token) == 32
         assert all(c in "0123456789abcdef" for c in token)
