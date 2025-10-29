@@ -374,13 +374,16 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.11.0",
+                "vllm[audio]>=0.11.0",
+                "nixl>=0.6.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "meson",
+                "pybind11",
                 "hf_transfer",
             ]
             + setup_spec.extras["data"]

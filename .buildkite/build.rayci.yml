@@ -168,8 +168,8 @@ steps:
     instance_type: medium
     soft_fail: true
     commands:
-      - export WHEEL_URL="https://files.pythonhosted.org/packages/7e/7c/3544cca730265bb6f7a4900b7b7018c08ce5ec89bf7b6102901fe0bcd67b/ray-2.44.1-cp39-cp39-manylinux2014_x86_64.whl"
-      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/50/ae/c094818fd526bfb0a361a76bda5708a73cbc888b51edfc7d6aab9de837cd/ray_cpp-2.44.1-cp39-cp39-manylinux2014_x86_64.whl"
+      - export WHEEL_URL="https://files.pythonhosted.org/packages/93/f1/9108c4f878e3cacb767b7dfbbc3a26537c79ab516d2530b9f63b558ba4bb/ray-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
+      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/d3/cf/ef6d5a9a688001f73e4749c48f840455ecec11acde982eb70f387b0dc445/ray_cpp-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
       - bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:

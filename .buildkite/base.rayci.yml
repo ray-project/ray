@@ -8,6 +8,7 @@ steps:
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -23,6 +24,7 @@ steps:
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -77,12 +79,17 @@ steps:
   - name: docbuild
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
-    depends_on: oss-ci-base_build-multipy
+    depends_on:
+      - oss-ci-base_build-multipy
+      - ray-core-build
+      - ray-dashboard-build
     matrix:
       - "3.9"
+      - "3.10"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
+      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
     tags: cibase
 
   - name: docgpubuild
