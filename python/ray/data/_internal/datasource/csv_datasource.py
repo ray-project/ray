@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pyarrow
@@ -36,6 +37,29 @@ class CSVDatasource(FileBasedDatasource):
         )
         self.parse_options = arrow_csv_args.pop("parse_options", csv.ParseOptions())
         self.arrow_csv_args = arrow_csv_args
+        self._predicate_expr: Optional[Expr] = None
+
+    def supports_predicate_pushdown(self) -> bool:
+        return True
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return self._predicate_expr
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "CSVDatasource":
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine with existing predicate using AND
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
+        return clone
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
@@ -46,6 +70,12 @@ class CSVDatasource(FileBasedDatasource):
             self.parse_options.invalid_row_handler = (
                 self.parse_options.invalid_row_handler
             )
+
+        filter_expr = (
+            self._predicate_expr.to_pyarrow()
+            if self._predicate_expr is not None
+            else None
+        )
 
         try:
             reader = csv.open_csv(
@@ -61,6 +91,8 @@ class CSVDatasource(FileBasedDatasource):
                     table = pa.Table.from_batches([batch], schema=schema)
                     if schema is None:
                         schema = table.schema
+                    if filter_expr is not None:
+                        table = table.filter(filter_expr)
                     yield table
                 except StopIteration:
                     return

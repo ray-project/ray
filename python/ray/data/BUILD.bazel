@@ -914,6 +914,20 @@ py_test(
 )
 
 py_test(
+    name = "test_predicate_pushdown",
+    size = "small",
+    srcs = ["tests/test_predicate_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_path_util",
     size = "small",
     srcs = ["tests/test_path_util.py"],
