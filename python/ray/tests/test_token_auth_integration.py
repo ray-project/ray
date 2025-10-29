@@ -1,12 +1,11 @@
 """Integration tests for token-based authentication in Ray."""
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
-import shutil
-import tempfile
 
 import ray
 from ray._raylet import AuthenticationTokenLoader, Config
@@ -28,7 +27,7 @@ def clean_token_sources():
             temp_home = os.path.join(test_tmpdir, "ray_test_home")
         else:
             temp_home = "/tmp/ray_test_home"
-        
+
         # Create the directory if it doesn't exist
         os.makedirs(temp_home, exist_ok=True)
         os.environ["HOME"] = temp_home
@@ -100,7 +99,9 @@ def test_local_cluster_generates_token():
     """Test ray.init() generates token for local cluster when auth_mode=token is set."""
     # Ensure no token exists
     default_token_path = Path.home() / ".ray" / "auth_token"
-    assert not default_token_path.exists(), f"Token file already exists at {default_token_path}"
+    assert (
+        not default_token_path.exists()
+    ), f"Token file already exists at {default_token_path}"
 
     # Enable token auth via environment variable
     os.environ["RAY_auth_mode"] = "token"
