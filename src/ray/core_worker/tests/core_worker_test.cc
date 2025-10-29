@@ -187,6 +187,7 @@ class CoreWorkerTest : public ::testing::Test {
         },
         mock_gcs_client_,
         fake_task_by_state_gauge_,
+        fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
@@ -222,7 +223,8 @@ class CoreWorkerTest : public ::testing::Test {
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_));
+        boost::asio::steady_timer(io_service_),
+        fake_scheduler_placement_time_s_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -297,6 +299,8 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
