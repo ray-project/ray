@@ -20,6 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote
 
 import requests
 import yaml
@@ -58,6 +59,8 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
+DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
+PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 
 try:
     from prometheus_client.core import Metric
@@ -1080,6 +1083,16 @@ def raw_metric_timeseries(
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
+
+
+def get_system_metric_for_component(system_metric: str, component: str, prometheus_host: str = DEFAULT_PROMETHEUS_HOST) -> List[float]:
+    session_name = ray.get_runtime_context().session_name
+    query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
+    resp = requests.get(f"{prometheus_host}/api/v1/query?query={quote(query)}")
+    if resp.status_code != 200:
+        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
+    result = resp.json()
+    return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
