@@ -2192,9 +2192,12 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-@patch.object(StatsManager, "UPDATE_EXECUTION_METRICS_INTERVAL_S", new=0.5)
+# Setting internal=10000 (super high number) timeout so they are only called
+# once (on cold start), and on shutdown.
+@patch.object(StatsManager, "UPDATE_EXECUTION_METRICS_INTERVAL_S", new=10000)
+@patch.object(StatsManager, "UPDATE_ITERATION_METRICS_INTERVAL_S", new=10000)
 @patch.object(StatsManager, "_get_or_create_stats_actor")
-def testStatsManager_register_dataset(mock_get_or_create, shutdown_only):
+def test_stats_manager(mock_get_or_create, shutdown_only):
 
     # Configure what _get_or_create_stats_actor() returns
     mock_actor = MagicMock()
@@ -2219,18 +2222,27 @@ def testStatsManager_register_dataset(mock_get_or_create, shutdown_only):
     for thread in threads:
         thread.join()
 
-    # Count calls to update_execution_metrics.remote()
-    execution_calls = mock_actor.register_dataset.remote.call_count
-
+    # Count calls to register_dataset.remote()
+    register_dataset_calls = mock_actor.register_dataset.remote.call_count
     # Count calls to update_iteration_metrics.remote()
-    iteration_calls = mock_actor.register_dataset.remote.call_count
+    iteration_calls = mock_actor.update_iteration_metrics.remote.call_count
+    # Count calls to update_execution_metrics.remote()
+    execution_calls = mock_actor.update_execution_metrics.remote.call_count
 
-    # Assert expected number of calls
-    assert execution_calls == num_threads
+    # Each thread handles 1 dataset.
+    assert register_dataset_calls == num_threads
+
+    # Since interval is set to 3 minutes (default timeout), the number of execution
+    # calls will update on the first update (cold start), and on shutdown,
+    # which is 2 for each thread.
+    assert execution_calls == 2 * num_threads
+
+    # Iteration will only be called 1x for each thread, the 1 coming from cold
+    # start, and does not update on shutdown.
     assert iteration_calls == num_threads
 
 
-def testStatsManager_stale_actor_handle(ray_start_cluster):
+def test_stats_manager_stale_actor_handle(ray_start_cluster):
     """
     This test asserts that StatsManager is able to handle appropriately
     cases of StatsActor being killed upon driver disconnecting from running

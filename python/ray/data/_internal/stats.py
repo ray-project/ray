@@ -813,32 +813,15 @@ class _StatsManager:
     # Interval for making iteration remote calls to the _StatsActor.
     UPDATE_ITERATION_METRICS_INTERVAL_S = 5
 
-    # After this many iterations of inactivity,
-    # _StatsManager._update_thread will close itself.
-    UPDATE_THREAD_INACTIVITY_LIMIT = 5
-
-    @dataclass
-    class _MetricState:
-
-        # How frequently to update metrics.
-        update_interval_s: float = 5.0
-
-        # Last time stats were updated.
-        last_updated: float = 0.0
-
     def __init__(self):
         # Lazily get stats actor handle to avoid circular import.
         self._stats_actor_handle: Optional[ActorHandle] = None
         self._stats_actor_cluster_id = None
 
-        self._execution_metrics_state = self._MetricState(
-            update_interval_s=_StatsManager.UPDATE_EXECUTION_METRICS_INTERVAL_S,
-            last_updated=0.0,
-        )
-        self._iteration_metrics_state = self._MetricState(
-            update_interval_s=_StatsManager.UPDATE_ITERATION_METRICS_INTERVAL_S,
-            last_updated=0.0,
-        )
+        # Mapping from dataset_tag -> last updated (seconds from unix epoch). Defaulting
+        # to 0 will be fine since unix epoch always increases.
+        self._execution_last_updated: Dict[str, float] = defaultdict(int)
+        self._iteration_last_updated: Dict[str, float] = defaultdict(int)
 
     def _get_or_create_stats_actor(
         self, skip_cache: bool = False
@@ -902,8 +885,8 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._execution_metrics_state.last_updated)
-            > self._execution_metrics_state.update_interval_s
+            or (now - self._execution_last_updated[dataset_tag])
+            > self.UPDATE_EXECUTION_METRICS_INTERVAL_S
         ):
             per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
             op_metrics_dicts = [
@@ -916,8 +899,9 @@ class _StatsManager:
                 state,
                 per_node_metrics,
             )
+            # print("==== update_execution_metrics ====")
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
-            self._execution_metrics_state.last_updated = now
+            self._execution_last_updated[dataset_tag] = now
 
     def update_iteration_metrics(
         self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False
@@ -925,12 +909,12 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._iteration_metrics_state.last_updated)
-            > self._iteration_metrics_state.update_interval_s
+            or (now - self._iteration_last_updated[dataset_tag])
+            > self.UPDATE_ITERATION_METRICS_INTERVAL_S
         ):
             args = (stats, dataset_tag)
             self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
-            self._iteration_metrics_state.last_updated = now
+            self._iteration_last_updated[dataset_tag] = now
 
     def register_dataset_to_stats_actor(
         self,
