@@ -6,7 +6,6 @@ Based on: https://github.com/meta-pytorch/monarch/blob/0de4e6b4ad7da37e5dbb00a0e
 
 import argparse
 import time
-import copy
 from typing import Any
 
 import ray
@@ -142,7 +141,10 @@ class ReplayBuffer:
             self.storage = self.storage[-MAX_BUFFER_SIZE:]
 
     def sample_from(self, n: int) -> list[TrajectorySlice]:
-        """Sample n scored trajectory slices."""
+        """Sample n scored trajectory slices.
+
+        Each slice is a 'group' of actions sampled from the same state.
+        """
         if self.size() < n:
             return []
         # The probability of sampling a slice is proportional to its policy version.
@@ -171,13 +173,15 @@ class Scorer:
         self.action_dirs = ACTION_DIRECTIONS  # [ACTION_DIM, STATE_DIM]
 
     @ray.method(tensor_transport="nixl")  # CPU-CPU RDT
-    def enqueue_trajectory_batch(self, batched_slices: dict) -> None:
+    def score_slices(self, batched_slices: dict) -> None:
         """Score a batch of trajectory slices."""
         states = batched_slices["state"]
         actions = batched_slices["actions"]
         old_logps = batched_slices["old_logps"]
         policy_version = batched_slices["policy_version"]
 
+        # Unbatch the groups into separate slices so that they can be
+        # sampled independently.
         for i in range(states.shape[0]):
             # Compute rewards on the CPU: rewards = dot(state, unit_dir).
             directions = self.action_dirs[actions[i]]  # [GROUP_SIZE, STATE_DIM]
@@ -276,15 +280,16 @@ class Learner:
 
         Each step samples a batch of trajectory slices from the replay buffer, computes the advantages, and updates the policy using the GRPO algorithm.
         """
-        slices: list[TrajectorySlice] = ray.get(
-            self.replay_buffer.sample_from.remote(BATCH_SIZE)
-        )
-        while len(slices) < BATCH_SIZE:
+        if ray.get(self.replay_buffer.size.remote()) < BATCH_SIZE:
             print(
                 f"Not enough slices in the buffer to sample {BATCH_SIZE} slices. Waiting for more slices..."
             )
-            time.sleep(0.05)
-            slices = ray.get(self.replay_buffer.sample_from.remote(BATCH_SIZE))
+            while ray.get(self.replay_buffer.size.remote()) < BATCH_SIZE:
+                time.sleep(0.05)
+
+        slices: list[TrajectorySlice] = ray.get(
+            self.replay_buffer.sample_from.remote(BATCH_SIZE)
+        )
         # Prepare the tensors for the policy update.
         actions = torch.cat([s["actions"] for s in slices]).to("cuda")
         old_logps = torch.cat([s["old_logps"] for s in slices]).to("cuda")
@@ -345,7 +350,7 @@ class Generator:
             "actions": actions.detach().cpu(),
             "old_logps": logps.detach().cpu(),
         }
-        self.scorer.enqueue_trajectory_batch.remote(slice_batch)
+        self.scorer.score_slices.remote(slice_batch)
 
     def update_weights(self, cuda_weights):
         """Update the generator's weights from the learner's weights.
@@ -371,7 +376,7 @@ def train(total_steps: int) -> None:
     scorer = Scorer.remote(replay_buf)
     generator = Generator.remote(scorer)
 
-    # Asynchronously initialize the generator with current learner weights.
+    # Asynchronously initialize the generator with the current learner weights.
     weights_updated_ref = generator.update_weights.remote(learner.get_weights.remote())
 
     # Pre-fill the ReplayBuffer before starting GRPO.
