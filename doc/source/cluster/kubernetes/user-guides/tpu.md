@@ -92,7 +92,7 @@ Going even further, the new TPU utility library leverages the default node label
 
 #### `SlicePlacementGroup`
 
-The `SlicePlacementGroup` class provides a high-level interface to reserve one or more complete, available TPU slices and create a Ray [Placement Group](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html) constrained to those slices. This guarantees that all bundles within the placement group (and thus the tasks/actors scheduled on them) run on workers belonging to the *same* physical TPU slice(s).
+The `SlicePlacementGroup` class provides a high-level interface to reserve one or more complete, available TPU slices and create a Ray [Placement Group](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html) constrained to those slices. This guarantees that all bundles within the placement group (and thus the tasks/actors scheduled on them) run on workers belonging to the reserved physical TPU slices.
 
 **How it works:**
 
