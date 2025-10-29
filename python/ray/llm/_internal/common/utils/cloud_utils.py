@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import (
     Any,
@@ -346,6 +347,53 @@ class CloudFileSystem:
             return []
 
     @staticmethod
+    def _filter_files(
+        fs: pa_fs.FileSystem,
+        source_path: str,
+        destination_path: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+    ) -> List[Tuple[str, str]]:
+        """Filter files from cloud storage based on inclusion and exclusion criteria.
+
+        Args:
+            fs: PyArrow filesystem instance
+            source_path: Source path in cloud storage
+            destination_path: Local destination path
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude files ending with these suffixes
+
+        Returns:
+            List of tuples containing (source_file_path, destination_file_path)
+        """
+        file_selector = pa_fs.FileSelector(source_path, recursive=True)
+        file_infos = fs.get_file_info(file_selector)
+
+        path_pairs = []
+        for file_info in file_infos:
+            if file_info.type != pa_fs.FileType.File:
+                continue
+
+            rel_path = file_info.path[len(source_path) :].lstrip("/")
+
+            # Apply filters
+            if substrings_to_include:
+                if not any(
+                    substring in rel_path for substring in substrings_to_include
+                ):
+                    continue
+
+            if suffixes_to_exclude:
+                if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
+                    continue
+
+            path_pairs.append(
+                (file_info.path, os.path.join(destination_path, rel_path))
+            )
+
+        return path_pairs
+
+    @staticmethod
     def download_files(
         path: str,
         bucket_uri: str,
@@ -366,40 +414,104 @@ class CloudFileSystem:
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
 
-            # List all files in the bucket
-            file_selector = pa_fs.FileSelector(source_path, recursive=True)
-            file_infos = fs.get_file_info(file_selector)
+            # Get filtered files to download
+            files_to_download = CloudFileSystem._filter_files(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
 
             # Download each file
-            for file_info in file_infos:
-                if file_info.type != pa_fs.FileType.File:
-                    continue
-
-                # Get relative path from source prefix
-                rel_path = file_info.path[len(source_path) :].lstrip("/")
-
-                # Check if file matches substring filters
-                if substrings_to_include:
-                    if not any(
-                        substring in rel_path for substring in substrings_to_include
-                    ):
-                        continue
-
-                # Check if file matches suffixes to exclude filter
-                if suffixes_to_exclude:
-                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
-                        continue
-
+            for source_file_path, dest_file_path in files_to_download:
                 # Create destination directory if needed
-                if "/" in rel_path:
-                    dest_dir = os.path.join(path, os.path.dirname(rel_path))
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
                     os.makedirs(dest_dir, exist_ok=True)
 
                 # Download the file
-                dest_path = os.path.join(path, rel_path)
-                with fs.open_input_file(file_info.path) as source_file:
-                    with open(dest_path, "wb") as dest_file:
+                with fs.open_input_file(source_file_path) as source_file:
+                    with open(dest_file_path, "wb") as dest_file:
                         dest_file.write(source_file.read())
+
+        except Exception as e:
+            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
+            raise
+
+    @staticmethod
+    def download_files_parallel(
+        path: str,
+        bucket_uri: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+        max_concurrency: int = 10,
+        chunk_size: int = 64 * 1024 * 1024,
+    ) -> None:
+        """Multi-threaded download of files from cloud storage.
+
+        Args:
+            path: Local directory where files will be downloaded
+            bucket_uri: URI of cloud directory
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude certain files from download
+            max_concurrency: Maximum number of concurrent files to download (default: 10)
+            chunk_size: Size of transfer chunks (default: 64MB)
+        """
+        try:
+            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+
+            # Ensure destination exists
+            os.makedirs(path, exist_ok=True)
+
+            # If no filters, use direct copy_files
+            if not substrings_to_include and not suffixes_to_exclude:
+                pa_fs.copy_files(
+                    source=source_path,
+                    destination=path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=True,
+                    chunk_size=chunk_size,
+                )
+                return
+
+            # List and filter files
+            files_to_download = CloudFileSystem._filter_files(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
+
+            if not files_to_download:
+                logger.info("Filters do not match any of the files, skipping download")
+                return
+
+            def download_single_file(file_paths):
+                source_file_path, dest_file_path = file_paths
+                # Create destination directory if needed
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
+                    os.makedirs(dest_dir, exist_ok=True)
+
+                # Use PyArrow's copy_files for individual files,
+                pa_fs.copy_files(
+                    source=source_file_path,
+                    destination=dest_file_path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=True,
+                    chunk_size=chunk_size,
+                )
+                return dest_file_path
+
+            max_workers = min(max_concurrency, len(files_to_download))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(download_single_file, file_paths)
+                    for file_paths in files_to_download
+                ]
+
+                for future in futures:
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Failed to download file: {e}")
+                        raise
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
@@ -464,11 +576,12 @@ class CloudFileSystem:
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
 
-            CloudFileSystem.download_files(
+            CloudFileSystem.download_files_parallel(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
                 suffixes_to_exclude=safetensors_to_exclude,
+                chunk_size=64 * 1024 * 1024,  # 64MB chunks for large model files
             )
 
         except Exception as e:
