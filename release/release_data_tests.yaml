@@ -666,7 +666,7 @@
 
   run:
     timeout: 3600
-    script: pytest -v test_batch_llm_benchmark.py::test_single_node_baseline_benchmark
+    script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
 
 #################################################
 # Cross-AZ RPC fault tolerance test
