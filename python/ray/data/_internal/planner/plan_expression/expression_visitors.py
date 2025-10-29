@@ -1,6 +1,19 @@
 from dataclasses import replace
 from typing import Dict, List, TypeVar
 
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    DownloadExpr,
+    Expr,
+    LiteralExpr,
+    Operation,
+    StarExpr,
+    UDFExpr,
+    UnaryExpr,
+    _ExprVisitor,
+)
 from ray.util import log_once
 
 try:
@@ -20,41 +33,28 @@ try:
         NotNull,
         Or,
     )
+
+    # Map Ray Data operations to Iceberg operations
+    RAY_DATA_OPERATION_TO_ICEBERG = {
+        Operation.EQ: EqualTo,
+        Operation.NE: NotEqualTo,
+        Operation.GT: GreaterThan,
+        Operation.GE: GreaterThanOrEqual,
+        Operation.LT: LessThan,
+        Operation.LE: LessThanOrEqual,
+        Operation.AND: And,
+        Operation.OR: Or,
+        Operation.IN: In,
+        Operation.NOT_IN: NotIn,
+        Operation.IS_NULL: IsNull,
+        Operation.IS_NOT_NULL: NotNull,
+        Operation.NOT: Not,
+    }
 except ImportError:
     log_once("pyiceberg is not installed, some expression visitors will be unavailable")
 
-from ray.data.expressions import (
-    AliasExpr,
-    BinaryExpr,
-    ColumnExpr,
-    DownloadExpr,
-    Expr,
-    LiteralExpr,
-    Operation,
-    StarExpr,
-    UDFExpr,
-    UnaryExpr,
-    _ExprVisitor,
-)
 
 T = TypeVar("T")
-
-# Map Ray Data operations to Iceberg operations
-RAY_DATA_OPERATION_TO_ICEBERG = {
-    Operation.EQ: EqualTo,
-    Operation.NE: NotEqualTo,
-    Operation.GT: GreaterThan,
-    Operation.GE: GreaterThanOrEqual,
-    Operation.LT: LessThan,
-    Operation.LE: LessThanOrEqual,
-    Operation.AND: And,
-    Operation.OR: Or,
-    Operation.IN: In,
-    Operation.NOT_IN: NotIn,
-    Operation.IS_NULL: IsNull,
-    Operation.IS_NOT_NULL: NotNull,
-    Operation.NOT: Not,
-}
 
 
 class _ExprVisitorBase(_ExprVisitor[None]):
