@@ -3,7 +3,7 @@ import math
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
-from python.ray._private.ray_constants import env_float
+from ray._private.ray_constants import env_float
 
 from .backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.operators.map_operator import MapOperator
