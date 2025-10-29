@@ -101,8 +101,40 @@ ApplicationName = str
 
 @dataclass
 class EndpointInfo:
+    """Metadata about a deployment's HTTP/gRPC endpoint.
+
+    This represents the public routing interface for a deployment. It's created when
+    a deployment is registered with a route prefix and broadcast to all proxies via
+    the long poll mechanism (ROUTE_TABLE namespace).
+
+    Flow:
+        1. Created in ApplicationState when deployment is applied
+        2. Stored in EndpointState (controller's source of truth)
+        3. Broadcast to all ProxyActors via long poll (ROUTE_TABLE)
+        4. Cached in ProxyRouter for request routing
+        5. Used to route incoming HTTP/gRPC requests to correct deployments
+        6. Used to determine route patterns for accurate metrics tagging
+
+    Key Difference from DeploymentInfo:
+        - EndpointInfo: Just HTTP/gRPC routing metadata (shared with proxies)
+        - DeploymentInfo: Complete deployment config (replicas, resources, etc.)
+
+    Attributes:
+        route: The route prefix for this deployment (e.g., "/api").
+        app_is_cross_language: Whether the deployment uses a different language
+            than the proxy (e.g., Java deployment with Python proxy). This affects
+            how the proxy serializes/deserializes requests.
+        route_patterns: List of all ASGI route patterns for this deployment
+            (e.g., ["/", "/users/{user_id}", "/items/{item_id}/details"]).
+            Used by proxies to match incoming requests to specific route patterns
+            for accurate metrics tagging. This avoids high cardinality by using
+            parameterized patterns instead of individual request paths.
+            Only populated for deployments with ASGI apps (FastAPI/Starlette).
+    """
+
     route: str
     app_is_cross_language: bool = False
+    route_patterns: Optional[List[str]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
