@@ -899,7 +899,6 @@ class _StatsManager:
                 state,
                 per_node_metrics,
             )
-            # print("==== update_execution_metrics ====")
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
             self._execution_last_updated[dataset_tag] = now
 
