@@ -33,7 +33,7 @@ if [[ "$OSTYPE" == "msys" ]]; then
   ARTIFACT_MOUNT="/c/artifact-mount"
 fi
 
-export PATH=/opt/python/cp39-cp39/bin:$PATH
+export PATH=/opt/python/cp310-cp310/bin:$PATH
 ./ci/env/env_info.sh
 
 # Sync the directory to buildkite artifacts

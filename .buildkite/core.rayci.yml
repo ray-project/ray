@@ -1,7 +1,7 @@
 group: core tests
 depends_on:
   - forge
-  - oss-ci-base_build
+  - oss-ci-base_build-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:
@@ -310,7 +310,7 @@ steps:
     instance_type: medium
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup --build-type clang
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2 --python-version 3.10
 
   # block on premerge and microcheck
   - block: "run cpp sanitizer tests"
