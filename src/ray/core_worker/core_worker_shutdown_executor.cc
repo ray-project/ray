@@ -108,6 +108,19 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     // event loop each time.
     core_worker_->task_execution_service_.post(
         [this, exit_type, detail, creation_task_exception_pb_bytes]() {
+          // For normal tasks, drain RPC server here (after reference counter drain).
+          // For actors, RPC draining is done earlier in drain_references_callback
+          // to ensure replies are sent before DEAD notification.
+          bool is_actor = false;
+          {
+            absl::MutexLock lock(&core_worker_->mutex_);
+            is_actor = !core_worker_->actor_id_.IsNil();
+          }
+          if (!is_actor) {
+            RAY_LOG(DEBUG) << "Draining RPC server for normal task worker";
+            rpc::DrainServerCallExecutor();
+          }
+
           KillChildProcessesImmediately();
           DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
           ExecuteGracefulShutdown(
@@ -127,25 +140,26 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
           RAY_LOG(INFO) << "Wait for currently executing tasks in the underlying thread "
                            "pools to finish.";
           bool not_actor_task = false;
+          bool is_asyncio_actor = false;
           ActorID actor_id;
           {
             absl::MutexLock lock(&core_worker_->mutex_);
             actor_id = core_worker_->actor_id_;
             not_actor_task = core_worker_->actor_id_.IsNil();
+            is_asyncio_actor =
+                !not_actor_task && core_worker_->worker_context_->CurrentActorIsAsync();
           }
-          // Wait for currently executing tasks in the underlying thread pools to
-          // finish. Note that if tasks have been posted to the thread pools but not
-          // started yet, they will not be executed.
-          if (not_actor_task) {
-            core_worker_->task_receiver_->Stop();
-          } else {
+
+          // For asyncio actors only, skip Stop() and add delay for fibers
+          if (is_asyncio_actor) {
             RAY_LOG(DEBUG).WithField(actor_id)
-                << "Skipping task_receiver_->Stop() for actor to allow fibers/threads to "
-                   "send task replies. "
-                << "Waiting for 100ms for fibers to complete execution";
+                << "Skipping task_receiver_->Stop() for asyncio actor to allow fibers to "
+                << "send task replies. Waiting for 100ms for fibers to complete.";
             // Since we can't join fiber threads, add a small delay
             // to allow inflight fibers to finish sending task replies
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          } else {
+            core_worker_->task_receiver_->Stop();
           }
 
           // Release resources only after tasks have stopped executing.
@@ -156,10 +170,12 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
                 << "the connection was lost.";
           }
 
-          // Drain RPC server to ensure all task replies are sent
-          RAY_LOG(DEBUG) << "Draining RPC server to ensure task replies are sent";
-          rpc::DrainServerCallExecutor();
-          RAY_LOG(DEBUG) << "RPC server drained";
+          if (!not_actor_task) {
+            RAY_LOG(DEBUG).WithField(actor_id)
+                << "Draining RPC server to ensure task replies are sent";
+            rpc::DrainServerCallExecutor();
+            RAY_LOG(DEBUG).WithField(actor_id) << "RPC server drained";
+          }
 
           if (not_actor_task) {
             // Normal tasks should not hold any object references in the heap after
