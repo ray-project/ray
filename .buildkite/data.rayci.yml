@@ -217,17 +217,15 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //doc/... data
-        --build-name docgpubuild-py3.10
+        --build-name docgpubuild
         --only-tags doctest
         --except-tags cpu
-        --python-version 3.10
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name docgpubuild-py3.10
+        --build-name docgpubuild
         --except-tags doctest
         --only-tags gpu
         --skip-ray-installation
-        --python-version 3.10
     depends_on: docgpubuild
 
   - label: ":database: data: integration tests"
@@ -281,9 +279,8 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
-        --build-name docgpubuild-py3.10
+        --build-name docgpubuild
         --only-tags gpu,gpu_only
-        --python-version 3.10
     depends_on: docgpubuild
   - label: ":data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
