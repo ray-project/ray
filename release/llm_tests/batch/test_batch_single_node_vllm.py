@@ -48,8 +48,8 @@ def test_single_node_baseline_benchmark():
     Single-node baseline benchmark: facebook/opt-1.3b, TP=1, PP=1, 1000 prompts.
 
     Logs BENCHMARK_* metrics and optionally asserts perf thresholds from env:
-    - RAY_LLM_BENCHMARK_MIN_THROUGHPUT (req/s)
-    - RAY_LLM_BENCHMARK_MAX_LATENCY_S (seconds)
+    - RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT (req/s)
+    - RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S (seconds)
     Writes JSON artifact to RAY_LLM_BENCHMARK_ARTIFACT_PATH if set.
     """
     # Dataset setup
@@ -109,8 +109,8 @@ def test_single_node_baseline_benchmark():
     print("=" * 60)
 
     # Optional thresholds to fail on regressions
-    min_throughput = _get_float_env("RAY_LLM_BENCHMARK_MIN_THROUGHPUT")
-    max_latency_s = _get_float_env("RAY_LLM_BENCHMARK_MAX_LATENCY_S")
+    min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 5)
+    max_latency_s = _get_float_env("RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S", 120)
     if min_throughput is not None:
         assert (
             result.throughput >= min_throughput
