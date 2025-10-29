@@ -1,5 +1,4 @@
 import asyncio
-import os
 from typing import Optional
 
 import ray
@@ -7,7 +6,7 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig, LLMEngine
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 
 torch = try_import("torch")
@@ -32,24 +31,6 @@ def initialize_remote_node(llm_config: LLMConfig) -> Optional[str]:
     # Validate that the binary exists
     if local_path and local_path != engine_config.actual_hf_model_id:
         engine_config.hf_model_id = local_path
-
-    # Download the tokenizer if it isn't a local file path
-    if not isinstance(local_path, str) or not os.path.exists(local_path):
-        logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
-
-    if llm_config.llm_engine == LLMEngine.vLLM:
-        from vllm.transformers_utils.tokenizer import get_tokenizer
-
-        _ = get_tokenizer(
-            engine_config.actual_hf_model_id,
-            tokenizer_mode=engine_config.engine_kwargs.get("tokenizer_mode", None),
-            trust_remote_code=engine_config.trust_remote_code,
-        )
-    else:
-        _ = transformers.AutoTokenizer.from_pretrained(
-            engine_config.actual_hf_model_id,
-            trust_remote_code=engine_config.trust_remote_code,
-        )
 
     return local_path
 
