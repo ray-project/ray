@@ -330,8 +330,8 @@ class FileBasedDatasource(Datasource):
         Args:
             path: The file path to resolve compression for.
             open_args: kwargs passed to
-            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_stream>`_.
-            when opening input files to read.
+                `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_stream>`_
+                when opening input files to read.
 
         Returns:
             The compression format (e.g., "gzip", "snappy", "bz2") or None if
