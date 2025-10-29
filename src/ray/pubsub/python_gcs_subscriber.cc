@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/gcs_rpc_client/rpc_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray {
 namespace pubsub {
@@ -51,6 +52,7 @@ Status PythonGcsSubscriber::Subscribe() {
   }
 
   grpc::ClientContext context;
+  SetAuthenticationToken(context);
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
@@ -78,6 +80,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       return Status::OK();
     }
     current_polling_context_ = std::make_shared<grpc::ClientContext>();
+    SetAuthenticationToken(*current_polling_context_);
     if (timeout_ms != -1) {
       current_polling_context_->set_deadline(std::chrono::system_clock::now() +
                                              std::chrono::milliseconds(timeout_ms));
@@ -173,6 +176,7 @@ Status PythonGcsSubscriber::Close() {
   }
 
   grpc::ClientContext context;
+  SetAuthenticationToken(context);
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
@@ -193,6 +197,13 @@ Status PythonGcsSubscriber::Close() {
 int64_t PythonGcsSubscriber::last_batch_size() {
   absl::MutexLock lock(&mu_);
   return last_batch_size_;
+}
+
+void PythonGcsSubscriber::SetAuthenticationToken(grpc::ClientContext &context) {
+  auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
+  if (auth_token.has_value() && !auth_token->empty()) {
+    auth_token->SetMetadata(context);
+  }
 }
 
 }  // namespace pubsub
