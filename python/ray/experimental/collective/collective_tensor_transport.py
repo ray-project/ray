@@ -72,7 +72,7 @@ class CollectiveTensorTransport(TensorTransportManager):
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
             return CollectiveTensorTransport.extract_tensor_transport_metadata(
-                gpu_object
+                obj_id, gpu_object
             )
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
