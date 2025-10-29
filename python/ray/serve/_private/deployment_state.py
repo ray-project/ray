@@ -1086,7 +1086,7 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
-            _actor_id_str=str(handle._actor_id),
+            actor_id_str=str(handle._actor_id),
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):

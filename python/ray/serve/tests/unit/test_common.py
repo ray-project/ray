@@ -124,7 +124,7 @@ def test_running_replica_info():
         actor_name=actor_name,
         max_ongoing_requests=1,
         is_cross_language=False,
-        _actor_id_str=actor_name,
+        actor_id_str=actor_name,
     )
     replica2 = RunningReplicaInfo(
         replica_id=replica_id,
@@ -134,7 +134,7 @@ def test_running_replica_info():
         actor_name=actor_name,
         max_ongoing_requests=1,
         is_cross_language=False,
-        _actor_id_str=actor_name,
+        actor_id_str=actor_name,
     )
     # Test that cross-language setting affects hash
     replica3 = RunningReplicaInfo(
@@ -145,7 +145,7 @@ def test_running_replica_info():
         actor_name=actor_name,
         max_ongoing_requests=1,
         is_cross_language=True,
-        _actor_id_str=actor_name,
+        actor_id_str=actor_name,
     )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash

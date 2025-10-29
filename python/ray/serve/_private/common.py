@@ -585,7 +585,7 @@ class RunningReplicaInfo:
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
 
-    _actor_id_str: Optional[str] = None
+    actor_id_str: str
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -594,15 +594,12 @@ class RunningReplicaInfo:
         # it is consistently same actor handle between different
         # object ids.
 
-        if self._actor_id_str is None:
-            self.get_actor_handle()
-
         hash_val = hash(
             " ".join(
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
-                    self._actor_id_str,
+                    self.actor_id_str,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
@@ -628,10 +625,6 @@ class RunningReplicaInfo:
 
     def get_actor_handle(self) -> ActorHandle:
         actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
-        actor_id_str = str(actor_handle._actor_id)
-        # RunningReplicaInfo class set frozen=True, this is the hacky way to set
-        # new attribute for the class.
-        object.__setattr__(self, "_actor_id_str", actor_id_str)
         return actor_handle
 
 
