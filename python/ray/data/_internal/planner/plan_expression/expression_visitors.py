@@ -395,25 +395,15 @@ class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
 
         # Handle IN/NOT_IN specially since they don't visit the right operand
         # (the right operand is a list literal that can't be converted)
-        if expr.op == Operation.IN:
+        if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
-            # For IN operations, right should be a literal list
-            if isinstance(expr.right, LiteralExpr):
-                return In(left, expr.right.value)
-            else:
+            if not isinstance(expr.right, LiteralExpr):
                 raise ValueError(
-                    f"IN operation requires right operand to be a literal list, "
+                    f"{expr.op.name} operation requires right operand to be a literal list, "
                     f"got {type(expr.right).__name__}"
                 )
-        elif expr.op == Operation.NOT_IN:
-            left = self.visit(expr.left)
-            if isinstance(expr.right, LiteralExpr):
-                return NotIn(left, expr.right.value)
-            else:
-                raise ValueError(
-                    f"NOT_IN operation requires right operand to be a literal list, "
-                    f"got {type(expr.right).__name__}"
-                )
+            op_class = In if expr.op == Operation.IN else NotIn
+            return op_class(left, expr.right.value)
 
         # For all other operations, visit both operands
         left = self.visit(expr.left)
@@ -461,24 +451,24 @@ class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
                 f"Supported operations: IS_NULL, IS_NOT_NULL, NOT"
             )
 
-    def visit_alias(self, expr) -> "BooleanExpression":
+    def visit_alias(self, expr: "AliasExpr") -> "BooleanExpression":
         """Convert an aliased expression (just unwrap the alias)."""
         return self.visit(expr.expr)
 
-    def visit_udf(self, expr) -> "BooleanExpression":
+    def visit_udf(self, expr: "UDFExpr") -> "BooleanExpression":
         """UDF expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "UDF expressions cannot be converted to Iceberg expressions. "
             "Iceberg filters must use simple column comparisons and boolean operations."
         )
 
-    def visit_download(self, expr) -> "BooleanExpression":
+    def visit_download(self, expr: "DownloadExpr") -> "BooleanExpression":
         """Download expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Download expressions cannot be converted to Iceberg expressions."
         )
 
-    def visit_star(self, expr) -> "BooleanExpression":
+    def visit_star(self, expr: "StarExpr") -> "BooleanExpression":
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."

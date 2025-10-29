@@ -590,9 +590,9 @@ class TestToIceberg:
         expected = equivalent_iceberg_expr()
 
         # Verify they're the same type
-        assert type(converted) is type(expected), (
-            f"Expression type mismatch for {description}: "
-            f"got {type(converted).__name__}, expected {type(expected).__name__}"
+        assert converted == expected, (
+            f"Expression mismatch for {description}: "
+            f"got {converted}, expected {expected}"
         )
 
     def test_to_iceberg_unsupported_arithmetic(self):
