@@ -35,13 +35,13 @@ class AsyncioActor:
             await asyncio.sleep(0.1)
 
 
-def _expect_actor_dies(actor, timeout_s=30):
+def _expect_actor_dies(actor: "ray.actor.ActorHandle", timeout_s: float = 30) -> None:
     """Wait for an actor to die and raise if it doesn't die within timeout.
-    
+
     Args:
         actor: Ray actor handle to monitor.
         timeout_s: Maximum time to wait for actor death in seconds.
-        
+
     Raises:
         AssertionError: If actor doesn't die within timeout_s.
     """
@@ -60,6 +60,7 @@ def _expect_actor_dies(actor, timeout_s=30):
 
 def test_asyncio_actor_force_exit_is_immediate(ray_start):
     """Calling force_exit_worker() inside an asyncio actor should exit immediately."""
+
     @ray.remote
     class A:
         async def ping(self):
@@ -87,19 +88,19 @@ def test_worker_sigterm_terminates_immediately(ray_start):
 
 def test_worker_sigterm_during_blocking_get(ray_start):
     """SIGTERM should force exit even when worker is blocked on ray.get()."""
-    
+
     @ray.remote
     class BlockedActor:
         def pid(self) -> int:
             return os.getpid()
-        
+
         def block_on_get(self):
             @ray.remote
             def never_returns():
                 time.sleep(10000)
-            
+
             ray.get(never_returns.remote())
-    
+
     a = BlockedActor.remote()
     pid = ray.get(a.pid.remote())
     a.block_on_get.remote()
@@ -123,19 +124,21 @@ def test_driver_sigterm_graceful():
     with tempfile.TemporaryDirectory() as td:
         flag = os.path.join(td, "driver_atexit_flag.txt")
         ready = os.path.join(td, "driver_ready.txt")
-        driver_code = textwrap.dedent(f"""
+        driver_code = textwrap.dedent(
+            f"""
             import atexit, os, time, ray
-            
+
             def on_exit():
                 with open('{flag}', 'w') as f:
                     f.write('ok')
-            
+
             atexit.register(on_exit)
             ray.init()
             with open('{ready}', 'w') as f:
                 f.write('ready')
             time.sleep(1000)
-        """)
+        """
+        )
         p = run_string_as_driver_nonblocking(driver_code)
         try:
             wait_for_condition(lambda: os.path.exists(ready), timeout=10)
@@ -156,39 +159,45 @@ def test_driver_double_sigterm_forced():
     with tempfile.TemporaryDirectory() as td:
         flag = os.path.join(td, "driver_atexit_flag.txt")
         ready = os.path.join(td, "driver_ready.txt")
-        driver_code = textwrap.dedent(f"""
+        driver_code = textwrap.dedent(
+            f"""
             import atexit, os, time, ray
-            
+
             def on_exit():
                 time.sleep(10)
                 with open('{flag}', 'w') as f:
                     f.write('ok')
-            
+
             atexit.register(on_exit)
             ray.init()
             with open('{ready}', 'w') as f:
                 f.write('ready')
             time.sleep(1000)
-        """)
+        """
+        )
         p = run_string_as_driver_nonblocking(driver_code)
         try:
             wait_for_condition(lambda: os.path.exists(ready), timeout=10)
             os.kill(p.pid, signal.SIGTERM)
             time.sleep(0.1)
             os.kill(p.pid, signal.SIGTERM)
-            
+
             start_wait = time.monotonic()
             p.wait(timeout=2)
             wait_time = time.monotonic() - start_wait
-            
-            assert wait_time < 2, f"Should exit quickly via forced path, but took {wait_time}s"
+
+            assert (
+                wait_time < 2
+            ), f"Should exit quickly via forced path, but took {wait_time}s"
         finally:
             try:
                 p.kill()
             except Exception:
                 pass
-        
-        assert not os.path.exists(flag), "Slow atexit should not complete on forced exit"
+
+        assert not os.path.exists(
+            flag
+        ), "Slow atexit should not complete on forced exit"
 
 
 if __name__ == "__main__":
