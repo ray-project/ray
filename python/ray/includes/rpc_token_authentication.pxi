@@ -97,7 +97,7 @@ class AuthenticationTokenLoader:
         # Get the token from C++ layer
         cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken()
 
-        if not token_opt.has_value() || token_opt.value().empty():
+        if not token_opt.has_value() or token_opt.value().empty():
             return False
 
         headers["Authorization"] = token_opt.value().ToAuthorizationHeaderValue()

@@ -1,7 +1,6 @@
 """Integration tests for token-based authentication in Ray."""
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,12 +10,14 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray._raylet import AuthenticationTokenLoader, Config
+from ray._raylet import AuthenticationTokenLoader
 from ray.cluster_utils import Cluster
-
-
-def reset_token_cache():
-    AuthenticationTokenLoader.instance().reset_cache()
+from ray.tests.authentication_test_utils import (
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 
 
 def _run_ray_start_and_verify_status(
@@ -85,67 +86,16 @@ def _cleanup_ray_start(env: Optional[dict] = None):
 
 @pytest.fixture(autouse=True)
 def clean_token_sources(cleanup_auth_token_env):
-    """Clean up all token sources before and after each test."""
-    # This follows the same pattern as authentication_token_loader_test.cc
-    if "HOME" not in os.environ:
-        # Use TEST_TMPDIR if available (Bazel sets this), otherwise use system temp
-        test_tmpdir = os.environ.get("TEST_TMPDIR")
-        if test_tmpdir:
-            temp_home = os.path.join(test_tmpdir, "ray_test_home")
-        else:
-            temp_home = "/tmp/ray_test_home"
+    """Ensure authentication-related state is clean around each test."""
 
-        # Create the directory if it doesn't exist
-        os.makedirs(temp_home, exist_ok=True)
-        os.environ["HOME"] = temp_home
-        home_was_set = False
-    else:
-        temp_home = None
-        home_was_set = True
-
-    # Clean environment variables
-    env_vars_to_clean = [
-        "RAY_AUTH_TOKEN",
-        "RAY_AUTH_TOKEN_PATH",
-        "RAY_auth_mode",
-    ]
-    original_values = {}
-    for var in env_vars_to_clean:
-        original_values[var] = os.environ.get(var)
-        if var in os.environ:
-            del os.environ[var]
-
-    # Clean default token file
-    default_token_path = Path.home() / ".ray" / "auth_token"
-    original_exists = default_token_path.exists()
-    original_content = None
-    if original_exists:
-        original_content = default_token_path.read_text()
-        default_token_path.unlink()
-
-    Config.initialize("")
-
-    # Reset token caches (both Python and C++)
-    reset_token_cache()
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
 
     yield
-
-    # Restore environment variables
-    for var, value in original_values.items():
-        if value is not None:
-            os.environ[var] = value
-        elif var in os.environ:
-            del os.environ[var]
-
-    # Restore default token file
-    if original_exists and original_content is not None:
-        default_token_path.parent.mkdir(parents=True, exist_ok=True)
-        default_token_path.write_text(original_content)
 
     if ray.is_initialized():
         ray.shutdown()
 
-    # Ensure all ray processes are stopped
     subprocess.run(
         ["ray", "stop", "--force"],
         capture_output=True,
@@ -153,21 +103,7 @@ def clean_token_sources(cleanup_auth_token_env):
         check=False,
     )
 
-    # Reset token caches again after test
-    reset_token_cache()
-    Config.initialize("")
-
-    # Clean up temporary HOME if we created one
-    # Only delete if we set it and it was temporary
-    if temp_home is not None and not home_was_set:
-        try:
-            if os.path.exists(temp_home):
-                shutil.rmtree(temp_home)
-        except Exception:
-            pass  # Best effort cleanup
-        # Remove the HOME env var we set
-        if "HOME" in os.environ and os.environ["HOME"] == temp_home:
-            del os.environ["HOME"]
+    reset_auth_token_state()
 
 
 def test_local_cluster_generates_token():
@@ -179,8 +115,8 @@ def test_local_cluster_generates_token():
     ), f"Token file already exists at {default_token_path}"
 
     # Enable token auth via environment variable
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     # Initialize Ray with token auth
     ray.init()
@@ -207,9 +143,9 @@ def test_connect_without_token_raises_error():
     """Test ray.init(address=...) without token fails when auth_mode=token is set."""
     # Set up a cluster with token auth enabled
     cluster_token = "testtoken12345678901234567890"
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    set_env_auth_token(cluster_token)
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     # Create cluster with token auth enabled
     cluster = Cluster()
@@ -217,10 +153,9 @@ def test_connect_without_token_raises_error():
 
     try:
         # Remove the token from the environment so we try to connect without it
-        os.environ["RAY_auth_mode"] = "disabled"
-        os.environ["RAY_AUTH_TOKEN"] = ""
-        Config.initialize("")
-        reset_token_cache()
+        set_auth_mode("disabled")
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
 
         # Ensure no token exists
         token_loader = AuthenticationTokenLoader.instance()
@@ -239,9 +174,9 @@ def test_cluster_token_authentication(tokens_match):
     """Test cluster authentication with matching and non-matching tokens."""
     # Set up cluster token first
     cluster_token = "a" * 32
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    set_env_auth_token(cluster_token)
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     # Create cluster with token auth enabled - node will read current env token
     cluster = Cluster()
@@ -254,10 +189,10 @@ def test_cluster_token_authentication(tokens_match):
         else:
             client_token = "b" * 32  # Different token - should fail
 
-        os.environ["RAY_AUTH_TOKEN"] = client_token
+        set_env_auth_token(client_token)
 
         # Reset cached token so it reads the new environment variable
-        reset_token_cache()
+        reset_auth_token_state()
 
         if tokens_match:
             # Should succeed - test gRPC calls work
@@ -312,9 +247,9 @@ def test_ray_start_without_token_raises_error(is_head):
     if not is_head:
         # Start head node with token
         cluster_token = "a" * 32
-        os.environ["RAY_AUTH_TOKEN"] = cluster_token
-        os.environ["RAY_auth_mode"] = "token"
-        Config.initialize("")
+        set_env_auth_token(cluster_token)
+        set_auth_mode("token")
+        reset_auth_token_state()
         cluster = Cluster()
         cluster.add_node()
 
@@ -348,10 +283,9 @@ def test_ray_start_head_with_token_succeeds():
         )
 
         # Verify we can connect to the cluster with ray.init()
-        os.environ["RAY_AUTH_TOKEN"] = test_token
-        os.environ["RAY_auth_mode"] = "token"
-        Config.initialize("")
-        reset_token_cache()
+        set_env_auth_token(test_token)
+        set_auth_mode("token")
+        reset_auth_token_state()
 
         # Wait for cluster to be ready
         def cluster_ready():
@@ -382,9 +316,9 @@ def test_ray_start_address_with_token(token_match):
     """Test ray start --address=... with correct or incorrect token."""
     # Start a head node with token auth
     cluster_token = "a" * 32
-    os.environ["RAY_AUTH_TOKEN"] = cluster_token
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
+    set_env_auth_token(cluster_token)
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     cluster = Cluster()
     cluster.add_node(num_cpus=1)

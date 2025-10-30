@@ -1,6 +1,6 @@
-import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -9,9 +9,16 @@ from ray._private.authentication.authentication_constants import (
     HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
     HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
 )
-from ray._raylet import AuthenticationTokenLoader, Config
 from ray.cluster_utils import Cluster
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.tests.authentication_test_utils import (
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_auth_token_path,
+    set_default_auth_token,
+    set_env_auth_token,
+)
 from ray.util.state import StateApiClient
 
 
@@ -32,10 +39,9 @@ def test_submission_client_without_token_shows_helpful_error(
 ):
     """Test that requests without token show helpful error message."""
     # Remove token from environment
-    os.environ.pop("RAY_AUTH_TOKEN", None)
-    os.environ["RAY_auth_mode"] = "disabled"
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    clear_auth_token_sources(remove_default=True)
+    set_auth_mode("disabled")
+    reset_auth_token_state()
 
     from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
@@ -58,8 +64,9 @@ def test_submission_client_with_invalid_token_shows_helpful_error(
     """Test that requests with wrong token show helpful error message."""
     # Set wrong token
     wrong_token = "wrong_token_00000000000000000000000000000000"
-    os.environ["RAY_AUTH_TOKEN"] = wrong_token
-    AuthenticationTokenLoader.instance().reset_cache()
+    set_env_auth_token(wrong_token)
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
@@ -127,10 +134,9 @@ def test_user_provided_header_not_overridden(setup_cluster_with_token_auth):
 def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
     """Test that all auth error messages contain setup instructions."""
     # Test 401 error (missing token)
-    os.environ.pop("RAY_AUTH_TOKEN", None)
-    os.environ["RAY_auth_mode"] = "disabled"
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    clear_auth_token_sources(remove_default=True)
+    set_auth_mode("disabled")
+    reset_auth_token_state()
 
     from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
@@ -146,10 +152,9 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
     assert str(exc_info.value) == expected_missing
 
     # Test 403 error (invalid token)
-    os.environ["RAY_AUTH_TOKEN"] = "wrong_token_00000000000000000000000000000000"
-    os.environ["RAY_auth_mode"] = "token"
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    set_env_auth_token("wrong_token_00000000000000000000000000000000")
+    set_auth_mode("token")
+    reset_auth_token_state()
 
     client2 = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
@@ -168,24 +173,20 @@ def test_token_loaded_from_sources(cleanup_auth_token_env, token_source):
     """Test that SubmissionClient loads tokens from all supported sources."""
 
     test_token = "test_token_12345678901234567890123456789012"
-    os.environ["RAY_auth_mode"] = "token"
+    set_auth_mode("token")
 
-    token_file_path = None
-    default_token_path = Path.home() / ".ray" / "auth_token"
+    token_file_path: Optional[Path] = None
 
     if token_source == "env_var":
-        os.environ["RAY_AUTH_TOKEN"] = test_token
+        set_env_auth_token(test_token)
     elif token_source == "token_path":
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
-            tmp.write(test_token)
-            token_file_path = tmp.name
-        os.environ["RAY_AUTH_TOKEN_PATH"] = token_file_path
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            token_file_path = Path(tmp.name)
+        set_auth_token_path(test_token, token_file_path)
     else:
-        default_token_path.parent.mkdir(parents=True, exist_ok=True)
-        default_token_path.write_text(test_token)
+        set_default_auth_token(test_token)
 
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    reset_auth_token_state()
 
     cluster = Cluster()
     cluster.add_node()
@@ -201,8 +202,8 @@ def test_token_loaded_from_sources(cleanup_auth_token_env, token_source):
     finally:
         ray.shutdown()
         cluster.shutdown()
-        if token_file_path:
-            os.unlink(token_file_path)
+        if token_source == "token_path" and token_file_path:
+            token_file_path.unlink(missing_ok=True)
 
 
 def test_no_token_added_when_auth_disabled(setup_cluster_without_token_auth):
