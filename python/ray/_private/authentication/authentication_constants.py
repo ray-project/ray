@@ -1,9 +1,3 @@
-"""Centralized authentication constants and error messages for Ray.
-
-This module provides reusable error messages for authentication failures
-across CLI, dashboard, and other Ray python components.
-"""
-
 # Token setup instructions (used in multiple contexts)
 TOKEN_SETUP_INSTRUCTIONS = """Please provide an authentication token using one of these methods:
   1. Set the RAY_AUTH_TOKEN environment variable

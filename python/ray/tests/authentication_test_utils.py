@@ -8,12 +8,12 @@ from typing import Dict, Optional
 
 from ray._raylet import AuthenticationTokenLoader, Config
 
-AUTH_ENV_VARS = ("RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
-DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
+_AUTH_ENV_VARS = ("RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+_DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
 
 def reset_auth_token_state() -> None:
-    """Reset authentication token and auth_mode config."""
+    """Reset authentication token and auth_mode ray config."""
 
     AuthenticationTokenLoader.instance().reset_cache()
     Config.initialize("")
@@ -45,7 +45,7 @@ def set_auth_token_path(token: str, path: Path) -> None:
 def set_default_auth_token(token: str) -> Path:
     """Write the authentication token to the default ~/.ray/auth_token location."""
 
-    default_path = Path.home() / DEFAULT_AUTH_TOKEN_RELATIVE_PATH
+    default_path = Path.home() / _DEFAULT_AUTH_TOKEN_RELATIVE_PATH
     default_path.parent.mkdir(parents=True, exist_ok=True)
     default_path.write_text(token)
     return default_path
@@ -58,7 +58,7 @@ def clear_auth_token_sources(remove_default: bool = False) -> None:
         os.environ.pop(var, None)
 
     if remove_default:
-        default_path = Path.home() / DEFAULT_AUTH_TOKEN_RELATIVE_PATH
+        default_path = Path.home() / _DEFAULT_AUTH_TOKEN_RELATIVE_PATH
         default_path.unlink(missing_ok=True)
 
 
@@ -76,7 +76,7 @@ class AuthenticationEnvSnapshot:
     def capture(cls) -> "AuthenticationEnvSnapshot":
         """Capture current authentication-related environment state."""
 
-        original_env = {var: os.environ.get(var) for var in AUTH_ENV_VARS}
+        original_env = {var: os.environ.get(var) for var in _AUTH_ENV_VARS}
         home_was_set = "HOME" in os.environ
         original_home = os.environ.get("HOME")
         temp_home: Optional[Path] = None
@@ -89,7 +89,7 @@ class AuthenticationEnvSnapshot:
             temp_home.mkdir(parents=True, exist_ok=True)
             os.environ["HOME"] = str(temp_home)
 
-        default_token_path = Path.home() / DEFAULT_AUTH_TOKEN_RELATIVE_PATH
+        default_token_path = Path.home() / _DEFAULT_AUTH_TOKEN_RELATIVE_PATH
         default_token_exists = default_token_path.exists()
         default_token_contents = (
             default_token_path.read_text() if default_token_exists else None

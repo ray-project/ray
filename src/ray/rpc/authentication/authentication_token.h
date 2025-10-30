@@ -86,7 +86,7 @@ class AuthenticationToken {
     }
   }
 
-  /// Get token as HTTP Authorization header value
+  /// Get token as Authorization header value
   /// WARNING: This exposes the raw token. Use sparingly.
   /// Returns "Bearer <token>" format suitable for Authorization header
   /// @return Authorization header value, or empty string if token is empty
