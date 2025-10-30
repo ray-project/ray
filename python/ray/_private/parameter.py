@@ -440,9 +440,11 @@ class RayParams:
         if self.temp_dir is not None and os.getenv("VIRTUAL_ENV"):
             is_relative = True
             try:
-                (pathlib.Path(self.temp_dir)
-                .resolve()
-                .relative_to(pathlib.Path(os.getenv("VIRTUAL_ENV")).resolve()))
+                (
+                    pathlib.Path(self.temp_dir)
+                    .resolve()
+                    .relative_to(pathlib.Path(os.getenv("VIRTUAL_ENV")).resolve())
+                )
             except ValueError:
                 is_relative = False
 
