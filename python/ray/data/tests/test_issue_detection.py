@@ -1,11 +1,9 @@
 import io
 import logging
 import re
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 import ray
@@ -101,88 +99,41 @@ class TestHangingExecutionIssueDetector:
         log_output = log_capture.getvalue()
         assert re.search(warn_msg, log_output) is not None, log_output
 
-    @pytest.mark.skip(
-        reason="Flaky test"
-    )  # TODO Issue detector is not warning consistently
-    @pytest.mark.parametrize(
-        "ray_start_10_cpus",
-        # NOTE: By default, test fixtures initialize Ray with 150 MiB of object store
-        # memory. This means that Ray Data can only launch 1 task before getting
-        # backpressured, and that interferes with the test. So, we increase the object
-        # store memory to 2 GiB. (I'm choosing 2 GiB because it's the largest value you
-        # can use on Mac, which most developers use.)
-        [{"object_store_memory": 2 * 1024**3}],
-        indirect=True,
-    )
-    def test_realistic_hanging_detection(
-        self,
-        ray_start_10_cpus,
-        caplog,
-        propagate_logs,
-        restore_data_context,
+    def test_hanging_detector_detects_issues(
+        self, caplog, propagate_logs, restore_data_context
     ):
-        """Test hanging detection in a realistic scenario with multiple tasks."""
-        # Set up logging capture
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        logger = logging.getLogger("ray.data._internal.issue_detection")
-        logger.addHandler(handler)
+        """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
 
-        # Configure detector for quick detection
         ctx = DataContext.get_current()
+        # Configure hanging detector with extreme std_factor values
         ctx.issue_detectors_config.hanging_detector_config = (
             HangingExecutionIssueDetectorConfig(
-                op_task_stats_min_count=5,
-                op_task_stats_std_factor=3.0,
-                detection_time_interval_s=0.1,
+                op_task_stats_min_count=1,
+                op_task_stats_std_factor=1,
+                detection_time_interval_s=0,
             )
         )
 
-        def processing_fn(batch):
-            if 0 in batch["id"]:  # Make one specific task hang
-                while True:
-                    time.sleep(1)
-            else:
-                # Normal tasks take ~0.1s with some random variation
-                time.sleep(0.1 + np.random.normal(0, 0.01))
-            return batch
+        # Create a pipeline with many small blocks to ensure concurrent tasks
+        def sleep_task(x):
+            if x["id"] == 2:
+                # Issue detection is based on the mean + stdev. One of the tasks must take
+                # awhile, so doing it just for one of the rows.
+                time.sleep(1)
+            return x
 
-        # Use an event to signal thread termination
-        stop_event = threading.Event()
+        with caplog.at_level(logging.WARNING):
+            ray.data.range(3, override_num_blocks=3).map(
+                sleep_task, concurrency=1
+            ).materialize()
 
-        def materialize_in_thread():
-            try:
-                ds = ray.data.range(10_000).map_batches(processing_fn, batch_size=100)
-                for _ in ds.iter_batches():
-                    if stop_event.is_set():
-                        break
-            except Exception:
-                pass  # Ignore exceptions from the hanging task
+        # Check if hanging detection occurred
+        hanging_detected = (
+            "has been running for" in caplog.text
+            and "longer than the average task duration" in caplog.text
+        )
 
-        thread = threading.Thread(target=materialize_in_thread)
-        thread.daemon = True
-        thread.start()
-
-        # Wait for hanging warning
-        start_time = time.perf_counter()
-        max_wait = 5
-        warning_found = False
-
-        while time.perf_counter() - start_time < max_wait:
-            log_output = log_capture.getvalue()
-            if "hanging" in log_output:
-                warning_found = True
-                break
-            time.sleep(0.1)
-
-        # Signal thread to stop and wait for it
-        stop_event.set()
-        thread.join(timeout=2)  # Wait up to 2 seconds for thread to finish
-
-        # Clean up
-        logger.removeHandler(handler)
-
-        assert warning_found, "No hanging warning detected within timeout"
+        assert hanging_detected, caplog.text
 
 
 @pytest.mark.parametrize(
