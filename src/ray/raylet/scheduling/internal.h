@@ -65,7 +65,7 @@ class Work {
   RayLease lease_;
   bool grant_or_reject_;
   bool is_selected_based_on_locality_;
-  // All the callbacks will be triggered when the lease is granted or rejected.
+  // All the callbacks will be triggered when the lease is scheduled.
   std::vector<ReplyCallback> reply_callbacks_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
 
