@@ -8,7 +8,6 @@ from typing import Dict, Optional
 
 from ray._raylet import AuthenticationTokenLoader, Config
 
-
 AUTH_ENV_VARS = ("RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
 DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
@@ -148,4 +147,3 @@ def authentication_env_guard():
         yield snapshot
     finally:
         snapshot.restore()
-

@@ -11,7 +11,11 @@ from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
 )
 from ray.core.generated import runtime_env_agent_pb2
-from ray.tests.authentication_test_utils import reset_auth_token_state, set_auth_mode, set_env_auth_token
+from ray.tests.authentication_test_utils import (
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 
 
 def _agent_url(agent_address: str, path: str) -> str:
@@ -122,5 +126,3 @@ def test_apply_token_if_enabled_respects_existing_header(cleanup_auth_token_env)
 
 def test_format_authentication_http_error_non_auth_status():
     assert format_authentication_http_error(404, "not found") is None
-
-

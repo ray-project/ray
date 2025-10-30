@@ -14,7 +14,6 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -22,6 +21,7 @@
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>

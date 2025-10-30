@@ -1,9 +1,14 @@
 """Tests for dashboard token authentication."""
 
+import sys
+
+import pytest
 import requests
 
 
-def test_dashboard_request_requires_auth_with_valid_token(setup_cluster_with_token_auth):
+def test_dashboard_request_requires_auth_with_valid_token(
+    setup_cluster_with_token_auth,
+):
     """Test that requests succeed with valid token when auth is enabled."""
 
     cluster_info = setup_cluster_with_token_auth
@@ -59,6 +64,4 @@ def test_dashboard_auth_disabled(setup_cluster_without_token_auth):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-vv", __file__]))

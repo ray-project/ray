@@ -20,11 +20,11 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.head import DashboardHeadModule
 from ray._private.authentication.http_token_authentication import (
     create_token_authentication_middleware,
 )
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray.dashboard.head import DashboardHeadModule
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if

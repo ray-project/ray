@@ -19,11 +19,11 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import build_address, is_localhost
-from ray._private.client_mode_hook import disable_client_hook
 from ray._private.authentication.http_token_authentication import (
     apply_token_if_enabled,
     format_authentication_http_error,
 )
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
@@ -252,7 +252,9 @@ class ProxyManager:
                 data = create_env_request.SerializeToString()
                 headers = {"Content-Type": "application/octet-stream"}
                 apply_token_if_enabled(headers, logger)
-                req = urllib.request.Request(url, data=data, method="POST", headers=headers)
+                req = urllib.request.Request(
+                    url, data=data, method="POST", headers=headers
+                )
                 response = urllib.request.urlopen(req, timeout=None)
                 response_data = response.read()
                 r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()

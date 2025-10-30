@@ -1,4 +1,3 @@
-import os
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -12,7 +11,6 @@ from ray._private.authentication.authentication_constants import (
 )
 from ray.cluster_utils import Cluster
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
-from ray.util.state import StateApiClient
 from ray.tests.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
@@ -21,6 +19,7 @@ from ray.tests.authentication_test_utils import (
     set_default_auth_token,
     set_env_auth_token,
 )
+from ray.util.state import StateApiClient
 
 
 def test_submission_client_adds_token_automatically(setup_cluster_with_token_auth):
