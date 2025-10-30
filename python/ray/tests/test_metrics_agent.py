@@ -16,7 +16,7 @@ import requests
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
@@ -27,7 +27,6 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
-    find_free_port,
     get_log_batch,
     raw_metric_timeseries,
 )

@@ -1,4 +1,5 @@
 import socket
+from contextlib import closing
 from functools import lru_cache
 from typing import Optional, Tuple, Union
 
@@ -93,3 +94,19 @@ def is_localhost(host: str) -> bool:
         True if the host is a localhost address, False otherwise.
     """
     return host in ("localhost", "127.0.0.1", "::1")
+
+
+def find_free_port(family: socket.AddressFamily = socket.AF_INET) -> int:
+    """Find a free port on the local machine.
+
+    Args:
+        family: The socket address family (AF_INET for IPv4, AF_INET6 for IPv6).
+            Defaults to AF_INET.
+
+    Returns:
+        An available port number.
+    """
+    with closing(socket.socket(family, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
