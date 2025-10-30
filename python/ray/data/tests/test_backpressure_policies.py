@@ -141,7 +141,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            concurrency=5,
+            max_concurrency=5,
         )
         map_op.metrics.num_tasks_running = 3
 
@@ -184,7 +184,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            concurrency=5,
+            max_concurrency=5,
         )
         map_op.metrics.num_tasks_running = 3
 
@@ -226,7 +226,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            concurrency=5,
+            max_concurrency=5,
         )
         map_op.metrics.num_tasks_running = 3
 
@@ -278,7 +278,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            concurrency=8,
+            max_concurrency=8,
         )
         map_op.metrics.num_tasks_running = 4
 
