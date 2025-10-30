@@ -543,7 +543,6 @@ py_test_module_list(
         "test_concurrency_group.py",
         "test_core_worker_io_thread_stack_size.py",
         "test_cross_language.py",
-        "test_dashboard_auth.py",
         "test_debug_tools.py",
         "test_distributed_sort.py",
         "test_environ.py",
