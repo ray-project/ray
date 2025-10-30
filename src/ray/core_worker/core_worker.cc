@@ -524,22 +524,19 @@ CoreWorker::CoreWorker(
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
-}  // NOLINT(readability/fn_size)
 
-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
-
-void CoreWorker::Init() {
   // Initialize shutdown coordinator last - after all services are ready
   // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor =
-      std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
+  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
   shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
       std::move(shutdown_executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
                     "worker type: "
                  << WorkerTypeString(options_.worker_type);
-}
+}  // NOLINT(readability/fn_size)
+
+CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
   shutdown_coordinator_->RequestShutdown(

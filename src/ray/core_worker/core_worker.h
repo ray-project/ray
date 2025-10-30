@@ -167,7 +167,7 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
+class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -207,8 +207,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              ray::observability::MetricInterface &actor_by_state_counter);
 
   CoreWorker(CoreWorker const &) = delete;
-
-  void Init();
 
   /// Core worker's deallocation lifecycle
   ///
