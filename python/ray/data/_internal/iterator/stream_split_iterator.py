@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -74,6 +74,9 @@ class StreamSplitDataIterator(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+
+        self.before_epoch_start()
+
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
@@ -95,7 +98,17 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
+        self.after_epoch_end()
+
         return gen_blocks(), self._iter_stats, False
+
+    def before_epoch_start(self):
+        # Register this split iterator's metrics with StatsManager
+        # Split iterators have their own dataset_tag that needs separate registration
+        StatsManager.register_dataset_tag(self._get_dataset_tag())
+
+    def after_epoch_end(self):
+        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
     def stats(self) -> str:
         """Implements DataIterator."""

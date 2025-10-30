@@ -911,7 +911,7 @@ class _StatsManager:
                 return
             # NOTE: Each dataset_tag is handled by at most 1 thread. Therefore,
             # updating here does not need a lock as long as:
-            # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_to_stats_actor`)
+            # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_tag`)
             # 2) dataset_tag is updated by the same and only 1 thread
             self._execution_last_updated[dataset_tag] = now
 
@@ -948,6 +948,23 @@ class _StatsManager:
             if dataset_tag in self._iteration_last_updated:
                 del self._iteration_last_updated[dataset_tag]
 
+    def register_dataset_tag(self, dataset_tag: str):
+        """Register a dataset tag for metrics tracking without full metadata.
+
+        This is a lightweight registration for dataset tags that need metrics tracking
+        but don't have a full execution topology (e.g., split iterators, temporary
+        iterators).
+
+        Args:
+            dataset_tag: Tag for the dataset
+        """
+        # NOTE: This must be thread-safe because multiple datasets can
+        # be running at the same time. Increasing the size of the dictionary
+        # is not thread-safe.
+        with self._update_last_updated_lock:
+            self._execution_last_updated[dataset_tag] = 0.0
+            self._iteration_last_updated[dataset_tag] = 0.0
+
     def register_dataset_to_stats_actor(
         self,
         dataset_tag: str,
@@ -964,12 +981,8 @@ class _StatsManager:
             data_context: The DataContext attached to the dataset
         """
 
-        # NOTE: This must be thread-safe because multiple datasets can
-        # be running at the same time. Increasing the size of the dictionary
-        # is not thread-safe. This is called before dataset execution.
-        with self._update_last_updated_lock:
-            self._execution_last_updated[dataset_tag] = 0.0
-            self._iteration_last_updated[dataset_tag] = 0.0
+        # Register the dataset tag for metrics tracking
+        self.register_dataset_tag(dataset_tag)
 
         # NOTE: In some cases (for ex, when registering dataset) actor might be gone
         #       (for ex, when prior driver disconnects) and therefore to avoid using
