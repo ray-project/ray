@@ -121,12 +121,12 @@ ray_cc_library(
     srcs = ["local_resource_manager.cc"],
     hdrs = ["local_resource_manager.h"],
     deps = [
-        "//src/ray/common:ray_syncer",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/ray_syncer",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",

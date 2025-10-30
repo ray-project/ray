@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/ray_syncer/ray_syncer_client.h"
 
 #include <memory>
 #include <string>

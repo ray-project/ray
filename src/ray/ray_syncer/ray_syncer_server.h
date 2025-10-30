@@ -14,42 +14,42 @@
 
 #pragma once
 
-#include <memory>
+#include <gtest/gtest_prod.h>
+
 #include <string>
 
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
+#include "ray/ray_syncer/common.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor_base.h"
 
 namespace ray::syncer {
 
-using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;
+using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
 
-/// Reactor for gRPC client side. It defines the client's specific behavior for a
+/// Reactor for gRPC server side. It defines the server's specific behavior for a
 /// streaming call.
-class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> {
+class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
  public:
-  RayClientBidiReactor(
-      const std::string &remote_node_id,
-      const std::string &local_node_id,
+  RayServerBidiReactor(
+      grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
+      const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb);
 
-  ~RayClientBidiReactor() override = default;
+  ~RayServerBidiReactor() override = default;
 
  private:
   void DoDisconnect() override;
-  /// Callback from gRPC
-  void OnDone(const grpc::Status &status) override;
+  void OnCancel() override;
+  void OnDone() override;
 
   /// Cleanup callback when the call ends.
   const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
 
   /// grpc callback context
-  grpc::ClientContext client_context_;
-
-  std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+  grpc::CallbackServerContext *server_context_;
+  FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
 
 }  // namespace ray::syncer
