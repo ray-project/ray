@@ -252,6 +252,10 @@ class ReplicaMetricsManager:
         self._prometheus_queries: Optional[List[str]] = None
         self._prometheus_handler = prometheus_handler
 
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._prometheus_handler = prometheus_handler
+
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
             self._request_counter.inc(count, tags={"route": route})
@@ -358,6 +362,9 @@ class ReplicaMetricsManager:
             if RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST:
                 self._prometheus_metrics_enabled = True
                 self._prometheus_queries = autoscaling_config.prometheus_metrics
+                logger.info(
+                    f"Prometheus metrics enabled with queries: {self._prometheus_queries}"
+                )
                 self.start_metrics_pusher()
                 return
             logger.error(
@@ -440,23 +447,26 @@ class ReplicaMetricsManager:
         """
         Fetch metrics from Prometheus server using PromQL queries.
         """
-        logger.debug(
-            f"Fetching prometheus metrics {prometheus_metrics}",
+        logger.info(
+            f"Fetching prometheus metrics {prometheus_metrics} for replica {self._replica_id}",
             extra={"log_to_stderr": False},
         )
 
         try:
             prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
+            logger.info(f"Prometheus address: {prom_addr}")
             metrics_result = {}
 
             for metric in prometheus_metrics:
                 # Add label selector for this replica
                 query = f'{metric}{{replica="{self._replica_id.unique_id}"}}'
+                logger.info(f"Querying prometheus with: {query}")
                 response = prometheus_handler(
                     prom_addr,
                     query,
                     timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
                 )
+                logger.info(f"Prometheus response: {response}")
 
                 # Extract metric values from response data
                 result = response.get("data", {}).get("result", [])
@@ -464,6 +474,7 @@ class ReplicaMetricsManager:
                     # Get first matching metric value
                     metrics_result[metric] = result[0].get("value", [None, 0])[1]
 
+            logger.info(f"Final prometheus metrics result: {metrics_result}")
             return metrics_result if metrics_result else None
 
         except Exception as e:
@@ -1041,6 +1052,10 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._metrics_manager.set_prometheus_handler(prometheus_handler)
+
     @abstractmethod
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
@@ -1305,6 +1320,10 @@ class ReplicaActor:
     ) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
+
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._replica_impl.set_prometheus_handler(prometheus_handler)
 
     def _preprocess_request_args(
         self,

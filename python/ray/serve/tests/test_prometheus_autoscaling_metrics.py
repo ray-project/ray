@@ -2,19 +2,36 @@ import asyncio
 import sys
 import time
 from typing import Dict, List
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
+import ray.serve._private.replica
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.replica import ReplicaMetricsManager
 
 
+# Set up mock prometheus handler at module level
+def mock_prometheus_handler(host, query, **kwargs):
+    # Mock response for prometheus metrics
+    if "ray_serve_deployment_processing_latency_ms_bucket" in query:
+        return {"data": {"result": [{"value": [1234567890, 42]}]}}
+    elif "ray_serve_deployment_processing_latency_ms_bucket_only_b" in query:
+        return {"data": {"result": [{"value": [1234567890, 24]}]}}
+    return {"data": {"result": []}}
+
+
+# Patch the prometheus_handler at module level
+ray.serve._private.replica.prometheus_handler = mock_prometheus_handler
+
+
 class MockReplicaId:
     def __init__(self, unique_id):
         self.unique_id = unique_id
+        self.deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
 
 
 class MockAutoscalingConfig:
@@ -45,6 +62,7 @@ def check_autoscaling_metrics_include_prometheus(
             print("No metrics returned from controller!")
             return False
 
+        print(f"Metrics for {deployment_id}: {metrics}")
         # For prometheus custom metrics, we expect the keys to be present in the dict
         for expected_metric in expected_metrics:
             if expected_metric not in metrics:
@@ -136,6 +154,11 @@ class TestPrometheusCustomMetrics:
         app_name = "prometheus_test_app"
         handle = serve.run(a, name=app_name, route_prefix="/")
 
+        # Inject the mock handler into the controller after deployments are created
+        serve_instance._controller._set_prometheus_query_func_for_testing.remote(
+            mock_prometheus_handler
+        )
+
         # Send some requests to trigger autoscaling and metrics collection
         responses = [handle.remote() for _ in range(5)]
 
@@ -184,7 +207,7 @@ class TestPrometheusCustomMetrics:
 
     # Dependency injection test for promQL filtering logic
     @pytest.mark.unit
-    def test_promql_filtering_with_mock_prom_serve():
+    def test_promql_filtering_with_mock_prom_serve(self):
         # Mock prom_serve to simulate Prometheus server response
         def mock_prom_serve(host, query, **kwargs):
             # Simulate filtering by replica label in PromQL
@@ -195,24 +218,48 @@ class TestPrometheusCustomMetrics:
                 return {"data": {"result": [{"value": [1234567890, 42]}]}}
             return {"data": {"result": []}}
 
-        # Create a metrics manager with the mock prom_serve injected
-        metrics_manager = ReplicaMetricsManager(
-            replica_id=MockReplicaId("replica-123"),
-            event_loop=asyncio.get_event_loop(),
-            autoscaling_config=MockAutoscalingConfig(
-                ["ray_serve_deployment_processing_latency_ms_bucket"]
-            ),
-            ingress=True,
-            prom_query_func=mock_prom_serve,
-        )
+        # Mock the controller handle
+        mock_controller = MagicMock()
 
-        # Run the promQL filtering logic
-        result = asyncio.get_event_loop().run_until_complete(
-            metrics_manager._fetch_prometheus_metrics(
-                ["ray_serve_deployment_processing_latency_ms_bucket"]
-            )
-        )
-        assert result["ray_serve_deployment_processing_latency_ms_bucket"] == 42
+        # Create a metrics manager with the mock prom_serve injected
+        with patch(
+            "ray.serve._private.replica.ray.get_actor", return_value=mock_controller
+        ):
+            with patch.object(ReplicaMetricsManager, "start_metrics_pusher"):
+                with patch(
+                    "ray.serve._private.replica.prometheus_handler", mock_prom_serve
+                ):
+                    metrics_manager = ReplicaMetricsManager(
+                        replica_id=MockReplicaId("replica-123"),
+                        event_loop=asyncio.get_event_loop(),
+                        autoscaling_config=MockAutoscalingConfig(
+                            ["ray_serve_deployment_processing_latency_ms_bucket"]
+                        ),
+                        ingress=True,
+                    )
+
+                    # Manually enable prometheus metrics since we're setting the env var after init
+                    metrics_manager._prometheus_metrics_enabled = True
+                    metrics_manager._prometheus_queries = [
+                        "ray_serve_deployment_processing_latency_ms_bucket"
+                    ]
+
+                    # Mock the prometheus host constant
+                    with patch(
+                        "ray.serve._private.replica.RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST",
+                        "mock-prometheus:9090",
+                    ):
+                        # Run the promQL filtering logic
+                        result = asyncio.get_event_loop().run_until_complete(
+                            metrics_manager._fetch_prometheus_metrics(
+                                ["ray_serve_deployment_processing_latency_ms_bucket"]
+                            )
+                        )
+                        assert result is not None
+                        assert (
+                            result["ray_serve_deployment_processing_latency_ms_bucket"]
+                            == 42
+                        )
 
 
 if __name__ == "__main__":

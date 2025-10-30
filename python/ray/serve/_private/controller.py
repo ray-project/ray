@@ -1191,6 +1191,16 @@ class ServeController:
         self.deployment_state_manager.set_prometheus_query_func(prom_query_func)
         self.autoscaling_state_manager.set_prometheus_query_func(prom_query_func)
 
+    def _dump_all_autoscaling_metrics_for_testing(self):
+        """Dump all autoscaling metrics for testing purposes.
+
+        Returns:
+            Dict mapping deployment IDs to their current autoscaling metrics.
+        """
+        return (
+            self.autoscaling_state_manager._dump_all_autoscaling_metrics_for_testing()
+        )
+
 
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],
