@@ -1769,8 +1769,12 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
       request,
       [actor_id = actor->GetActorID()](const ray::Status &status,
                                        rpc::KillLocalActorReply &&reply) {
-        RAY_LOG(DEBUG) << "Killing actor " << actor_id
-                       << " with return status: " << status.ToString();
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to kill actor " << actor_id
+                         << ", return status: " << status.ToString();
+        } else {
+          RAY_LOG(INFO) << "Killed actor " << actor_id << " successfully.";
+        }
       });
 }
 

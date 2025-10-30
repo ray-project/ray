@@ -499,7 +499,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                          << actor->GetState();
           auto actor_id = status.ok() ? actor->GetActorID() : ActorID::Nil();
           if (actor->LocalRayletAddress().has_value()) {
-            CleanupWorkerForActor(
+            KillLeasedWorkerForActor(
                 actor->LocalRayletAddress().value(), worker->GetAddress(), actor_id);
           }
         }
@@ -531,9 +531,9 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
   }
 }
 
-bool GcsActorScheduler::CleanupWorkerForActor(const rpc::Address &raylet_address,
-                                              const rpc::Address &worker_address,
-                                              ActorID actor_id) {
+bool GcsActorScheduler::KillLeasedWorkerForActor(const rpc::Address &raylet_address,
+                                                 const rpc::Address &worker_address,
+                                                 ActorID actor_id) {
   if (raylet_address.node_id().empty() || worker_address.node_id().empty()) {
     RAY_LOG(DEBUG) << "Invalid raylet or worker address, skip the killing of actor "
                    << actor_id;
@@ -550,8 +550,12 @@ bool GcsActorScheduler::CleanupWorkerForActor(const rpc::Address &raylet_address
 
   raylet_client->KillLocalActor(
       request, [actor_id](const Status &status, const rpc::KillLocalActorReply &) {
-        RAY_LOG(DEBUG) << "Killing actor " << actor_id
-                       << " with return status: " << status.ToString();
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to kill actor " << actor_id
+                         << ", return status: " << status.ToString();
+        } else {
+          RAY_LOG(INFO) << "Killed actor " << actor_id << " successfully.";
+        }
       });
   return true;
 }
@@ -592,7 +596,7 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
         RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
         auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
             node_id, node->node_manager_address(), node->node_manager_port());
-        CleanupWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());
+        KillLeasedWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());
       }
       return;
     }
@@ -645,7 +649,7 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
     RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
     auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, node->node_manager_address(), node->node_manager_port());
-    CleanupWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());
+    KillLeasedWorkerForActor(raylet_address, reply.worker_address(), ActorID::Nil());
   }
 }
 
