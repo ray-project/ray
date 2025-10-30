@@ -26,6 +26,10 @@ class CollectiveTensorTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return False
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return False
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         from ray.experimental.collective import get_collective_groups
 
@@ -136,6 +140,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
+        obj_id: str,
         tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
@@ -180,3 +185,12 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
         pass
+
+    @staticmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CollectiveCommunicatorMetadata,
+    ):
+        raise NotImplementedError(
+            "Collective transport does not support abort_transport for now."
+        )

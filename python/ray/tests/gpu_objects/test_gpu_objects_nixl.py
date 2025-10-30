@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import ray
+from ray._common.test_utils import SignalActor
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -50,6 +51,10 @@ class GPUTestActor:
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
         assert obj_id not in gpu_manager.managed_gpu_object_metadata
         return "Success"
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self, signal_actor):
+        ray.get(signal_actor.wait.remote())
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -141,6 +146,30 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_abort(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+
+    # Trigger transfer and kill sender before the receiver starts receiving
+    signal_actor = SignalActor.remote()
+    actors[1].block_background_thread.remote(signal_actor)
+    ref = actors[0].echo.remote(torch.randn((100, 100)), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    ray.kill(actors[0])
+    signal_actor.send.remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(result)
+
+    assert "ActorDiedError" in str(excinfo.value)
+
+    # Try a transfer with actor[1] receiving again
+    new_actor = GPUTestActor.remote()
+    ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    assert ray.get(result) == 15
 
 
 if __name__ == "__main__":
