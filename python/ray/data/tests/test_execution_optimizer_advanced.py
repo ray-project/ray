@@ -81,7 +81,7 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
+    op = Repartition(read_op, num_outputs=5, full_shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
