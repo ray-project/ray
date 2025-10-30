@@ -962,8 +962,10 @@ class _StatsManager:
         # be running at the same time. Increasing the size of the dictionary
         # is not thread-safe.
         with self._update_last_updated_lock:
-            self._execution_last_updated[dataset_tag] = 0.0
-            self._iteration_last_updated[dataset_tag] = 0.0
+            if dataset_tag not in self._iteration_last_updated:
+                self._iteration_last_updated[dataset_tag] = 0.0
+            if dataset_tag not in self._execution_last_updated:
+                self._execution_last_updated[dataset_tag] = 0.0
 
     def register_dataset_to_stats_actor(
         self,
@@ -981,8 +983,13 @@ class _StatsManager:
             data_context: The DataContext attached to the dataset
         """
 
-        # Register the dataset tag for metrics tracking
+        # Register the dataset tag for iteration metrics tracking
         self.register_dataset_tag(dataset_tag)
+        
+        # Initialize execution metrics timestamp for the executor
+        with self._update_last_updated_lock:
+            if dataset_tag not in self._execution_last_updated:
+                self._execution_last_updated[dataset_tag] = 0.0
 
         # NOTE: In some cases (for ex, when registering dataset) actor might be gone
         #       (for ex, when prior driver disconnects) and therefore to avoid using
