@@ -75,8 +75,6 @@ class StreamSplitDataIterator(DataIterator):
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
 
-        self.before_epoch_start()
-
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
