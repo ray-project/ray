@@ -480,7 +480,7 @@ class _StatsActor:
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
                 if isinstance(value, RuntimeMetricsHistogram):
-                    value.apply_to_metric(prom_metric, tags)
+                    value.export_to(prom_metric, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)

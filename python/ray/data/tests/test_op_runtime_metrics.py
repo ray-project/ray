@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pyarrow as pa
 import pytest
 
+from python.ray.data._internal.util import KiB
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
@@ -136,7 +137,6 @@ def test_block_size_bytes_histogram():
 
     # Test different block sizes
     # Buckets: [1KB, 8KB, 64KB, 128KB, 256KB, 512KB, 1MB, 8MB, 64MB, 128MB, 256MB, 512MB, 1GB, 4GB, 16GB, 64GB, 128GB, 256GB, 512GB, 1024GB, 4096GB]
-    KiB = 1024
     test_cases = [
         (512, 0),  # 512 bytes -> first bucket (1KB)
         (2 * KiB, 1),  # 2 KiB -> second bucket (8KB)

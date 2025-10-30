@@ -124,7 +124,7 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            "'task_completion_time_total': N",
+            "'task_completion_time_total_s': N",
             "'task_completion_time': (samples: N, avg: N)",
             "'block_completion_time': (samples: N, avg: N)",
             (
@@ -193,7 +193,7 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            "'task_completion_time_total': Z",
+            "'task_completion_time_total_s': Z",
             "'task_completion_time': (samples: Z, avg: Z)",
             "'block_completion_time': (samples: Z, avg: Z)",
             (
@@ -747,7 +747,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time_total: N,\n"
+        "      task_completion_time_total_s: N,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
         "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_without_backpressure: N,\n"
@@ -885,7 +885,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time_total: N,\n"
+        "      task_completion_time_total_s: N,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
         "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_without_backpressure: N,\n"
@@ -978,7 +978,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
-        "            task_completion_time_total: N,\n"
+        "            task_completion_time_total_s: N,\n"
         "            task_completion_time: (samples: N, avg: N),\n"
         "            block_completion_time: (samples: N, avg: N),\n"
         "            task_completion_time_without_backpressure: N,\n"
@@ -2246,8 +2246,8 @@ def test_runtime_metrics_histogram_observe():
     assert f"{histogram}" == "(samples: 7, avg: 5.00)"
 
 
-def test_runtime_metrics_histogram_apply_to_metric():
-    """Test that apply_to_metric correctly applies observations to Ray Histogram."""
+def test_runtime_metrics_histogram_export_to():
+    """Test that export_to correctly applies observations to Ray Histogram."""
     from ray.util.metrics import Histogram
 
     # Create a simple histogram with 2 boundaries
@@ -2265,7 +2265,7 @@ def test_runtime_metrics_histogram_apply_to_metric():
 
     # Apply to metric
     tags = {"node_id": "test_node"}
-    histogram.apply_to_metric(mock_metric, tags)
+    histogram.export_to(mock_metric, tags)
 
     # Verify that observe was called 3 times (once for each observation)
     assert mock_metric.observe.call_count == 3
@@ -2291,7 +2291,7 @@ def test_runtime_metrics_histogram_apply_to_metric():
     # Add some more observations
     histogram.observe(0.8)  # bucket 0
     histogram.observe(1.2)  # bucket 1
-    histogram.apply_to_metric(mock_metric, tags)
+    histogram.export_to(mock_metric, tags)
 
     # Verify that observe was called 2 more times (once for each observation)
     assert mock_metric.observe.call_count == 5

@@ -2,6 +2,7 @@ import bisect
 import json
 from typing import Dict, List, Tuple
 
+from python.ray.data._internal.util import GiB, KiB, MiB
 from ray.util.metrics import Histogram
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
@@ -29,10 +30,6 @@ histogram_buckets_s = [
     2500.0,
     5000.0,
 ]
-
-KiB = 1024
-MiB = 1024 * KiB
-GiB = 1024 * MiB
 
 # Used for size-based histograms (e.g. block size in bytes)
 histogram_buckets_bytes = [
@@ -69,19 +66,19 @@ histogram_bucket_rows = [
     100,
     250,
     500,
-    1000,
-    2500,
-    5000,
-    10000,
-    25000,
-    50000,
-    100000,
-    250000,
-    500000,
-    1000000,
-    2500000,
-    5000000,
-    10000000,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    100_000,
+    250_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
 ]
 
 
@@ -93,7 +90,7 @@ class RuntimeMetricsHistogram:
     """
 
     def __init__(self, boundaries: List[float]):
-        self.boundaries = boundaries
+        self._boundaries = boundaries
         # Initialize bucket counts to 0 (+1 additional bucket to represent the +Inf bucket)
         self._bucket_counts = [0 for _ in range(len(boundaries) + 1)]
         self._memoized_avg = None
@@ -102,7 +99,7 @@ class RuntimeMetricsHistogram:
         self._bucket_counts[self._find_bucket_index(value)] += num_observations
         self._memoized_avg = None
 
-    def apply_to_metric(
+    def export_to(
         self,
         metric: Histogram,
         tags: Dict[str, str],
@@ -125,11 +122,11 @@ class RuntimeMetricsHistogram:
             # We need to calculate the mid point because choosing the exact boundary value
             # seems to have unreliable behavior on which bucket it ends up in.
             boundary_upper_bound = (
-                self.boundaries[i]
+                self._boundaries[i]
                 if i < len(self._bucket_counts) - 1
-                else self.boundaries[-1] + 100
+                else self._boundaries[-1] + 100
             )
-            boundary_lower_bound = self.boundaries[i - 1] if i > 0 else 0
+            boundary_lower_bound = self._boundaries[i - 1] if i > 0 else 0
             bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
 
             # Calculate how many observations to add to the metric
@@ -164,13 +161,13 @@ class RuntimeMetricsHistogram:
                 # Calculate representative value for this bucket
                 if i == 0:
                     # First bucket: 0 to first boundary
-                    bucket_value = self.boundaries[0] / 2
+                    bucket_value = self._boundaries[0] / 2
                 elif i == len(self._bucket_counts) - 1:
                     # Last bucket: last boundary to +inf
-                    bucket_value = self.boundaries[-1] * 1.5
+                    bucket_value = self._boundaries[-1] * 1.5
                 else:
                     # Middle buckets: between boundaries
-                    bucket_value = (self.boundaries[i - 1] + self.boundaries[i]) / 2
+                    bucket_value = (self._boundaries[i - 1] + self._boundaries[i]) / 2
 
                 weighted_sum += bucket_value * count
 
@@ -178,4 +175,4 @@ class RuntimeMetricsHistogram:
         return total_samples, average
 
     def _find_bucket_index(self, value: float):
-        return bisect.bisect_left(self.boundaries, value)
+        return bisect.bisect_left(self._boundaries, value)

@@ -392,7 +392,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent in task output backpressure.",
         metrics_group=MetricsGroup.TASKS,
     )
-    task_completion_time_total: float = metric_field(
+    task_completion_time_total_s: float = metric_field(
         default=0,
         description="Time spent running tasks to completion. This is a sum of all tasks' completion times.",
         metrics_group=MetricsGroup.TASKS,
@@ -887,7 +887,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         task_time_delta = time.perf_counter() - task_info.start_time
-        self.task_completion_time_total += task_time_delta
+        self.task_completion_time_total_s += task_time_delta
         self.task_completion_time.observe(task_time_delta)
 
         assert task_info.cum_block_gen_time is not None
