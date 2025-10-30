@@ -29,56 +29,10 @@ Consider this pattern when:
 
 The following example shows how to deploy with data parallel attention:
 
-```python
-from ray.serve.llm import LLMConfig, build_dp_openai_app
-import ray.serve as serve
-
-# Configure the model with data parallel settings
-config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
-    engine_kwargs={
-        "data_parallel_size": 2,  # Number of DP replicas
-        "tensor_parallel_size": 1,  # TP size per replica
-    },
-    experimental_configs={
-        # This is a temporary required config. We will remove this in future versions.
-        "dp_size_per_node": 2,  # DP replicas per node
-    },
-    accelerator_type="A10G",
-)
-
-app = build_dp_openai_app({
-    "llm_config": config
-})
-
-serve.run(app)
-```
-
-### Deployment without OpenAI ingress
-
-If you only need the deployment without the OpenAI-compatible ingress, use `build_dp_deployment`:
-
-```python
-from ray.serve.llm import LLMConfig, build_dp_deployment
-import ray.serve as serve
-
-config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
-    engine_kwargs={
-        "data_parallel_size": 4,
-        "tensor_parallel_size": 1,
-    },
-    experimental_configs={
-        "dp_size_per_node": 4,
-    },
-)
-
-dp_deployment = build_dp_deployment(config)
-serve.run(dp_deployment)
+```{literalinclude} ../../llm/doc_code/serve/multi_gpu/dp_basic_example.py
+:language: python
+:start-after: __dp_basic_example_start__
+:end-before: __dp_basic_example_end__
 ```
 
 ## Production YAML configuration
@@ -186,79 +140,25 @@ You can combine data parallel attention with prefill-decode disaggregation to sc
 
 The following example shows a complete, functional deployment:
 
-```python
-from ray.serve.llm import LLMConfig, build_dp_deployment
-from ray.serve.llm.deployment import PDProxyServer
-from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
-import ray.serve as serve
-
-# Configure prefill with data parallel attention
-prefill_config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
-    engine_kwargs={
-        "data_parallel_size": 2,  # 2 DP replicas for prefill
-        "tensor_parallel_size": 1,
-        "kv_transfer_config": {
-            "kv_connector": "NixlConnector",
-            "kv_role": "kv_both",
-        }
-    },
-    experimental_configs={
-        "dp_size_per_node": 2,
-    },
-)
-
-# Configure decode with data parallel attention
-decode_config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
-    engine_kwargs={
-        "data_parallel_size": 4,  # 4 DP replicas for decode
-        "tensor_parallel_size": 1,
-        "kv_transfer_config": {
-            "kv_connector": "NixlConnector",
-            "kv_role": "kv_both",
-        }
-    },
-    experimental_configs={
-        "dp_size_per_node": 4,
-    },
-)
-
-# Build prefill and decode deployments with DP
-prefill_deployment = build_dp_deployment(prefill_config, name_prefix="Prefill:")
-decode_deployment = build_dp_deployment(decode_config, name_prefix="Decode:")
-
-# Create PDProxyServer to coordinate between prefill and decode
-proxy_options = PDProxyServer.get_deployment_options(prefill_config, decode_config)
-proxy_deployment = serve.deployment(PDProxyServer).options(**proxy_options).bind(
-    prefill_server=prefill_deployment,
-    decode_server=decode_deployment,
-)
-
-# Create OpenAI-compatible ingress
-ingress_options = OpenAiIngress.get_deployment_options([prefill_config, decode_config])
-ingress_cls = make_fastapi_ingress(OpenAiIngress)
-ingress_deployment = serve.deployment(ingress_cls).options(**ingress_options).bind(
-    llm_deployments=[proxy_deployment]
-)
-
-# Deploy the application
-serve.run(ingress_deployment, blocking=True)
+```{literalinclude} ../../llm/doc_code/serve/multi_gpu/dp_pd_example.py
+:language: python
+:start-after: __dp_pd_example_start__
+:end-before: __dp_pd_example_end__
 ```
 
 This configuration creates:
 - **Prefill phase**: 2 data parallel replicas for processing input prompts
-- **Decode phase**: 4 data parallel replicas for generating tokens
+- **Decode phase**: 2 data parallel replicas for generating tokens
 - **PDProxyServer**: Coordinates requests between prefill and decode phases
 - **OpenAI ingress**: Provides OpenAI-compatible API endpoints
 
 This allows you to:
 - Optimize prefill and decode phases independently based on workload characteristics
 - Use data parallel attention within each phase for increased throughput
+
+:::{note}
+This example uses 4 GPUs total (2 for prefill, 2 for decode). Adjust the `data_parallel_size` values based on your available GPU resources.
+:::
 
 :::{note}
 For this example to work, you need to have NIXL installed. See the {doc}`prefill-decode` guide for prerequisites and installation instructions.
