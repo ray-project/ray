@@ -21,6 +21,15 @@ class _DatasourceProjectionPushdownMixin:
         """Retrurns current projection"""
         return None
 
+    def get_current_column_rename_map(self) -> Optional[Dict[str, str]]:
+        """Return the current column rename map applied to this datasource.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return None
+
     def apply_projection(
         self,
         columns: Optional[List[str]],
@@ -32,6 +41,9 @@ class _DatasourceProjectionPushdownMixin:
 class _DatasourcePredicatePushdownMixin:
     """Mixin for reading operators supporting predicate pushdown"""
 
+    def __init__(self):
+        self._predicate_expr: Optional[Expr] = None
+
     def supports_predicate_pushdown(self) -> bool:
         return False
 
@@ -42,7 +54,28 @@ class _DatasourcePredicatePushdownMixin:
         self,
         predicate_expr: Expr,
     ) -> "Datasource":
-        return self
+        """Apply a predicate to this datasource.
+
+        Default implementation that combines predicates using AND.
+        Subclasses that support predicate pushdown should have a _predicate_expr
+        attribute to store the predicate.
+
+        Note: Column rebinding is handled by the PredicatePushdown rule
+        before this method is called, so the predicate_expr should already
+        reference the correct column names.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine with existing predicate using AND
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
+
+        return clone
 
 
 @PublicAPI
@@ -51,6 +84,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     """  # noqa: E501
+
+    def __init__(self):
+        """Initialize the datasource and its mixins."""
+        _DatasourcePredicatePushdownMixin.__init__(self)
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":

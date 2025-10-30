@@ -191,6 +191,7 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
+        super().__init__()
         _check_pyarrow_version()
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -446,6 +447,9 @@ class ParquetDatasource(Datasource):
     def get_current_predicate(self) -> Optional[Expr]:
         return self._predicate_expr
 
+    def get_current_column_rename_map(self) -> Optional[Dict[str, str]]:
+        return self._data_columns_rename_map if self._data_columns_rename_map else None
+
     def apply_projection(
         self,
         columns: Optional[List[str]],
@@ -458,37 +462,6 @@ class ParquetDatasource(Datasource):
             self._data_columns_rename_map, column_rename_map
         )
 
-        return clone
-
-    # TODO: This should be moved to the Datasource class
-    def apply_predicate(
-        self,
-        predicate_expr: Expr,
-    ) -> "ParquetDatasource":
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _ColumnSubstitutionVisitor,
-        )
-        from ray.data.expressions import col
-
-        clone = copy.copy(self)
-        # Handle column renaming for Ray Data expressions
-        if self._data_columns_rename_map:
-            # Create mapping from new column names to old column names
-            # It's new to old mapping because we need to visit the predicate expression (which has all the new cols)
-            # and map them to the old columns so that the filtering can be pushed into the read tasks.
-            column_mapping = {
-                new_col: col(old_col)
-                for old_col, new_col in self._data_columns_rename_map.items()
-            }
-            visitor = _ColumnSubstitutionVisitor(column_mapping)
-            predicate_expr = visitor.visit(predicate_expr)
-
-        # Combine with existing predicate using AND
-        clone._predicate_expr = (
-            predicate_expr
-            if clone._predicate_expr is None
-            else clone._predicate_expr & predicate_expr
-        )
         return clone
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:

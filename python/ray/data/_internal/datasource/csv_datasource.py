@@ -37,29 +37,12 @@ class CSVDatasource(FileBasedDatasource):
         )
         self.parse_options = arrow_csv_args.pop("parse_options", csv.ParseOptions())
         self.arrow_csv_args = arrow_csv_args
-        self._predicate_expr: Optional[Expr] = None
 
     def supports_predicate_pushdown(self) -> bool:
         return True
 
     def get_current_predicate(self) -> Optional[Expr]:
         return self._predicate_expr
-
-    def apply_predicate(
-        self,
-        predicate_expr: Expr,
-    ) -> "CSVDatasource":
-        import copy
-
-        clone = copy.copy(self)
-
-        # Combine with existing predicate using AND
-        clone._predicate_expr = (
-            predicate_expr
-            if clone._predicate_expr is None
-            else clone._predicate_expr & predicate_expr
-        )
-        return clone
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
