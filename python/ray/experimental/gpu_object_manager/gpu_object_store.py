@@ -272,7 +272,8 @@ class GPUObjectStore:
                     )
                     if not is_same_tensors:
                         raise ValueError(
-                            f"The duplicate object {dst_obj_id} does not have the same tensors as the source object {src_obj_id}."
+                            f"Some of the tensors in this object are still in scope as part of another RDT object."
+                            f"Ensure that ObjectRef({src_object_id}) is out of scope before creating this object."
                         )
                     return dst_obj_id
             return None
