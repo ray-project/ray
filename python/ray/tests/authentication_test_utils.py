@@ -13,7 +13,7 @@ DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
 
 def reset_auth_token_state() -> None:
-    """Reset authentication state in both Python and C++ layers."""
+    """Reset authentication token and auth_mode config."""
 
     AuthenticationTokenLoader.instance().reset_cache()
     Config.initialize("")
@@ -82,6 +82,7 @@ class AuthenticationEnvSnapshot:
         temp_home: Optional[Path] = None
 
         if not home_was_set:
+            # in CI $HOME may not be set which can cause issues with tests related to default auth token file.
             test_tmpdir = os.environ.get("TEST_TMPDIR")
             base_dir = Path(test_tmpdir) if test_tmpdir else Path(tempfile.gettempdir())
             temp_home = base_dir / "ray_test_home"

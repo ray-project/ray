@@ -184,7 +184,6 @@ def test_token_loaded_from_sources(cleanup_auth_token_env, token_source):
             token_file_path = Path(tmp.name)
         set_auth_token_path(test_token, token_file_path)
     else:
-        token_file_path = Path.home() / ".ray" / "auth_token"
         set_default_auth_token(test_token)
 
     reset_auth_token_state()
