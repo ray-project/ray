@@ -36,8 +36,8 @@ serve.run = _non_blocking_serve_run
 llm.build_dp_openai_app = _testing_build_dp_openai_app
 
 # __dp_basic_example_start__
+from ray import serve
 from ray.serve.llm import LLMConfig, build_dp_openai_app
-import ray.serve as serve
 
 # Configure the model with data parallel settings
 config = LLMConfig(

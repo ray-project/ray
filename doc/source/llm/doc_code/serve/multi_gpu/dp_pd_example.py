@@ -49,10 +49,10 @@ serve.run = _non_blocking_serve_run
 llm.build_dp_deployment = _testing_build_dp_deployment
 
 # __dp_pd_example_start__
+from ray import serve
 from ray.serve.llm import LLMConfig, build_dp_deployment
 from ray.serve.llm.deployment import PDProxyServer
 from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
-import ray.serve as serve
 
 # Configure prefill with data parallel attention
 prefill_config = LLMConfig(
