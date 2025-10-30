@@ -1,17 +1,17 @@
-import torch
-
-from ray.rllib.core import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.models.base import ENCODER_OUT
-
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ModuleID
 from typing import (
     Any,
     Dict,
     Union,
 )
+
+import torch
+
+from ray.rllib.core import Columns
+from ray.rllib.core.models.base import ENCODER_OUT
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import ModuleID
 
 SHARED_ENCODER_ID = "shared_encoder"
 

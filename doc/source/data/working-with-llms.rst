@@ -205,6 +205,51 @@ You can also make calls to deployed models that have an OpenAI compatible API en
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
 
+Batch inference with serve deployments
+---------------------------------------
+
+You can configure any :ref:`serve deployment <converting-to-ray-serve-application>` for batch inference. This is particularly useful for multi-turn conversations,
+where you can use a shared vLLM engine across conversations. To achieve this, create an :ref:`LLM serve deployment <serving-llms>` and use
+the :class:`ServeDeploymentProcessorConfig <ray.data.llm.ServeDeploymentProcessorConfig>` class to configure the processor.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __shared_vllm_engine_config_example_start__
+    :end-before: __shared_vllm_engine_config_example_end__
+
+Cross-node parallelism
+---------------------------------------
+
+Ray Data LLM supports cross-node parallelism, including tensor parallelism and pipeline parallelism.
+You can configure the parallelism level through the `engine_kwargs` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`. Use `ray` as the
+distributed executor backend to enable cross-node parallelism.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __cross_node_parallelism_config_example_start__
+    :end-before: __cross_node_parallelism_config_example_end__
+
+
+In addition, you can customize the placement group strategy to control how Ray places vLLM engine workers across nodes.
+While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and you can't directly configure it through the Ray Data LLM API.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __custom_placement_group_strategy_config_example_start__
+    :end-before: __custom_placement_group_strategy_config_example_end__
+
+Besides cross-node parallelism, you can also horizontally scale the LLM stage to multiple nodes.
+Configure the number of replicas with the `concurrency` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_example_start__
+    :end-before: __concurrent_config_example_end__
+
+
+
 Usage Data Collection
 --------------------------
 
@@ -226,27 +271,6 @@ to turn it off.
 
 Frequently Asked Questions (FAQs)
 --------------------------------------------------
-
-.. TODO(#55491): Rewrite this section once the restriction is lifted.
-.. TODO(#55405): Cross-node TP in progress.
-.. _cross_node_parallelism:
-
-How to configure LLM stage to parallelize across multiple nodes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-At the moment, Ray Data LLM doesn't support cross-node parallelism (either
-tensor parallelism or pipeline parallelism).
-
-The processing pipeline is designed to run on a single node. The number of
-GPUs is calculated as the product of the tensor parallel size and the pipeline
-parallel size, and apply
-[`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
-to ensure that each replica of the LLM stage is executed on a single node.
-
-Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
-as long as each replica (TP * PP) fits into a single node. The number of
-replicas is configured by the `concurrency` argument in
-:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
 
 .. _gpu_memory_management:
 

@@ -1197,3 +1197,8 @@ def get_storage() -> StorageContext:
     without notice between minor versions.
     """
     return get_session().storage
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V1 worker."""
+    return bool(get_session()) and get_session().world_rank is not None
