@@ -7,7 +7,6 @@ import requests
 
 import ray
 from ray._raylet import Config
-from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -23,7 +22,9 @@ def start_ray_with_env_vars(request):
     for k in env_vars.keys():
         del os.environ[k]
 
+
 TEST_TOKEN = "test_token_12345678901234567890123456789012"
+
 
 @pytest.mark.parametrize(
     "start_ray_with_env_vars",
