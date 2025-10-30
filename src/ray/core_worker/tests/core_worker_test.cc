@@ -288,7 +288,7 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
-  std::unique_ptr<ClientCallManager> client_call_manager_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
