@@ -1376,6 +1376,59 @@ def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_shared):
+    """Test that async generator UDFs correctly handle multiple yields.
+
+    When an async generator UDF yields multiple values, the last (most recent)
+    value is returned. This matches map_batches behavior of collecting all yields,
+    while adapting to expression context where a single value per row is required.
+    """
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncGeneratorMultiYield:
+        """UDF that yields multiple values - last yield is returned."""
+
+        def __init__(self, offset):
+            self.offset = offset
+
+        async def __call__(self, x):
+            # Yield multiple values for the same input
+            # Fix: Last yield is returned (most recent/final result)
+            yield pc.add(x, self.offset)  # First yield: x + offset
+            yield pc.multiply(x, self.offset + 10)  # Second yield: x * (offset + 10)
+            yield pc.add(x, self.offset * 2)  # Third yield: x + (offset * 2) - RETURNED
+
+    # Create dataset
+    ds = ray.data.range(5, override_num_blocks=1)
+
+    # Use async generator UDF
+    udf_instance = AsyncGeneratorMultiYield(5)
+    result = ds.with_column("result", udf_instance(col("id")))
+
+    result_df = result.to_pandas()
+
+    # Fixed behavior: last yield is returned
+    # Input: [0, 1, 2, 3, 4]
+    # First yield: [0+5, 1+5, 2+5, 3+5, 4+5] = [5, 6, 7, 8, 9]
+    # Second yield: [0*15, 1*15, 2*15, 3*15, 4*15] = [0, 15, 30, 45, 60]
+    # Third yield (RETURNED): [0+10, 1+10, 2+10, 3+10, 4+10] = [10, 11, 12, 13, 14]
+
+    expected_after_fix = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "result": [10, 11, 12, 13, 14],  # Last yield returned: id + (5*2) = id + 10
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_after_fix, check_dtype=False)
+
+
 if __name__ == "__main__":
     import sys
 

@@ -575,21 +575,6 @@ def _is_async_udf(fn: UserDefinedFunction) -> bool:
     return inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn)
 
 
-def _get_udf_instance_from_context() -> Optional[Any]:
-    """Get the UDF instance from the map actor context.
-
-    This is shared between map_batches (via udf_map_fn) and expressions (via udf_instances).
-
-    Returns:
-        The UDF instance if in actor context, None otherwise
-    """
-    import ray
-
-    if ray.data._map_actor_context is None:
-        return None
-    return ray.data._map_actor_context.udf_map_fn
-
-
 def _call_udf_instance_with_async_bridge(
     instance: Any,
     async_loop: Optional[Any],
@@ -628,7 +613,25 @@ def _call_udf_instance_with_async_bridge(
             results = []
             async for item in instance(*args, **kwargs):
                 results.append(item)
-            return results[0] if results else None
+            # Mimic map_batches behavior: collect all yields
+            # In map_batches: return [out async for out in gen] - each yield becomes a separate batch
+            # For expressions: we need one value per row, so return the last yield (most recent/final)
+            # This matches the semantic intent while adapting to expression evaluation context
+            if not results:
+                return None
+            elif len(results) == 1:
+                return results[0]
+            else:
+                import logging
+
+                logging.warning(
+                    f"Async generator yielded {len(results)} values in expression context; "
+                    "only the last (most recent) is returned. Use map_batches for multi-yield support."
+                )
+                # Multiple values yielded - return the last one (most recent/final result)
+                # Unlike map_batches where each yield becomes a separate output, expressions
+                # require a single value per row, so we take the final yield as the result.
+                return results[-1]
 
         if async_loop is not None:
             future = asyncio.run_coroutine_threadsafe(_collect(), async_loop)
