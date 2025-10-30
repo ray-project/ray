@@ -53,11 +53,11 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
 EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", False
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
