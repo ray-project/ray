@@ -139,7 +139,6 @@ py_test(
     srcs = ["tests/test_dashboard_auth.py"],
     tags = [
         "exclusive",
-        "minimal",
         "team:core",
     ],
     deps = [":conftest"],
