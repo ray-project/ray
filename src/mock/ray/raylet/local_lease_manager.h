@@ -83,7 +83,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               IsLeaseQueued,
               (const SchedulingClass &scheduling_class, const LeaseID &lease_id),
               (const, override));
-  MOCK_METHOD(void,
+  MOCK_METHOD(bool,
               StoreReplyCallback,
               (const SchedulingClass &scheduling_class,
                const LeaseID &lease_id,
