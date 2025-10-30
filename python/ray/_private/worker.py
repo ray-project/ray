@@ -1020,7 +1020,9 @@ class Worker:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
-                    if (isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(value, ray.exceptions.OwnerDiedError)):
+                    if isinstance(
+                        value, ray.exceptions.ObjectLostError
+                    ) and not isinstance(value, ray.exceptions.OwnerDiedError):
                         global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
