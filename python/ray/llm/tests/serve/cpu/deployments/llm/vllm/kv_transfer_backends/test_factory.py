@@ -31,7 +31,9 @@ class TestKVConnectorBackendFactory:
 
     def test_get_backend_class_not_registered_returns_base(self):
         """Test that getting a non-registered backend returns BaseConnectorBackend."""
-        backend_class = KVConnectorBackendFactory.get_backend_class("UnregisteredConnector")
+        backend_class = KVConnectorBackendFactory.get_backend_class(
+            "UnregisteredConnector"
+        )
         assert backend_class == BaseConnectorBackend
         assert issubclass(backend_class, BaseConnectorBackend)
 
