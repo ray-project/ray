@@ -1,6 +1,8 @@
 import logging
+import sys
 from typing import Dict, Optional
 
+import pytest
 from aiohttp import web
 
 from ray._private.authentication import authentication_constants
@@ -85,3 +87,7 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
         )
 
     return None
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-vv", __file__]))
