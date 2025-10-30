@@ -20,8 +20,8 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import build_address, is_localhost
 from ray._private.authentication.http_token_authentication import (
-    apply_token_if_enabled,
     format_authentication_http_error,
+    inject_auth_token_if_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
@@ -251,7 +251,7 @@ class ProxyManager:
                 )
                 data = create_env_request.SerializeToString()
                 headers = {"Content-Type": "application/octet-stream"}
-                apply_token_if_enabled(headers, logger)
+                inject_auth_token_if_enabled(headers)
                 req = urllib.request.Request(
                     url, data=data, method="POST", headers=headers
                 )
@@ -282,13 +282,6 @@ class ProxyManager:
                 formatted_error = format_authentication_http_error(e.code, body or "")
                 if formatted_error:
                     raise RuntimeError(formatted_error) from e
-
-                last_exception = e
-                logger.warning(
-                    f"GetOrCreateRuntimeEnv request failed: {e}. "
-                    f"Retrying after {wait_time_s}s. "
-                    f"{max_retries-retries} retries remaining."
-                )
 
             except urllib.error.URLError as e:
                 last_exception = e

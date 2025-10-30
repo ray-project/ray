@@ -1,4 +1,3 @@
-import logging
 import sys
 from typing import Dict, Optional
 
@@ -6,37 +5,31 @@ import pytest
 from aiohttp import web
 
 from ray._private.authentication import authentication_constants
+from ray._raylet import AuthenticationTokenLoader
+from ray.dashboard import authentication_utils as auth_utils
 
 
-def create_token_authentication_middleware() -> web.middleware:
-    """Return an aiohttp middleware that validates bearer tokens when enabled."""
-
-    from ray.dashboard import authentication_utils as auth_utils
-
-    @web.middleware
-    async def auth_middleware(request: web.Request, handler):
-        if not auth_utils.is_token_auth_enabled():
-            return await handler(request)
-
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header:
-            return web.Response(
-                status=401, text="Unauthorized: Missing authentication token"
-            )
-
-        if not auth_utils.validate_request_token(auth_header):
-            return web.Response(
-                status=403, text="Forbidden: Invalid authentication token"
-            )
-
+@web.middleware
+async def token_auth_middleware(request: web.Request, handler):
+    """Middleware to validate bearer tokens when token authentication is enabled."""
+    if not auth_utils.is_token_auth_enabled():
         return await handler(request)
 
-    return auth_middleware
+    auth_header = request.headers.get(
+        authentication_constants.AUTHORIZATION_HEADER_NAME, ""
+    )
+    if not auth_header:
+        return web.Response(
+            status=401, text="Unauthorized: Missing authentication token"
+        )
+
+    if not auth_utils.validate_request_token(auth_header):
+        return web.Response(status=403, text="Forbidden: Invalid authentication token")
+
+    return await handler(request)
 
 
-def apply_token_if_enabled(
-    headers: Dict[str, str], logger: Optional[logging.Logger] = None
-) -> bool:
+def inject_auth_token_if_enabled(headers: Dict[str, str]) -> bool:
     """Inject Authorization header when token auth is enabled.
 
     Args:
@@ -50,25 +43,14 @@ def apply_token_if_enabled(
     if headers is None:
         raise ValueError("headers must be provided")
 
-    if "Authorization" in headers:
+    if authentication_constants.AUTHORIZATION_HEADER_NAME in headers:
         return False
-
-    from ray._raylet import AuthenticationTokenLoader
-    from ray.dashboard import authentication_utils as auth_utils
 
     if not auth_utils.is_token_auth_enabled():
         return False
 
     token_loader = AuthenticationTokenLoader.instance()
-    token_added = token_loader.set_token_for_http_header(headers)
-
-    if not token_added and logger is not None:
-        logger.warning(
-            "Token authentication is enabled but no token was found. "
-            "Requests to authenticated clusters will fail."
-        )
-
-    return token_added
+    return token_loader.set_token_for_http_header(headers)
 
 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:

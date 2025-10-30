@@ -13,8 +13,8 @@ import yaml
 
 import ray
 from ray._private.authentication.http_token_authentication import (
-    apply_token_if_enabled,
     format_authentication_http_error,
+    inject_auth_token_if_enabled,
 )
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -252,7 +252,7 @@ class SubmissionClient:
 
     def _set_auth_header_if_enabled(self):
         """Add authentication token to headers if token auth is enabled."""
-        apply_token_if_enabled(self._headers, logger)
+        inject_auth_token_if_enabled(self._headers)
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None

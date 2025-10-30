@@ -4,14 +4,13 @@ from ray.includes.rpc_token_authentication cimport (
     CAuthenticationToken,
     CAuthenticationTokenLoader,
 )
+from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
 
 
 # Authentication mode enum exposed to Python
 class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
-
-_AUTHORIZATION_HEADER_NAME = "Authorization"
 
 def get_authentication_mode():
     """Get the current authentication mode.
@@ -88,7 +87,7 @@ class AuthenticationTokenLoader:
             bool: True if token was added, False otherwise
         """
         # Don't override if user explicitly set Authorization header
-        if _AUTHORIZATION_HEADER_NAME in headers:
+        if AUTHORIZATION_HEADER_NAME in headers:
             return False
 
         # Check if token exists (doesn't crash, returns bool)
@@ -101,5 +100,5 @@ class AuthenticationTokenLoader:
         if not token_opt.has_value() or token_opt.value().empty():
             return False
 
-        headers[_AUTHORIZATION_HEADER_NAME] = token_opt.value().ToAuthorizationHeaderValue()
+        headers[AUTHORIZATION_HEADER_NAME] = token_opt.value().ToAuthorizationHeaderValue()
         return True

@@ -21,7 +21,7 @@ from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
 from ray._private.authentication.http_token_authentication import (
-    create_token_authentication_middleware,
+    token_auth_middleware,
 )
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
@@ -251,7 +251,6 @@ class HttpServerDashboardHead:
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
-        token_auth_middleware = create_token_authentication_middleware()
 
         app = aiohttp.web.Application(
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,

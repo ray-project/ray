@@ -1,4 +1,4 @@
-import logging
+import socket
 import sys
 import urllib.error
 import urllib.parse
@@ -7,9 +7,10 @@ import urllib.request
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.authentication.http_token_authentication import (
-    apply_token_if_enabled,
     format_authentication_http_error,
+    inject_auth_token_if_enabled,
 )
 from ray.core.generated import runtime_env_agent_pb2
 from ray.tests.authentication_test_utils import (
@@ -32,8 +33,22 @@ def _make_get_or_create_request() -> runtime_env_agent_pb2.GetOrCreateRuntimeEnv
     return request
 
 
+def _wait_for_runtime_env_agent(agent_address: str) -> None:
+    parsed = urllib.parse.urlparse(agent_address)
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=10)
+
+
 def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_auth):
     agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    _wait_for_runtime_env_agent(agent_address)
     request = _make_get_or_create_request()
 
     with pytest.raises(urllib.error.HTTPError) as exc_info:
@@ -56,6 +71,7 @@ def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_
 
 def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
     agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    _wait_for_runtime_env_agent(agent_address)
     request = _make_get_or_create_request()
 
     with pytest.raises(urllib.error.HTTPError) as exc_info:
@@ -81,6 +97,7 @@ def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
 
 def test_runtime_env_agent_accepts_valid_token(setup_cluster_with_token_auth):
     agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    _wait_for_runtime_env_agent(agent_address)
     token = setup_cluster_with_token_auth["token"]
     request = _make_get_or_create_request()
 
@@ -101,25 +118,28 @@ def test_runtime_env_agent_accepts_valid_token(setup_cluster_with_token_auth):
     assert reply.status == runtime_env_agent_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK
 
 
-def test_apply_token_if_enabled_adds_header(cleanup_auth_token_env):
+def test_inject_token_if_enabled_adds_header(cleanup_auth_token_env):
     set_auth_mode("token")
     set_env_auth_token("apptoken1234567890")
     reset_auth_token_state()
 
     headers = {}
-    added = apply_token_if_enabled(headers, logging.getLogger(__name__))
+    added = inject_auth_token_if_enabled(headers)
 
     assert added is True
-    assert headers["Authorization"] == "Bearer apptoken1234567890"
+    auth_header = headers["Authorization"]
+    if isinstance(auth_header, bytes):
+        auth_header = auth_header.decode("utf-8")
+    assert auth_header == "Bearer apptoken1234567890"
 
 
-def test_apply_token_if_enabled_respects_existing_header(cleanup_auth_token_env):
+def test_inject_token_if_enabled_respects_existing_header(cleanup_auth_token_env):
     set_auth_mode("token")
     set_env_auth_token("apptoken1234567890")
     reset_auth_token_state()
 
     headers = {"Authorization": "Bearer custom"}
-    added = apply_token_if_enabled(headers, logging.getLogger(__name__))
+    added = inject_auth_token_if_enabled(headers)
 
     assert added is False
     assert headers["Authorization"] == "Bearer custom"

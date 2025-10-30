@@ -9,7 +9,7 @@ from ray._common.utils import (
 )
 from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
-    create_token_authentication_middleware,
+    token_auth_middleware,
 )
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
@@ -197,7 +197,7 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application(middlewares=[create_token_authentication_middleware()])
+    app = web.Application(middlewares=[token_auth_middleware])
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
