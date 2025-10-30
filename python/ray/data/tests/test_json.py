@@ -528,13 +528,22 @@ class TestPandasJSONDatasource:
         [{"a": []}, {"a": [1]}, {"a": [1, 2, 3]}],
         ids=["empty", "single", "multiple"],
     )
+    @pytest.mark.parametrize(
+        "compression,filename",
+        [("gzip", "test.json.gz"), ("infer", "test.json")],  # infer = default
+    )
     def test_read_stream(
-        self, data, tmp_path, target_max_block_size_infinite_or_default
+        self,
+        data,
+        tmp_path,
+        compression,
+        filename,
+        target_max_block_size_infinite_or_default,
     ):
         # Setup test file.
         df = pd.DataFrame(data)
-        path = os.path.join(tmp_path, "test.json")
-        df.to_json(path, orient="records", lines=True)
+        path = os.path.join(tmp_path, filename)
+        df.to_json(path, orient="records", lines=True, compression=compression)
 
         # Setup datasource.
         local_filesystem = fs.LocalFileSystem()
