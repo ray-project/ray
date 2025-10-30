@@ -132,8 +132,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
-      io_service_, /*record_stats=*/false, options.node_ip_address);
   auto periodical_runner = PeriodicalRunner::Create(io_service_);
   auto worker_context = std::make_unique<WorkerContext>(
       options.worker_type, worker_id, GetProcessJobID(options));
@@ -166,7 +164,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                       *client_call_manager),
+                                                       *client_call_manager_),
       options.session_name);
 
   // Start the IO thread first to make sure the checker is working.
@@ -237,7 +235,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       local_node_id, options.node_ip_address, options.node_manager_port);
   auto local_raylet_rpc_client =
       std::make_shared<rpc::RayletClient>(std::move(raylet_address),
-                                          *client_call_manager,
+                                          *client_call_manager_,
                                           /*raylet_unavailable_timeout_callback=*/[] {});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
@@ -277,7 +275,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         auto core_worker = GetCoreWorker();
         return std::make_shared<ray::rpc::RayletClient>(
             addr,
-            *core_worker->client_call_manager_,
+            *client_call_manager_,
             rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
                 core_worker->gcs_client_.get(),
                 core_worker->raylet_client_pool_.get(),
@@ -289,7 +287,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         auto core_worker = GetCoreWorker();
         return std::make_shared<rpc::CoreWorkerClient>(
             addr,
-            *core_worker->client_call_manager_,
+            *client_call_manager_,
             rpc::CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                 core_worker->gcs_client_.get(),
                 core_worker->core_worker_client_pool_.get(),
@@ -658,7 +656,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
                                    io_service_,
-                                   std::move(client_call_manager),
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -696,6 +693,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()),
       io_work_(io_service_.get_executor()),
+      client_call_manager_(std::make_unique<rpc::ClientCallManager>(
+          io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
       service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
   if (options_.enable_logging) {
@@ -824,10 +823,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     write_locked.Get() = worker;
     // Initialize metrics agent client.
     metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1",
-        options_.metrics_agent_port,
-        io_service_,
-        *write_locked.Get()->client_call_manager_);
+        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
