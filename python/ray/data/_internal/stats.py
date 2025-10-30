@@ -887,7 +887,7 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._execution_last_updated.get(dataset_tag, 0))
+            or (now - self._execution_last_updated[dataset_tag])
             > self.UPDATE_EXECUTION_METRICS_INTERVAL_S
         ):
             per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
@@ -910,7 +910,7 @@ class _StatsManager:
                 )
                 return
             # NOTE: Each dataset_tag is handled by at most 1 thread. Therefore,
-            # updating the dictionary is thread-safe as long as:
+            # updating here does not need a lock as long as:
             # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_to_stats_actor`)
             # 2) dataset_tag is updated by the same and only 1 thread
             self._execution_last_updated[dataset_tag] = now
@@ -929,7 +929,7 @@ class _StatsManager:
         now = time.time()
         if (
             force_update
-            or (now - self._iteration_last_updated.get(dataset_tag, 0))
+            or (now - self._iteration_last_updated[dataset_tag])
             > self.UPDATE_ITERATION_METRICS_INTERVAL_S
         ):
             args = (stats, dataset_tag)
