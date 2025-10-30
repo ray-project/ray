@@ -10,6 +10,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
@@ -25,8 +26,15 @@ package(
 # Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(
-    name = "python3_runtime",
+    name = "python39_runtime",
     interpreter = python39,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime(
+    name = "python3_runtime",
+    interpreter = python310,
     python_version = "PY3",
     visibility = ["//visibility:private"],
 )
