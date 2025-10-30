@@ -219,27 +219,33 @@ class BatchIterator:
             preserve_ordering=False,
         )
 
-        self.before_epoch_start()
-
-        while True:
-            with self.get_next_batch_context():
-                try:
-                    batch = next(async_batch_iter)
-                except StopIteration:
-                    break
-            with self.yield_batch_context(batch):
-                yield batch.data
-
-        self.after_epoch_end()
+        with self._epoch_context():
+            while True:
+                with self.get_next_batch_context():
+                    try:
+                        batch = next(async_batch_iter)
+                    except StopIteration:
+                        break
+                with self.yield_batch_context(batch):
+                    yield batch.data
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
 
-    def before_epoch_start(self):
-        self._yielded_first_batch = False
+    @contextmanager
+    def _epoch_context(self):
+        """Context manager for epoch lifecycle: setup and cleanup.
 
-    def after_epoch_end(self):
-        StatsManager.clear_iteration_metrics(self._dataset_tag)
+        Ensures proper initialization before iteration and cleanup after,
+        even if the iteration is interrupted or fails.
+        """
+        # Setup: Initialize epoch state
+        self._yielded_first_batch = False
+        try:
+            yield
+        finally:
+            # Cleanup: Clear iteration metrics after epoch completes or fails
+            StatsManager.clear_iteration_metrics(self._dataset_tag)
 
     @contextmanager
     def get_next_batch_context(self):

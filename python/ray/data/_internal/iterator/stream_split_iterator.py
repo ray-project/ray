@@ -84,6 +84,11 @@ class StreamSplitDataIterator(DataIterator):
             future: ObjectRef[
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+
+            # Register this split iterator's metrics with StatsManager
+            # Split iterators have their own dataset_tag that needs separate registration
+            StatsManager.register_dataset_tag(self._get_dataset_tag())
+
             while True:
                 block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
@@ -98,17 +103,7 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
-        self.after_epoch_end()
-
         return gen_blocks(), self._iter_stats, False
-
-    def before_epoch_start(self):
-        # Register this split iterator's metrics with StatsManager
-        # Split iterators have their own dataset_tag that needs separate registration
-        StatsManager.register_dataset_tag(self._get_dataset_tag())
-
-    def after_epoch_end(self):
-        StatsManager.clear_iteration_metrics(self._get_dataset_tag())
 
     def stats(self) -> str:
         """Implements DataIterator."""
