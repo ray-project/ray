@@ -200,7 +200,7 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_setup_callback = DatasetsCallback(
+        datasets_callback = DatasetsCallback(
             train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
