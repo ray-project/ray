@@ -44,6 +44,7 @@ class Backend(object):
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
     NIXL = "nixl"
+    DS = "ds"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -89,6 +90,17 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 
 @dataclass
+class DSTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for DS transport.
+
+    Args:
+        ds_serialized_keys: Serialized tensor keys for DS transport.
+    """
+
+    ds_serialized_keys: Optional[bytes] = None
+
+
+@dataclass
 class CollectiveTransportMetadata(TensorTransportMetadata):
     """Metadata for tensors stored in the GPU object store for collective transport."""
 
@@ -122,6 +134,11 @@ class NixlCommunicatorMetadata(CommunicatorMetadata):
     """Metadata for the NIXL communicator."""
 
 
+@dataclass
+class DSCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the DS communicator."""
+
+
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -131,8 +148,9 @@ class ReduceOp(Enum):
 
 unset_timeout_ms = timedelta(milliseconds=-1)
 
-# This is used to identify the collective group for NIXL.
+# This is used to identify the collective group for NIXL and DS.
 NIXL_GROUP_NAME = "ray_internal_nixl_group"
+DS_GROUP_NAME = "ray_internal_ds_group"
 
 
 @dataclass
