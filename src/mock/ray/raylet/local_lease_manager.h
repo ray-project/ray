@@ -84,7 +84,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (const SchedulingClass &scheduling_class, const LeaseID &lease_id),
               (const, override));
   MOCK_METHOD(bool,
-              StoreReplyCallback,
+              AddReplyCallback,
               (const SchedulingClass &scheduling_class,
                const LeaseID &lease_id,
                rpc::SendReplyCallback send_reply_callback,

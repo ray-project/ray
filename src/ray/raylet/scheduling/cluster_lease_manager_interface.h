@@ -135,10 +135,10 @@ class ClusterLeaseManagerInterface {
   /// \param reply: The reply of the lease request.
   ///
   /// \return True if the reply callback was stored successfully.
-  virtual bool StoreReplyCallback(const SchedulingClass &scheduling_class,
-                                  const LeaseID &lease_id,
-                                  rpc::SendReplyCallback send_reply_callback,
-                                  rpc::RequestWorkerLeaseReply *reply) = 0;
+  virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                                const LeaseID &lease_id,
+                                rpc::SendReplyCallback send_reply_callback,
+                                rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 }  // namespace raylet
 }  // namespace ray

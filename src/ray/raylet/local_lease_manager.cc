@@ -1277,10 +1277,10 @@ bool LocalLeaseManager::IsLeaseQueued(const SchedulingClass &scheduling_class,
   return false;
 }
 
-bool LocalLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
-                                           const LeaseID &lease_id,
-                                           rpc::SendReplyCallback send_reply_callback,
-                                           rpc::RequestWorkerLeaseReply *reply) {
+bool LocalLeaseManager::AddReplyCallback(const SchedulingClass &scheduling_class,
+                                         const LeaseID &lease_id,
+                                         rpc::SendReplyCallback send_reply_callback,
+                                         rpc::RequestWorkerLeaseReply *reply) {
   if (leases_to_grant_.contains(scheduling_class)) {
     for (const auto &work : leases_to_grant_[scheduling_class]) {
       if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {

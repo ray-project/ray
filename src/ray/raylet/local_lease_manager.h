@@ -192,10 +192,12 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                      const LeaseID &lease_id) const override;
 
-  bool StoreReplyCallback(const SchedulingClass &scheduling_class,
-                          const LeaseID &lease_id,
-                          rpc::SendReplyCallback send_reply_callback,
-                          rpc::RequestWorkerLeaseReply *reply) override;
+  /// Add a reply callback to the lease. We don't overwrite the existing reply callback
+  /// since due to message reordering we may receive the retry before the initial request.
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override;
 
  private:
   struct SchedulingClassInfo;

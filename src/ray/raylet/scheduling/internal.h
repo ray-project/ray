@@ -51,7 +51,7 @@ enum class UnscheduledWorkCause {
 
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the lease, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
+/// dispatch/spillback and the callbacks to trigger it.
 struct ReplyCallback {
   ReplyCallback(rpc::SendReplyCallback send_reply_callback,
                 rpc::RequestWorkerLeaseReply *reply)
@@ -65,6 +65,7 @@ class Work {
   RayLease lease_;
   bool grant_or_reject_;
   bool is_selected_based_on_locality_;
+  // All the callbacks will be triggered when the lease is granted or rejected.
   std::vector<ReplyCallback> reply_callbacks_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
 

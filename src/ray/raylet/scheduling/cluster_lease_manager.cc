@@ -506,10 +506,10 @@ bool ClusterLeaseManager::IsLeaseQueued(const SchedulingClass &scheduling_class,
   return false;
 }
 
-bool ClusterLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
-                                             const LeaseID &lease_id,
-                                             rpc::SendReplyCallback send_reply_callback,
-                                             rpc::RequestWorkerLeaseReply *reply) {
+bool ClusterLeaseManager::AddReplyCallback(const SchedulingClass &scheduling_class,
+                                           const LeaseID &lease_id,
+                                           rpc::SendReplyCallback send_reply_callback,
+                                           rpc::RequestWorkerLeaseReply *reply) {
   if (leases_to_schedule_.contains(scheduling_class)) {
     for (const auto &work : leases_to_schedule_[scheduling_class]) {
       if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {

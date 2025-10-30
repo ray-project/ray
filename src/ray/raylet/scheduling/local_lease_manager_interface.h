@@ -99,10 +99,10 @@ class LocalLeaseManagerInterface {
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
   virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                              const LeaseID &lease_id) const = 0;
-  virtual bool StoreReplyCallback(const SchedulingClass &scheduling_class,
-                                  const LeaseID &lease_id,
-                                  rpc::SendReplyCallback send_reply_callback,
-                                  rpc::RequestWorkerLeaseReply *reply) = 0;
+  virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                                const LeaseID &lease_id,
+                                rpc::SendReplyCallback send_reply_callback,
+                                rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 
 /// A noop local lease manager. It is a no-op class. We need this because there's no
@@ -187,10 +187,10 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
                      const LeaseID &lease_id) const override {
     return false;
   }
-  bool StoreReplyCallback(const SchedulingClass &scheduling_class,
-                          const LeaseID &lease_id,
-                          rpc::SendReplyCallback send_reply_callback,
-                          rpc::RequestWorkerLeaseReply *reply) override {
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override {
     return false;
   }
 };

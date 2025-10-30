@@ -1879,7 +1879,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 
   if (cluster_lease_manager_.IsLeaseQueued(
           lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
-    RAY_CHECK(cluster_lease_manager_.StoreReplyCallback(
+    RAY_CHECK(cluster_lease_manager_.AddReplyCallback(
         lease.GetLeaseSpecification().GetSchedulingClass(),
         lease_id,
         std::move(send_reply_callback_wrapper),
@@ -1889,7 +1889,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 
   if (local_lease_manager_.IsLeaseQueued(
           lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
-    RAY_CHECK(local_lease_manager_.StoreReplyCallback(
+    RAY_CHECK(local_lease_manager_.AddReplyCallback(
         lease.GetLeaseSpecification().GetSchedulingClass(),
         lease_id,
         std::move(send_reply_callback_wrapper),
