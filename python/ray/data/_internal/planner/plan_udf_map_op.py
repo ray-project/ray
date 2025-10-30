@@ -78,10 +78,10 @@ DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
 class _MapActorContext:
     def __init__(
         self,
-        udf_map_cls: UserDefinedFunction = None,
-        udf_map_fn: Callable[[Any], Any] = None,
+        udf_map_cls: Optional[UserDefinedFunction] = None,
+        udf_map_fn: Optional[Callable[[Any], Any]] = None,
         is_async: bool = False,
-        udf_instances: Dict[int, Any] = None,
+        udf_instances: Optional[Dict[int, Any]] = None,
     ):
         """Initialize the map actor context.
 
