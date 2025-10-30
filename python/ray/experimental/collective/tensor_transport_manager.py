@@ -64,12 +64,14 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def extract_tensor_transport_metadata(
+        obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> TensorTransportMetadata:
         """
         Extract the tensor transport metadata from the GPU object.
 
         Args:
+            obj_id: The ID of the GPU object to extract the tensor transport metadata from.
             gpu_object: The GPU object to extract the tensor transport metadata from.
 
         Returns:
@@ -125,4 +127,15 @@ class TensorTransportManager(ABC):
         Args:
             tensors: The tensors to send.
             communicator_metadata: The communicator metadata for the send/recv operation.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def garbage_collect(obj_id: str, tensor_transport_meta: TensorTransportMetadata):
+        """
+        Garbage collect for the tensor transport after the GPU object is freed.
+
+        Args:
+            obj_id: The ID of the GPU object to garbage collect.
+            tensor_transport_meta: The tensor transport metadata.
         """

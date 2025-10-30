@@ -18,10 +18,10 @@
 #include <string_view>
 #include <type_traits>
 
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/util/array.h"
 #include "ray/util/type_traits.h"
 

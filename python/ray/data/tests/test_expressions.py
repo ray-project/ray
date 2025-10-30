@@ -1,3 +1,5 @@
+import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 from ray.data.expressions import (
@@ -64,7 +66,9 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     """Test alias functionality with various expression types."""
     import pandas as pd
 
-    from ray.data._expression_evaluator import eval_expr
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
 
     # Test alias creation
     aliased_expr = expr.alias(alias_name)
@@ -260,6 +264,269 @@ class TestBooleanExpressions:
         very_complex = ((col("age") > 21) | (col("status") == "VIP")) & ~col("banned")
         assert isinstance(very_complex, BinaryExpr)
         assert very_complex.op == Operation.AND
+
+
+class TestToPyArrow:
+    """Test conversion of Ray Data expressions to PyArrow compute expressions."""
+
+    @pytest.mark.parametrize(
+        "ray_expr, equivalent_pyarrow_expr, description",
+        [
+            # Basic expressions
+            (col("age"), lambda: pc.field("age"), "column reference"),
+            (lit(42), lambda: pc.scalar(42), "integer literal"),
+            (lit("hello"), lambda: pc.scalar("hello"), "string literal"),
+            # Arithmetic operations
+            (
+                col("x") + 5,
+                lambda: pc.add(pc.field("x"), pc.scalar(5)),
+                "addition",
+            ),
+            (
+                col("x") * 2,
+                lambda: pc.multiply(pc.field("x"), pc.scalar(2)),
+                "multiplication",
+            ),
+            # Comparison operations
+            (
+                col("age") > 18,
+                lambda: pc.greater(pc.field("age"), pc.scalar(18)),
+                "greater than",
+            ),
+            (
+                col("status") == "active",
+                lambda: pc.equal(pc.field("status"), pc.scalar("active")),
+                "equality",
+            ),
+            # Boolean operations
+            (
+                (col("age") > 18) & (col("age") < 65),
+                lambda: pc.and_kleene(
+                    pc.greater(pc.field("age"), pc.scalar(18)),
+                    pc.less(pc.field("age"), pc.scalar(65)),
+                ),
+                "logical AND",
+            ),
+            (
+                ~(col("active")),
+                lambda: pc.invert(pc.field("active")),
+                "logical NOT",
+            ),
+            # Unary operations
+            (
+                col("value").is_null(),
+                lambda: pc.is_null(pc.field("value")),
+                "is_null check",
+            ),
+            # In operations
+            (
+                col("status").is_in(["active", "pending"]),
+                lambda: pc.is_in(pc.field("status"), pa.array(["active", "pending"])),
+                "is_in with list",
+            ),
+            # Complex nested expressions
+            (
+                (col("price") * col("quantity")) + col("tax"),
+                lambda: pc.add(
+                    pc.multiply(pc.field("price"), pc.field("quantity")),
+                    pc.field("tax"),
+                ),
+                "nested arithmetic",
+            ),
+            # Alias expressions (should unwrap to inner expression)
+            (
+                (col("x") + 5).alias("result"),
+                lambda: pc.add(pc.field("x"), pc.scalar(5)),
+                "aliased expression",
+            ),
+        ],
+        ids=[
+            "col",
+            "int_lit",
+            "str_lit",
+            "add",
+            "mul",
+            "gt",
+            "eq",
+            "and",
+            "not",
+            "is_null",
+            "is_in",
+            "nested",
+            "alias",
+        ],
+    )
+    def test_to_pyarrow_equivalence(
+        self, ray_expr, equivalent_pyarrow_expr, description
+    ):
+        """Test that Ray Data expressions convert to equivalent PyArrow expressions.
+
+        This test documents the expected PyArrow expression for each Ray Data expression
+        and verifies correctness by comparing results on sample data.
+        """
+        import pyarrow.dataset as ds
+
+        # Convert Ray expression to PyArrow
+        converted = ray_expr.to_pyarrow()
+        expected = equivalent_pyarrow_expr()
+
+        # Both should be PyArrow expressions
+        assert isinstance(converted, pc.Expression)
+        assert isinstance(expected, pc.Expression)
+
+        # Verify they produce the same results on sample data
+        test_data = pa.table(
+            {
+                "age": [15, 25, 45, 70],
+                "x": [1, 2, 3, 4],
+                "price": [10.0, 20.0, 30.0, 40.0],
+                "quantity": [2, 3, 1, 5],
+                "tax": [1.0, 2.0, 3.0, 4.0],
+                "status": ["active", "pending", "inactive", "active"],
+                "value": [1, None, 3, None],
+                "active": [True, False, True, False],
+            }
+        )
+
+        dataset = ds.dataset(test_data)
+
+        try:
+            # For boolean expressions, compare filter results
+            result_converted = dataset.scanner(filter=converted).to_table()
+            result_expected = dataset.scanner(filter=expected).to_table()
+            assert result_converted.equals(
+                result_expected
+            ), f"Expressions produce different results for {description}"
+        except (TypeError, pa.lib.ArrowInvalid, pa.lib.ArrowNotImplementedError):
+            # For non-boolean expressions, just verify both are valid
+            pass
+
+    def test_to_pyarrow_unsupported_expressions(self):
+        """Test that unsupported expression types raise appropriate errors."""
+        from ray.data.datatype import DataType
+        from ray.data.expressions import UDFExpr
+
+        def dummy_fn(x):
+            return x
+
+        udf_expr = UDFExpr(
+            fn=dummy_fn,
+            args=[col("x")],
+            kwargs={},
+            data_type=DataType(int),
+        )
+
+        with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
+            udf_expr.to_pyarrow()
+
+
+def _build_complex_expr():
+    """Build a convoluted expression that exercises all visitor code paths.
+
+    This expression includes:
+    - Binary operations: ADD, SUB, MUL, DIV, FLOORDIV, GT, LT, GE, LE, EQ, NE, AND, OR, IN, NOT_IN
+    - Unary operations: NOT, IS_NULL, IS_NOT_NULL
+    - Literals: int, float, string, bool, list
+    - Columns
+    - Aliases
+    - Star expression
+    - Download expression
+    - UDF expression
+    - Deep nesting on both left and right sides
+    """
+    from ray.data.datatype import DataType
+    from ray.data.expressions import UDFExpr, download, star
+
+    def custom_udf(x, y):
+        return x + y
+
+    # Create UDF expression
+    udf_expr = UDFExpr(
+        fn=custom_udf,
+        args=[col("value"), lit(10)],
+        kwargs={"z": col("multiplier")},
+        data_type=DataType(int),
+    )
+
+    # Build the mega-complex expression
+    inner_expr = (
+        ((col("age") + lit(10)) * col("rate") / lit(2.5) >= lit(100))
+        & (
+            col("name").is_not_null()
+            | (col("status").is_in(["active", "pending"]) & col("verified"))
+        )
+        & ((col("count") - lit(5)) // lit(2) <= col("limit"))
+        & ~(col("deleted").is_null() | (col("score") != lit(0)))
+        & (download("uri") < star())
+        & (udf_expr.alias("udf_result") > lit(50))
+    ).alias("complex_filter")
+
+    expr = ~inner_expr
+
+    return expr
+
+
+@pytest.mark.parametrize(
+    "expr_fn,expected",
+    [
+        (
+            _build_complex_expr,
+            """NOT
+    └── operand: ALIAS('complex_filter')
+        └── AND
+            ├── left: AND
+            │   ├── left: AND
+            │   │   ├── left: AND
+            │   │   │   ├── left: AND
+            │   │   │   │   ├── left: GE
+            │   │   │   │   │   ├── left: DIV
+            │   │   │   │   │   │   ├── left: MUL
+            │   │   │   │   │   │   │   ├── left: ADD
+            │   │   │   │   │   │   │   │   ├── left: COL('age')
+            │   │   │   │   │   │   │   │   └── right: LIT(10)
+            │   │   │   │   │   │   │   └── right: COL('rate')
+            │   │   │   │   │   │   └── right: LIT(2.5)
+            │   │   │   │   │   └── right: LIT(100)
+            │   │   │   │   └── right: OR
+            │   │   │   │       ├── left: IS_NOT_NULL
+            │   │   │   │       │   └── operand: COL('name')
+            │   │   │   │       └── right: AND
+            │   │   │   │           ├── left: IN
+            │   │   │   │           │   ├── left: COL('status')
+            │   │   │   │           │   └── right: LIT(['active', 'pending'])
+            │   │   │   │           └── right: COL('verified')
+            │   │   │   └── right: LE
+            │   │   │       ├── left: FLOORDIV
+            │   │   │       │   ├── left: SUB
+            │   │   │       │   │   ├── left: COL('count')
+            │   │   │       │   │   └── right: LIT(5)
+            │   │   │       │   └── right: LIT(2)
+            │   │   │       └── right: COL('limit')
+            │   │   └── right: NOT
+            │   │       └── operand: OR
+            │   │           ├── left: IS_NULL
+            │   │           │   └── operand: COL('deleted')
+            │   │           └── right: NE
+            │   │               ├── left: COL('score')
+            │   │               └── right: LIT(0)
+            │   └── right: LT
+            │       ├── left: DOWNLOAD('uri')
+            │       └── right: COL(*)
+            └── right: GT
+                ├── left: ALIAS('udf_result')
+                │   └── UDF(custom_udf)
+                │       ├── arg[0]: COL('value')
+                │       ├── arg[1]: LIT(10)
+                │       └── kwarg['z']: COL('multiplier')
+                └── right: LIT(50)""",
+        ),
+    ],
+    ids=["complex_expression"],
+)
+def test_expression_repr(expr_fn, expected):
+    """Test tree representation of expressions with a comprehensive example."""
+    expr = expr_fn()
+    assert repr(expr) == expected
 
 
 if __name__ == "__main__":

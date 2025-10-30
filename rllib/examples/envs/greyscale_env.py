@@ -13,18 +13,19 @@ original observation space of the environment does not fit them.
 This simple example should reach rewards of 50 within 150k timesteps.
 """
 
-from numpy import float32
 import argparse
+
+from numpy import float32
 from pettingzoo.butterfly import pistonball_v6
 from supersuit import (
-    normalize_obs_v0,
-    dtype_v0,
     color_reduction_v0,
+    dtype_v0,
+    normalize_obs_v0,
     reshape_v0,
     resize_v1,
 )
 
-from ray.tune.result import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.utils.metrics import (
@@ -33,8 +34,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune.registry import register_env
-from ray import tune
-
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

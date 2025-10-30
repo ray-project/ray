@@ -31,7 +31,7 @@
 #  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
@@ -89,3 +89,52 @@ def get_asgi_route_name(app: ASGIApp, scope: Scope) -> Optional[str]:
             route_name = root_path.rstrip("/") + "/" + route_name.lstrip("/")
 
     return route_name
+
+
+def extract_route_patterns(app: ASGIApp) -> List[str]:
+    """Extracts all route patterns from an ASGI app.
+
+    This function recursively traverses the app's routes (including mounted apps)
+    and returns a list of all route patterns. This is used to communicate available
+    routes from build time to proxies for accurate metrics tagging.
+
+    Args:
+        app: The ASGI application (typically FastAPI or Starlette)
+
+    Returns:
+        List of route patterns, e.g., ["/", "/api/{user_id}", "/items/{item_id}"]
+    """
+    patterns: Set[str] = set()
+
+    def _extract_from_routes(routes: List[Route], prefix: str = "") -> None:
+        for route in routes:
+            route_path = prefix + route.path
+
+            if isinstance(route, Mount):
+                # Recursively extract patterns from mounted apps
+                if hasattr(route, "routes") and route.routes:
+                    _extract_from_routes(route.routes, route_path)
+                else:
+                    # Mount without sub-routes
+                    patterns.add(route_path)
+            else:
+                # Regular route
+                patterns.add(route_path)
+
+    try:
+        if hasattr(app, "routes"):
+            _extract_from_routes(app.routes)
+
+            # Handle root_path if present
+            if hasattr(app, "root_path") and app.root_path:
+                root_path = app.root_path.rstrip("/")
+                patterns = {
+                    root_path + "/" + p.lstrip("/") if p != "/" else root_path + p
+                    for p in patterns
+                }
+    except Exception:
+        # If extraction fails for any reason, return empty list
+        # This shouldn't break the system
+        return []
+
+    return sorted(patterns)

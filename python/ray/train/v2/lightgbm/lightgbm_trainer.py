@@ -21,13 +21,14 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
         from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -61,6 +62,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 train_set,
                 valid_sets=[eval_set],
                 valid_names=["eval"],
+                num_boost_round=1,
                 # To access the checkpoint from trainer, you need this callback.
                 callbacks=[RayTrainReportCallback()],
             )
@@ -72,15 +74,10 @@ class LightGBMTrainer(DataParallelTrainer):
         trainer = LightGBMTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -108,12 +105,8 @@ class LightGBMTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(

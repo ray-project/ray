@@ -1,17 +1,18 @@
 import logging
-import numpy as np
 import math
 from typing import Dict
 
+import numpy as np
+
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
-from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
-    NUM_ENV_STEPS_TRAINED,
-    NUM_AGENT_STEPS_TRAINED,
     LEARN_ON_BATCH_TIMER,
     LOAD_BATCH_TIMER,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd

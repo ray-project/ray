@@ -80,7 +80,7 @@ For PyArrow Users
    * - ``pa.Table.drop()``
      - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
    * - ``pa.Table.add_column()``
-     - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
+     - :meth:`ds.with_column() <ray.data.Dataset.with_column>`
    * - ``pa.Table.groupby()``
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
    * - ``pa.Table.sort_by()``

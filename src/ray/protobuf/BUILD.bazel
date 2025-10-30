@@ -73,6 +73,13 @@ cc_proto_library(
     deps = [":ray_syncer_proto"],
 )
 
+cc_grpc_library(
+    name = "ray_syncer_cc_grpc",
+    srcs = [":ray_syncer_proto"],
+    grpc_only = True,
+    deps = [":ray_syncer_cc_proto"],
+)
+
 cc_proto_library(
     name = "runtime_env_common_cc_proto",
     deps = [":runtime_env_common_proto"],

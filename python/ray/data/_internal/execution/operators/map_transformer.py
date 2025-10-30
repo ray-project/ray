@@ -327,7 +327,7 @@ class BatchMapTransformFn(MapTransformFn):
         is_udf: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[BatchFormat] = None,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
     ):
         super().__init__(
