@@ -99,7 +99,7 @@ class LocalLeaseManagerInterface {
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
   virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                              const LeaseID &lease_id) const = 0;
-  virtual void StoreReplyCallback(const SchedulingClass &scheduling_class,
+  virtual bool StoreReplyCallback(const SchedulingClass &scheduling_class,
                                   const LeaseID &lease_id,
                                   rpc::SendReplyCallback send_reply_callback,
                                   rpc::RequestWorkerLeaseReply *reply) = 0;
@@ -187,10 +187,12 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
                      const LeaseID &lease_id) const override {
     return false;
   }
-  void StoreReplyCallback(const SchedulingClass &scheduling_class,
+  bool StoreReplyCallback(const SchedulingClass &scheduling_class,
                           const LeaseID &lease_id,
                           rpc::SendReplyCallback send_reply_callback,
-                          rpc::RequestWorkerLeaseReply *reply) override {}
+                          rpc::RequestWorkerLeaseReply *reply) override {
+    return false;
+  }
 };
 }  // namespace raylet
 }  // namespace ray

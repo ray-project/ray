@@ -192,7 +192,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                      const LeaseID &lease_id) const override;
 
-  void StoreReplyCallback(const SchedulingClass &scheduling_class,
+  bool StoreReplyCallback(const SchedulingClass &scheduling_class,
                           const LeaseID &lease_id,
                           rpc::SendReplyCallback send_reply_callback,
                           rpc::RequestWorkerLeaseReply *reply) override;

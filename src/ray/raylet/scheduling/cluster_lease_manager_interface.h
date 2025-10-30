@@ -133,7 +133,9 @@ class ClusterLeaseManagerInterface {
   /// \param lease_id: The lease id of the lease.
   /// \param send_reply_callback: The callback used for the reply.
   /// \param reply: The reply of the lease request.
-  virtual void StoreReplyCallback(const SchedulingClass &scheduling_class,
+  ///
+  /// \return True if the reply callback was stored successfully.
+  virtual bool StoreReplyCallback(const SchedulingClass &scheduling_class,
                                   const LeaseID &lease_id,
                                   rpc::SendReplyCallback send_reply_callback,
                                   rpc::RequestWorkerLeaseReply *reply) = 0;

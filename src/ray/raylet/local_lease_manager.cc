@@ -1000,18 +1000,17 @@ void LocalLeaseManager::Grant(
   } else {
     allocated_resources = worker->GetAllocatedInstances();
   }
-  for (const auto &reply_callback : reply_callbacks) {
-    ::ray::rpc::ResourceMapEntry *resource;
-    for (auto &resource_id : allocated_resources->ResourceIds()) {
-      bool first = true;  // Set resource name only if at least one of its
-                          // instances has available capacity.
-      auto instances = allocated_resources->Get(resource_id);
+  for (auto &resource_id : allocated_resources->ResourceIds()) {
+    auto instances = allocated_resources->Get(resource_id);
+    for (const auto &reply_callback : reply_callbacks) {
+      ::ray::rpc::ResourceMapEntry *resource = nullptr;
       for (size_t inst_idx = 0; inst_idx < instances.size(); inst_idx++) {
         if (instances[inst_idx] > 0.) {
-          if (first) {
+          // Set resource name only if at least one of its instances has available
+          // capacity.
+          if (resource == nullptr) {
             resource = reply_callback.reply_->add_resource_mapping();
             resource->set_name(resource_id.Binary());
-            first = false;
           }
           auto rid = resource->add_resource_ids();
           rid->set_index(inst_idx);
@@ -1019,7 +1018,9 @@ void LocalLeaseManager::Grant(
         }
       }
     }
-    // Send the result back to the client.
+  }
+  // Send the result back to the clients.
+  for (const auto &reply_callback : reply_callbacks) {
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
   }
 }
@@ -1276,21 +1277,24 @@ bool LocalLeaseManager::IsLeaseQueued(const SchedulingClass &scheduling_class,
   return false;
 }
 
-void LocalLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
+bool LocalLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
                                            const LeaseID &lease_id,
                                            rpc::SendReplyCallback send_reply_callback,
                                            rpc::RequestWorkerLeaseReply *reply) {
-  for (const auto &work : leases_to_grant_[scheduling_class]) {
-    if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
-      work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
-      return;
+  if (leases_to_grant_.contains(scheduling_class)) {
+    for (const auto &work : leases_to_grant_[scheduling_class]) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
+        return true;
+      }
     }
   }
   auto it = waiting_leases_index_.find(lease_id);
   if (it != waiting_leases_index_.end()) {
     (*it->second)->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
-    return;
+    return true;
   }
+  return false;
 }
 
 }  // namespace raylet

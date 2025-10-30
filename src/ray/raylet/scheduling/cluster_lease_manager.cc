@@ -506,22 +506,27 @@ bool ClusterLeaseManager::IsLeaseQueued(const SchedulingClass &scheduling_class,
   return false;
 }
 
-void ClusterLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
+bool ClusterLeaseManager::StoreReplyCallback(const SchedulingClass &scheduling_class,
                                              const LeaseID &lease_id,
                                              rpc::SendReplyCallback send_reply_callback,
                                              rpc::RequestWorkerLeaseReply *reply) {
-  for (const auto &work : leases_to_schedule_[scheduling_class]) {
-    if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
-      work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
-      return;
+  if (leases_to_schedule_.contains(scheduling_class)) {
+    for (const auto &work : leases_to_schedule_[scheduling_class]) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
+        return true;
+      }
     }
   }
-  for (const auto &work : infeasible_leases_[scheduling_class]) {
-    if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
-      work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
-      return;
+  if (infeasible_leases_.contains(scheduling_class)) {
+    for (const auto &work : infeasible_leases_[scheduling_class]) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
+        return true;
+      }
     }
   }
+  return false;
 }
 
 }  // namespace raylet
