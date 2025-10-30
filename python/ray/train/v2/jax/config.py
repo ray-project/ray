@@ -26,7 +26,7 @@ class JaxConfig(BackendConfig):
         return _JaxBackend
 
 
-def _set_jax_env_vars(use_tpu: bool):
+def _set_jax_env_vars(use_tpu: bool, use_gpu: bool, resources_per_worker: dict):
     """Set JAX environment variables based on configuration.
 
     If JAX_PLATFORMS is already set (by user or test), we trust that configuration
@@ -38,11 +38,18 @@ def _set_jax_env_vars(use_tpu: bool):
 
     # Only set JAX_PLATFORMS if not already specified
     if use_tpu:
-        os.environ["JAX_PLATFORMS"] = "tpu"
+        if not os.environ.get("JAX_PLATFORMS"):
+            os.environ["JAX_PLATFORMS"] = "tpu"
+    if use_gpu:
+        if not os.environ.get("JAX_PLATFORMS"):
+            os.environ["JAX_PLATFORMS"] = "cuda"
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(list(range(resources_per_worker.get("GPU", 0))))
+
+
 
 
 def _setup_jax_distributed_environment(
-    master_addr_with_port: str, num_workers: int, index: int
+    master_addr_with_port: str, num_workers: int, index: int, resources_per_worker: dict
 ):
     """Set up distributed Jax training information.
 
@@ -54,6 +61,15 @@ def _setup_jax_distributed_environment(
 
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
+
+    if "cuda" in jax_platforms.split(","):
+        num_gpus_per_worker = resources_per_worker.get("GPU", 0)
+        if num_gpus_per_worker > 0:
+            local_device_ids = list(range(num_gpus_per_worker))
+        else:
+            local_device_ids = 0
+        jax.distributed.initialize(master_addr_with_port, num_workers, index, local_device_ids)
+        print(f">>> Initialized JAX distributed with {num_gpus_per_worker} GPUs per worker")
 
 
 def _shutdown_jax_distributed():
@@ -72,11 +88,11 @@ def _shutdown_jax_distributed():
 
 class _JaxBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: JaxConfig):
-        if not backend_config.use_tpu:
+        if not backend_config.use_tpu and not backend_config.use_gpu:
             return
 
         # Set JAX environment variables on all workers
-        worker_group.execute(_set_jax_env_vars, use_tpu=backend_config.use_tpu)
+        worker_group.execute(_set_jax_env_vars, use_tpu=backend_config.use_tpu, use_gpu=backend_config.use_gpu, resources_per_worker=worker_group.get_resources_per_worker())
 
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
         master_addr_with_port = f"{master_addr}:{master_port}"
