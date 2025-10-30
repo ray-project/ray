@@ -104,3 +104,10 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorHasShuffleKeys(LogicalOperator):
+    """Mixin for operators containing shuffle keys"""
+
+    def get_partition_keys(self) -> Optional[List[str]]:
+        return None
