@@ -206,7 +206,7 @@ def test_get_anyscale_byod_image():
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
-        "d33d5d9fb879db742184a2351c736e8fde668816a46a4852a9aba386d6e406cb"
+        "ca242d8ab45386647ec6f0b209eb742882e7bd715755c0a4956d9498fa4cbb21"
     )
 
 
@@ -241,7 +241,7 @@ def test_get_anyscale_byod_image_ray_version():
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
-        "d33d5d9fb879db742184a2351c736e8fde668816a46a4852a9aba386d6e406cb"
+        "ca242d8ab45386647ec6f0b209eb742882e7bd715755c0a4956d9498fa4cbb21"
         "-2.50.0"
     )
 
@@ -561,7 +561,9 @@ def test_get_byod_image_tag(mock_get_byod_base_image_tag):
         }
     )
     mock_get_byod_base_image_tag.return_value = "test-image"
-    expected_hash_value = dict_hash('#!/bin/bash\necho "Hello, world!"emoji==2.10.0\n')
+    expected_hash_value = dict_hash(
+        '#!/bin/bash\necho "Hello, world!"\nemoji==2.10.0\n'
+    )
     assert test.get_byod_image_tag() == f"test-image-{expected_hash_value}"
 
 
@@ -574,13 +576,12 @@ def test_get_byod_image_tag_ray_version(mock_get_byod_base_image_tag):
                 "ray_version": "2.50.0",
                 "byod": {
                     "post_build_script": "release/ray_release/tests/test_post_build_script.sh",
-                    "python_depset": "release/ray_release/tests/test_depset.lock",
                 },
             },
         }
     )
     mock_get_byod_base_image_tag.return_value = "test-image"
-    expected_hash_value = dict_hash('#!/bin/bash\necho "Hello, world!"emoji==2.10.0\n')
+    expected_hash_value = dict_hash('#!/bin/bash\necho "Hello, world!"\n')
     assert test.get_byod_image_tag() == f"test-image-{expected_hash_value}-2.50.0"
 
 
