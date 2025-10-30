@@ -48,7 +48,7 @@ class _DatasourcePredicatePushdownMixin:
         return False
 
     def get_current_predicate(self) -> Optional[Expr]:
-        return None
+        return self._predicate_expr
 
     def apply_predicate(
         self,

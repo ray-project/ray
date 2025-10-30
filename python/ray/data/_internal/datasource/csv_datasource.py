@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pyarrow
@@ -40,9 +39,6 @@ class CSVDatasource(FileBasedDatasource):
 
     def supports_predicate_pushdown(self) -> bool:
         return True
-
-    def get_current_predicate(self) -> Optional[Expr]:
-        return self._predicate_expr
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa

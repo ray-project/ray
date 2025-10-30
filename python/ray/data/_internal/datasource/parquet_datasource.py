@@ -54,7 +54,6 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
-from ray.data.expressions import Expr
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -286,7 +285,6 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-        self._predicate_expr: Optional[Expr] = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
         elif isinstance(shuffle, FileShuffleConfig):
@@ -443,9 +441,6 @@ class ParquetDatasource(Datasource):
             return None
 
         return (self._data_columns or []) + (self._partition_columns or [])
-
-    def get_current_predicate(self) -> Optional[Expr]:
-        return self._predicate_expr
 
     def get_current_column_rename_map(self) -> Optional[Dict[str, str]]:
         return self._data_columns_rename_map if self._data_columns_rename_map else None
