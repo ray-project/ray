@@ -1079,7 +1079,7 @@ class DeploymentReplica:
             node_id=self.actor_node_id,
             node_ip=self._actor.node_ip,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
-            actor_handle=self._actor.actor_handle,
+            actor_name=self._actor._actor_name,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
