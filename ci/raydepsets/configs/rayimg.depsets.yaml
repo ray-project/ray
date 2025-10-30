@@ -43,7 +43,7 @@ depsets:
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
@@ -86,7 +86,7 @@ depsets:
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
@@ -116,7 +116,7 @@ depsets:
       - py39
       - py310
 
-  - name: ray_base_deps_py${PYTHON_SHORT}
+  - name: ray_base_deps_${PYTHON_SHORT}
     operation: expand
     packages:
       - ray[all]==100.0.0.dev0
@@ -125,7 +125,7 @@ depsets:
     constraints:
       - python/requirements_compiled.txt
     depsets:
-      - ray_img_depset_py${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
