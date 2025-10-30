@@ -24,11 +24,10 @@ steps:
     matrix:
       - "3.10"
     env:
-      PYTHON: "{{matrix}}"
-    env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON
       IMAGE_TO: rllibgpubuild-py$PYTHON
       RAYCI_IS_GPU_BUILD: "true"
+      PYTHON: "{{matrix}}"
     tags: cibase
     depends_on: oss-ci-base_gpu-multipy
 
