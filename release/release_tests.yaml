@@ -3468,6 +3468,7 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
+      frequency: manual
       cluster:
         cluster_compute: agent_stress_compute_gce.yaml
 
