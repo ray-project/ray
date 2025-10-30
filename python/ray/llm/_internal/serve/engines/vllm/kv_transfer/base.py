@@ -62,7 +62,6 @@ class BaseConnectorBackend(abc.ABC):
 
         return 0
 
-    @abc.abstractmethod
     def setup(self) -> None:
         """Setup the connector backend.
 
