@@ -21,8 +21,8 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer/common.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/ray_syncer/common.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
