@@ -368,6 +368,7 @@ py_test_module_list(
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
+        "test_token_auth_integration.py",
         "test_traceback.py",
         "test_worker_capping.py",
         "test_worker_state.py",
