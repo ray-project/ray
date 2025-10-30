@@ -30,15 +30,7 @@ async def token_auth_middleware(request: web.Request, handler):
 
 
 def inject_auth_token_if_enabled(headers: Dict[str, str]) -> bool:
-    """Inject Authorization header when token auth is enabled.
-
-    Args:
-        headers: Mutable mapping of HTTP headers. Updated in place.
-        logger: Optional logger used for warning when token is missing.
-
-    Returns:
-        bool: True if the token was added to headers, False otherwise.
-    """
+    """Inject Authorization header when token auth is enabled."""
 
     if headers is None:
         raise ValueError("headers must be provided")
