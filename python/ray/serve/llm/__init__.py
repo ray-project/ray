@@ -377,7 +377,7 @@ def build_dp_deployment(
     override_serve_options: Optional[dict] = None,
 ) -> "Application":
     """Build a data parallel attention LLM deployment.
-    
+
     Args:
         llm_config: The LLM configuration.
         name_prefix: The prefix to add to the deployment name.
