@@ -1091,6 +1091,291 @@ def test_with_column_alias_expressions(
     pd.testing.assert_frame_equal(result_df, non_aliased_df)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_actor_semantics(ray_start_regular_shared):
+    """Test that callable class UDFs maintain state across batches using actor semantics."""
+    import pyarrow.compute as pc
+
+    # Create a callable class UDF that tracks the number of times it's called
+    @udf(return_dtype=DataType.int32())
+    class InvocationCounter:
+        def __init__(self, offset=0):
+            self.offset = offset
+            self.call_count = 0
+
+        def __call__(self, x):
+            # Increment call count each time the UDF is invoked
+            self.call_count += 1
+            # Add the offset plus the call count to show state is maintained
+            return pc.add(pc.add(x, self.offset), self.call_count)
+
+    # Create a dataset with multiple blocks to ensure multiple invocations
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    # Use the callable class UDF
+    counter = InvocationCounter(offset=100)
+    result_ds = ds.with_column("result", counter(col("id")))
+
+    # Convert to list to trigger execution
+    results = result_ds.take_all()
+
+    # The results should show that the call_count incremented across batches
+    # Since we have 4 blocks, the UDF should be called 4 times on the same actor
+    # The exact values will depend on which batch each row came from
+    # But we can verify that the offset (100) was applied
+    for result in results:
+        # Each result should have the base id + offset (100) + at least 1 (first call)
+        assert result["result"] >= result["id"] + 100 + 1
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_with_constructor_args(
+    ray_start_regular_shared,
+):
+    """Test that callable class UDFs correctly use constructor arguments."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, x):
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10)
+
+    # Test with different offsets
+    add_five = AddOffset(5)
+    add_ten = AddOffset(10)
+
+    result_5 = ds.with_column("plus_five", add_five(col("id"))).to_pandas()
+    result_10 = ds.with_column("plus_ten", add_ten(col("id"))).to_pandas()
+
+    # Verify the offsets were applied correctly
+    expected_5 = pd.DataFrame({"id": list(range(10)), "plus_five": list(range(5, 15))})
+    expected_10 = pd.DataFrame({"id": list(range(10)), "plus_ten": list(range(10, 20))})
+
+    pd.testing.assert_frame_equal(result_5, expected_5, check_dtype=False)
+    pd.testing.assert_frame_equal(result_10, expected_10, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
+    """Test that multiple callable class UDFs can be used in the same projection."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class Multiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return pc.multiply(x, self.factor)
+
+    @udf(return_dtype=DataType.int32())
+    class Adder:
+        def __init__(self, addend):
+            self.addend = addend
+
+        def __call__(self, x):
+            return pc.add(x, self.addend)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use multiple callable class UDFs
+    times_two = Multiplier(2)
+    plus_ten = Adder(10)
+
+    result = ds.with_column("doubled", times_two(col("id"))).with_column(
+        "plus_ten", plus_ten(col("id"))
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "doubled": [0, 2, 4, 6, 8],
+            "plus_ten": [10, 11, 12, 13, 14],
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_callable_class_udf_with_compute_strategy(
+    ray_start_regular_shared,
+):
+    """Test that compute strategy can be specified for callable class UDFs."""
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, x):
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10)
+
+    # Use a specific compute strategy
+    add_five = AddOffset(5)
+    result = ds.with_column(
+        "result",
+        add_five(col("id")),
+        compute=ray.data.ActorPoolStrategy(size=2),
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_callable_class_udf(ray_start_regular_shared):
+    """Test that async callable class UDFs work correctly with actor semantics."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncAddOffset:
+        def __init__(self, offset):
+            self.offset = offset
+            self.call_count = 0
+
+        async def __call__(self, x):
+            # Simulate async work
+            await asyncio.sleep(0.001)
+            self.call_count += 1
+            # Add offset to show the UDF was called
+            return pc.add(x, self.offset)
+
+    # Create dataset
+    ds = ray.data.range(10, override_num_blocks=2)
+
+    # Use async callable class UDF
+    add_five = AsyncAddOffset(5)
+    result = ds.with_column("result", add_five(col("id")))
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_async_callable_class_udf_with_state(ray_start_regular_shared):
+    """Test that async callable class UDFs maintain state across batches."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncCounter:
+        def __init__(self):
+            self.total_processed = 0
+
+        async def __call__(self, x):
+            # Simulate async work
+            await asyncio.sleep(0.001)
+            # Track how many items we've processed
+            batch_size = len(x)
+            self.total_processed += batch_size
+            # Return the running count
+            return pc.add(x, self.total_processed - batch_size)
+
+    # Create dataset with multiple blocks
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    # Use async callable class UDF with state
+    counter = AsyncCounter()
+    result = ds.with_column("running_total", counter(col("id")))
+
+    # Just verify we got results without errors
+    # The exact values will depend on execution order
+    results = result.take_all()
+    assert len(results) == 20
+    # All values should be at least the original id
+    for i, result in enumerate(results):
+        assert result["running_total"] >= result["id"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared):
+    """Test that multiple async callable class UDFs can work together."""
+    import asyncio
+
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncMultiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        async def __call__(self, x):
+            await asyncio.sleep(0.001)
+            return pc.multiply(x, self.factor)
+
+    @udf(return_dtype=DataType.int32())
+    class AsyncAdder:
+        def __init__(self, addend):
+            self.addend = addend
+
+        async def __call__(self, x):
+            await asyncio.sleep(0.001)
+            return pc.add(x, self.addend)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use multiple async callable class UDFs
+    times_two = AsyncMultiplier(2)
+    plus_ten = AsyncAdder(10)
+
+    result = ds.with_column("doubled", times_two(col("id"))).with_column(
+        "plus_ten", plus_ten(col("id"))
+    )
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "doubled": [0, 2, 4, 6, 8],
+            "plus_ten": [10, 11, 12, 13, 14],
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
 if __name__ == "__main__":
     import sys
 

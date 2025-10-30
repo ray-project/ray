@@ -279,6 +279,10 @@ class Project(AbstractMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        # Auto-select compute strategy based on whether expressions contain callable class UDFs
+        if compute is None:
+            compute = self._detect_and_get_compute_strategy(exprs)
+
         super().__init__(
             "Project",
             input_op=input_op,
@@ -296,6 +300,30 @@ class Project(AbstractMap):
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
                 )
+
+    def _detect_and_get_compute_strategy(
+        self, exprs: list["Expr"]
+    ) -> Optional[ComputeStrategy]:
+        """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
+
+        If any expression contains a callable class UDF, returns ActorPoolStrategy.
+        Otherwise returns None (which will default to TaskPoolStrategy).
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _CallableClassUDFCollector,
+        )
+
+        # Check all expressions for callable class UDFs
+        for expr in exprs:
+            collector = _CallableClassUDFCollector()
+            collector.visit(expr)
+            if collector.get_callable_class_udfs():
+                # Found at least one callable class UDF - use actor semantics
+                from ray.data._internal.compute import ActorPoolStrategy
+
+                return ActorPoolStrategy(min_size=1, max_size=None)
+
+        return None
 
     def has_star_expr(self) -> bool:
         return self.get_star_expr() is not None

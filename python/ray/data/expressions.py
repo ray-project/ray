@@ -4,7 +4,18 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, Type, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import pyarrow
 
@@ -601,6 +612,11 @@ class UDFExpr(Expr):
     fn: Callable[..., BatchColumn]
     args: List[Expr]
     kwargs: Dict[str, Expr]
+    # Constructor args for callable classes (used for actor semantics)
+    fn_constructor_args: Tuple[Any, ...] = field(default_factory=tuple)
+    fn_constructor_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # Original callable class (if fn is a callable class, None otherwise)
+    fn_constructor_class: Optional[type] = field(default=None)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -617,9 +633,26 @@ class UDFExpr(Expr):
 
 
 def _create_udf_callable(
-    fn: Callable[..., BatchColumn], return_dtype: DataType
+    fn: Callable[..., BatchColumn],
+    return_dtype: DataType,
+    fn_constructor_args: Tuple[Any, ...] = (),
+    fn_constructor_kwargs: Dict[str, Any] = None,
+    fn_constructor_class: Optional[type] = None,
 ) -> Callable[..., UDFExpr]:
-    """Create a callable that generates UDFExpr when called with expressions."""
+    """Create a callable that generates UDFExpr when called with expressions.
+
+    Args:
+        fn: The user-defined function to wrap
+        return_dtype: The return data type of the UDF
+        fn_constructor_args: Constructor args for callable classes (for actor semantics)
+        fn_constructor_kwargs: Constructor kwargs for callable classes (for actor semantics)
+        fn_constructor_class: The original callable class (if fn is a callable class)
+
+    Returns:
+        A callable that creates UDFExpr instances when called with expressions
+    """
+    if fn_constructor_kwargs is None:
+        fn_constructor_kwargs = {}
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
@@ -642,6 +675,9 @@ def _create_udf_callable(
             args=expr_args,
             kwargs=expr_kwargs,
             data_type=return_dtype,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            fn_constructor_class=fn_constructor_class,
         )
 
     # Preserve original function metadata
@@ -741,7 +777,14 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 
                         return instance(*args, **kwargs)
 
-                    udf_callable = _create_udf_callable(_lazy_impl, return_dtype)
+                    # Pass constructor args to _create_udf_callable for actor semantics
+                    udf_callable = _create_udf_callable(
+                        _lazy_impl,
+                        return_dtype,
+                        fn_constructor_args=self._ctor_args,
+                        fn_constructor_kwargs=self._ctor_kwargs,
+                        fn_constructor_class=self._udf_cls,
+                    )
                     return udf_callable(*call_args, **call_kwargs)
 
             # Preserve the original class name and module
