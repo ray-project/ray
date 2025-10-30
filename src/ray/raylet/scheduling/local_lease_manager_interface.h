@@ -99,6 +99,16 @@ class LocalLeaseManagerInterface {
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
   virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                              const LeaseID &lease_id) const = 0;
+
+  /// Add a reply callback to the lease. We don't overwrite the existing reply callback
+  /// since due to message reordering we may receive the retry before the initial request.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  /// \param send_reply_callback: The callback used for the reply.
+  /// \param reply: The reply of the lease request.
+  ///
+  /// \return True if the reply callback is added successfully.
   virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
                                 const LeaseID &lease_id,
                                 rpc::SendReplyCallback send_reply_callback,
