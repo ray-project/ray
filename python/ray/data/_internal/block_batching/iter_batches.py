@@ -241,6 +241,7 @@ class BatchIterator:
         """
         # Setup: Initialize epoch state
         self._yielded_first_batch = False
+        StatsManager.register_dataset_tag(self._dataset_tag)
         try:
             yield
         finally:
