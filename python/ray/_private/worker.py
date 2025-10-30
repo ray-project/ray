@@ -2963,7 +2963,9 @@ def get(
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
+                # If the object was lost and it wasn't due to owner death, it may be
+                # because the object store is full and objects needed to be evicted.
+                if (isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(ray.exceptions.OwnerDiedError)):
                     worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()

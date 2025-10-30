@@ -287,14 +287,16 @@ def test_raylet_resubscribe_to_worker_death(
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    # Make an internal KV request to ensure the GCS is back alive.
+    # Schedule an actor to ensure that the GCS is back alive and the Raylet is
+    # reconnected to it.
     # TODO(iycheng): this shouldn't be necessary, but the current resubscription
     # implementation can lose the worker failure message because we don't ask for
     # the snapshot of worker statuses.
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address)
-    gcs_client.internal_kv_put(b"a", b"b", True, None)
-    assert gcs_client.internal_kv_get(b"a") == b"b"
+    @ray.remote
+    class A:
+        pass
+
+    ray.get(A.remote().__ray_ready__.remote())
 
     # Kill the parent task and verify that the child task is killed due to fate sharing
     # with its parent.

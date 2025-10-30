@@ -1053,6 +1053,7 @@ bool NodeManager::ResourceDeleted(const NodeID &node_id,
 void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "The GCS has restarted. Resubscribing to pubsub and notifying local workers.";
   // When GCS restarts, it'll notify raylet to do some initialization work
   // (resubscribing). Raylet will also notify all workers to do this job. Workers are
   // registered to raylet first (blocking call) and then connect to GCS, so there is no

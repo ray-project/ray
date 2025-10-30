@@ -875,8 +875,7 @@ void NodeInfoAccessor::AsyncResubscribe() {
         [this](const Status &) {
           fetch_node_data_operation_([](const Status &) {
             RAY_LOG(INFO)
-                << "Finished fetching all node information from gcs server after gcs "
-                   "server or pub-sub server is restarted.";
+                << "Finished fetching all node information for resubscription.";
           });
         });
   }
@@ -888,9 +887,7 @@ void NodeInfoAccessor::AsyncResubscribe() {
         [this](const Status &) {
           fetch_node_address_and_liveness_data_operation_([](const Status &) {
             RAY_LOG(INFO)
-                << "Finished fetching all node address and liveness information from gcs "
-                   "server after gcs "
-                   "server or pub-sub server is restarted.";
+                << "Finished fetching all node address and liveness information for resubscription.";
           });
         });
   }

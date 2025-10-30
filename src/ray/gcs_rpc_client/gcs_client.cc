@@ -114,6 +114,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
   resubscribe_func_ = [this]() {
+    RAY_LOG(INFO) << "Resubscribing to GCS tables.";
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();
     node_accessor_->AsyncResubscribe();
