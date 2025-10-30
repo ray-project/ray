@@ -55,8 +55,9 @@ def _setup_jax_distributed_environment(
     if use_gpu:
         if not os.environ.get("JAX_PLATFORMS"):
             os.environ["JAX_PLATFORMS"] = "cuda"
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(list(range(resources_per_worker.get("GPU", 0))))
-    # TODO(lehui): Add env vars for JAX on GPU.
+
+            num_gpus = resources_per_worker.get("GPU", 0)
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(num_gpus))
 
     import jax
 
