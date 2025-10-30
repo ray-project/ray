@@ -22,6 +22,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
+    infer_compression,
     iterate_with_retry,
     make_async_gen,
 )
@@ -321,6 +322,50 @@ class FileBasedDatasource(Datasource):
 
         return read_tasks
 
+    def resolve_compression(
+        self, path: str, open_args: Dict[str, Any]
+    ) -> Optional[str]:
+        """Resolves the compression format for a stream.
+
+        Args:
+            path: The file path to resolve compression for.
+            open_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_stream>`_
+                when opening input files to read.
+
+        Returns:
+            The compression format (e.g., "gzip", "snappy", "bz2") or None if
+            no compression is detected or specified.
+        """
+        compression = open_args.get("compression", None)
+        if compression is None:
+            compression = infer_compression(path)
+        return compression
+
+    def _resolve_buffer_size(self, open_args: Dict[str, Any]) -> Optional[int]:
+        buffer_size = open_args.pop("buffer_size", None)
+        if buffer_size is None:
+            buffer_size = self._data_context.streaming_read_buffer_size
+        return buffer_size
+
+    def _file_to_snappy_stream(
+        self,
+        file: "pyarrow.NativeFile",
+        filesystem: "RetryingPyFileSystem",
+    ) -> "pyarrow.PythonFile":
+        import pyarrow as pa
+        import snappy
+        from pyarrow.fs import HadoopFileSystem
+
+        stream = io.BytesIO()
+        if isinstance(filesystem.unwrap(), HadoopFileSystem):
+            snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
+        else:
+            snappy.stream_decompress(src=file, dst=stream)
+        stream.seek(0)
+
+        return pa.PythonFile(stream, mode="r")
+
     def _open_input_source(
         self,
         filesystem: "RetryingPyFileSystem",
@@ -336,53 +381,22 @@ class FileBasedDatasource(Datasource):
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
-        import pyarrow as pa
-        from pyarrow.fs import HadoopFileSystem
 
-        compression = open_args.get("compression", None)
-        if compression is None:
-            try:
-                # If no compression manually given, try to detect
-                # compression codec from path.
-                compression = pa.Codec.detect(path).name
-            except (ValueError, TypeError):
-                # Arrow's compression inference on the file path
-                # doesn't work for Snappy, so we double-check ourselves.
-                import pathlib
-
-                suffix = pathlib.Path(path).suffix
-                if suffix and suffix[1:] == "snappy":
-                    compression = "snappy"
-                else:
-                    compression = None
-
-        buffer_size = open_args.pop("buffer_size", None)
-        if buffer_size is None:
-            buffer_size = self._data_context.streaming_read_buffer_size
+        compression = self.resolve_compression(path, open_args)
+        buffer_size = self._resolve_buffer_size(open_args)
 
         if compression == "snappy":
             # Arrow doesn't support streaming Snappy decompression since the canonical
             # C++ Snappy library doesn't natively support streaming decompression. We
             # works around this by manually decompressing the file with python-snappy.
             open_args["compression"] = None
-        else:
-            open_args["compression"] = compression
+            file = filesystem.open_input_stream(
+                path, buffer_size=buffer_size, **open_args
+            )
+            return self._file_to_snappy_stream(file, filesystem)
 
-        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
-
-        if compression == "snappy":
-            import snappy
-
-            stream = io.BytesIO()
-            if isinstance(filesystem.unwrap(), HadoopFileSystem):
-                snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
-            else:
-                snappy.stream_decompress(src=file, dst=stream)
-            stream.seek(0)
-
-            file = pa.PythonFile(stream, mode="r")
-
-        return file
+        open_args["compression"] = compression
+        return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""

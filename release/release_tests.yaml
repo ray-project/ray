@@ -423,6 +423,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -453,6 +454,7 @@
 
 
 - name: tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -485,6 +487,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -760,6 +763,7 @@
 # Tune fault tolerance tests
 ############################
 - name: tune_worker_fault_tolerance
+  python: "3.10"
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
@@ -1269,6 +1273,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1298,6 +1303,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1327,6 +1333,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
+  python: "3.10"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1351,6 +1358,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1375,6 +1383,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1430,7 +1439,7 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: core_runtime_env_wheel_urls
+- name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -3795,7 +3804,7 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: core_autoscaler_aws
+- name: autoscaler_aws
   python: "3.10"
   group: autoscaler-test
   working_dir: autoscaling_tests

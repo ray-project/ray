@@ -68,6 +68,32 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
   return *cached_token_;
 }
 
+bool AuthenticationTokenLoader::HasToken() {
+  std::lock_guard<std::mutex> lock(token_mutex_);
+
+  // If already loaded, check if it's a valid token
+  if (cached_token_.has_value()) {
+    return !cached_token_->empty();
+  }
+
+  // If token auth is not enabled, no token needed
+  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    cached_token_ = std::nullopt;
+    return false;
+  }
+
+  // Token auth is enabled, try to load from sources
+  AuthenticationToken token = LoadTokenFromSources();
+
+  // Cache the result
+  if (token.empty()) {
+    return false;
+  } else {
+    cached_token_ = std::move(token);
+    return true;
+  }
+}
+
 // Read token from the first line of the file. trim whitespace.
 // Returns empty string if file cannot be opened or is empty.
 std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file_path) {
