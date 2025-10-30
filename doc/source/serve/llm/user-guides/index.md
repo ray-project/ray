@@ -6,6 +6,7 @@ How-to guides for deploying and configuring Ray Serve LLM features.
 :maxdepth: 1
 
 Model loading <model-loading>
+Cross-node parallelism <cross-node-parallelism>
 Prefill/decode disaggregation <prefill-decode>
 Prefix-aware routing <prefix-aware-routing>
 Multi-LoRA deployment <multi-lora>

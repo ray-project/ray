@@ -268,92 +268,7 @@ To deploy with either configuration file:
 serve run config.yaml
 ```
 
-## Generate config files
-
-Ray Serve LLM provides a CLI to generate config files for your deployment:
-
-```bash
-python -m ray.serve.llm.gen_config
-```
-
-*Note*: This command requires interactive inputs. You should execute it directly in the terminal.
-
-This command lets you pick from a common set of OSS LLMs and helps you configure them. You can tune settings such as GPU type, tensor parallelism, and autoscaling parameters.
-
-Note that if you're configuring a model whose architecture is different from the provided list of models, you should closely review the generated model config file to provide the correct values.
-
-This command generates two files: an LLM config file, saved in `model_config/`, and a Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the future.
-
-After reading and reviewing the generated model config, see the [vLLM engine configuration docs](https://docs.vllm.ai/en/latest/serving/engine_args.html) for further customization.
-
-## Observability
-
-Ray enables LLM service-level logging by default, and makes these statistics available through Grafana and Prometheus. For more details on configuring Grafana and Prometheus, see {ref}`collect-metrics`.
-
-These higher-level metrics track request and token behavior across deployed models. For example: average total tokens per request, ratio of input tokens to generated tokens, and peak tokens per second.
-
-For visualization, Ray ships with a Serve LLM-specific dashboard, which is automatically available in Grafana. Example below:
-
-![](images/serve_llm_dashboard.png)
-
-## Engine metrics
-
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) for a complete list. These are also visualized by the Serve LLM Grafana dashboard. Dashboard panels include: time per output token (TPOT), time to first token (TTFT), and GPU cache utilization.
-
-Engine metric logging is on by default as of Ray 2.51. To disable engine-level metric logging, set `log_engine_metrics: False` when configuring the LLM deployment. For example:
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: builder
-
-```python
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-
-llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="qwen-0.5b",
-        model_source="Qwen/Qwen2.5-0.5B-Instruct",
-    ),
-    deployment_config=dict(
-        autoscaling_config=dict(
-            min_replicas=1, max_replicas=2,
-        )
-    ),
-    log_engine_metrics=False
-)
-
-app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app, blocking=True)
-```
-:::
-
-:::{tab-item} YAML
-:sync: bind
-
-```yaml
-# config.yaml
-applications:
-- args:
-    llm_configs:
-        - model_loading_config:
-            model_id: qwen-0.5b
-            model_source: Qwen/Qwen2.5-0.5B-Instruct
-        accelerator_type: A10G
-        deployment_config:
-            autoscaling_config:
-                min_replicas: 1
-                max_replicas: 2
-        log_engine_metrics: false
-  import_path: ray.serve.llm:build_openai_app
-  name: llm_app
-  route_prefix: "/"
-```
-:::
-
-::::
-
+For monitoring and observability, see {doc}`Observability <user-guides/observability>`.
 
 ## Advanced usage patterns
 
@@ -361,103 +276,7 @@ For each usage pattern, Ray Serve LLM provides a server and client code snippet.
 
 ### Cross-node parallelism
 
-Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), allowing you to distribute model inference across multiple GPUs and nodes. This capability enables you to:
-
-- Deploy models that don't fit on a single GPU or node.
-- Scale model serving across your cluster's available resources.
-- Leverage Ray's placement group strategies to control worker placement for performance or fault tolerance.
-
-::::{note}
-By default, Ray Serve LLM uses the `PACK` placement strategy, which tries to place workers on as few nodes as possible. If workers can't fit on a single node, they automatically spill to other nodes. This enables cross-node deployments when single-node resources are insufficient.
-::::
-
-#### Tensor parallelism
-
-Tensor parallelism splits model weights across multiple GPUs, with each GPU processing a portion of the model's tensors for each forward pass. This approach is useful for models that don't fit on a single GPU.
-
-The following example shows how to configure tensor parallelism across 2 GPUs:
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: python
-
-```{literalinclude} ../doc_code/cross_node_parallelism_example.py
-:language: python
-:start-after: __cross_node_tp_example_start__
-:end-before: __cross_node_tp_example_end__
-```
-:::
-
-::::
-
-#### Pipeline parallelism
-
-Pipeline parallelism splits the model's layers across multiple GPUs, with each GPU processing a subset of the model's layers. This approach is useful for very large models where tensor parallelism alone isn't sufficient.
-
-The following example shows how to configure pipeline parallelism across 2 GPUs:
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: python
-
-```{literalinclude} ../doc_code/cross_node_parallelism_example.py
-:language: python
-:start-after: __cross_node_pp_example_start__
-:end-before: __cross_node_pp_example_end__
-```
-:::
-
-::::
-
-#### Combined tensor and pipeline parallelism
-
-For extremely large models, you can combine both tensor and pipeline parallelism. The total number of GPUs is the product of `tensor_parallel_size` and `pipeline_parallel_size`.
-
-The following example shows how to configure a model with both TP and PP (4 GPUs total):
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: python
-
-```{literalinclude} ../doc_code/cross_node_parallelism_example.py
-:language: python
-:start-after: __cross_node_tp_pp_example_start__
-:end-before: __cross_node_tp_pp_example_end__
-```
-:::
-
-::::
-
-### Custom placement groups
-
-You can customize how Ray places vLLM engine workers across nodes through the `placement_group_config` parameter. This parameter accepts a dictionary with `bundles` (a list of resource dictionaries) and `strategy` (placement strategy).
-
-Ray Serve LLM uses the `PACK` strategy by default, which tries to place workers on as few nodes as possible. If workers can't fit on a single node, they automatically spill to other nodes. For more details on all available placement strategies, see {ref}`Ray Core's placement strategies documentation <pgroup-strategy>`.
-
-::::{note}
-Data parallel deployments automatically override the placement strategy to `STRICT_PACK` because each replica must be co-located for correct data parallel behavior.
-::::
-
-While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and can't be directly configured through the Ray Serve LLM API. Ray Serve automatically injects accelerator type labels into bundles and merges the first bundle with replica actor resources (CPU, GPU, memory).
-
-The following example shows how to use the `SPREAD` strategy to distribute workers across multiple nodes for fault tolerance:
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: python
-
-```{literalinclude} ../doc_code/cross_node_parallelism_example.py
-:language: python
-:start-after: __custom_placement_group_spread_example_start__
-:end-before: __custom_placement_group_spread_example_end__
-```
-:::
-
-::::
+Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), allowing you to distribute model inference across multiple GPUs and nodes. See {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` for a comprehensive guide on configuring and deploying models with cross-node parallelism.
 
 ### Multi-LoRA deployment
 
@@ -582,7 +401,7 @@ response = client.embeddings.create(
     input=["A text to embed", "Another text to embed"],
 )
 
-for data in responses.data:
+for data in response.data:
     print(data.embedding)  # List of float of len 4096
 ```
 :::
@@ -1011,6 +830,4 @@ The Ray Team collects usage data to improve Ray Serve LLM. The team collects dat
 - GPU type used and number of GPUs used.
 
 To opt-out of usage data collection, you can follow {ref}`Ray usage stats <ref-usage-stats>` to disable it.
-
-For monitoring and observability, see {doc}`Observability <user-guides/observability>`.
 
