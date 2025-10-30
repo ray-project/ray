@@ -43,15 +43,14 @@ class BaseConnectorBackend(abc.ABC):
         Uses data_parallel_rank if DP case, otherwise falls back to
         the replica rank assigned by Ray Serve (TP/PP case).
 
-        For TP/PP cases, multiply by tensor_parallel_size to reserve
-        sufficient port space, since each TP worker adds its tp_rank
-        (0, 1, ..., tp_size-1) to the base port at bind time.
+        For TP/PP cases, multiply by num_devices (tp × pp) to reserve
+        sufficient port space, since each worker needs a unique port.
+        Each TP worker adds its tp_rank (0, 1, ..., tp_size-1) to the
+        base port at bind time, and PP stages also need separate ports.
 
         Returns:
             Non-negative integer offset to add to a base port.
         """
-        tp_size = self.llm_config.engine_kwargs.get("tensor_parallel_size", 1)
-
         # Prefer explicit DP rank when available
         dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
         if isinstance(dp_rank, int) and dp_rank >= 0:
@@ -63,9 +62,11 @@ class BaseConnectorBackend(abc.ABC):
         try:
             rc = serve.get_replica_context()
             if rc and hasattr(rc, "rank"):
-                # Multiply by tp_size to reserve ports for all TP workers
-                # Each TP worker will add its tp_rank (0, 1, ..., tp_size-1)
-                return rc.rank * tp_size
+                # Use num_devices (tp × pp) to reserve ports for all workers
+                # Each replica spawns num_devices workers, each needing a unique port
+                engine_config = self.llm_config.get_engine_config()
+                num_devices = engine_config.num_devices
+                return rc.rank * num_devices
         except Exception:
             # Best-effort fallback; avoid introducing failures in setup paths
             pass
