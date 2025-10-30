@@ -1,5 +1,5 @@
-name: "datamongobuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+name: "datamongobuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -14,4 +14,4 @@ build_args:
   - ARROW_MONGO_VERSION=0.5.*
   - RAY_CI_JAVA_BUILD=1
 tags:
-  - cr.ray.io/rayproject/datamongobuild
+  - cr.ray.io/rayproject/datamongobuild-py$PYTHON

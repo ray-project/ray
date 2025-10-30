@@ -27,12 +27,22 @@ steps:
     wanda: ci/docker/datan.build.wanda.yaml
     tags: cibase
 
-  - name: datamongobuild
+  - name: datamongobuild-multipy
+    label: "wanda: datamongobuild-py{{matrix}}"
     wanda: ci/docker/datamongo.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: datatfxbslbuild
+  - name: datatfxbslbuild-multipy
+    label: "wanda: datatfxbslbuild-py{{matrix}}"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
   # tests
@@ -173,9 +183,10 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild
+        --build-name datatfxbslbuild-py3.10
+        --python-version 3.10
         --only-tags tfxbsl
-    depends_on: datatfxbslbuild
+    depends_on: datatfxbslbuild-multipy
 
   - label: ":database: data: doc tests"
     tags:
@@ -241,11 +252,12 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datamongobuild
+        --build-name datamongobuild-py3.10
+        --python-version 3.10
         --build-type java
         --only-tags data_integration
         --except-tags doctest
-    depends_on: datamongobuild
+    depends_on: datamongobuild-multipy
 
   - label: ":database: data: dashboard tests"
     tags:
