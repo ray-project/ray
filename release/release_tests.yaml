@@ -91,6 +91,7 @@
 
   run:
     timeout: 1800
+    num_retries: 3
     script: python hello_world.py
 
   variations:
@@ -422,6 +423,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -452,6 +454,7 @@
 
 
 - name: tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -484,6 +487,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -1429,7 +1433,7 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: core_runtime_env_wheel_urls
+- name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -3794,7 +3798,7 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: core_autoscaler_aws
+- name: autoscaler_aws
   python: "3.10"
   group: autoscaler-test
   working_dir: autoscaling_tests

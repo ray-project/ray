@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+import abc
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -14,15 +14,25 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
-class InternalQueueOperatorMixin(PhysicalOperator, ABC):
-    @abstractmethod
-    def internal_queue_num_blocks(self) -> int:
-        """Returns Operator's internal queue size (in blocks)"""
+class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
+    @abc.abstractmethod
+    def internal_input_queue_num_blocks(self) -> int:
+        """Returns Operator's internal input queue size (in blocks)"""
         ...
 
-    @abstractmethod
-    def internal_queue_num_bytes(self) -> int:
-        """Returns Operator's internal queue size in bytes"""
+    @abc.abstractmethod
+    def internal_input_queue_num_bytes(self) -> int:
+        """Returns Operator's internal input queue size (in bytes)"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_num_blocks(self) -> int:
+        """Returns Operator's internal output queue size (in blocks)"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_num_bytes(self) -> int:
+        """Returns Operator's internal output queue size (in bytes)"""
         ...
 
 
@@ -115,11 +125,17 @@ class AllToAllOperator(
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
 
-    def internal_queue_num_blocks(self) -> int:
+    def internal_input_queue_num_blocks(self) -> int:
         return sum(len(bundle.block_refs) for bundle in self._input_buffer)
 
-    def internal_queue_num_bytes(self) -> int:
+    def internal_input_queue_num_bytes(self) -> int:
         return sum(bundle.size_bytes() for bundle in self._input_buffer)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(bundle.size_bytes() for bundle in self._output_buffer)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
