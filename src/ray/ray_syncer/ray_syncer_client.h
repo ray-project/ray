@@ -17,8 +17,8 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor_base.h"
 
 namespace ray::syncer {
 

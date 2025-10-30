@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/ray_syncer/node_state.h"
+#include "ray/ray_syncer/node_state.h"
 
 #include <string>
 
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/ray_syncer/ray_syncer.h"
 
 namespace ray::syncer {
 
