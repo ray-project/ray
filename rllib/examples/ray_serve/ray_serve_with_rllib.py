@@ -67,18 +67,18 @@ Episode R=500.0
 
 import atexit
 import os
-
-import requests
 import subprocess
 import time
-
-import gymnasium as gym
 from pathlib import Path
 
+import gymnasium as gym
+import requests
+
+from ray._common.network_utils import build_address
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -90,7 +90,6 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray._common.network_utils import build_address
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(

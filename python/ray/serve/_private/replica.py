@@ -20,6 +20,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
@@ -93,7 +94,10 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.task_consumer import TaskConsumerWrapper
-from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+    get_asgi_route_name,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
@@ -121,6 +125,9 @@ ReplicaMetadata = Tuple[
     Optional[int],
     Optional[str],
     int,
+    int,
+    int,  # rank
+    Optional[List[str]],  # route_patterns
 ]
 
 
@@ -304,35 +311,35 @@ class ReplicaMetricsManager:
     def should_collect_ongoing_requests(self) -> bool:
         """Determine if replicas should collect ongoing request metrics.
 
-        ┌─────────────────────────────────────────────────────────────────┐
-        │  Replica-based metrics collection                               │
-        ├─────────────────────────────────────────────────────────────────┤
-        │                                                                 │
-        │  Client          Handle            Replicas                     │
-        │  ┌──────┐      ┌────────┐                                       │
-        │  │  App │─────>│ Handle │────┬───>┌─────────┐                  │
-        │  │      │      │ Tracks │    │    │ Replica │                  │
-        │  └──────┘      │ Queued │    │    │    1    │                  │
-        │                │Requests│    │    │ Tracks  │                  │
-        │                └────────┘    │    │ Running │                  │
-        │                     │        │    └─────────┘                  │
-        │                     │        │         │                       │
-        │                     │        │         │                       │
-        │                     │        │    ┌─────────┐                  │
-        │                     │        └───>│ Replica │                  │
-        │                     │             │    2    │                  │
-        │                     │             │ Tracks  │                  │
-        │                     │             │ Running │                  │
-        │                     │             └─────────┘                  │
-        │                     │                  │                        │
-        │                     │                  │                        │
-        │                     ▼                  ▼                        │
-        │              ┌──────────────────────────────┐                  │
-        │              │        Controller            │                  │
-        │              │  • Queued metrics (handle)   │                  │
-        │              │  • Running metrics (replica1)│                  │
-        │              │  • Running metrics (replica2)│                  │
-        │              └──────────────────────────────┘                  │
+        ┌────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                              │
+        ├────────────────────────────────────────────────────────────────┤
+        │                                                                │
+        │      Client          Handle            Replicas                │
+        │      ┌──────┐      ┌────────┐                                  │
+        │      │  App │─────>│ Handle │────┬───>┌─────────┐              │
+        │      │      │      │ Tracks │    │    │ Replica │              │
+        │      └──────┘      │ Queued │    │    │    1    │              │
+        │                    │Requests│    │    │ Tracks  │              │
+        │                    └────────┘    │    │ Running │              │
+        │                         │        │    └─────────┘              │
+        │                         │        │         │                   │
+        │                         │        │         │                   │
+        │                         │        │    ┌─────────┐              │
+        │                         │        └───>│ Replica │              │
+        │                         │             │    2    │              │
+        │                         │             │ Tracks  │              │
+        │                         │             │ Running │              │
+        │                         │             └─────────┘              │
+        │                         │                  │                   │
+        │                         │                  │                   │
+        │                         ▼                  ▼                   │
+        │                  ┌──────────────────────────────┐              │
+        │                  │        Controller            │              │
+        │                  │  • Queued metrics (handle)   │              │
+        │                  │  • Running metrics (replica1)│              │
+        │                  │  • Running metrics (replica2)│              │
+        │                  └──────────────────────────────┘              │
         │                                                                │
         └────────────────────────────────────────────────────────────────┘
         """
@@ -573,6 +580,14 @@ class ReplicaBase(ABC):
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
+        # Extract route patterns from ASGI app if available
+        route_patterns = None
+        if self._user_callable_asgi_app is not None:
+            # _user_callable_asgi_app is the actual ASGI app (FastAPI/Starlette)
+            # It's set when initialize_callable() returns an ASGI app
+            if hasattr(self._user_callable_asgi_app, "routes"):
+                route_patterns = extract_route_patterns(self._user_callable_asgi_app)
+
         return (
             self._version.deployment_config,
             self._version,
@@ -582,6 +597,7 @@ class ReplicaBase(ABC):
             self._http_port,
             self._grpc_port,
             current_rank,
+            route_patterns,
         )
 
     def _set_internal_replica_context(
