@@ -900,10 +900,10 @@ void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
   // Update the resource view if a new message has been sent.
-  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                 syncer::MessageType::RESOURCE_VIEW)) {
+  if (auto sync_msg = ray_syncer_.GetInnerSyncMessage(
+          node_id.Binary(), syncer::MessageType::RESOURCE_VIEW)) {
     if (sync_msg) {
-      ConsumeSyncMessage(sync_msg);
+      ConsumeInnerSyncMessage(sync_msg);
     }
   }
 }
@@ -2985,8 +2985,8 @@ void NodeManager::RecordMetrics() {
   lease_dependency_manager_.RecordMetrics();
 }
 
-void NodeManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+void NodeManager::ConsumeInnerSyncMessage(
+    std::shared_ptr<const syncer::InnerRaySyncMessage> message) {
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
@@ -3014,7 +3014,7 @@ void NodeManager::ConsumeSyncMessage(
   }
 }
 
-std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
+std::optional<syncer::InnerRaySyncMessage> NodeManager::CreateInnerSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
 
@@ -3022,14 +3022,15 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   commands_sync_message.set_should_global_gc(true);
   commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
                                                             1);
-  syncer::RaySyncMessage msg;
-  msg.set_version(absl::GetCurrentTimeNanos());
-  msg.set_node_id(self_node_id_.Binary());
-  msg.set_message_type(syncer::MessageType::COMMANDS);
+  syncer::InnerRaySyncMessage inner_msg;
+  inner_msg.set_version(absl::GetCurrentTimeNanos());
+  inner_msg.set_node_id(self_node_id_.Binary());
+  inner_msg.set_message_type(syncer::MessageType::COMMANDS);
   std::string serialized_msg;
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-  msg.set_sync_message(std::move(serialized_msg));
-  return std::make_optional(std::move(msg));
+  inner_msg.set_sync_message(std::move(serialized_msg));
+
+  return std::make_optional(std::move(inner_msg));
 }
 
 // Picks the worker with the latest submitted task and kills the process

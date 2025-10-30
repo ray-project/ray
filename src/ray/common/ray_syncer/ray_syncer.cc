@@ -30,12 +30,14 @@ namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
-                     RpcCompletionCallback on_rpc_completion)
+                     RpcCompletionCallback on_rpc_completion,
+                     bool batching_enabled)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       timer_(PeriodicalRunner::Create(io_context)),
-      on_rpc_completion_(std::move(on_rpc_completion)) {
+      on_rpc_completion_(std::move(on_rpc_completion)),
+      batching_enabled_(batching_enabled) {
   stopped_ = std::make_shared<bool>(false);
 }
 
@@ -48,10 +50,10 @@ RaySyncer::~RaySyncer() {
   });
 }
 
-std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
+std::shared_ptr<const InnerRaySyncMessage> RaySyncer::GetInnerSyncMessage(
     const std::string &node_id, MessageType message_type) const {
-  auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
-      [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
+  auto task = std::packaged_task<std::shared_ptr<const InnerRaySyncMessage>()>(
+      [this, &node_id, message_type]() -> std::shared_ptr<const InnerRaySyncMessage> {
         auto &view = node_state_->GetClusterView();
         if (auto iter = view.find(node_id); iter != view.end()) {
           return iter->second[message_type];
@@ -84,7 +86,7 @@ void RaySyncer::Connect(const std::string &node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */
-            [this](auto msg) { BroadcastMessage(std::move(msg)); },
+            [this](auto msg) { BroadcastInnerMessage(std::move(msg)); },
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *bidi_reactor, bool restart) {
               const std::string &remote_node_id = bidi_reactor->GetRemoteNodeID();
@@ -109,7 +111,8 @@ void RaySyncer::Connect(const std::string &node_id,
                 node_state_->RemoveNode(remote_node_id);
               }
             },
-            /* stub */ std::move(stub));
+            /* stub */ std::move(stub),
+            /* batching_enabled */ batching_enabled_);
         Connect(reactor);
         reactor->StartCall();
       }))
@@ -190,30 +193,31 @@ void RaySyncer::Register(MessageType message_type,
 }
 
 bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
-  auto msg = node_state_->CreateSyncMessage(message_type);
+  auto msg = node_state_->CreateInnerSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    BroadcastInnerMessage(std::make_shared<InnerRaySyncMessage>(std::move(*msg)));
     return true;
   }
   return false;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncer::BroadcastInnerMessage(
+    std::shared_ptr<const InnerRaySyncMessage> message) {
   io_context_.dispatch(
       [this, message] {
         // The message is stale. Just skip this one.
         RAY_LOG(DEBUG) << "Receive message from: "
                        << NodeID::FromBinary(message->node_id()) << " to "
                        << NodeID::FromBinary(GetLocalNodeID());
-        if (!node_state_->ConsumeSyncMessage(message)) {
+        if (!node_state_->ConsumeInnerSyncMessage(message)) {
           return;
         }
         for (auto &reactor : sync_reactors_) {
           reactor.second->PushToSendingQueue(message);
         }
       },
-      "RaySyncer.BroadcastMessage");
+      "RaySyncer.BroadcastInnerMessage");
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
@@ -221,7 +225,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      /*message_processor=*/[this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*message_processor=*/
+      [this](auto msg) mutable { syncer_.BroadcastInnerMessage(msg); },
       /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *bidi_reactor, bool reconnect) mutable {
         // No need to reconnect for server side.
