@@ -65,7 +65,7 @@ START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "6
 def cleanup_auth_token_env():
     """Reset authentication environment variables, files, and caches."""
 
-    with authentication_env_guard() as snapshot:
+    with authentication_env_guard():
         clear_auth_token_sources(remove_default=True)
         reset_auth_token_state()
         yield

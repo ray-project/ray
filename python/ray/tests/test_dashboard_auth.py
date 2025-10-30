@@ -1,5 +1,8 @@
 """Tests for dashboard token authentication."""
 
+import sys
+
+import pytest
 import requests
 
 
@@ -61,6 +64,5 @@ def test_dashboard_auth_disabled(setup_cluster_without_token_auth):
 
 
 if __name__ == "__main__":
-    import sys
 
     sys.exit(pytest.main(["-vv", __file__]))
