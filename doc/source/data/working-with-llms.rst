@@ -7,10 +7,46 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with key large language mode
 
 This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
+* :ref:`Quickstart: vLLM batch inference <vllm_quickstart>`
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
 * :ref:`Batch inference with embedding models <embedding_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
+
+.. _vllm_quickstart:
+
+Quickstart: vLLM batch inference
+---------------------------------
+
+Get started with vLLM batch inference in just a few steps. This example shows the minimal setup needed to run batch inference on a dataset.
+
+.. note::
+    This quickstart requires a GPU as vLLM is GPU-accelerated.
+
+First, install Ray Data with LLM support:
+
+.. code-block:: bash
+
+    pip install -U "ray[data, llm]>=2.49.1"
+
+Here's a complete minimal example that runs batch inference:
+
+.. literalinclude:: doc_code/working-with-llms/minimal_quickstart.py
+    :language: python
+    :start-after: __minimal_vllm_quickstart_start__
+    :end-before: __minimal_vllm_quickstart_end__
+
+This example:
+
+1. Creates a simple dataset with prompts
+2. Configures a vLLM processor with minimal settings
+3. Builds a processor that handles preprocessing (converting prompts to OpenAI chat format) and postprocessing (extracting generated text)
+4. Runs inference on the dataset
+5. Iterates through results
+
+The processor expects input rows with a ``prompt`` field and outputs rows with both ``prompt`` and ``response`` fields. You can consume results using ``iter_rows()``, ``take()``, ``show()``, or save to files with ``write_parquet()``.
+
+For more configuration options and advanced features, see the sections below.
 
 .. _batch_inference_llm:
 
