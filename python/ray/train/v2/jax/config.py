@@ -26,8 +26,9 @@ class JaxConfig(BackendConfig):
     def backend_cls(self):
         return _JaxBackend
 
+
 def _setup_jax_distributed_environment(
-    master_addr_with_port: str, num_workers: int, index: int, use_tpu: bool
+    master_addr_with_port: str, num_workers: int, index: int, use_tpu: bool, use_gpu: bool, resources_per_worker: dict
 ):
     """Set up distributed Jax training information.
 
@@ -40,6 +41,9 @@ def _setup_jax_distributed_environment(
         index: Index of this worker.
         use_tpu: Whether to configure for TPU. If True and JAX_PLATFORMS is not
             already set, it will be set to "tpu".
+        use_gpu: Whether to configure for GPU. If True and JAX_PLATFORMS is not
+            already set, it will be set to "cuda".
+        resources_per_worker: The resources per worker.
     """
     # Get JAX_PLATFORMS from environment if already set
     jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
@@ -48,6 +52,10 @@ def _setup_jax_distributed_environment(
         os.environ["JAX_PLATFORMS"] = "tpu"
         jax_platforms = "tpu"
 
+    if use_gpu:
+        if not os.environ.get("JAX_PLATFORMS"):
+            os.environ["JAX_PLATFORMS"] = "cuda"
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(list(range(resources_per_worker.get("GPU", 0))))
     # TODO(lehui): Add env vars for JAX on GPU.
 
     import jax
@@ -55,6 +63,15 @@ def _setup_jax_distributed_environment(
 
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
+
+    if "cuda" in jax_platforms.split(","):
+        num_gpus_per_worker = resources_per_worker.get("GPU", 0)
+        if num_gpus_per_worker > 0:
+            local_device_ids = list(range(num_gpus_per_worker))
+        else:
+            local_device_ids = 0
+        jax.distributed.initialize(master_addr_with_port, num_workers, index, local_device_ids)
+        print(f">>> Initialized JAX distributed with {num_gpus_per_worker} GPUs per worker")
 
 
 def _shutdown_jax_distributed():
@@ -73,7 +90,7 @@ def _shutdown_jax_distributed():
 
 class _JaxBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: JaxConfig):
-        if not backend_config.use_tpu:
+        if not backend_config.use_tpu and not backend_config.use_gpu:
             return
 
         master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
@@ -91,6 +108,7 @@ class _JaxBackend(Backend):
                     index=i,
                     use_tpu=backend_config.use_tpu,
                     use_gpu=backend_config.use_gpu,
+                    resources_per_worker=worker_group.get_resources_per_worker(),
                 )
             )
         ray.get(setup_futures)
