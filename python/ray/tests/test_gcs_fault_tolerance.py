@@ -280,7 +280,7 @@ def test_raylet_resubscribe_to_worker_death(
         return os.getpid(), child_pid, child_obj_ref
 
     parent_pid, child_pid, child_obj_ref = ray.get(parent.remote())
-    print("Parent PID:", parent_pid, ", child PID:", child_pid)
+    print(f"Parent PID: {parent_pid}, child PID: {child_pid}")
     assert parent_pid != child_pid
 
     # Kill and restart the GCS.
