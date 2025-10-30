@@ -43,7 +43,8 @@ def _set_jax_env_vars(use_tpu: bool, use_gpu: bool, resources_per_worker: dict):
     if use_gpu:
         if not os.environ.get("JAX_PLATFORMS"):
             os.environ["JAX_PLATFORMS"] = "cuda"
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(list(range(resources_per_worker.get("GPU", 0))))
+            num_gpus = resources_per_worker.get("GPU", 0)
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(num_gpus))
 
 
 
