@@ -6,7 +6,7 @@ import ray
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
-from ray.python.ray.experimental.collective.hccl_tensor_transport import HcclTensorTransport
+from ray.experimental.collective.hccl_tensor_transport import HcclTensorTransport
 from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
 from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
 from ray.util.collective.types import Backend
@@ -50,7 +50,7 @@ def get_tensor_transport_manager(
     elif tensor_transport == Backend.HCCL:
         global _hccl_tensor_transport_manager
         if _hccl_tensor_transport_manager is None:
-            _hccl_tensor_transport_manager = HcclTensorTransport()
+            _hccl_tensor_transport_manager = HcclTensorTransport(tensor_transport)
         return _hccl_tensor_transport_manager
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
