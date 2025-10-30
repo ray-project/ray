@@ -682,8 +682,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    task_execution_service_,
                                    std::move(task_event_buffer),
                                    pid,
-                                   task_by_state_gauge_,
-                                   actor_by_state_gauge_);
+                                   *task_by_state_gauge_,
+                                   *actor_by_state_gauge_);
   return core_worker;
 }
 
