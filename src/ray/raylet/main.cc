@@ -422,9 +422,9 @@ int main(int argc, char *argv[]) {
                                          &object_manager_rpc_threads]() {
           // We should stop the service and remove the local socket
           // file.
+          ray::stats::Shutdown();
           node_manager->Stop();
           gcs_client->Disconnect();
-          ray::stats::Shutdown();
           main_service.stop();
           for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
             if (object_manager_rpc_threads[i].joinable()) {
