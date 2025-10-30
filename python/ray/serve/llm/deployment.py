@@ -1,11 +1,11 @@
 from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
-from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
-    PDProxyServer as _PDProxyServer,
-)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer as _DPServer,
+)
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    PDProxyServer as _PDProxyServer,
 )
 from ray.util.annotations import PublicAPI
 

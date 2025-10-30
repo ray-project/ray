@@ -1,28 +1,25 @@
-from typing import Optional, Union, Any
+import pprint
+from typing import Any, Optional, Union
 
-from pydantic import Field
 from pydantic import Field, field_validator
 
+from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.ingress.builder import IngressClsConfig
+from ray.llm._internal.serve.core.ingress.ingress import (
+    make_fastapi_ingress,
+)
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_rank_assigner import (
     _DPRankAssigner,
 )
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
 )
-from ray.llm._internal.serve.core.ingress.ingress import (
-    make_fastapi_ingress,
-)
-from ray.llm._internal.serve.core.ingress.builder import IngressClsConfig
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
-
-from ray import serve
 from ray.serve.deployment import Application
-
-import pprint
 
 logger = get_logger(__name__)
 
@@ -49,7 +46,7 @@ def build_dp_deployment(
     # TODO(rui): figure out a better way to pass in dp_size_per_node.
     # NOTE: we cannot use engine_kwargs.data_parallel_size_local to specify
     # the number of ranks per node because that has special semantics in vLLM.
-    # When we make serve's rank asignment node affinity aware, then we won't 
+    # When we make serve's rank asignment node affinity aware, then we won't
     # need this hack to make the ranks orginally distributed across nodes.
     dp_size_per_node = llm_config.experimental_configs.get("dp_size_per_node")
     if dp_size_per_node is None:
@@ -83,7 +80,7 @@ class DPOpenAiServingArgs(BaseModelExtended):
         default_factory=dict,
         description="The Ray @server.deployment options for the ingress server.",
     )
-    
+
     @field_validator("llm_config")
     @classmethod
     def _validate_llm_config(cls, value: Any) -> LLMConfig:
@@ -95,7 +92,7 @@ class DPOpenAiServingArgs(BaseModelExtended):
             return value
         else:
             raise TypeError(f"Invalid LLMConfig type: {type(value)}")
-    
+
     @field_validator("ingress_cls_config")
     @classmethod
     def _validate_ingress_cls_config(cls, value: Any) -> IngressClsConfig:
@@ -115,10 +112,10 @@ def build_dp_openai_app(builder_config: dict) -> Application:
     Returns:
         The configured Ray Serve Application.
     """
-    
+
     builder_config = DPOpenAiServingArgs.model_validate(builder_config)
     llm_config = builder_config.llm_config
-    
+
     dp_deployment = build_dp_deployment(llm_config)
 
     ingress_cls_config = builder_config.ingress_cls_config
@@ -129,13 +126,13 @@ def build_dp_openai_app(builder_config: dict) -> Application:
         ingress_options = deep_merge_dicts(
             ingress_options, builder_config.ingress_deployment_config
         )
-        
+
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[dp_deployment], 
+        llm_deployments=[dp_deployment],
         **ingress_cls_config.ingress_extra_kwargs,
     )
