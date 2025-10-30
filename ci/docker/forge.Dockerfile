@@ -60,16 +60,16 @@ wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/
 
 mkdir -p /usr/local/python
 # Install Python 3.9 using uv
-uv python install --install-dir /usr/local/python 3.9
-uv python pin 3.9
+uv python install --install-dir /usr/local/python 3.10
+uv python pin 3.10
 
 export UV_PYTHON_INSTALL_DIR=/usr/local/python
-# Make Python 3.9 from uv the default by creating symlinks
-PYTHON39_PATH=$(uv python find 3.9)
-echo $PYTHON39_PATH
-ln -s $PYTHON39_PATH /usr/local/bin/python3.9
-ln -s $PYTHON39_PATH /usr/local/bin/python3
-ln -s $PYTHON39_PATH /usr/local/bin/python
+# Make Python 3.10 from uv the default by creating symlinks
+PYTHON310_PATH=$(uv python find 3.10)
+echo $PYTHON310_PATH
+ln -s $PYTHON310_PATH /usr/local/bin/python3.10
+ln -s $PYTHON310_PATH /usr/local/bin/python3
+ln -s $PYTHON310_PATH /usr/local/bin/python
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
