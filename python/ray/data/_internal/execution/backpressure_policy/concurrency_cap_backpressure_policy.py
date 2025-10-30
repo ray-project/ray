@@ -22,17 +22,19 @@ logger = logging.getLogger(__name__)
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
     This policy dynamically limits the number of concurrent tasks per operator
-    based on queue pressure.
+    based on the output queue growth rate.
 
-      - Maintain asymmetric EWMA of total queued bytes (this op + downstream) as the
+      - Maintain asymmetric EWMA of total enqueued output bytes as the
         typical level: `level`.
       - Maintain asymmetric EWMA of absolute residual vs the *previous* level as a
         scale proxy: `dev = EWMA(|q - level_prev|)`.
-      - Define deadband: [lower, upper] = [level - K_DEV*dev, level + K_DEV*dev].
+      - Define deadband: Deadband is the acceptable range of the output queue size
+        around the typical level where the queue size is expected to stay stable.
+        deadback [lower, upper] = [level - K_DEV*dev, level + K_DEV*dev].
       - If q > upper -> target cap = running - BACKOFF_FACTOR  (back off)
         If q < lower -> target cap = running + RAMPUP_FACTOR  (ramp up)
         Else         -> target cap = running      (hold)
-      - Clamp to [1, configured_cap], admit iff running < target cap.
+      - Apply user-configured max concurrency cap, admit iff running < target cap.
 
     NOTE: Only support setting concurrency cap for `TaskPoolMapOperator` for now.
     TODO(chengsu): Consolidate with actor scaling logic of `ActorPoolMapOperator`.
@@ -52,7 +54,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Configured per-operator caps (∞ if unset).
+        # Configured per-operator caps (+inf if unset).
         self._concurrency_caps: Dict["PhysicalOperator", float] = {}
 
         # EWMA state for level
@@ -62,7 +64,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self._q_level_dev: Dict["PhysicalOperator", float] = defaultdict(float)
 
         # Per-operator cached threshold (bootstrapped from first sample).
-        self._queue_thresholds: Dict["PhysicalOperator", int] = defaultdict(int)
+        self._queue_level_thresholds: Dict["PhysicalOperator", int] = defaultdict(int)
 
         # Last effective cap for change logs.
         self._last_effective_caps: Dict["PhysicalOperator", int] = {}
@@ -82,9 +84,16 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             self._data_context.enable_dynamic_output_queue_size_backpressure
         )
 
+        dynamic_output_queue_size_backpressure_configs = ""
+        if self.enable_dynamic_output_queue_size_backpressure:
+            dynamic_output_queue_size_backpressure_configs = (
+                f", EWMA_ALPHA={self.EWMA_ALPHA}, K_DEV={self.K_DEV}, "
+                f"BACKOFF_FACTOR={self.BACKOFF_FACTOR}, RAMPUP_FACTOR={self.RAMPUP_FACTOR}, "
+                f"OBJECT_STORE_USAGE_RATIO={self.OBJECT_STORE_USAGE_RATIO}"
+            )
         logger.debug(
             f"ConcurrencyCapBackpressurePolicy caps: {self._concurrency_caps}, "
-            f"enabled: {self.enable_dynamic_output_queue_size_backpressure}",
+            f"enabled: {self.enable_dynamic_output_queue_size_backpressure}{dynamic_output_queue_size_backpressure_configs}"
         )
 
     def _update_ewma_asymmetric(self, prev_value: float, sample: float) -> float:
@@ -122,18 +131,18 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self._q_level_dev[op] = dev
 
         # For visibility, store the integer center of the band
-        self._queue_thresholds[op] = max(1, int(level))
+        self._queue_level_thresholds[op] = max(1, int(level))
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Return whether `op` may accept another input now."""
-        running = op.metrics.num_tasks_running
+        num_tasks_running = op.metrics.num_tasks_running
 
         # If not a MapOperator or feature disabled, just enforce configured cap.
         if (
             not isinstance(op, MapOperator)
             or not self.enable_dynamic_output_queue_size_backpressure
         ):
-            return running < self._concurrency_caps[op]
+            return num_tasks_running < self._concurrency_caps[op]
 
         # If object store memory usage ratio is above threshold, skip dynamic output queue size backpressure.
         op_usage = self._resource_manager.get_op_usage(op)
@@ -148,7 +157,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
                 op_budget.object_store_memory / op_usage.object_store_memory
                 > self.OBJECT_STORE_USAGE_RATIO
             ):
-                return running < self._concurrency_caps[op]
+                return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = (
@@ -160,33 +169,29 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         # Update EWMA state (level & dev) and compute effective cap
         self._update_level_and_dev(op, current_queue_size_bytes)
-        effective_cap = self._effective_cap(op, running, current_queue_size_bytes)
+        effective_cap = self._effective_cap(op, num_tasks_running, current_queue_size_bytes)
 
         last = self._last_effective_caps.get(op, None)
         if last != effective_cap:
             logger.debug(
-                "Cap change %s: %s -> %s (running=%d, queue=%d, thr=%d)",
-                op.name,
-                last if last is not None else "None",
-                effective_cap,
-                running,
-                current_queue_size_bytes,
-                self._queue_thresholds[op],
+                f"Cap change {op.name}: {last if last is not None else 'None'} -> "
+                f"{effective_cap} (running={num_tasks_running}, queue={current_queue_size_bytes}, "
+                f"thr={self._queue_level_thresholds[op]})"
             )
             self._last_effective_caps[op] = effective_cap
 
-        return running < effective_cap
+        return num_tasks_running < effective_cap
 
     def _effective_cap(
         self,
         op: "PhysicalOperator",
-        running: int,
+        num_tasks_running: int,
         current_queue_size_bytes: int,
     ) -> int:
         """A simple controller around EWMA level.
         Args:
             op: The operator to compute the effective cap for.
-            running: The number of tasks currently running.
+            num_tasks_running: The number of tasks currently running.
             current_queue_size_bytes: Current total queued bytes for this operator + downstream.
         Returns:
             The effective cap.
@@ -200,13 +205,13 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         if current_queue_size_bytes > upper:
             # back off
-            target = running - self.BACKOFF_FACTOR
+            target = num_tasks_running - self.BACKOFF_FACTOR
         elif current_queue_size_bytes < lower:
             # ramp up
-            target = running + self.RAMPUP_FACTOR
+            target = num_tasks_running + self.RAMPUP_FACTOR
         else:
             # hold
-            target = running
+            target = num_tasks_running
 
         # Clamp to [1, configured_cap]
         target = max(1, target)
