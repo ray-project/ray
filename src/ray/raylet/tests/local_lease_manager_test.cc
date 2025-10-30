@@ -507,6 +507,8 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   auto lease1 = CreateLease({{kCPU_ResourceLabel, 3}}, "f", args);
   auto lease2 = CreateLease({{kCPU_ResourceLabel, 3}}, "f2", args);
 
+  // The node is idle initially.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
   EXPECT_CALL(object_manager_, Pull(_, _, _))
       .WillOnce(::testing::Return(1))
       .WillOnce(::testing::Return(2));
@@ -524,6 +526,8 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   rpc::RequestWorkerLeaseReply reply2;
   local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
       lease2, false, false, &reply2, callback, internal::WorkStatus::WAITING));
+  // The node is no longer idle as it is pulling objects.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
 
   // Node no longer has cpu.
   scheduler_->GetLocalResourceManager().DeleteLocalResource(
@@ -540,6 +544,8 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   ASSERT_EQ(num_callbacks_called, 2);
   ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 0);
+  // The node is idle again as the leases are cancelled.
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
 }
 
 int main(int argc, char **argv) {
