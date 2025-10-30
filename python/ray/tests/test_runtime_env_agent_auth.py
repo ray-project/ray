@@ -1,8 +1,9 @@
 import logging
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-import sys
+
 import pytest
 
 import ray
@@ -126,6 +127,7 @@ def test_apply_token_if_enabled_respects_existing_header(cleanup_auth_token_env)
 
 def test_format_authentication_http_error_non_auth_status():
     assert format_authentication_http_error(404, "not found") is None
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
