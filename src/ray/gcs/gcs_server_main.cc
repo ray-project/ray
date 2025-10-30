@@ -25,6 +25,7 @@
 #include "ray/gcs/metrics.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/observability/metrics.h"
+#include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/raii.h"

@@ -20,7 +20,6 @@
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric.h"
-#include "ray/stats/metric_defs.h"
 
 namespace {
 
@@ -35,7 +34,7 @@ void LagProbeLoop(instrumented_io_context &io_context,
         auto end = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
-        ray::stats::STATS_io_context_event_loop_lag_ms.Record(
+        io_context.io_context_event_loop_lag_ms_gauge_metric.Record(
             duration.count(),
             {
                 {"Name", context_name.value_or(GetThreadName())},

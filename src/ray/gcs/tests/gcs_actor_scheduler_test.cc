@@ -112,6 +112,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
+        fake_resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());

@@ -815,6 +815,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().GetNodeAddressAndLiveness(
                      ray::NodeID::FromBinary(id.Binary())) != nullptr;
         },
+        resource_usage_gauge,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -899,7 +900,8 @@ int main(int argc, char *argv[]) {
             std::vector<std::unique_ptr<ray::RayObject>> *results) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
-        max_task_args_memory);
+        max_task_args_memory,
+        scheduler_metrics);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,

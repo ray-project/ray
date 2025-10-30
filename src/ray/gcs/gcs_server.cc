@@ -21,6 +21,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -448,6 +449,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*is_local_node_with_raylet=*/false);
 }
 

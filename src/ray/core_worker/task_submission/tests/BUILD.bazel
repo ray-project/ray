@@ -73,6 +73,7 @@ ray_cc_test(
         "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
         "@com_google_googletest//:gtest",

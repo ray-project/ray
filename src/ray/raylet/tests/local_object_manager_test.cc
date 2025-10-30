@@ -409,6 +409,13 @@ class LocalObjectManagerTestWithMinSpillingSize {
   LocalObjectManager manager;
   ray::observability::FakeGauge fake_object_store_memory_gauge_;
 
+  // Fake gauges for testing
+  ray::observability::FakeGauge fake_object_store_memory_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_objects_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_objects_bytes_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_request_total_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_throughput_mb_gauge_;
+
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
