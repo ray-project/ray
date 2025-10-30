@@ -49,7 +49,7 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
  public:
   /// Constructor with CoreWorker reference for accessing internals
   /// \param core_worker Reference to the CoreWorker instance
-  explicit CoreWorkerShutdownExecutor(std::shared_ptr<CoreWorker> core_worker);
+  explicit CoreWorkerShutdownExecutor(CoreWorker *core_worker);
 
   ~CoreWorkerShutdownExecutor() override = default;
 
@@ -86,7 +86,7 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
 
  private:
   /// Reference to CoreWorker for accessing shutdown operations
-  std::shared_ptr<CoreWorker> core_worker_;
+  CoreWorker *core_worker_;
 
   void DisconnectServices(
       std::string_view exit_type,
