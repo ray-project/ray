@@ -1,6 +1,6 @@
 import unittest
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.test_utils import check_same_batch
 
 
@@ -235,7 +235,8 @@ class TestMultiAgentBatch(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
