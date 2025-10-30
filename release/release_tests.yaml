@@ -91,6 +91,7 @@
 
   run:
     timeout: 1800
+    num_retries: 3
     script: python hello_world.py
 
   variations:
@@ -422,6 +423,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -452,6 +454,7 @@
 
 
 - name: tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -484,6 +487,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -528,6 +532,7 @@
 ########################
 
 - name: tune_scalability_bookkeeping_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -558,6 +563,7 @@
         cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -591,6 +597,7 @@
 
 
 - name: tune_scalability_durable_multifile_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -623,6 +630,7 @@
   alert: tune_tests
 
 - name: tune_scalability_long_running_large_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -657,6 +665,7 @@
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -695,6 +704,7 @@
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -723,6 +733,7 @@
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -1476,7 +1487,8 @@
 # Serve tests
 ########################
 
-- name: serve_scale_replicas
+- name: pytest_serve_scale_replicas
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1499,7 +1511,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_multi_deployment_1k_noop_replica
+- name: pytest_serve_multi_deployment_1k_noop_replica
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1529,7 +1542,8 @@
       cluster:
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
-- name: serve_autoscaling_load_test
+- name: pytest_serve_autoscaling_load_test
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1553,7 +1567,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_microbenchmarks
+- name: pytest_serve_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1581,7 +1596,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_throughput_optimized_microbenchmarks
+- name: pytest_serve_throughput_optimized_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1612,7 +1628,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_resnet_benchmark
+- name: pytest_serve_resnet_benchmark
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -3475,6 +3492,27 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
+
+- name: azure_cluster_launcher
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+  frequency: nightly
+  team: clusters
+  cluster:
+    byod:
+      post_build_script: byod_azure_cluster_launcher.sh
+    cluster_compute: azure/tests/azure_compute.yaml
+  run:
+    timeout: 2400
+    script: bash release/azure_docker_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+
+  variations:
+    - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test

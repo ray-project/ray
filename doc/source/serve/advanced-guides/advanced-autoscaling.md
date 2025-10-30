@@ -710,3 +710,16 @@ Programmatic configuration of application-level autoscaling policies through `se
 :::{note}
 When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
 :::
+
+:::{warning}
+### Gotchas and limitations
+
+When you provide a custom policy, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. Once the policy becomes more complex, such as depending on other custom modules or packages, you need to bundle those modules into the Docker image or environment. This is because Ray Serve uses `cloudpickle` to serialize custom policies and it doesn't vendor transitive dependencies—if your policy inherits from a superclass in another module or imports custom packages, those must exist in the target environment. Additionally, environment parity matters: differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
+
+#### Alternatives for complex policies
+
+When your custom autoscaling policy has complex dependencies or you want better control over versioning and deployment, you have several alternatives:
+
+- **Contribute to Ray Serve**: If your policy is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in policy by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/autoscaling_policy.py`.
+- **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
+:::

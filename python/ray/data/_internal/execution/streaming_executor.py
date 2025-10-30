@@ -21,10 +21,12 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -413,14 +415,13 @@ class StreamingExecutor(Executor, threading.Thread):
         self, op: PhysicalOperator, tags: Dict[str, str]
     ):
         if self._resource_manager.op_resource_allocator_enabled():
-            ora = self._resource_manager.op_resource_allocator
-            assert isinstance(ora, ReservationOpResourceAllocator)
-            if op in ora._output_budgets:
-                max_bytes_to_read = ora._output_budgets[op]
-                if math.isinf(max_bytes_to_read):
+            resource_allocator = self._resource_manager.op_resource_allocator
+            output_budget_bytes = resource_allocator.get_output_budget(op)
+            if output_budget_bytes is not None:
+                if math.isinf(output_budget_bytes):
                     # Convert inf to -1 to represent unlimited bytes to read
-                    max_bytes_to_read = -1
-                self._max_bytes_to_read_gauge.set(max_bytes_to_read, tags)
+                    output_budget_bytes = -1
+                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -517,7 +518,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
-        for op in topology:
+        for op, state in topology.items():
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
@@ -525,6 +526,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
+                self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -552,6 +554,36 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _validate_operator_queues_empty(
+        self, op: PhysicalOperator, state: OpState
+    ) -> None:
+        """Validate that all queues are empty when an operator completes.
+
+        Args:
+            op: The completed operator to validate.
+            state: The operator's execution state.
+        """
+        error_msg = "Expected {} Queue for {} to be empty, but found {} bundles"
+
+        if isinstance(op, InternalQueueOperatorMixin):
+            # 1) Check Internal Input Queue is empty
+            assert op.internal_input_queue_num_blocks() == 0, error_msg.format(
+                "Internal Input", op.name, op.internal_input_queue_num_blocks()
+            )
+
+            # 2) Check Internal Output Queue is empty
+            assert op.internal_output_queue_num_blocks() == 0, error_msg.format(
+                "Internal Output",
+                op.name,
+                op.internal_output_queue_num_blocks(),
+            )
+
+        # 3) Check that External Input Queue is empty
+        for input_q in state.input_queues:
+            assert len(input_q) == 0, error_msg.format(
+                "External Input", op.name, len(input_q)
+            )
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
@@ -618,7 +650,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "queued_blocks": op_state.total_enqueued_input_bundles(),
+                    "queued_blocks": op_state.total_enqueued_input_blocks(),
                     "state": DatasetState.FINISHED.name
                     if op.execution_finished()
                     else state,
@@ -702,7 +734,7 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     for i, (op, state) in enumerate(topology.items()):
         state.update_display_metrics(resource_manager)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager)}, "
+            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}, "
             f"Metrics: {state.op_display_metrics.display_str()}"
         )

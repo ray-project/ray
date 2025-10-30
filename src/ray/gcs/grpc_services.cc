@@ -22,7 +22,8 @@ namespace rpc {
 void ActorInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   /// The register & create actor RPCs take a long time, so we shouldn't limit their
   /// concurrency to avoid distributed deadlock.
   RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
@@ -42,13 +43,14 @@ void ActorInfoGrpcService::InitServerCallFactories(
 void NodeInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   // We only allow one cluster ID in the lifetime of a client.
   // So, if a client connects, it should not have a pre-existing different ID.
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeInfoGcsService,
                                   GetClusterId,
                                   max_active_rpcs_per_handler_,
-                                  AuthType::EMPTY_AUTH);
+                                  ClusterIdAuthType::EMPTY_AUTH);
   RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
@@ -61,7 +63,8 @@ void NodeInfoGrpcService::InitServerCallFactories(
 void NodeResourceInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(
       NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -75,7 +78,8 @@ void NodeResourceInfoGrpcService::InitServerCallFactories(
 void InternalPubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
       InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
@@ -86,7 +90,8 @@ void InternalPubSubGrpcService::InitServerCallFactories(
 void JobInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
@@ -97,7 +102,8 @@ void JobInfoGrpcService::InitServerCallFactories(
 void RuntimeEnvGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(
       RuntimeEnvGcsService, PinRuntimeEnvURI, max_active_rpcs_per_handler_)
 }
@@ -105,7 +111,8 @@ void RuntimeEnvGrpcService::InitServerCallFactories(
 void WorkerInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(
       WorkerInfoGcsService, ReportWorkerFailure, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, GetWorkerInfo, max_active_rpcs_per_handler_)
@@ -121,7 +128,8 @@ void WorkerInfoGrpcService::InitServerCallFactories(
 void InternalKVGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVGet, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       InternalKVGcsService, InternalKVMultiGet, max_active_rpcs_per_handler_)
@@ -137,7 +145,8 @@ void InternalKVGrpcService::InitServerCallFactories(
 void TaskInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(TaskInfoGcsService, AddTaskEventData, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
 }
@@ -145,7 +154,8 @@ void TaskInfoGrpcService::InitServerCallFactories(
 void PlacementGroupInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(
       PlacementGroupInfoGcsService, CreatePlacementGroup, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -166,7 +176,8 @@ namespace autoscaler {
 void AutoscalerStateGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, GetClusterResourceState, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -188,7 +199,8 @@ namespace events {
 void RayEventExportGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
+    const ClusterID &cluster_id,
+    const std::optional<AuthenticationToken> &auth_token) {
   RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
 }
 
