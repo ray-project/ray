@@ -10,7 +10,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.tune.registry import register_env
 
-
 register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 
 # Number of policies overall in the PolicyMap.
