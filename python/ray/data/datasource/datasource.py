@@ -21,8 +21,8 @@ class _DatasourceProjectionPushdownMixin:
         """Retrurns current projection"""
         return None
 
-    def get_current_column_rename_map(self) -> Optional[Dict[str, str]]:
-        """Return the current column rename map applied to this datasource.
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied to this datasource.
 
         Returns:
             A dictionary mapping old column names to new column names,

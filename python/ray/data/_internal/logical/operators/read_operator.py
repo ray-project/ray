@@ -165,6 +165,9 @@ class Read(
     def get_current_projection(self) -> Optional[List[str]]:
         return self._datasource.get_current_projection()
 
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self._datasource.get_column_renames()
+
     def apply_projection(
         self,
         columns: Optional[List[str]],

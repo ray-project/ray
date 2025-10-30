@@ -121,3 +121,12 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
         predicate_expr: Expr,
     ) -> LogicalOperator:
         return self
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied by projection pushdown, if any.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return None

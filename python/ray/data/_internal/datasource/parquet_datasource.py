@@ -442,7 +442,7 @@ class ParquetDatasource(Datasource):
 
         return (self._data_columns or []) + (self._partition_columns or [])
 
-    def get_current_column_rename_map(self) -> Optional[Dict[str, str]]:
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
         return self._data_columns_rename_map if self._data_columns_rename_map else None
 
     def apply_projection(

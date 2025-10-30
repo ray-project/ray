@@ -87,6 +87,7 @@ class PredicatePushdown(Rule):
         input_op = op.input_dependencies[0]
 
         # Special case: Push filter through Union into each branch
+        # TODO: Push filter through other operators like Projection, Zip, Join, Sort, Aggregate (after expression support lands)
         if isinstance(input_op, Union):
             return cls._push_filter_through_union(op, input_op)
 
@@ -99,15 +100,13 @@ class PredicatePushdown(Rule):
 
             # Check if the operator has column renames that need rebinding
             # This happens when projection pushdown has been applied
-            if hasattr(input_op, "_datasource"):
-                datasource = input_op._datasource
-                if hasattr(datasource, "get_current_column_rename_map"):
-                    rename_map = datasource.get_current_column_rename_map()
-                    if rename_map:
-                        # Rebind the predicate to use original column names
-                        predicate_expr = cls._rebind_predicate_columns(
-                            predicate_expr, rename_map
-                        )
+            rename_map = input_op.get_column_renames()
+            if rename_map:
+                # Rebind the predicate to use original column names
+                # This is needed to ensure that the predicate expression can be pushed into the input operator.
+                predicate_expr = cls._rebind_predicate_columns(
+                    predicate_expr, rename_map
+                )
 
             # Push the predicate down and return the result without the filter
             return input_op.apply_predicate(predicate_expr)
@@ -120,13 +119,13 @@ class PredicatePushdown(Rule):
 
         Transforms:
             branch₁ ─┐
-            branch₂ ─┤ Union ─► Filter(predicate)
+            branch₂ ─┤ Union ─> Filter(predicate)
             branch₃ ─┘
 
         Into:
-            branch₁ ─► Filter(predicate) ─┐
-            branch₂ ─► Filter(predicate) ─┤ Union
-            branch₃ ─► Filter(predicate) ─┘
+            branch₁ ─> Filter(predicate) ─┐
+            branch₂ ─> Filter(predicate) ─┤ Union
+            branch₃ ─> Filter(predicate) ─┘
         """
         predicate_expr = filter_op._predicate_expr
 
