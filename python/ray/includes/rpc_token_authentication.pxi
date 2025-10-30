@@ -11,6 +11,7 @@ class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
 
+_AUTHORIZATION_HEADER_NAME = "Authorization"
 
 def get_authentication_mode():
     """Get the current authentication mode.
@@ -87,7 +88,7 @@ class AuthenticationTokenLoader:
             bool: True if token was added, False otherwise
         """
         # Don't override if user explicitly set Authorization header
-        if "Authorization" in headers:
+        if _AUTHORIZATION_HEADER_NAME in headers:
             return False
 
         # Check if token exists (doesn't crash, returns bool)
@@ -100,5 +101,5 @@ class AuthenticationTokenLoader:
         if not token_opt.has_value() or token_opt.value().empty():
             return False
 
-        headers["Authorization"] = token_opt.value().ToAuthorizationHeaderValue()
+        headers[_AUTHORIZATION_HEADER_NAME] = token_opt.value().ToAuthorizationHeaderValue()
         return True
