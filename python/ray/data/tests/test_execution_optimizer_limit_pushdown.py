@@ -56,11 +56,11 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test 3: Limit should not push through MapBatches operations
+    # Test 3: Limit should push through MapBatches operations
     ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
+        "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
         [{"id": 0}],
     )
 
@@ -408,10 +408,10 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
 
     expected_plan = (
         "Read[ReadRange] -> "
-        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Limit[limit=3] -> MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
         "Project[Project], "
         "Read[ReadRange] -> "
-        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Limit[limit=3] -> MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
         "Project[Project] -> Union[Union] -> Limit[limit=3]"
     )
 

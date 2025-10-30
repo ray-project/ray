@@ -1,11 +1,12 @@
 import logging
 from typing import List, Optional, Union
+
 import tree
 
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
     DEFAULT_POLICY_ID,
+    SampleBatch,
     concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI, OldAPIStack

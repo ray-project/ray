@@ -1,5 +1,5 @@
-from typing import Optional
 import random
+from typing import Optional
 
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity

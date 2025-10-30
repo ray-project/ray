@@ -35,6 +35,7 @@ GcsActorScheduler::GcsActorScheduler(
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
+    ray::observability::MetricInterface &scheduler_placement_time_s_histogram,
     std::function<void(const NodeID &, const rpc::ResourcesData &)>
         normal_task_resources_changed_callback)
     : io_context_(io_context),
@@ -45,6 +46,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
+      scheduler_placement_time_s_histogram_(scheduler_placement_time_s_histogram),
       normal_task_resources_changed_callback_(
           std::move(normal_task_resources_changed_callback)) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -393,7 +395,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
     actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
-    actor->GetCreationTaskSpecification().EmitTaskMetrics();
+    actor->GetCreationTaskSpecification().EmitTaskMetrics(
+        scheduler_placement_time_s_histogram_);
     // Make sure to connect to the client before persisting actor info to GCS.
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320

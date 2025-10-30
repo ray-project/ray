@@ -219,6 +219,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_actor_scheduler",
         "//src/ray/gcs:gcs_resource_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",

@@ -18,7 +18,7 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, is_ipv6, is_localhost
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -136,7 +136,7 @@ class ProxyManager:
         self._node: Optional[ray._private.node.Node] = None
         atexit.register(self._cleanup)
 
-    def _get_unused_port(self) -> int:
+    def _get_unused_port(self, family: int = socket.AF_INET) -> int:
         """
         Search for a port in _free_ports that is unused.
         """
@@ -144,7 +144,7 @@ class ProxyManager:
             num_ports = len(self._free_ports)
             for _ in range(num_ports):
                 port = self._free_ports.pop(0)
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s = socket.socket(family, socket.SOCK_STREAM)
                 try:
                     s.bind(("", port))
                 except OSError:
@@ -197,12 +197,17 @@ class ProxyManager:
             assert (
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
-            port = self._get_unused_port()
+
+            host = "127.0.0.1"
+            port = self._get_unused_port(
+                socket.AF_INET6 if is_ipv6(host) else socket.AF_INET
+            )
+
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=ray._private.utils.init_grpc_channel(
-                    build_address("127.0.0.1", port), options=GRPC_OPTIONS
+                    build_address(host, port), options=GRPC_OPTIONS
                 ),
             )
             self.servers[client_id] = server
