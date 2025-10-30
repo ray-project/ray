@@ -44,7 +44,7 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
@@ -70,6 +70,8 @@ class StreamingExecutor(Executor, threading.Thread):
     by setting up the operator topology, and then routing blocks through operators in
     a way that maximizes throughput under resource constraints.
     """
+
+    UPDATE_METRICS_INTERVAL_S: float = 5.0
 
     def __init__(
         self,
@@ -114,6 +116,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._data_context.set_dataset_logger_id(
             register_dataset_logger(self._dataset_id)
         )
+
+        self._metrics_last_updated: float = 0.0
 
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
@@ -223,7 +227,7 @@ class StreamingExecutor(Executor, threading.Thread):
         op_to_id = {
             op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
         }
-        StatsManager.register_dataset_to_stats_actor(
+        _StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
@@ -271,9 +275,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 else DatasetState.FAILED.name,
                 force_update=True,
             )
-            # Once Dataset execution completes, mark it as complete
-            # and remove last cached execution stats.
-            StatsManager.clear_last_execution_stats(self._dataset_id)
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -660,13 +661,19 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
-        StatsManager.update_execution_metrics(
-            self._dataset_id,
-            [op.metrics for op in self._topology],
-            self._get_operator_tags(),
-            self._get_state_dict(state=state),
-            force_update=force_update,
-        )
+        now = time.time()
+        if (
+            force_update
+            or (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S
+        ):
+            _StatsManager.update_execution_metrics(
+                self._dataset_id,
+                [op.metrics for op in self._topology],
+                self._get_operator_tags(),
+                self._get_state_dict(state=state),
+                force_update=force_update,
+            )
+            self._metrics_last_updated = now
 
     def _use_rich_progress(self):
         return self._data_context.enable_rich_progress_bars

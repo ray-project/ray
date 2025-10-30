@@ -81,7 +81,6 @@ class StreamSplitDataIterator(DataIterator):
             future: ObjectRef[
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
-
             while True:
                 block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:

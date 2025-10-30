@@ -1,7 +1,6 @@
 import collections
 import copy
 import logging
-import threading
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -458,7 +457,8 @@ class _StatsActor:
             )
         return metrics
 
-    def get_dataset_id(self):
+    def gen_dataset_id(self) -> str:
+        """Generate a unique dataset_id for tracking datasets."""
         dataset_id = str(self.next_dataset_id)
         self.next_dataset_id += 1
         return dataset_id
@@ -770,29 +770,30 @@ class _StatsActor:
         return tags
 
 
-# Creating/getting an actor from multiple threads is not safe.
-# https://github.com/ray-project/ray/issues/41324
-_stats_actor_lock: threading.RLock = threading.RLock()
+def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
 
-
-def _get_or_create_stats_actor() -> ActorHandle:
-    ctx = DataContext.get_current()
-    scheduling_strategy = ctx.scheduling_strategy
-    if not ray.util.client.ray.is_connected():
-        # Pin the stats actor to the local node
-        # so it fate-shares with the driver.
-        scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
+    if ray._private.worker._global_node is None:
+        raise RuntimeError(
+            "Global node is not initialized. Driver might be not connected to Ray."
         )
-    with _stats_actor_lock:
-        return _StatsActor.options(
-            name=STATS_ACTOR_NAME,
-            namespace=STATS_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            scheduling_strategy=scheduling_strategy,
-        ).remote()
+
+    current_cluster_id = ray._private.worker._global_node.cluster_id
+
+    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+
+    # so it fate-shares with the driver.
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        ray.get_runtime_context().get_node_id(),
+        soft=False,
+    )
+
+    return _StatsActor.options(
+        name=STATS_ACTOR_NAME,
+        namespace=STATS_ACTOR_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=scheduling_strategy,
+    ).remote()
 
 
 class _StatsManager:
@@ -807,55 +808,9 @@ class _StatsManager:
         - Dataset registration (for grafana dashboard)
     """
 
-    # Interval for making execution remote calls to the _StatsActor.
-    UPDATE_EXECUTION_METRICS_INTERVAL_S = 5
-
-    # Interval for making iteration remote calls to the _StatsActor.
-    UPDATE_ITERATION_METRICS_INTERVAL_S = 5
-
-    def __init__(self):
-        # Lazily get stats actor handle to avoid circular import.
-        self._stats_actor_handle: Optional[ActorHandle] = None
-        self._stats_actor_cluster_id = None
-
-        # Mapping from dataset_tag -> last updated (seconds from unix epoch).
-        self._execution_last_updated: Dict[str, float] = {}
-        self._iteration_last_updated: Dict[str, float] = {}
-
-        # NOTE: Updating `_execution_last_updated`` and `_iteration_last_updated``
-        # must be thread-safe. They must be thread-safe because multiple datasets
-        # can be running concurrently.
-        self._update_last_updated_lock: threading.Lock = threading.Lock()
-
-    def _get_or_create_stats_actor(self, skip_cache: bool = False) -> ActorHandle:
-        if ray._private.worker._global_node is None:
-            raise RuntimeError(
-                "Global node is not initialized. Driver might be not connected to Ray."
-            )
-
-        current_cluster_id = ray._private.worker._global_node.cluster_id
-
-        if (
-            self._stats_actor_handle is None
-            or self._stats_actor_cluster_id != current_cluster_id
-            or skip_cache
-        ):
-            try:
-                self._stats_actor_handle = ray.get_actor(
-                    name=STATS_ACTOR_NAME, namespace=STATS_ACTOR_NAMESPACE
-                )
-                self._stats_actor_cluster_id = current_cluster_id
-            except ValueError:
-                # Create an actor if it doesn't exist
-                self._stats_actor_handle = _get_or_create_stats_actor()
-                self._stats_actor_cluster_id = (
-                    ray._private.worker._global_node.cluster_id
-                )
-
-        return self._stats_actor_handle
-
+    @staticmethod
     def _aggregate_per_node_metrics(
-        self, op_metrics: List[OpRuntimeMetrics]
+        op_metrics: List[OpRuntimeMetrics],
     ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
         """
         Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
@@ -876,99 +831,53 @@ class _StatsManager:
 
         return aggregated_by_node
 
+    @staticmethod
     def update_execution_metrics(
-        self,
         dataset_tag: str,
         op_metrics: List[OpRuntimeMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
         force_update: bool = False,
     ):
-        now = time.time()
-        if (
-            force_update
-            or (now - self._execution_last_updated[dataset_tag])
-            > self.UPDATE_EXECUTION_METRICS_INTERVAL_S
-        ):
-            per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
-            op_metrics_dicts = [
-                metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
-            ]
-            args = (
-                dataset_tag,
-                op_metrics_dicts,
-                operator_tags,
-                state,
-                per_node_metrics,
+        per_node_metrics = _StatsManager._aggregate_per_node_metrics(op_metrics)
+        op_metrics_dicts = [
+            metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
+        ]
+        args = (
+            dataset_tag,
+            op_metrics_dicts,
+            operator_tags,
+            state,
+            per_node_metrics,
+        )
+        try:
+            ref = get_or_create_stats_actor().update_execution_metrics.remote(*args)
+            if force_update:
+                ray.get(ref)
+        except Exception as e:
+            logger.warning(
+                f"Error occurred during update_execution_metrics.remote call to _StatsActor: {e}",
+                exc_info=True,
             )
-            try:
-                self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
-            except Exception as e:
-                logger.warning(
-                    f"Error occurred during update_execution_metrics.remote call to _StatsActor: {e}",
-                    exc_info=True,
-                )
-                return
-            # NOTE: Each dataset_tag is handled by at most 1 thread. Therefore,
-            # updating here does not need a lock as long as:
-            # 1) we guarantee dataset_tag already exists in the dictionary (See `register_dataset_tag`)
-            # 2) dataset_tag is updated by the same and only 1 thread
-            self._execution_last_updated[dataset_tag] = now
+            return
 
-    def clear_last_execution_stats(self, dataset_tag: str):
-        # NOTE: This must be thread-safe because multiple datasets can
-        # be running at the same time. Decreasing the size of the dictionary
-        # is not thread-safe
-        with self._update_last_updated_lock:
-            if dataset_tag in self._execution_last_updated:
-                del self._execution_last_updated[dataset_tag]
-
+    @staticmethod
     def update_iteration_metrics(
-        self, stats: "DatasetStats", dataset_tag: str, force_update: bool = False
+        stats: "DatasetStats", dataset_tag: str, force_update: bool = False
     ):
-        now = time.time()
-        if (
-            force_update
-            or (now - self._iteration_last_updated[dataset_tag])
-            > self.UPDATE_ITERATION_METRICS_INTERVAL_S
-        ):
-            args = (stats, dataset_tag)
-            try:
-                self._get_or_create_stats_actor().update_iteration_metrics.remote(*args)
-            except Exception as e:
-                logger.warning(
-                    f"Error occurred during update_iteration_metrics.remote call to _StatsActor: {e}",
-                    exc_info=True,
-                )
-                return
-            self._iteration_last_updated[dataset_tag] = now
+        args = (stats, dataset_tag)
+        try:
+            ref = get_or_create_stats_actor().update_iteration_metrics.remote(*args)
+            if force_update:
+                ray.get(ref)
+        except Exception as e:
+            logger.warning(
+                f"Error occurred during update_iteration_metrics.remote call to _StatsActor: {e}",
+                exc_info=True,
+            )
 
-    def clear_iteration_metrics(self, dataset_tag: str):
-        with self._update_last_updated_lock:
-            if dataset_tag in self._iteration_last_updated:
-                del self._iteration_last_updated[dataset_tag]
-
-    def register_dataset_tag(self, dataset_tag: str):
-        """Register a dataset tag for metrics tracking without full metadata.
-
-        This is a lightweight registration for dataset tags that need metrics tracking
-        but don't have a full execution topology (e.g., split iterators, temporary
-        iterators).
-
-        Args:
-            dataset_tag: Tag for the dataset
-        """
-        # NOTE: This must be thread-safe because multiple datasets can
-        # be running at the same time. Increasing the size of the dictionary
-        # is not thread-safe.
-        with self._update_last_updated_lock:
-            if dataset_tag not in self._iteration_last_updated:
-                self._iteration_last_updated[dataset_tag] = 0.0
-            if dataset_tag not in self._execution_last_updated:
-                self._execution_last_updated[dataset_tag] = 0.0
-
+    @staticmethod
     def register_dataset_to_stats_actor(
-        self,
         dataset_tag: str,
         operator_tags: List[str],
         topology: Topology,
@@ -983,20 +892,7 @@ class _StatsManager:
             data_context: The DataContext attached to the dataset
         """
 
-        # Register the dataset tag for iteration metrics tracking
-        self.register_dataset_tag(dataset_tag)
-        
-        # Initialize execution metrics timestamp for the executor
-        with self._update_last_updated_lock:
-            if dataset_tag not in self._execution_last_updated:
-                self._execution_last_updated[dataset_tag] = 0.0
-
-        # NOTE: In some cases (for ex, when registering dataset) actor might be gone
-        #       (for ex, when prior driver disconnects) and therefore to avoid using
-        #       stale handle we force looking up the actor with Ray to determine if
-        #       we should create a new one.
-        stats_actor = self._get_or_create_stats_actor(skip_cache=True)
-        stats_actor.register_dataset.remote(
+        get_or_create_stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
@@ -1004,22 +900,23 @@ class _StatsManager:
             data_context,
         )
 
-    def get_dataset_id_from_stats_actor(self) -> str:
+    @staticmethod
+    def gen_dataset_id_from_stats_actor() -> str:
         try:
             # NOTE: In some cases (for ex, when registering dataset) actor might be gone
             #       (for ex, when prior driver disconnects) and therefore to avoid using
             #       stale handle we force looking up the actor with Ray to determine if
             #       we should create a new one.
-            stats_actor = self._get_or_create_stats_actor(skip_cache=True)
+            stats_actor = get_or_create_stats_actor()
 
-            return ray.get(stats_actor.get_dataset_id.remote())
-        except Exception:
+            return ray.get(stats_actor.gen_dataset_id.remote())
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate dataset_id, falling back to random uuid_v4: {e}"
+            )
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4
             return uuid4().hex
-
-
-StatsManager = _StatsManager()
 
 
 class DatasetStats:
@@ -1096,7 +993,7 @@ class DatasetStats:
 
     @property
     def stats_actor(self):
-        return _get_or_create_stats_actor()
+        return get_or_create_stats_actor()
 
     def child_builder(
         self, name: str, override_start_time: Optional[float] = None
