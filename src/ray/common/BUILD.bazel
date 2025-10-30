@@ -334,32 +334,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "ray_syncer",
-    srcs = [
-        "ray_syncer/node_state.cc",
-        "ray_syncer/ray_syncer.cc",
-        "ray_syncer/ray_syncer_client.cc",
-        "ray_syncer/ray_syncer_server.cc",
-    ],
-    hdrs = [
-        "ray_syncer/common.h",
-        "ray_syncer/node_state.h",
-        "ray_syncer/ray_syncer.h",
-        "ray_syncer/ray_syncer_bidi_reactor.h",
-        "ray_syncer/ray_syncer_bidi_reactor_base.h",
-        "ray_syncer/ray_syncer_client.h",
-        "ray_syncer/ray_syncer_server.h",
-    ],
-    deps = [
-        ":asio",
-        ":id",
-        "//:ray_syncer_cc_grpc",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
     name = "status",
     srcs = ["status.cc"],
     hdrs = ["status.h"],
