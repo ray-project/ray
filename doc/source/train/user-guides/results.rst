@@ -124,8 +124,8 @@ access the storage location, which is useful if the path is on cloud storage.
 
 
 
-Viewing Errors
---------------
+Catching Errors
+---------------
 If an error occurred during training,
 :attr:`Result.error <ray.train.Result>` will be set and contain the exception
 that was raised.
@@ -138,7 +138,7 @@ that was raised.
 
 Finding results on persistent storage
 -------------------------------------
-All training results, including reported metrics, checkpoints, and error files,
+All training results including reported metrics and checkpoints
 are stored on the configured :ref:`persistent storage <train-log-dir>`.
 
 See :ref:`the persistent storage guide <train-log-dir>` to configure this location
