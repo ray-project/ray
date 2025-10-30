@@ -27,7 +27,7 @@ from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
-    DatasetsSetupCallback,
+    DatasetsCallback,
     TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
@@ -200,7 +200,7 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_setup_callback = DatasetsSetupCallback(
+        datasets_setup_callback = DatasetsCallback(
             train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
