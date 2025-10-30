@@ -1,7 +1,7 @@
 group: serve tests
 depends_on:
   - forge
-  - oss-ci-base_build
+  - oss-ci-base_build-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:

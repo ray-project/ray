@@ -7,11 +7,11 @@ steps:
           //ci/ray_ci/... //release/... //ci/pipeline/... ci
           --only-tags=release_unit,ci_unit
           --cache-test-results --parallelism-per-worker 2
-          --build-name oss-ci-base_test
+          --build-name oss-ci-base_test-py3.10
           --build-type skip
     instance_type: small
     depends_on:
-      - oss-ci-base_test
+      - oss-ci-base_test-multipy
       - forge
     tags: tools
   - label: ":coral: reef: raydepsets tests"
@@ -20,11 +20,11 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/raydepsets/... ci
           --cache-test-results
-          --build-name oss-ci-base_test
+          --build-name oss-ci-base_test-py3.10
           --build-type skip
     instance_type: small
     depends_on:
-      - oss-ci-base_test
+      - oss-ci-base_test-multipy
       - forge
     tags: tools
   - label: ":coral: reef: privileged container tests"
@@ -32,18 +32,18 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/ray_ci:test_privileged ci
           --cache-test-results
-          --build-name oss-ci-base_test
+          --build-name oss-ci-base_test-py3.10
           --build-type cgroup
           --privileged
     instance_type: small
     depends_on:
-      - oss-ci-base_test
+      - oss-ci-base_test-multipy
       - forge
     tags: tools
   - label: ":coral: reef: iwyu tests"
     commands:
       - bazel test --config iwyu //bazel/tests/cpp:example_test
     instance_type: small
-    depends_on: oss-ci-base_build
-    job_env: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    job_env: oss-ci-base_build-py3.10
     tags: tools

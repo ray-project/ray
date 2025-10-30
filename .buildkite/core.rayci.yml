@@ -10,12 +10,12 @@ steps:
     label: "wanda: coregpubuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     tags: cibase
-    depends_on: oss-ci-base_gpu-multipy
     env:
       PYTHON: "{{matrix}}"
       RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.10"
+    depends_on: oss-ci-base_gpu-multipy
 
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
@@ -152,11 +152,13 @@ steps:
         --except-tags doctest,post_wheel_build,gpu,multi_gpu,mem_pressure
         --parallelism-per-worker 3
         --skip-ray-installation
+        --python-version 3.10
       # doc memory pressure example
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --only-tags mem_pressure
         --except-tags gpu
         --skip-ray-installation
+        --python-version 3.10
 
   - label: ":ray: core: dask tests"
     tags:
@@ -399,8 +401,8 @@ steps:
       # cpp worker tests has one that tests cross-language with Java.
       - RAY_INSTALL_JAVA=1 ci/ci.sh build
       - ci/ci.sh test_cpp
-    depends_on: oss-ci-base_build
-    job_env: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    job_env: oss-ci-base_build-py3.10
 
   - label: ":ray: core: java worker tests"
     tags:

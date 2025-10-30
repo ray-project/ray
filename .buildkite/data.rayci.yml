@@ -1,13 +1,18 @@
 group: data tests
 depends_on:
   - forge
-  - oss-ci-base_ml
+  - oss-ci-base_ml-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:
   # builds
-  - name: data9build
+  - name: data9build-multipy
+    label: "wanda: data9build-py{{matrix}}"
     wanda: ci/docker/data9.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
   - name: databuild-multipy
@@ -16,7 +21,6 @@ steps:
     matrix: ["3.10", "3.12"]
     env:
       PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_ml-multipy
     tags: cibase
 
   - name: datanbuild
