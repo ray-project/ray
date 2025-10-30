@@ -384,13 +384,13 @@ class Preprocessor(abc.ABC):
         """
         return BatchFormat.PANDAS
 
-    def __getstate__(self):
+    def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
         # Exclude unpicklable attributes
         state.pop("stat_computation_plan", None)
         return state
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Dict[str, Any]):
         from ray.data.preprocessors.utils import StatComputationPlan
 
         self.__dict__.update(state)

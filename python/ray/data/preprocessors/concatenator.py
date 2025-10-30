@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -153,3 +153,10 @@ class Concatenator(Preprocessor):
                 non_default_arguments.append(f"{parameter}={value}")
 
         return f"{self.__class__.__name__}({', '.join(non_default_arguments)})"
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # flatten is a recent field, to ensure backwards compatibility
+        # assign a default in case it is missing in the serialized state
+        if not hasattr(self, "flatten"):
+            self.flatten = False
