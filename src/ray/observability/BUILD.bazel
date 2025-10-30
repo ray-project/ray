@@ -166,6 +166,7 @@ ray_cc_library(
         ":ray_event",
         ":ray_event_recorder_interface",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",
