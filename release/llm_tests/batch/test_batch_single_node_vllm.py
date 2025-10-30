@@ -20,6 +20,13 @@ from ray.llm._internal.batch.benchmark.benchmark_processor import (
 )
 
 
+# Benchmark constants
+NUM_REQUESTS = 1000
+MODEL_ID = "facebook/opt-1.3b"
+BATCH_SIZE = 64
+CONCURRENCY = 1
+
+
 @pytest.fixture(autouse=True)
 def disable_vllm_compile_cache(monkeypatch):
     """Disable vLLM compile cache to avoid cache corruption."""
@@ -65,29 +72,24 @@ def test_single_node_baseline_benchmark():
         truncate_prompt=2048,
     )
 
-    num_requests = 1000
-    print(f"Loading {num_requests} prompts from ShareGPT dataset...")
-    prompts = dataset.sample(num_requests=num_requests)
+    print(f"Loading {NUM_REQUESTS} prompts from ShareGPT dataset...")
+    prompts = dataset.sample(num_requests=NUM_REQUESTS)
     print(f"Loaded {len(prompts)} prompts")
 
     ds = ray.data.from_items(prompts)
 
     # Benchmark config (single node, TP=1, PP=1)
-    model = "facebook/opt-1.3b"
-    batch_size = 64
-    concurrency = 1
-
     print(
-        f"\nBenchmark: {model}, batch={batch_size}, concurrency={concurrency}, TP=1, PP=1"
+        f"\nBenchmark: {MODEL_ID}, batch={BATCH_SIZE}, concurrency={CONCURRENCY}, TP=1, PP=1"
     )
 
     # Use benchmark processor to run a single-node vLLM benchmark
     result = benchmark(
         Mode.VLLM_ENGINE,
         ds,
-        batch_size=batch_size,
-        concurrency=concurrency,
-        model=model,
+        batch_size=BATCH_SIZE,
+        concurrency=CONCURRENCY,
+        model=MODEL_ID,
         sampling_params=VLLM_SAMPLING_PARAMS,
         pipeline_parallel_size=1,
         tensor_parallel_size=1,
@@ -124,9 +126,9 @@ def test_single_node_baseline_benchmark():
     artifact_path = os.getenv("RAY_LLM_BENCHMARK_ARTIFACT_PATH")
     if artifact_path:
         metrics = {
-            "model": model,
-            "batch_size": batch_size,
-            "concurrency": concurrency,
+            "model": MODEL_ID,
+            "batch_size": BATCH_SIZE,
+            "concurrency": CONCURRENCY,
             "samples": int(result.samples),
             "throughput_req_per_s": float(result.throughput),
             "elapsed_s": float(result.elapsed_s),
