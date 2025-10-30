@@ -3,9 +3,8 @@ import math
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
-from ray._private.ray_constants import env_float
-
 from .backpressure_policy import BackpressurePolicy
+from ray._private.ray_constants import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
