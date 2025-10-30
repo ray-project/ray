@@ -166,3 +166,31 @@ RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Util functions for async handling
+
+cdef incremented_fut():
+    fut = concurrent.futures.Future()
+    cpython.Py_INCREF(fut)
+    return fut
+
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
+    assert isinstance(fut, concurrent.futures.Future)
+
+    assert not fut.done()
+    try:
+        ret, exc = result
+        if exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(ret)
+    finally:
+        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
+        # and we DECREF it here to balance it.
+        cpython.Py_DECREF(fut)
+
+cdef raise_or_return(tup):
+    ret, exc = tup
+    if exc:
+        raise exc
+    return ret

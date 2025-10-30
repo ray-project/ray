@@ -4,10 +4,16 @@ import pytest
 import torch
 
 import ray
+from ray._common.test_utils import wait_for_condition
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
 class GPUTestActor:
+    def __init__(self):
+        self.reserved_tensor1 = torch.tensor([1, 2, 3]).to("cuda")
+        self.reserved_tensor2 = torch.tensor([4, 5, 6]).to("cuda")
+        self.reserved_tensor3 = torch.tensor([7, 8, 9]).to("cuda")
+
     @ray.method(tensor_transport="nixl")
     def echo(self, data, device):
         return data.to(device)
@@ -50,6 +56,25 @@ class GPUTestActor:
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
         assert obj_id not in gpu_manager.managed_gpu_object_metadata
         return "Success"
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict1(self):
+        return {"round1-1": self.reserved_tensor1, "round1-2": self.reserved_tensor2}
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict2(self):
+        return {"round2-1": self.reserved_tensor1, "round2-3": self.reserved_tensor3}
+
+    def sum_dict(self, dict):
+        return sum(v.sum().item() for v in dict.values())
+
+    def get_num_gpu_objects(self):
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        return gpu_object_manager.gpu_object_store.get_num_objects()
+
+    def get_num_managed_meta_nixl(self):
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        return gpu_object_manager.gpu_object_store.get_num_managed_meta_nixl()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -141,6 +166,31 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_send_duplicate_tensor(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    ref1 = src_actor.send_dict1.remote()
+    result1 = dst_actor.sum_dict.remote(ref1)
+    assert ray.get(result1) == 21
+    ref2 = src_actor.send_dict1.remote()
+    result2 = dst_actor.sum_dict.remote(ref2)
+    assert ray.get(result2) == 21
+
+    del ref1
+    del ref2
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_gpu_objects.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
 
 
 if __name__ == "__main__":
