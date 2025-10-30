@@ -7,7 +7,6 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
@@ -115,25 +114,13 @@ ray_cc_library(
         exclude = [
             "src/mock/ray/common/pubsub/publisher.h",
             "src/mock/ray/common/pubsub/subscriber.h",
-            "src/mock/ray/common/ray_syncer/ray_syncer.h",
+            "src/mock/ray/ray_syncer/ray_syncer.h",
         ],
     ),
     deps = [
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
     ],
-)
-
-ray_cc_library(
-    name = "ray_mock_syncer",
-    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
-)
-
-cc_grpc_library(
-    name = "ray_syncer_cc_grpc",
-    srcs = ["//src/ray/protobuf:ray_syncer_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:ray_syncer_cc_proto"],
 )
 
 # This header is used to wrap some internal codes so we can reduce suspicious
