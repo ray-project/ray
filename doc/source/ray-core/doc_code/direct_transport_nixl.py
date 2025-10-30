@@ -59,6 +59,8 @@ print(ray.get(ref1))
 
 
 # __nixl_limitations_start__
+from ray.exceptions import ActorDiedError
+
 @ray.remote(num_gpus=1)
 class Actor:
     def __init__(self):
@@ -86,6 +88,6 @@ ref2 = sender.send_dict2.remote()
 result2 = receiver.sum_dict.remote(ref2)
 try:
     print(ray.get(result2))
-except ValueError as e:
+except ActorDiedError as e:
     print("Error caught:", e)
 # __nixl_limitations_end__
