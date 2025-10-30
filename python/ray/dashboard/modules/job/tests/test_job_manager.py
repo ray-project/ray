@@ -335,8 +335,9 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     gcs_client = ray._private.worker.global_worker.gcs_client
     job_manager = JobManager(gcs_client, tmp_path)
 
+    entrypoint = "echo hello 1"
     job_id = await job_manager.submit_job(
-        entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
+        entrypoint=entrypoint, submission_id="test_runtime_env_setup_logs"
     )
     await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
@@ -347,10 +348,10 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
-    start_message = "Runtime env is setting up."
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
-        assert start_message in logs
+        assert "Runtime env is setting up." in logs
+        assert f"Running entrypoint for job {job_id}: {entrypoint}" in logs
 
 
 @pytest.mark.asyncio
