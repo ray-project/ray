@@ -200,16 +200,14 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_callback = DatasetsCallback(
-            train_run_context=self.train_run_context
-        )
+        datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
         tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
                 tpu_reservation_setup_callback,
                 backend_setup_callback,
-                datasets_setup_callback,
+                datasets_callback,
             ]
         )
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
