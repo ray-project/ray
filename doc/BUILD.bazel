@@ -710,4 +710,3 @@ filegroup(
     srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
-

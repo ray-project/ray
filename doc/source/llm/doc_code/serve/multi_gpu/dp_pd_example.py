@@ -15,6 +15,19 @@ from ray.serve import llm
 from ray.serve.llm.deployment import PDProxyServer
 from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
+# Check if NIXL is available (required for NixlConnector)
+try:
+    import nixl  # noqa: F401
+    NIXL_AVAILABLE = True
+except ImportError:
+    NIXL_AVAILABLE = False
+
+if not NIXL_AVAILABLE:
+    raise ImportError(
+        "NIXL is required for this example but is not installed. "
+        "Install it with: pip install nixl or uv pip install nixl"
+    )
+
 _original_serve_run = serve.run
 _original_build_dp_deployment = llm.build_dp_deployment
 
