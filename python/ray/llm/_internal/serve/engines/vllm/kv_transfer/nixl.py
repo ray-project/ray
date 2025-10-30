@@ -28,7 +28,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
     def setup(self) -> None:
         """Initialize the NIXL connector backend.
 
-        This method sets up the NIXL (Network Interface for eXtended LLM) connector by:
+        This method sets up the NIXL (NVIDIA Inference Xfer Library) connector by:
         1. Verifying that the required vLLM environment variables are supported
         2. Configuring the side channel port and host if not already set
         3. Creating a unique engine ID across replicas
