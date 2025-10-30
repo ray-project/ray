@@ -1020,7 +1020,7 @@ class Worker:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
-                    if isinstance(value, ray.exceptions.ObjectLostError):
+                    if (isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(value, ray.exceptions.OwnerDiedError)):
                         global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
@@ -2966,7 +2966,7 @@ def get(
                 # If the object was lost and it wasn't due to owner death, it may be
                 # because the object store is full and objects needed to be evicted.
                 if isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(
-                    ray.exceptions.OwnerDiedError
+                    value, ray.exceptions.OwnerDiedError
                 ):
                     worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
