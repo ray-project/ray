@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
@@ -8,6 +9,8 @@ from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Limit,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LimitPushdownRule(Rule):
@@ -129,6 +132,15 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows()
         ):
+            if isinstance(current_op, AbstractMap):
+                min_rows = current_op._min_rows_per_bundled_input
+                if min_rows is not None and min_rows > limit_op._limit:
+                    # Avoid pushing the limit past batch-based maps that require more
+                    # rows than the limit to produce stable outputs (e.g. schema).
+                    logger.info(
+                        f"Skipping push down of limit {limit_op._limit} through map {current_op} because it requires {min_rows} rows to produce stable outputs"
+                    )
+                    break
             num_rows_preserving_ops.append(current_op)
             current_op = current_op.input_dependency
 

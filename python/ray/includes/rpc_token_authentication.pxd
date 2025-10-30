@@ -2,6 +2,7 @@ from libcpp cimport bool as c_bool
 from libcpp.string cimport string
 from ray.includes.optional cimport optional
 
+
 cdef extern from "ray/rpc/authentication/authentication_mode.h" namespace "ray::rpc" nogil:
     cdef enum CAuthenticationMode "ray::rpc::AuthenticationMode":
         DISABLED "ray::rpc::AuthenticationMode::DISABLED"

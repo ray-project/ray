@@ -18,20 +18,6 @@
 namespace ray {
 namespace internal {
 
-/// IP address by which the local node can be reached *from* the `address`.
-///
-/// The behavior should be the same as `node_ip_address_from_perspective` from Ray Python
-/// code. See
-/// https://stackoverflow.com/questions/2674314/get-local-ip-address-using-boost-asio.
-///
-/// TODO(kfstorm): Make this function shared code and migrate Python & Java to use this
-/// function.
-///
-/// \param address The IP address and port of any known live service on the network
-/// you care about.
-/// \return The IP address by which the local node can be reached from the address.
-std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53");
-
 std::string getLibraryPathEnv();
 
 }  // namespace internal

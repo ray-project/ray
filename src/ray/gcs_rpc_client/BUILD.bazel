@@ -37,13 +37,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_python_callbacks",
-    hdrs = [
-        "python_callbacks.h",
-    ],
-)
-
-ray_cc_library(
     name = "rpc_client",
     hdrs = [
         "rpc_client.h",

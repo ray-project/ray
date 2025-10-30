@@ -1018,6 +1018,153 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     )
 
 
+@pytest.mark.parametrize("use_factory_pattern", [False, True])
+def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
+    """Test that proxy metrics use specific route patterns for FastAPI apps.
+
+    This test verifies that:
+    1. Route patterns are extracted from FastAPI apps at replica initialization
+    2. Proxy metrics use parameterized patterns (e.g., /api/users/{user_id})
+       instead of just route prefixes (e.g., /api)
+    3. Individual request paths don't appear in metrics (avoiding high cardinality)
+    4. Multiple requests to the same pattern are grouped together
+    5. Both normal pattern and factory pattern work correctly
+    """
+    if use_factory_pattern:
+        # Factory pattern: callable returns FastAPI app at runtime
+        def create_app():
+            app = FastAPI()
+
+            @app.get("/")
+            def root():
+                return {"message": "root"}
+
+            @app.get("/users/{user_id}")
+            def get_user(user_id: str):
+                return {"user_id": user_id}
+
+            @app.get("/items/{item_id}/details")
+            def get_item(item_id: str):
+                return {"item_id": item_id}
+
+            return app
+
+        @serve.deployment
+        @serve.ingress(create_app)
+        class APIServer:
+            pass
+
+    else:
+        # Normal pattern: routes defined in deployment class
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class APIServer:
+            @app.get("/")
+            def root(self):
+                return {"message": "root"}
+
+            @app.get("/users/{user_id}")
+            def get_user(self, user_id: str):
+                return {"user_id": user_id}
+
+            @app.get("/items/{item_id}/details")
+            def get_item(self, item_id: str):
+                return {"item_id": item_id}
+
+    serve.run(APIServer.bind(), name="api_app", route_prefix="/api")
+
+    # Make requests to different route patterns with various parameter values
+    base_url = "http://localhost:8000/api"
+    assert httpx.get(f"{base_url}/").status_code == 200
+    assert httpx.get(f"{base_url}/users/123").status_code == 200
+    assert httpx.get(f"{base_url}/users/456").status_code == 200
+    assert httpx.get(f"{base_url}/users/789").status_code == 200
+    assert httpx.get(f"{base_url}/items/abc/details").status_code == 200
+    assert httpx.get(f"{base_url}/items/xyz/details").status_code == 200
+
+    # Wait for metrics to be updated
+    def metrics_available():
+        metrics = get_metric_dictionaries("serve_num_http_requests")
+        api_metrics = [m for m in metrics if m.get("application") == "api_app"]
+        return len(api_metrics) >= 3
+
+    wait_for_condition(metrics_available, timeout=20)
+
+    # Verify metrics use route patterns, not individual paths
+    metrics = get_metric_dictionaries("serve_num_http_requests")
+    api_metrics = [m for m in metrics if m.get("application") == "api_app"]
+
+    routes = {m["route"] for m in api_metrics}
+
+    print(f"Routes found in metrics: {routes}")
+
+    # Should contain the route patterns (parameterized), not just the prefix
+    # The root might be either "/api/" or "/api" depending on normalization
+    assert any(
+        r in routes for r in ["/api/", "/api"]
+    ), f"Root route not found. Routes: {routes}"
+
+    # Should contain parameterized user route
+    assert (
+        "/api/users/{user_id}" in routes
+    ), f"User route pattern not found. Routes: {routes}"
+
+    # Should contain nested parameterized route
+    assert (
+        "/api/items/{item_id}/details" in routes
+    ), f"Item details route pattern not found. Routes: {routes}"
+
+    # Should NOT contain individual request paths (that would be high cardinality)
+    # These should not appear as they would create unbounded cardinality
+    assert (
+        "/api/users/123" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/users/456" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/users/789" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/items/abc/details" not in routes
+    ), "Individual item path found - high cardinality issue!"
+    assert (
+        "/api/items/xyz/details" not in routes
+    ), "Individual item path found - high cardinality issue!"
+
+    # Verify that multiple requests to the same pattern are grouped
+    user_route_metrics = [
+        m for m in api_metrics if m["route"] == "/api/users/{user_id}"
+    ]
+    assert (
+        len(user_route_metrics) == 1
+    ), "Multiple metrics entries for same route pattern - should be grouped!"
+
+    # Optionally verify the counter value if we can parse it from the metrics endpoint
+    metrics_text = httpx.get("http://127.0.0.1:9999").text
+    for line in metrics_text.split("\n"):
+        if "serve_num_http_requests" in line and "/api/users/{user_id}" in line:
+            # Extract the value from the prometheus format line
+            value_str = line.split()[-1]
+            user_metric_value = float(value_str)
+            assert (
+                user_metric_value == 3
+            ), f"Expected exactly 3 requests to user route, got {user_metric_value}"
+            break
+
+    # Verify error metrics also use route patterns
+    num_errors = get_metric_dictionaries("serve_http_request_latency_ms_sum")
+    api_latency_metrics = [m for m in num_errors if m.get("application") == "api_app"]
+    latency_routes = {m["route"] for m in api_latency_metrics}
+
+    # Latency metrics should also use patterns
+    assert (
+        "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
+    ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
