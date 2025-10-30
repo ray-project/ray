@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
@@ -7,16 +8,25 @@ import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
+from ray.data.preprocessor import (
+    Preprocessor,
+    PreprocessorNotFittedException,
+    SerializablePreprocessorBase,
+)
 from ray.data.preprocessors.utils import make_post_processor
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+logger = logging.getLogger(__name__)
+
+
 @PublicAPI(stability="alpha")
-class OrdinalEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
+class OrdinalEncoder(SerializablePreprocessorBase):
     r"""Encode values within columns as ordered integer values.
 
     :class:`OrdinalEncoder` encodes categorical features as integers that range from
@@ -155,6 +165,22 @@ class OrdinalEncoder(Preprocessor):
         df[self.output_columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "encode_lists": self.encode_lists,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.encode_lists = fields["encode_lists"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
@@ -164,7 +190,8 @@ class OrdinalEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class OneHotEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.one_hot_encoder")
+class OneHotEncoder(SerializablePreprocessorBase):
     r"""`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
 
@@ -316,6 +343,22 @@ class OneHotEncoder(Preprocessor):
 
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "max_categories": self.max_categories,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.max_categories = fields["max_categories"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
@@ -325,7 +368,10 @@ class OneHotEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class MultiHotEncoder(Preprocessor):
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.multi_hot_encoder"
+)
+class MultiHotEncoder(SerializablePreprocessorBase):
     r"""Multi-hot encode categorical data.
 
     This preprocessor replaces each list of categories with an :math:`m`-length binary
@@ -454,6 +500,22 @@ class MultiHotEncoder(Preprocessor):
 
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "max_categories": self.max_categories,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.max_categories = fields["max_categories"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
@@ -463,7 +525,8 @@ class MultiHotEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class LabelEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.label_encoder")
+class LabelEncoder(SerializablePreprocessorBase):
     r"""Encode labels as integer targets.
 
     :class:`LabelEncoder` encodes labels as integer targets that range from
@@ -599,12 +662,33 @@ class LabelEncoder(Preprocessor):
         df[self.label_column] = df[self.output_column].transform(column_label_decoder)
         return df
 
+    def get_input_columns(self) -> List[str]:
+        return [self.label_column]
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column]
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "label_column": self.label_column,
+            "output_column": self.output_column,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.label_column = fields["label_column"]
+        self.output_column = fields["output_column"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self.label_column!r}, output_column={self.output_column!r})"
 
 
 @PublicAPI(stability="alpha")
-class Categorizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.categorizer")
+class Categorizer(SerializablePreprocessorBase):
     r"""Convert columns to ``pd.CategoricalDtype``.
 
     Use this preprocessor with frameworks that have built-in support for
@@ -711,6 +795,38 @@ class Categorizer(Preprocessor):
         df[self.output_columns] = df[self.columns].astype(self.stats_)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+            "dtypes": {
+                col: {"categories": list(dtype.categories), "ordered": dtype.ordered}
+                for col, dtype in self.dtypes.items()
+            }
+            if hasattr(self, "dtypes") and self.dtypes
+            else None,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        # Handle dtypes field specially
+        self.dtypes = (
+            {
+                col: pd.CategoricalDtype(
+                    categories=dtype_data["categories"], ordered=dtype_data["ordered"]
+                )
+                for col, dtype_data in fields["dtypes"].items()
+            }
+            if fields.get("dtypes")
+            else {}
+        )
+
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
@@ -737,6 +853,7 @@ def compute_unique_value_indices(
             )
 
     def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
+
         # special handling for lists
         if _is_series_composed_of_lists(col):
             if encode_lists:
