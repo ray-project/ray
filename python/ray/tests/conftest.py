@@ -44,6 +44,13 @@ from ray._private.test_utils import (
 )
 from ray._raylet import AuthenticationTokenLoader, Config
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.tests.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 
 import psutil
 
@@ -57,35 +64,13 @@ START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "6
 
 @pytest.fixture
 def cleanup_auth_token_env():
-    """Reset Ray authentication-related environment variables and caches."""
+    """Reset authentication environment variables, files, and caches."""
 
-    env_vars = ["RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"]
-    original_env = {var: os.environ.get(var) for var in env_vars}
-
-    default_token_path = Path.home() / ".ray" / "auth_token"
-    token_file_exists = default_token_path.exists()
-    token_file_contents = default_token_path.read_text() if token_file_exists else None
-
-    AuthenticationTokenLoader.instance().reset_cache()
-    Config.initialize("")
-
-    try:
+    with authentication_env_guard() as snapshot:
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
         yield
-    finally:
-        for var, value in original_env.items():
-            if value is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = value
-
-        if token_file_exists:
-            default_token_path.parent.mkdir(parents=True, exist_ok=True)
-            default_token_path.write_text(token_file_contents)
-        else:
-            default_token_path.unlink(missing_ok=True)
-
-        AuthenticationTokenLoader.instance().reset_cache()
-        Config.initialize("")
+        reset_auth_token_state()
 
 
 @pytest.fixture
@@ -93,10 +78,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with token authentication enabled."""
 
     test_token = "test_token_12345678901234567890123456789012"
-    os.environ["RAY_auth_mode"] = "token"
-    os.environ["RAY_AUTH_TOKEN"] = test_token
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
 
     cluster = Cluster()
     cluster.add_node()
@@ -118,9 +102,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
 def setup_cluster_without_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with authentication disabled."""
 
-    os.environ["RAY_auth_mode"] = "disabled"
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
 
     cluster = Cluster()
     cluster.add_node()

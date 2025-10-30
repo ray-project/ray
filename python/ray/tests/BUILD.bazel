@@ -68,6 +68,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_runtime_env_agent_auth.py",
         "test_util_helpers.py",
     ],
     tags = [
@@ -589,6 +590,7 @@ py_test_module_list(
         "test_wait.py",
         "test_widgets.py",
         "test_worker_graceful_shutdown.py",
+        "test_submission_client_auth.py"
     ],
     tags = [
         "exclusive",

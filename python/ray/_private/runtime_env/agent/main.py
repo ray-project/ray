@@ -25,6 +25,9 @@ import_libs()
 
 import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
+from ray._private.authentication.http_token_authentication import (
+    create_token_authentication_middleware,
+)
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 
 if __name__ == "__main__":
@@ -194,7 +197,9 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application()
+    app = web.Application(
+        middlewares=[create_token_authentication_middleware()]
+    )
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
