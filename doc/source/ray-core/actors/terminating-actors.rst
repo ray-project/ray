@@ -234,7 +234,8 @@ When ``__ray_shutdown__()`` is called:
 
 When ``__ray_shutdown__()`` is **NOT** called:
 
-- **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup
+- **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup.
+- **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as ``os._exit()`` or segfaults).
 
 **Important notes:**
 

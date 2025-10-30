@@ -517,8 +517,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
 
   /// Fallback timers for graceful actor shutdowns, keyed by WorkerID.
   /// Canceled when actors exit or restart to prevent force-killing wrong instances.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<boost::asio::deadline_timer>>
+  absl::flat_hash_map<WorkerID, std::unique_ptr<boost::asio::deadline_timer>>
       graceful_shutdown_timers_;
+
+  /// Shutdown flag to prevent timer callbacks from accessing destroyed state.
+  std::atomic<bool> is_shutdown_{false};
 
   // Debug info.
   enum CountType {

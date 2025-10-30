@@ -263,7 +263,9 @@ GcsActorManager::GcsActorManager(
 }
 
 GcsActorManager::~GcsActorManager() {
-  // Cancel all pending graceful shutdown timers to prevent use-after-free.
+  is_shutdown_.store(true, std::memory_order_release);
+
+  // Cancel all pending graceful shutdown timers
   for (auto &entry : graceful_shutdown_timers_) {
     entry.second->cancel();
   }
@@ -999,13 +1001,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   const auto actor = it->second;
 
-  // Cancel any existing graceful shutdown timer since we're destroying this actor
-  // instance. This handles idempotent DestroyActor calls and prevents force-killing
-  // restarted actors.
-  auto timer_it = graceful_shutdown_timers_.find(actor->GetWorkerID());
-  if (timer_it != graceful_shutdown_timers_.end()) {
-    timer_it->second->cancel();
-    graceful_shutdown_timers_.erase(timer_it);
+  // Cancel existing timer only on force_kill to interrupt graceful shutdown.
+  // For idempotent graceful calls, keep the original timer running.
+  if (force_kill) {
+    auto timer_it = graceful_shutdown_timers_.find(actor->GetWorkerID());
+    if (timer_it != graceful_shutdown_timers_.end()) {
+      timer_it->second->cancel();
+    }
   }
 
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
@@ -1029,22 +1031,24 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
 
-      if (!force_kill && graceful_shutdown_timeout_ms > 0) {
-        auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+      if (!force_kill && graceful_shutdown_timeout_ms > 0 &&
+          graceful_shutdown_timers_.find(worker_id) == graceful_shutdown_timers_.end()) {
+        auto timer = std::make_unique<boost::asio::deadline_timer>(io_context_);
         timer->expires_from_now(
             boost::posix_time::milliseconds(graceful_shutdown_timeout_ms));
-        graceful_shutdown_timers_[worker_id] = timer;
 
         timer->async_wait(
-            [this, actor_id, worker_id, death_cause, timer, graceful_shutdown_timeout_ms](
+            [this, actor_id, worker_id, death_cause, graceful_shutdown_timeout_ms](
                 const boost::system::error_code &error) {
-              if (error == boost::asio::error::operation_aborted) {
-                // Timer cancelled - actor exited gracefully before timeout
-                graceful_shutdown_timers_.erase(worker_id);
+              if (is_shutdown_.load(std::memory_order_acquire)) {
                 return;
               }
 
-              // Timeout expired - actor didn't exit within timeout. Force kill.
+              graceful_shutdown_timers_.erase(worker_id);
+              if (error == boost::asio::error::operation_aborted) {
+                return;
+              }
+
               RAY_LOG(WARNING).WithField(actor_id).WithField(worker_id)
                   << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
                   << "ms) exceeded. Falling back to force kill.";
@@ -1055,8 +1059,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                 NotifyCoreWorkerToKillActor(
                     actor_iter->second, death_cause, /*force_kill=*/true);
               }
-              graceful_shutdown_timers_.erase(worker_id);
             });
+
+        graceful_shutdown_timers_[worker_id] = std::move(timer);
       }
     } else {
       if (!worker_id.IsNil()) {
@@ -1447,7 +1452,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   auto timer_it = graceful_shutdown_timers_.find(worker_id);
   if (timer_it != graceful_shutdown_timers_.end()) {
     timer_it->second->cancel();
-    graceful_shutdown_timers_.erase(timer_it);
   }
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
