@@ -7,7 +7,6 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")

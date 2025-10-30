@@ -76,8 +76,8 @@ cc_proto_library(
 cc_grpc_library(
     name = "ray_syncer_cc_grpc",
     srcs = [":ray_syncer_proto"],
-    deps = [":ray_syncer_cc_proto"],
     grpc_only = True,
+    deps = [":ray_syncer_cc_proto"],
 )
 
 cc_proto_library(
