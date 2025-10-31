@@ -163,7 +163,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
 
     assert op.name == "Write"
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert physical_op._concurrency == concurrency
+    assert physical_op._max_concurrency == concurrency
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
@@ -488,7 +488,7 @@ def test_configure_map_task_memory_rule(
 
     new_plan = rule.apply(plan)
 
-    remote_args = new_plan.dag._get_runtime_ray_remote_args()
+    remote_args = new_plan.dag._get_dynamic_ray_remote_args()
     assert remote_args.get("memory") == expected_memory
 
 

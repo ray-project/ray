@@ -647,8 +647,8 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
 
-  stats::STATS_object_store_memory.Record(spilled_bytes_current_,
-                                          {{stats::LocationKey, "SPILLED"}});
+  object_store_memory_gauge_.Record(spilled_bytes_current_,
+                                    {{stats::LocationKey, "SPILLED"}});
 
   ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
                                                        "FailedDeletion");

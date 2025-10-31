@@ -70,7 +70,8 @@ class TaskCounter {
   enum class TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_counter);
+  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_gauge,
+                       ray::observability::MetricInterface &actor_by_state_gauge);
 
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
@@ -123,6 +124,8 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
+  CounterMap<std::pair<std::string, bool>> pending_getting_and_pinning_args_fetch_counter_
+      ABSL_GUARDED_BY(mu_);
 
   std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
@@ -135,7 +138,8 @@ class TaskCounter {
   // - Name: the name of the function called
   // - IsRetry: whether the task is a retry
   // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
-  ray::observability::MetricInterface &task_by_state_counter_;
+  ray::observability::MetricInterface &task_by_state_gauge_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
 };
 
 struct TaskToRetry {
@@ -172,7 +176,6 @@ class CoreWorker {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
-             std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -200,7 +203,8 @@ class CoreWorker {
              instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
-             ray::observability::MetricInterface &task_by_state_counter);
+             ray::observability::MetricInterface &task_by_state_counter,
+             ray::observability::MetricInterface &actor_by_state_counter);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1204,8 +1208,8 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                              rpc::RemoteCancelTaskReply *reply,
+  void HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
+                              rpc::CancelRemoteTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
@@ -1388,7 +1392,8 @@ class CoreWorker {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackOption> &fallback_strategy = {},
       const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
@@ -1732,16 +1737,12 @@ class CoreWorker {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
-  /// Shared client call manager.
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   // Shared raylet client pool.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
-  /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
@@ -1849,6 +1850,12 @@ class CoreWorker {
 
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
+
+  // Number of in flight argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_get_pin_args_in_flight_;
+
+  // Number of failed argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_failed_get_pin_args_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

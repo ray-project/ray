@@ -20,6 +20,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
@@ -92,7 +93,12 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.task_consumer import TaskConsumerWrapper
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+    get_asgi_route_name,
+)
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     get_component_file_name,  # noqa: F401
@@ -119,6 +125,9 @@ ReplicaMetadata = Tuple[
     Optional[int],
     Optional[str],
     int,
+    int,
+    int,  # rank
+    Optional[List[str]],  # route_patterns
 ]
 
 
@@ -300,6 +309,40 @@ class ReplicaMetricsManager:
         )
 
     def should_collect_ongoing_requests(self) -> bool:
+        """Determine if replicas should collect ongoing request metrics.
+
+        ┌────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                              │
+        ├────────────────────────────────────────────────────────────────┤
+        │                                                                │
+        │      Client          Handle            Replicas                │
+        │      ┌──────┐      ┌────────┐                                  │
+        │      │  App │─────>│ Handle │────┬───>┌─────────┐              │
+        │      │      │      │ Tracks │    │    │ Replica │              │
+        │      └──────┘      │ Queued │    │    │    1    │              │
+        │                    │Requests│    │    │ Tracks  │              │
+        │                    └────────┘    │    │ Running │              │
+        │                         │        │    └─────────┘              │
+        │                         │        │         │                   │
+        │                         │        │         │                   │
+        │                         │        │    ┌─────────┐              │
+        │                         │        └───>│ Replica │              │
+        │                         │             │    2    │              │
+        │                         │             │ Tracks  │              │
+        │                         │             │ Running │              │
+        │                         │             └─────────┘              │
+        │                         │                  │                   │
+        │                         │                  │                   │
+        │                         ▼                  ▼                   │
+        │                  ┌──────────────────────────────┐              │
+        │                  │        Controller            │              │
+        │                  │  • Queued metrics (handle)   │              │
+        │                  │  • Running metrics (replica1)│              │
+        │                  │  • Running metrics (replica2)│              │
+        │                  └──────────────────────────────┘              │
+        │                                                                │
+        └────────────────────────────────────────────────────────────────┘
+        """
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
@@ -490,6 +533,7 @@ class ReplicaBase(ABC):
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
+            deployment_config=deployment_config,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -525,6 +569,8 @@ class ReplicaBase(ABC):
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
 
+        self._rank = rank
+
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
@@ -534,6 +580,14 @@ class ReplicaBase(ABC):
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
+        # Extract route patterns from ASGI app if available
+        route_patterns = None
+        if self._user_callable_asgi_app is not None:
+            # _user_callable_asgi_app is the actual ASGI app (FastAPI/Starlette)
+            # It's set when initialize_callable() returns an ASGI app
+            if hasattr(self._user_callable_asgi_app, "routes"):
+                route_patterns = extract_route_patterns(self._user_callable_asgi_app)
+
         return (
             self._version.deployment_config,
             self._version,
@@ -543,6 +597,7 @@ class ReplicaBase(ABC):
             self._http_port,
             self._grpc_port,
             current_rank,
+            route_patterns,
         )
 
     def _set_internal_replica_context(
@@ -875,8 +930,10 @@ class ReplicaBase(ABC):
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
+                    rank = ray.serve.context._get_internal_replica_context().rank
                     await self._user_callable_wrapper.call_reconfigure(
-                        deployment_config.user_config
+                        deployment_config.user_config,
+                        rank=rank,
                     )
 
             # A new replica should not be considered healthy until it passes
@@ -896,6 +953,8 @@ class ReplicaBase(ABC):
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
             )
+            rank_changed = rank != self._rank
+            self._rank = rank
             logging_config_changed = (
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
@@ -914,9 +973,10 @@ class ReplicaBase(ABC):
             await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                 deployment_config.max_ongoing_requests
             )
-            if user_config_changed:
+            if user_config_changed or rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
-                    deployment_config.user_config
+                    deployment_config.user_config,
+                    rank=rank,
                 )
 
             # We need to update internal replica context to reflect the new
@@ -1338,6 +1398,7 @@ class UserCallableWrapper:
         run_sync_methods_in_threadpool: bool,
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
+        deployment_config: DeploymentConfig,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1360,6 +1421,7 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._deployment_config = deployment_config
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1611,6 +1673,12 @@ class UserCallableWrapper:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
 
+            if isinstance(self._callable, TaskConsumerWrapper):
+                self._callable.initialize_callable(
+                    self._deployment_config.max_ongoing_requests
+                )
+                ServeUsageTag.NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE.record("1")
+
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
@@ -1680,26 +1748,42 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Any):
+    async def call_reconfigure(self, user_config: Optional[Any], rank: int):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
         # other methods. See https://github.com/ray-project/ray/pull/42159.
-        if user_config is not None:
+
+        # NOTE(abrar): The only way to subscribe to rank changes is to provide some user config.
+        # We can relax this in the future as more use cases arise for rank. I am reluctant to
+        # introduce behavior change for a feature we might not need.
+        user_subscribed_to_rank = False
+        if not self._is_function and hasattr(self._callable, RECONFIGURE_METHOD):
+            reconfigure_method = getattr(self._callable, RECONFIGURE_METHOD)
+            params = inspect.signature(reconfigure_method).parameters
+            user_subscribed_to_rank = "rank" in params
+        if user_config is not None or user_subscribed_to_rank:
             if self._is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
+                raise ValueError(
+                    "deployment_def must be a class to use user_config or rank"
+                )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    "user_config specified but deployment "
+                    "user_config or rank specified but deployment "
                     + self._deployment_id
                     + " missing "
                     + RECONFIGURE_METHOD
                     + " method"
                 )
+            kwargs = {}
+            if user_subscribed_to_rank:
+                # For backwards compatibility, only pass rank if it is an argument to the reconfigure method.
+                kwargs["rank"] = rank
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
                 args=(user_config,),
+                kwargs=kwargs,
             )
 
     async def _handle_user_method_result(

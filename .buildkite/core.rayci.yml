@@ -62,7 +62,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags custom_setup
+        --except-tags custom_setup,cgroup
         --install-mask all-ray-libraries
 
   - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -76,7 +76,7 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags custom_setup
+        --except-tags custom_setup,cgroup
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -105,7 +105,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags custom_setup
+        --except-tags custom_setup,cgroup
 
   - label: ":ray: core: memory pressure tests"
     tags:
@@ -261,7 +261,7 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags basic_test,manual
+        --except-tags basic_test,manual,cgroup
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
         --python-version {{matrix}}
@@ -366,7 +366,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --install-mask all-ray-libraries
         --run-flaky-tests
-        --except-tags multi_gpu
+        --except-tags multi_gpu,cgroup
     depends_on:
       - corebuild
 
@@ -451,9 +451,10 @@ steps:
       - corebuild
 
   - label: ":core: core: spark-on-ray tests"
+    # NOTE: The Spark-on-Ray tests intentionally aren't triggered by the `java` tag to
+    # avoid running them for every C++ code change.
     tags:
       - spark_on_ray
-      - java
       - oss
     instance_type: medium
     commands:

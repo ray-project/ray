@@ -1,3 +1,4 @@
+import logging
 import queue
 import threading
 from typing import Any, Dict
@@ -19,8 +20,15 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, ResultDict
+from ray.util.metrics import Gauge, Histogram
+
+logger = logging.getLogger(__name__)
 
 torch, _ = try_import_torch()
 
@@ -40,6 +48,51 @@ BATCHES_PER_AGGREGATION = 20
 
 
 class IMPALALearner(Learner):
+    @override(Learner)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Ray metrics
+        self._metrics_learner_impala_update = Histogram(
+            name="rllib_learner_impala_update_time",
+            description="Time spent in the 'IMPALALearner.update()' method.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_update.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_learner_impala_update_solve_refs = Histogram(
+            name="rllib_learner_impala_update_solve_refs_time",
+            description="Time spent on resolving refs in the 'Learner.update()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_update_solve_refs.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_learner_impala_update_make_batch_if_necessary = Histogram(
+            name="rllib_learner_impala_update_make_batch_if_necessary_time",
+            description="Time spent on making a batch in the 'Learner.update()'.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_update_make_batch_if_necessary.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_learner_impala_get_learner_state_time = Histogram(
+            name="rllib_learner_impala_get_learner_state_time",
+            description="Time spent on get_state() in IMPALALearner.update().",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_get_learner_state_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
     @override(Learner)
     def build(self) -> None:
         super().build()
@@ -112,12 +165,37 @@ class IMPALALearner(Learner):
         return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
-        # Resolve object refs and ensure we have a proper batch object.
-        # TODO (simon): Check, if we can resolve the object references and
-        # run the pipeline on the GPULoaderThreads.
-        training_data.solve_refs()
-        batch = self._make_batch_if_necessary(training_data=training_data)
-        assert batch is not None
+        """
+
+        Args:
+            batch:
+            timesteps:
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
+            **kwargs:
+
+        Returns:
+
+        """
+        global _CURRENT_GLOBAL_TIMESTEPS
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
+
+        with TimerAndPrometheusLogger(self._metrics_learner_impala_update):
+            # Get the train batch from the object store.
+            with TimerAndPrometheusLogger(
+                self._metrics_learner_impala_update_solve_refs
+            ):
+                training_data.solve_refs()
+
+            with TimerAndPrometheusLogger(
+                self._metrics_learner_impala_update_make_batch_if_necessary
+            ):
+                batch = self._make_batch_if_necessary(training_data=training_data)
+                assert batch is not None
 
         # Enqeue the batch (bounded backpressure).
         if self.config.num_gpus_per_learner > 0:
@@ -239,14 +317,62 @@ class _GPULoaderThread(threading.Thread):
                 return batch.to_device(self._device, pin_memory=False)
             raise
 
+        self._metrics_impala_gpu_loader_thread_step_time = Histogram(
+            name="rllib_learner_impala_gpu_loader_thread_step_time",
+            description="Time taken in seconds for gpu loader thread _step.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_gpu_loader_thread_step_time.set_default_tags(
+            {"rllib": "IMPALA/GPULoaderThread"}
+        )
+
+        self._metrics_impala_gpu_loader_thread_step_in_queue_get_time = Histogram(
+            name="rllib_learner_impala_gpu_loader_thread_step_get_time",
+            description="Time taken in seconds for gpu loader thread _step _in_queue.get().",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_gpu_loader_thread_step_in_queue_get_time.set_default_tags(
+            {"rllib": "IMPALA/GPULoaderThread"}
+        )
+
+        self._metrics_impala_gpu_loader_thread_step_load_to_gpu_time = Histogram(
+            name="rllib_learner_impala_gpu_loader_thread_step_load_to_gpu_time",
+            description="Time taken in seconds for GPU loader thread _step to load batch to GPU.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_gpu_loader_thread_step_load_to_gpu_time.set_default_tags(
+            {"rllib": "IMPALA/GPULoaderThread"}
+        )
+
+        self._metrics_impala_gpu_loader_thread_in_qsize_beginning_of_step = Gauge(
+            name="rllib_impala_gpu_loader_thread_in_qsize_beginning_of_step",
+            description="Size of the _GPULoaderThread in-queue size, at the beginning of the step.",
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_gpu_loader_thread_in_qsize_beginning_of_step.set_default_tags(
+            {"rllib": "IMPALA/GPULoaderThread"}
+        )
+
     def run(self) -> None:
         while True:
-            self._step()
+            with TimerAndPrometheusLogger(
+                self._metrics_impala_gpu_loader_thread_step_time
+            ):
+                self._step()
 
     def _step(self) -> None:
-        # Get a new batch (CPU) and the global timesteps from the loader in-queue (blocking).
+        self._metrics_impala_gpu_loader_thread_in_qsize_beginning_of_step.set(
+            value=self._in_queue.qsize()
+        )
+        # Get a new batch (CPU) and the global timesteps from the loader in--queue (blocking).
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
-            ma_batch_on_cpu, timesteps = self._in_queue.get()
+            with TimerAndPrometheusLogger(
+                self._metrics_impala_gpu_loader_thread_step_in_queue_get_time
+            ):
+                ma_batch_on_cpu, timesteps = self._in_queue.get()
 
         # Load the batch onto the GPU device; enable pinned memory for async copies.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
@@ -301,6 +427,48 @@ class _LearnerThread(threading.Thread):
             # If the queue is full, the consumer will wake soon anyway.
             pass
 
+        # Ray metrics
+        self._metrics_learner_impala_thread_step = Histogram(
+            name="rllib_learner_impala_learner_thread_step_time",
+            description="Time taken in seconds for learner thread _step.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        self._metrics_learner_impala_thread_step_update = Histogram(
+            name="rllib_learner_impala_learner_thread_step_update_time",
+            description="Time taken in seconds for learner thread _step update.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step_update.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        # Ray metrics
+        self._metrics_learner_impala_thread_step = Histogram(
+            name="rllib_learner_impala_learner_thread_step_time",
+            description="Time taken in seconds for learner thread _step.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        self._metrics_learner_impala_thread_step_update = Histogram(
+            name="rllib_learner_impala_learner_thread_step_update_time",
+            description="Time taken in seconds for learner thread _step update.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step_update.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
     def run(self) -> None:
         while True:
             # Returns always `True` until stop-signal/sentinel is sent.
@@ -329,12 +497,15 @@ class _LearnerThread(threading.Thread):
 
         # Update the `RLModule`, but do not reduce metrics.
         with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
-            self._update_method(
-                self=self.learner,
-                training_data=TrainingData(batch=ma_batch_on_gpu),
-                timesteps=timesteps,
-                _no_metrics_reduce=True,
-            )
+            with TimerAndPrometheusLogger(
+                self._metrics_learner_impala_thread_step_update
+            ):
+                self._update_method(
+                    self=self.learner,
+                    training_data=TrainingData(batch=ma_batch_on_gpu),
+                    timesteps=timesteps,
+                    _no_metrics_reduce=True,
+                )
 
         # Signal queue done (unblocks producer’s put when bounded)
         try:

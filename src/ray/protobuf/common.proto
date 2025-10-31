@@ -468,7 +468,7 @@ message LeaseSpec {
   map<string, double> required_resources = 9;
   map<string, double> required_placement_resources = 10;
   SchedulingStrategy scheduling_strategy = 11;
-  map<string, string> label_selector = 12;
+  LabelSelector label_selector = 12;
   int64 depth = 13;
   RuntimeEnvInfo runtime_env_info = 14;
   repeated ObjectReference dependencies = 15;
@@ -479,6 +479,7 @@ message LeaseSpec {
   int32 max_retries = 20;
   uint64 attempt_number = 21;
   string task_name = 22;
+  FallbackStrategy fallback_strategy = 23;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -597,9 +598,11 @@ message TaskSpec {
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
   // The key-value label constraints of the node to schedule this task or actor on.
-  map<string, string> label_selector = 43;
+  LabelSelector label_selector = 43;
   // The tensor transport type for this task.
   TensorTransport tensor_transport = 44;
+  // A list of fallback options defining the fallback strategy for scheduling.
+  FallbackStrategy fallback_strategy = 45;
 }
 
 message TaskInfoEntry {
@@ -921,6 +924,9 @@ enum TaskStatus {
   FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
   FAILED = 12;
+  // The task is attempting to pin args and fetch them for execution, used for metrics
+  // only and is a sub state of RUNNING
+  GETTING_AND_PINNING_ARGS = 13;
 }
 
 // Debug info for a referenced object.
@@ -1003,6 +1009,10 @@ message CoreWorkerStats {
   int64 num_owned_actors = 21;
   // Number of running tasks
   int64 num_running_tasks = 22;
+  // Number of in flight arg pinning requests
+  int64 num_in_flight_arg_pinning_requests = 23;
+  // Number of failed arg pinning requests
+  int64 num_of_failed_arg_pinning_requests = 24;
 }
 
 // Resource usage reported by the node reporter.
@@ -1075,6 +1085,18 @@ message LabelSelectorConstraint {
 message LabelSelector {
   // The list of node label constraints with AND semantics.
   repeated LabelSelectorConstraint label_constraints = 1;
+}
+
+// A single fallback option. Defines requirements for a Task or Actor to use for
+// scheduling.
+message FallbackOption {
+  LabelSelector label_selector = 1;
+}
+
+// Fallback strategy is a list of fallback options to try in-order when scheduling on a
+// node.
+message FallbackStrategy {
+  repeated FallbackOption options = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

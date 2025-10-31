@@ -339,15 +339,6 @@ Load checkpoints
     result = trainer.fit()
     print(result.checkpoint)
 
-    # Start a new run from a loaded checkpoint
-    trainer = TensorflowTrainer(
-        train_func,
-        train_loop_config={"num_epochs": 5},
-        scaling_config=ScalingConfig(num_workers=2),
-        resume_from_checkpoint=result.checkpoint,
-    )
-    result = trainer.fit()
-
 
 Further reading
 ---------------

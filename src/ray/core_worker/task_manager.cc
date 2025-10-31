@@ -1156,8 +1156,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     } else {
       auto is_preempted = false;
       if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
-        const auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
-                                                        /*filter_dead_nodes=*/false);
+        const auto node_info =
+            gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
+                                                           /*filter_dead_nodes=*/false);
         is_preempted = node_info != nullptr && node_info->has_death_info() &&
                        node_info->death_info().reason() ==
                            rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
@@ -1780,7 +1781,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
+  total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 

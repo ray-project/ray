@@ -88,9 +88,9 @@ steps:
       - macos_wheels
       - oss
     job_env: MACOS
-    instance_type: macos
+    instance_type: macos-arm64
     commands:
-      - RAY_INSTALL_JAVA=1 ./ci/ray_ci/macos/macos_ci.sh run_ray_cpp_and_java
+      - RAY_INSTALL_JAVA=0 ./ci/ray_ci/macos/macos_ci.sh run_ray_cpp
 
   - label: ":ray: core: :mac: flaky tests"
     key: macos_flaky_tests

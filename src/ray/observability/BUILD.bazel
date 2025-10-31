@@ -97,6 +97,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/protobuf/public:events_actor_definition_event_cc_proto",
     ],
 )
@@ -166,6 +167,7 @@ ray_cc_library(
         ":ray_event",
         ":ray_event_recorder_interface",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",
