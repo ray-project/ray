@@ -1314,7 +1314,9 @@ def start_api_server(
         dashboard_url = None
         dashboard_returncode = None
         start_time_s = time.time()
-        while time.time() - start_time_s < ray_constants.RAY_DASHBOARD_STARTUP_TIMEOUT_S:
+        while (
+            time.time() - start_time_s < ray_constants.RAY_DASHBOARD_STARTUP_TIMEOUT_S
+        ):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
