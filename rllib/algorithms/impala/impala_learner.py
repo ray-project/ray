@@ -147,11 +147,9 @@ class IMPALALearner(Learner):
         )
 
         # Get the rank of this learner, if necessary.
-        if torch.distributed.is_initialized():
-            self._rank: int = torch.distributed.get_rank()
-        # For single-learner setups the rank is always 0.
-        else:
-            self._rank: int = 0
+        self._rank: int = (
+            torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        )
 
         # Define the out-queue for the metrics from the `_LearnerThread`.
         # TODO (simon): Add types for items.
