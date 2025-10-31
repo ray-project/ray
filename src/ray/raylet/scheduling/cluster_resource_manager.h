@@ -135,6 +135,9 @@ class ClusterResourceManager {
   std::string DebugString(
       std::optional<size_t> max_num_nodes_to_include = std::nullopt) const;
 
+  /// Record metrics for the cluster resource manager.
+  void RecordMetrics() const;
+
   BundleLocationIndex &GetBundleLocationIndex();
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
