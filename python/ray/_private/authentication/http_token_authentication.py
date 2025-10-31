@@ -6,8 +6,16 @@ import pytest
 from aiohttp import web
 
 from ray._private.authentication import authentication_constants
-from ray._raylet import AuthenticationTokenLoader
 from ray.dashboard import authentication_utils as auth_utils
+
+try:
+    from ray._raylet import AuthenticationTokenLoader
+
+    _RAYLET_AVAILABLE = True
+except ImportError:
+    # ray._raylet not available during doc builds
+    _RAYLET_AVAILABLE = False
+    AuthenticationTokenLoader = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +42,7 @@ async def token_auth_middleware(request: web.Request, handler):
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
-    if not auth_utils.is_token_auth_enabled():
+    if not _RAYLET_AVAILABLE or not auth_utils.is_token_auth_enabled():
         return {}
 
     # Check if user provided their own Authorization header (case-insensitive)
