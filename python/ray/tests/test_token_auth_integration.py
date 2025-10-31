@@ -2,18 +2,85 @@
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray._raylet import AuthenticationTokenLoader, Config
 from ray.cluster_utils import Cluster
 
 
 def reset_token_cache():
     AuthenticationTokenLoader.instance().reset_cache()
+
+
+def _run_ray_start_and_verify_status(
+    args: list, env: dict, expect_success: bool = True, timeout: int = 30
+) -> subprocess.CompletedProcess:
+    """Helper to run ray start command with proper error handling."""
+    result = subprocess.run(
+        ["ray", "start"] + args,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+    if expect_success:
+        assert result.returncode == 0, (
+            f"ray start should have succeeded. "
+            f"stdout: {result.stdout}, stderr: {result.stderr}"
+        )
+    else:
+        assert result.returncode != 0, (
+            f"ray start should have failed but succeeded. "
+            f"stdout: {result.stdout}, stderr: {result.stderr}"
+        )
+        # Check that error message mentions token
+        error_output = result.stdout + result.stderr
+        assert (
+            "authentication token" in error_output.lower()
+            or "token" in error_output.lower()
+        ), f"Error message should mention token. Got: {error_output}"
+
+    return result
+
+
+def _cleanup_ray_start(env: Optional[dict] = None):
+    """Helper to clean up ray start processes."""
+    # Ensure any ray.init() connection is closed first
+    if ray.is_initialized():
+        ray.shutdown()
+
+    # Stop with a longer timeout
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        env=env,
+        capture_output=True,
+        timeout=60,  # Increased timeout for flaky cleanup
+        check=False,  # Don't raise on non-zero exit
+    )
+
+    # Wait for ray processes to actually stop
+    def ray_stopped():
+        result = subprocess.run(
+            ["ray", "status"],
+            capture_output=True,
+            check=False,
+        )
+        # ray status returns non-zero when no cluster is running
+        return result.returncode != 0
+
+    try:
+        wait_for_condition(ray_stopped, timeout=10, retry_interval_ms=500)
+    except Exception:
+        # Best effort - don't fail the test if we can't verify it stopped
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -77,6 +144,14 @@ def clean_token_sources():
 
     if ray.is_initialized():
         ray.shutdown()
+
+    # Ensure all ray processes are stopped
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
 
     # Reset token caches again after test
     reset_token_cache()
@@ -216,6 +291,151 @@ def test_cluster_token_authentication(tokens_match):
     finally:
         # Ensure cleanup
         ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize("is_head", [True, False])
+def test_ray_start_without_token_raises_error(is_head):
+    """Test that ray start fails when auth_mode=token but no token exists."""
+    # Set up environment with token auth enabled but no token
+    env = os.environ.copy()
+    env["RAY_auth_mode"] = "token"
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+
+    # Ensure no default token file exists (already cleaned by fixture)
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    # When specifying an address, we need a head node to connect to
+    cluster = None
+    if not is_head:
+        # Start head node with token
+        cluster_token = "a" * 32
+        os.environ["RAY_AUTH_TOKEN"] = cluster_token
+        os.environ["RAY_auth_mode"] = "token"
+        Config.initialize("")
+        cluster = Cluster()
+        cluster.add_node()
+
+    try:
+        # Prepare arguments
+        if is_head:
+            args = ["--head", "--port=0"]
+        else:
+            args = [f"--address={cluster.address}"]
+
+        # Try to start node - should fail
+        _run_ray_start_and_verify_status(args, env, expect_success=False)
+
+    finally:
+        if cluster:
+            cluster.shutdown()
+
+
+def test_ray_start_head_with_token_succeeds():
+    """Test that ray start --head succeeds when token auth is enabled with a valid token."""
+    # Set up environment with token auth and a valid token
+    test_token = "a" * 32
+    env = os.environ.copy()
+    env["RAY_AUTH_TOKEN"] = test_token
+    env["RAY_auth_mode"] = "token"
+
+    try:
+        # Start head node - should succeed
+        _run_ray_start_and_verify_status(
+            ["--head", "--port=0"], env, expect_success=True
+        )
+
+        # Verify we can connect to the cluster with ray.init()
+        os.environ["RAY_AUTH_TOKEN"] = test_token
+        os.environ["RAY_auth_mode"] = "token"
+        Config.initialize("")
+        reset_token_cache()
+
+        # Wait for cluster to be ready
+        def cluster_ready():
+            try:
+                ray.init(address="auto")
+                return True
+            except Exception:
+                return False
+
+        wait_for_condition(cluster_ready, timeout=10)
+        assert ray.is_initialized()
+
+        # Test basic operations work
+        @ray.remote
+        def test_func():
+            return "success"
+
+        result = ray.get(test_func.remote())
+        assert result == "success"
+
+    finally:
+        # Cleanup handles ray.shutdown() internally
+        _cleanup_ray_start(env)
+
+
+@pytest.mark.parametrize("token_match", ["correct", "incorrect"])
+def test_ray_start_address_with_token(token_match):
+    """Test ray start --address=... with correct or incorrect token."""
+    # Start a head node with token auth
+    cluster_token = "a" * 32
+    os.environ["RAY_AUTH_TOKEN"] = cluster_token
+    os.environ["RAY_auth_mode"] = "token"
+    Config.initialize("")
+
+    cluster = Cluster()
+    cluster.add_node(num_cpus=1)
+
+    try:
+        # Set up environment for worker
+        env = os.environ.copy()
+        env["RAY_auth_mode"] = "token"
+
+        if token_match == "correct":
+            env["RAY_AUTH_TOKEN"] = cluster_token
+            expect_success = True
+        else:
+            # Use different token
+            env["RAY_AUTH_TOKEN"] = "b" * 32
+            expect_success = False
+
+        # Start worker node
+        _run_ray_start_and_verify_status(
+            [f"--address={cluster.address}", "--num-cpus=1"],
+            env,
+            expect_success=expect_success,
+        )
+
+        if token_match == "correct":
+            try:
+                # Connect and verify the cluster has 2 nodes (head + worker)
+                ray.init(address=cluster.address)
+
+                # Wait for worker node to register
+                def worker_joined():
+                    return len(ray.nodes()) >= 2
+
+                wait_for_condition(worker_joined, timeout=10)
+
+                nodes = ray.nodes()
+                assert (
+                    len(nodes) >= 2
+                ), f"Expected at least 2 nodes, got {len(nodes)}: {nodes}"
+
+            finally:
+                # Always shutdown ray.init() connection before cleanup
+                if ray.is_initialized():
+                    ray.shutdown()
+                # Clean up the worker node started with ray start
+                _cleanup_ray_start(env)
+
+    finally:
+        # Clean up cluster
+        if ray.is_initialized():
+            ray.shutdown()
         cluster.shutdown()
 
 
