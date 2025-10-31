@@ -103,11 +103,12 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   RayLease lease(
       actor->GetLeaseSpecification(),
       owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
-                                               /*grant_or_reject=*/false,
-                                               /*is_selected_based_on_locality=*/false,
-                                               /*reply=*/reply.get(),
-                                               send_reply_callback);
+  cluster_lease_manager_.QueueAndScheduleLease(
+      std::move(lease),
+      /*grant_or_reject=*/false,
+      /*is_selected_based_on_locality=*/false,
+      {ray::raylet::internal::ReplyCallback(std::move(send_reply_callback),
+                                            reply.get())});
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
