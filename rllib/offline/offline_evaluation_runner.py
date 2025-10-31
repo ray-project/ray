@@ -370,19 +370,19 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 value=module_batch_size,
                 reduce="sum",
             )
-        # Log env steps (all modules).
-        self.metrics.log_value(
-            (ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
-            batch.env_steps(),
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            batch.env_steps(),
-            reduce="sum",
-            with_throughput=True,
-        )
+            # Log env steps (all modules).
+            self.metrics.log_value(
+                (ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
+                module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                module_batch_size,
+                reduce="sum",
+                with_throughput=True,
+            )
 
     @override(Runner)
     def set_device(self):

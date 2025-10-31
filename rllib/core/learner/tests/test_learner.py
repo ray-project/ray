@@ -8,10 +8,18 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
+
+from ray.rllib.utils.metrics import (
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
+)
 
 torch, _ = try_import_torch()
 
@@ -45,6 +53,16 @@ class TestLearner(unittest.TestCase):
         min_loss = min(loss, min_loss)
         print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
         self.assertLess(min_loss, 0.58)
+
+        # Test that the metrics are correctly aggregated to the ALL_MODULES key.
+        self.assertEqual(
+            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED].peek(),
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek(),
+        )
+        self.assertEqual(
+            results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED_LIFETIME].peek(),
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
+        )
 
     def test_compute_gradients(self):
         """Tests the compute_gradients correctness.
@@ -238,6 +256,66 @@ class TestLearner(unittest.TestCase):
         check(learner1.module.get_state(), learner2.module.get_state())
         check(learner1._get_optimizer_state(), learner2._get_optimizer_state())
         check(learner1._module_optimizers, learner2._module_optimizers)
+
+    def test_multi_agent_step_aggregation(self):
+        config = BaseTestingAlgorithmConfig()
+
+        learner = config.build_learner(env=self.ENV)
+        learner.remove_module(module_id=DEFAULT_MODULE_ID)
+        learner.add_module(
+            module_id="mod1", module_spec=config.get_rl_module_spec(env=self.ENV)
+        )
+        learner.add_module(
+            module_id="mod2", module_spec=config.get_rl_module_spec(env=self.ENV)
+        )
+        reader = get_cartpole_dataset_reader(batch_size=512)
+
+        batch_counts = {"mod1": 0, "mod2": 0}
+        results = {}
+        for _iter_i in range(50):
+            batch1 = reader.next()
+            batch_counts["mod1"] += batch1.count
+            batch2 = reader.next()
+            batch_counts["mod2"] += batch2.count
+            multi_agent_batch = MultiAgentBatch(
+                {"mod1": batch1, "mod2": batch2}, batch1.count + batch2.count
+            )
+            batch = learner._convert_batch_type(multi_agent_batch)
+            results = learner.update(batch)
+
+        # Summarize and check module steps
+        sum_all_modules_last_step = 0
+        sum_all_modules_steps_lifetime = 0
+        for batch, module_id in zip(
+            [batch1, batch2], ["mod1", "mod2"]
+        ):  # pyright: ignore[reportPossiblyUnboundVariable]
+            last_mod_steps = results[module_id][NUM_MODULE_STEPS_TRAINED].peek()
+            sum_all_modules_last_step += last_mod_steps
+            self.assertEqual(batch.count, last_mod_steps)
+
+            mod_lifetime_steps = results[module_id][
+                NUM_MODULE_STEPS_TRAINED_LIFETIME
+            ].peek()
+            sum_all_modules_steps_lifetime += mod_lifetime_steps
+            self.assertEqual(batch_counts[module_id], mod_lifetime_steps)
+        # Test that the metrics are correctly aggregated to the ALL_MODULES and as expected
+        self.assertEqual(sum(batch_counts.values()), sum_all_modules_steps_lifetime)
+        self.assertEqual(
+            sum_all_modules_last_step,
+            results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED].peek(),
+        )
+        self.assertEqual(
+            sum_all_modules_steps_lifetime,
+            results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED_LIFETIME].peek(),
+        )
+        self.assertEqual(
+            sum_all_modules_last_step,
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek(),
+        )
+        self.assertEqual(
+            sum_all_modules_steps_lifetime,
+            results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME].peek(),
+        )
 
 
 if __name__ == "__main__":
