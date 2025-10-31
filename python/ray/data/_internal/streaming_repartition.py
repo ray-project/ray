@@ -1,11 +1,10 @@
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Iterable, List, Optional
+from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
-from ray.data._internal.execution.operators.map_operator import _TaskInput
 from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.types import ObjectRef
 
@@ -91,7 +90,7 @@ class StreamingRepartitionTaskBuilder:
 
     Usage:
     - Call `add_input(ref_bundle)` as upstream blocks arrive. This returns zero
-      or more `_TaskInput` objects ready to schedule immediately.
+      or more `(RefBundle, task_kwargs)` tuples ready to schedule immediately.
     """
 
     def __init__(self, target_num_rows_per_block: int):
@@ -103,7 +102,9 @@ class StreamingRepartitionTaskBuilder:
         self._total_pending_rows = 0
         self._next_output_index = 0
 
-    def add_input(self, ref_bundle: RefBundle) -> List[_TaskInput]:
+    def add_input(
+        self, ref_bundle: RefBundle
+    ) -> List[Tuple[RefBundle, Dict[str, Any]]]:
         schema = ref_bundle.schema
         for block_ref, metadata in ref_bundle.blocks:
             assert metadata.num_rows
@@ -118,11 +119,13 @@ class StreamingRepartitionTaskBuilder:
             self._total_pending_rows += metadata.num_rows
         return self._drain_ready_tasks()
 
-    def finish(self) -> List[_TaskInput]:
+    def finish(self) -> List[Tuple[RefBundle, Dict[str, Any]]]:
         return self._drain_ready_tasks(flush_remaining=True)
 
-    def _drain_ready_tasks(self, flush_remaining: bool = False) -> List[_TaskInput]:
-        task_inputs: List[_TaskInput] = []
+    def _drain_ready_tasks(
+        self, flush_remaining: bool = False
+    ) -> List[Tuple[RefBundle, Dict[str, Any]]]:
+        task_inputs: List[Tuple[RefBundle, Dict[str, Any]]] = []
         while self._total_pending_rows >= self._target_num_rows or (
             flush_remaining and self._total_pending_rows > 0
         ):
@@ -149,7 +152,7 @@ class StreamingRepartitionTaskBuilder:
             task_inputs.append(self._build_task([rows_needed]))
         return task_inputs
 
-    def _build_task(self, output_rows: List[int]) -> _TaskInput:
+    def _build_task(self, output_rows: List[int]) -> Tuple[RefBundle, Dict[str, Any]]:
         total_rows_needed = sum(output_rows)
         assert (
             total_rows_needed <= self._total_pending_rows
@@ -220,10 +223,7 @@ class StreamingRepartitionTaskBuilder:
         )
 
         spec = StreamingRepartitionTaskSpec(outputs=outputs)
-        return _TaskInput(
-            bundle=ref_bundle,
-            task_kwargs={STREAMING_REPARTITION_SPEC_KEY: spec},
-        )
+        return ref_bundle, {STREAMING_REPARTITION_SPEC_KEY: spec}
 
 
 def streaming_repartition_block_fn(

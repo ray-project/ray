@@ -91,6 +91,7 @@ class TaskPoolMapOperator(MapOperator):
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
+            input_bundle=bundle,
         )
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)

@@ -4,7 +4,6 @@ import itertools
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
@@ -64,12 +63,6 @@ from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _TaskInput:
-    bundle: RefBundle
-    task_kwargs: Optional[Dict[str, Any]] = None
 
 
 class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
@@ -352,10 +345,10 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         if self._task_input_builder is not None:
             self._metrics.on_input_queued(refs)
-            task_inputs: List[_TaskInput] = self._task_input_builder.add_input(refs)
+            task_inputs = self._task_input_builder.add_input(refs)
             self._metrics.on_input_dequeued(refs)
-            for task_input in task_inputs:
-                self._submit_task_input(task_input)
+            for bundle, task_kwargs in task_inputs:
+                self._add_bundled_input(bundle, task_kwargs)
             return
 
         # Add RefBundle to the bundler.
@@ -409,10 +402,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         if self._ray_remote_args_factory_actor_locality:
             return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
-
-    def _submit_task_input(self, task_input: _TaskInput) -> None:
-        """Submit a ready-to-run task input produced by a task input builder."""
-        self._add_bundled_input(task_input.bundle, task_input.task_kwargs)
 
     @abstractmethod
     def _add_bundled_input(
@@ -508,8 +497,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     def all_inputs_done(self):
         if self._task_input_builder is not None:
-            for task_input in self._task_input_builder.finish():
-                self._submit_task_input(task_input)
+            for bundle, task_kwargs in self._task_input_builder.finish():
+                self._add_bundled_input(bundle, task_kwargs)
             super().all_inputs_done()
             return
 
