@@ -598,6 +598,47 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
+    ################################################################
+    # Experimental SQL API configuration (added for SQL module)
+    ################################################################
+
+    # SQL dialect for query parsing (duckdb, postgres, mysql, etc.)
+    sql_dialect: str = "duckdb"
+
+    # SQL logging level (debug, info, warning, error)
+    sql_log_level: str = "INFO"
+
+    # Whether SQL identifiers are case-sensitive
+    sql_case_sensitive: bool = True
+
+    # Whether to enable strict SQL validation mode
+    sql_strict_mode: bool = False
+
+    # Whether to enable SQL query optimization
+    sql_enable_optimization: bool = True
+
+    # Maximum partitions for SQL join operations
+    sql_max_join_partitions: int = 20
+
+    # Whether to enable predicate pushdown optimization
+    sql_enable_predicate_pushdown: bool = True
+
+    # Whether to enable projection pushdown optimization
+    sql_enable_projection_pushdown: bool = True
+
+    # SQL query timeout in seconds (None for no timeout)
+    sql_query_timeout_seconds: Optional[int] = None
+
+    # Whether to enable experimental SQLGlot AST optimization
+    sql_enable_sqlglot_optimizer: bool = False
+
+    # Whether to use Apache DataFusion for query optimization (default: True)
+    # When True, uses DataFusion's advanced cost-based optimizer for query planning,
+    # then executes with Ray Data for distributed execution with resource and
+    # backpressure management. Falls back to SQLGlot if DataFusion is unavailable.
+    # When False, uses SQLGlot-only optimization.
+    sql_use_datafusion: bool = True
+
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
 

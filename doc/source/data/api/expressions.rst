@@ -7,7 +7,7 @@ Expressions API
 
 Expressions provide a way to specify column-based operations on datasets.
 Use :func:`col` to reference columns and :func:`lit` to create literal values.
-These can be combined with operators to create complex expressions for filtering,
+You can combine these with operators to create complex expressions for filtering,
 transformations, and computations.
 
 Public API
