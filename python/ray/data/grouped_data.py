@@ -98,7 +98,7 @@ class GroupedData:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -301,6 +301,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=False,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )

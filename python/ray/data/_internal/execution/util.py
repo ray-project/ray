@@ -36,7 +36,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     return output
 
 
-memory_units = ["B", "KB", "MB", "GB", "TB", "PB"]
+memory_units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
 
 
 def memory_string(num_bytes: float) -> str:

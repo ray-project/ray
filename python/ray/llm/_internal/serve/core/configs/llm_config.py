@@ -26,15 +26,18 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
 from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
-from ray.llm._internal.serve.engines.vllm.kv_transfer import (
-    SUPPORTED_BACKENDS as SUPPORTED_KV_CONNECTOR_BACKENDS,
+from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
+    KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig
@@ -297,6 +300,10 @@ class LLMConfig(BaseModelExtended):
         assert engine_config is not None
         pg = engine_config.get_or_create_pg()
         runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+        if self.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+            worker_node_download_model = NodeModelDownloadable.NONE
+        else:
+            worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Create new instance
         if isinstance(self.callback_config.callback_class, str):
@@ -308,7 +315,7 @@ class LLMConfig(BaseModelExtended):
             raise_error_on_callback=self.callback_config.raise_error_on_callback,
             llm_config=self,
             ctx_kwargs={
-                "worker_node_download_model": NodeModelDownloadable.MODEL_AND_TOKENIZER,
+                "worker_node_download_model": worker_node_download_model,
                 "placement_group": pg,
                 "runtime_env": runtime_env,
             },
@@ -493,12 +500,10 @@ class LLMConfig(BaseModelExtended):
         if not kv_connector:
             raise ValueError("Connector type is not specified.")
 
-        kv_connector_backend_class = SUPPORTED_KV_CONNECTOR_BACKENDS.get(kv_connector)
-        if not kv_connector_backend_class:
-            raise ValueError(f"Unsupported connector type: {kv_connector}")
-
-        # 2. Setup the backend
-        kv_connector_backend = kv_connector_backend_class(self)
+        # 2. Setup the backend using factory
+        kv_connector_backend = KVConnectorBackendFactory.create_backend(
+            kv_connector, self
+        )
         kv_connector_backend.setup()
 
 
