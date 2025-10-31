@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tupl
 import pyarrow as pa
 from packaging import version
 
+from ray.data._internal.collections import collapse_transitive_map
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -38,6 +39,7 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
+    column_rename_map: Optional[Dict[str, str]],
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
@@ -61,7 +63,15 @@ def _get_read_task(
 
         # Stream results as RecordBatches for memory efficiency
         for batch in result_table.to_batches():
-            yield pa.Table.from_batches([batch])
+            table = pa.Table.from_batches([batch])
+
+            # Apply column renames if present
+            if column_rename_map:
+                table = table.rename_columns(
+                    [column_rename_map.get(col, col) for col in table.schema.names]
+                )
+
+            yield table
 
     else:
         # Legacy implementation using project_table (PyIceberg <0.9.0)
@@ -71,7 +81,7 @@ def _get_read_task(
         # FileScanTask) - note that this is not as simple as reading a single
         # parquet file, as there might be delete files, etc. associated, so we
         # must use the PyIceberg API for the projection.
-        yield pyi_pa_io.project_table(
+        table = pyi_pa_io.project_table(
             tasks=tasks,
             table_metadata=table_metadata,
             io=table_io,
@@ -80,6 +90,14 @@ def _get_read_task(
             case_sensitive=case_sensitive,
             limit=limit,
         )
+
+        # Apply column renames if present
+        if column_rename_map:
+            table = table.rename_columns(
+                [column_rename_map.get(col, col) for col in table.schema.names]
+            )
+
+        yield table
 
 
 @DeveloperAPI
@@ -145,6 +163,7 @@ class IcebergDatasource(Datasource):
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
         self._selected_fields = selected_fields
+        self._column_rename_map = None
 
         if snapshot_id:
             self._scan_kwargs["snapshot_id"] = snapshot_id
@@ -219,6 +238,32 @@ class IcebergDatasource(Datasource):
         """Returns True to indicate this datasource supports predicate pushdown."""
         return True
 
+    def supports_projection_pushdown(self) -> bool:
+        """Returns True to indicate this datasource supports projection pushdown."""
+        return True
+
+    def get_current_projection(self) -> Optional[List[str]]:
+        """Return the current projection (selected columns).
+
+        Returns:
+            List of column names to project, or None if all columns are selected.
+        """
+        # If selected_fields is ("*",) or None, return None to indicate all columns
+        if self._selected_fields is None or self._selected_fields == ("*",):
+            return None
+
+        # Convert tuple to list for compatibility with projection pushdown interface
+        return list(self._selected_fields)
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied to this datasource.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return self._column_rename_map if self._column_rename_map else None
+
     def apply_predicate(self, predicate_expr: "Expr") -> "IcebergDatasource":
         """Apply a predicate to this datasource.
 
@@ -237,6 +282,42 @@ class IcebergDatasource(Datasource):
 
         # Invalidate cached plan_files and table so they get recalculated
         # with the new predicate
+        clone._plan_files = None
+        clone._table = None
+
+        return clone
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "IcebergDatasource":
+        """Apply a projection to this datasource.
+
+        Args:
+            columns: List of columns to select, or None to select all columns.
+            column_rename_map: Dictionary mapping old column names to new names,
+                or None if no renaming is needed.
+
+        Returns:
+            A new IcebergDatasource with the projection applied.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine projections
+        clone._selected_fields = self._combine_projection(
+            self._selected_fields, columns
+        )
+
+        # Combine rename maps
+        clone._column_rename_map = self._combine_rename_map(
+            self._column_rename_map, column_rename_map
+        )
+
+        # Invalidate cached plan_files and table so they get recalculated
+        # with the new projection
         clone._plan_files = None
         clone._table = None
 
@@ -271,6 +352,68 @@ class IcebergDatasource(Datasource):
             )
 
         return chunks
+
+    @staticmethod
+    def _combine_projection(
+        prev_projected_cols: Optional[Tuple[str, ...]],
+        new_projected_cols: Optional[List[str]],
+    ) -> Optional[Tuple[str, ...]]:
+        """Combine two projections, validating that new projection is valid.
+
+        Args:
+            prev_projected_cols: Previous projection as tuple, or None/("*",) for all columns
+            new_projected_cols: New projection as list, or None for all columns
+
+        Returns:
+            Combined projection as tuple, or ("*",) for all columns
+        """
+        # Handle "all columns" cases
+        is_prev_all = prev_projected_cols is None or prev_projected_cols == ("*",)
+        is_new_all = new_projected_cols is None
+
+        if is_prev_all:
+            # If previous was all columns, new projection becomes the projection
+            return tuple(new_projected_cols) if new_projected_cols else ("*",)
+        elif is_new_all:
+            # If new projection is all columns, retain original projection
+            return prev_projected_cols
+        else:
+            # Both projections are specific - validate and combine
+            prev_cols_set = set(prev_projected_cols)
+            illegal_refs = [
+                col for col in new_projected_cols if col not in prev_cols_set
+            ]
+
+            if illegal_refs:
+                raise ValueError(
+                    f"New projection {new_projected_cols} references non-existent columns "
+                    f"(existing projection {list(prev_projected_cols)})"
+                )
+
+            return tuple(new_projected_cols)
+
+    @staticmethod
+    def _combine_rename_map(
+        prev_column_rename_map: Optional[Dict[str, str]],
+        new_column_rename_map: Optional[Dict[str, str]],
+    ) -> Optional[Dict[str, str]]:
+        """Combine two column rename maps, handling transitive renames.
+
+        Args:
+            prev_column_rename_map: Previous rename map
+            new_column_rename_map: New rename map
+
+        Returns:
+            Combined rename map with transitive mappings collapsed
+        """
+        if not prev_column_rename_map:
+            combined = new_column_rename_map
+        elif not new_column_rename_map:
+            combined = prev_column_rename_map
+        else:
+            combined = prev_column_rename_map | new_column_rename_map
+
+        return collapse_transitive_map(combined) if combined else None
 
     def get_read_tasks(
         self, parallelism: int, per_task_row_limit: Optional[int] = None
@@ -318,6 +461,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
+            column_rename_map=self._column_rename_map,
         )
 
         read_tasks = []
