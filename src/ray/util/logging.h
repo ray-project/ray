@@ -122,8 +122,7 @@ enum class RayLogLevel {
   INFO = 0,
   WARNING = 1,
   ERROR = 2,
-  USER_FATAL = 3,  // User-facing fatal errors (config/usage errors)
-  FATAL = 4        // Internal fatal errors (bugs in Ray)
+  FATAL = 3
 };
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
@@ -151,12 +150,6 @@ enum class RayLogLevel {
                            "with you to fix it. Check failed: " display " ")
 
 #define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
-
-// User-facing fatal check without "bug in Ray" message
-#define RAY_USER_CHECK(condition) \
-  RAY_PREDICT_TRUE((condition))   \
-  ? RAY_IGNORE_EXPR(0)            \
-  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::USER_FATAL)
 
 #ifdef NDEBUG
 
