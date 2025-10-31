@@ -19,7 +19,6 @@ from .constants import (
 )
 from .key_generation import make_cache_key
 from .smart_updates import SmartCacheUpdater
-from .validation import validate_cached_value
 from ray.data._internal.logical.interfaces import LogicalPlan
 
 if TYPE_CHECKING:
@@ -113,12 +112,9 @@ class DatasetCache:
         with self._lock:
             if cache_key in self._local_cache:
                 result = self._local_cache[cache_key]
-                if validate_cached_value(operation_name, result):
-                    self._local_cache.move_to_end(cache_key)
-                    self._hit_count += 1
-                    return result
-                else:
-                    self._local_cache.pop(cache_key, None)
+                self._local_cache.move_to_end(cache_key)
+                self._hit_count += 1
+                return result
 
             object_ref = None
             if cache_key in self._ray_cache:
@@ -139,15 +135,11 @@ class DatasetCache:
             result = ray.get(object_ref)
 
             with self._lock:
-                if cache_key in self._ray_cache and validate_cached_value(
-                    operation_name, result
-                ):
+                if cache_key in self._ray_cache:
                     self._ray_cache.move_to_end(cache_key)
                     self._hit_count += 1
                     return result
-                else:
-                    self._ray_cache.pop(cache_key, None)
-                    return None
+                return None
         except Exception:
             with self._lock:
                 self._ray_cache.pop(cache_key, None)
