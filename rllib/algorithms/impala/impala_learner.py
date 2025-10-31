@@ -1,5 +1,6 @@
 import logging
 import queue
+from queue import Queue
 import threading
 from typing import Any, Dict, List
 
@@ -111,7 +112,7 @@ class IMPALALearner(Learner):
 
         self._model_io_lock = threading.RLock()
 
-        self._learner_state_queue = queue.Queue(maxsize=1)
+        self._learner_state_queue = Queue(maxsize=1)
         self._learner_state_lock = threading.Lock()
         self._learner_state = None
 
@@ -135,16 +136,17 @@ class IMPALALearner(Learner):
         # TODO (simon): Do extensive testing to find an optimal queue size.
         loader_qsize = max(2, 10 * self.config.num_gpu_loader_threads)
         # Note, we are passing now the timesteps dictionary through the queue.
-        self._gpu_loader_in_queue: "queue.Queue[tuple[TrainingData, Dict[str, Any]]]" = queue.Queue(
+        self._gpu_loader_in_queue: "Queue[tuple[TrainingData, Dict[str, Any]]]" = Queue(
             maxsize=loader_qsize
         )
 
         # Learner in-queue must be tiny. 1 strictly serializes GPU-resident batches.
-        # TODO (simon): Add `FastRingBuffer` to APPO. And check, if deque is better here.
+        # TODO (simon): Check, if deque is better here.
         # TODO (simon): Add a parameter to define queue size.
-        self._learner_thread_in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]" = (
-            queue.Queue(maxsize=2)
-        )
+        if not hasattr(self, "_learner_thread_in_queue"):
+            self._learner_thread_in_queue: "Queue[tuple[Any, Dict[str, Any]]]" = Queue(
+                maxsize=2
+            )
 
         # Get the rank of this learner, if necessary.
         self._rank: int = (
@@ -153,7 +155,7 @@ class IMPALALearner(Learner):
 
         # Define the out-queue for the metrics from the `_LearnerThread`.
         # TODO (simon): Add types for items.
-        self._learner_thread_out_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self._learner_thread_out_queue: "Queue[Dict[str, Any]]" = Queue()
 
         # Create and start `_GPULoaderThread`(s).
         if self.config.num_gpus_per_learner > 0:
@@ -308,8 +310,8 @@ class _GPULoaderThread(threading.Thread):
     def __init__(
         self,
         *,
-        in_queue: "queue.Queue[tuple[TrainingData, Dict[str, Any]]]",
-        out_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
+        in_queue: "Queue[tuple[TrainingData, Dict[str, Any]]]",
+        out_queue: "Queue[tuple[Any, Dict[str, Any]]]",
         device: "torch.device",
         metrics_logger: MetricsLogger,
     ):
@@ -422,8 +424,8 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
-        out_queue,
+        in_queue: "Queue[tuple[Any, Dict[str, Any]]]",
+        out_queue: "Queue[Dict[str, Any]]",
         learner: IMPALALearner,
     ):
         super().__init__(name="_LearnerThread")
