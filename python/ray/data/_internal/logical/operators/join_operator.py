@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator, SupportsPushThrough
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ class JoinType(Enum):
     RIGHT_ANTI = "right_anti"
 
 
-class Join(NAry):
+class Join(NAry, SupportsPushThrough):
     """Logical operator for join."""
 
     def __init__(
@@ -119,3 +119,52 @@ class Join(NAry):
                 "in both left and right operands of the join operation: "
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
+
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        left_op, right_op = self.input_dependencies
+
+        # When pushing projections through join, we must ensure join key columns
+        # are preserved on both sides, even if they're not in the output projection.
+        # This is necessary because the join operation needs these columns to perform the join.
+
+        # Collect all required columns for left side (output columns + join keys)
+        left_required_columns = set(columns) | set(self._left_key_columns)
+        left_upstream_project = self._create_upstream_project(
+            columns=list(left_required_columns),
+            column_rename_map=column_rename_map,
+            input_op=left_op,
+        )
+        left_new_columns = self._rename_projection(
+            old_keys=self._left_key_columns,
+            column_rename_map=column_rename_map,
+        )
+
+        # Collect all required columns for right side (output columns + join keys)
+        right_required_columns = set(columns) | set(self._right_key_columns)
+        right_upstream_project = self._create_upstream_project(
+            columns=list(right_required_columns),
+            column_rename_map=column_rename_map,
+            input_op=right_op,
+        )
+        right_new_columns = self._rename_projection(
+            old_keys=self._right_key_columns,
+            column_rename_map=column_rename_map,
+        )
+
+        return Join(
+            left_input_op=left_upstream_project,
+            right_input_op=right_upstream_project,
+            join_type=self._join_type,
+            left_key_columns=left_new_columns,
+            right_key_columns=right_new_columns,
+            num_partitions=self._num_outputs,
+            left_columns_suffix=self._left_columns_suffix,
+            right_columns_suffix=self._right_columns_suffix,
+            partition_size_hint=self._partition_size_hint,
+            aggregator_ray_remote_args=self._aggregator_ray_remote_args,
+        )
