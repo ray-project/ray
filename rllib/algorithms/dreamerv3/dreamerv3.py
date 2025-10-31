@@ -10,9 +10,9 @@ https://arxiv.org/pdf/2010.02193.pdf
 
 import logging
 from typing import Any, Dict, Optional, Union
-from typing_extensions import Self
 
 import gymnasium as gym
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided

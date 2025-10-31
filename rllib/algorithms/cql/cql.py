@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Type, Union
+
 from typing_extensions import Self
 
 from ray._common.deprecation import (

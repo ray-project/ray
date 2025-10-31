@@ -16,11 +16,11 @@ from typing import (
     Type,
     Union,
 )
-from typing_extensions import Self
 
 import gymnasium as gym
 import tree
 from packaging import version
+from typing_extensions import Self
 
 import ray
 from ray._common.deprecation import (

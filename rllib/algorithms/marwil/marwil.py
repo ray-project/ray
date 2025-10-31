@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Type, Union
+
 from typing_extensions import Self
 
 from ray._common.deprecation import deprecation_warning

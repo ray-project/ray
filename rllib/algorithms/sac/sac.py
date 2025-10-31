@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, Optional, Tuple, Type, Union
+
 from typing_extensions import Self
 
 from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
