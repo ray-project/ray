@@ -267,6 +267,9 @@ def _list_files_internal(
     partition_filter: Optional[PathPartitionFilter],
     file_extensions: Optional[List[str]],
 ) -> Iterator[Tuple[str, int]]:
+    if file_extensions is not None:
+        file_extensions = [x[1:] if x.startswith(".") else x for x in file_extensions]
+
     default_meta_provider = DefaultFileMetadataProvider()
 
     for path, file_size in default_meta_provider.expand_paths(paths, filesystem):
