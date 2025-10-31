@@ -1,6 +1,5 @@
 import argparse
 
-import numpy as np
 from benchmark import Benchmark
 
 import ray
@@ -33,9 +32,11 @@ def main(args):
         # The TPC-H queries are a widely used set of benchmarks to measure the
         # performance of data processing systems. See
         # https://examples.citusdata.com/tpch_queries.html.
+        from datetime import datetime
 
-        cutoff = np.datetime64("1998-09-02")  # date '1998-12-01' - 90 days
-        ds = ray.data.read_parquet(path).filter(expr=col("column10") <= cutoff)
+        ds = ray.data.read_parquet(path).filter(
+            expr=col("column10") <= datetime(1998, 9, 2)
+        )
 
         # Build float views + derived columns
         ds = (
