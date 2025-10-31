@@ -112,7 +112,8 @@ class ComponentRegistry:
             category: The category name (e.g., "kv_connector_backend")
         """
         self.category = category
-        self._local_cache: dict[str, Any] = {}
+        self._loader_cache: dict[str, Callable[[], Any]] = {}
+        self._resolved_cache: dict[str, Any] = {}
         self._pending: dict[str, bytes] = {}
 
     def register(self, name: str, value: Any) -> None:
@@ -137,9 +138,10 @@ class ComponentRegistry:
         # Serialize the loader callable
         serialized = pickle.dumps(loader)
 
-        # Store in local cache for immediate use
-        # Store the loader so we can call it later if needed
-        self._local_cache[name] = loader
+        # Store loader and clear any resolved value from a previous registration.
+        self._loader_cache[name] = loader
+        if name in self._resolved_cache:
+            del self._resolved_cache[name]
 
         # Store in KV store if Ray is initialized, otherwise queue for later
         if _internal_kv_initialized():
@@ -170,41 +172,36 @@ class ComponentRegistry:
         Raises:
             ValueError: If the component is not registered
         """
-        # Check local cache first
-        if name in self._local_cache:
-            cached = self._local_cache[name]
-            # If it's a loader callable, call it to get the actual value
-            # and cache the resolved value for future gets
-            if callable(cached) and not isinstance(cached, type):
-                value = cached()
-                # Cache the resolved value for future gets
-                self._local_cache[name] = value
-                return value
-            # It's already a resolved value
-            return cached
+        # Check resolved cache first.
+        if name in self._resolved_cache:
+            return self._resolved_cache[name]
 
-        # Try to fetch from KV store
-        if _internal_kv_initialized():
+        loader = self._loader_cache.get(name)
+        # If not in local loader cache, try fetching from KV store.
+        if loader is None and _internal_kv_initialized():
             try:
                 key = _make_key(self.category, name)
                 serialized = _internal_kv_get(key)
                 if serialized is not None:
                     loader = pickle.loads(serialized)
-                    # Call the loader to get the actual value
-                    value = loader()
-                    self._local_cache[name] = value
+                    # Cache the loader for future gets.
+                    self._loader_cache[name] = loader
                     logger.debug(f"Loaded {self.category} '{name}' from KV store")
-                    return value
             except Exception as e:
                 logger.warning(
                     f"Failed to load {self.category} '{name}' from KV store: {e}",
                     exc_info=True,
                 )
 
+        if loader is not None:
+            value = loader()
+            self._resolved_cache[name] = value
+            return value
+
         # Not found
         raise ValueError(
             f"{self.category} '{name}' not found. "
-            f"Registered: {list(self._local_cache.keys())}"
+            f"Registered: {list(self._loader_cache.keys())}"
         )
 
     def contains(self, name: str) -> bool:
@@ -216,7 +213,7 @@ class ComponentRegistry:
         Returns:
             True if registered, False otherwise
         """
-        if name in self._local_cache:
+        if name in self._loader_cache:
             return True
 
         if _internal_kv_initialized():
@@ -240,9 +237,11 @@ class ComponentRegistry:
         Args:
             name: The name of the component to unregister
         """
-        # Remove from local cache
-        if name in self._local_cache:
-            del self._local_cache[name]
+        # Remove from local caches
+        if name in self._loader_cache:
+            del self._loader_cache[name]
+        if name in self._resolved_cache:
+            del self._resolved_cache[name]
 
         # Remove from pending if present
         if name in self._pending:

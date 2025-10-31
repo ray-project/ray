@@ -16,17 +16,6 @@ from ray.serve.llm import LLMConfig
 
 @contextmanager
 def registered_backend(name: str, backend_class_or_path: Any):
-    """Context manager that registers a backend and cleans it up automatically.
-
-    Args:
-        name: The name of the backend to register
-        backend_class_or_path: The backend class or module path string
-
-    Example:
-        with registered_backend("MyBackend", MyBackendClass):
-            # Use the registered backend
-            backend = KVConnectorBackendFactory.get_backend_class("MyBackend")
-    """
     KVConnectorBackendFactory.register_backend(name, backend_class_or_path)
     try:
         yield
