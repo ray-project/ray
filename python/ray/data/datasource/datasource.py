@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable, Dict, Iterable, List, Optional
 
 import numpy as np
@@ -7,6 +8,19 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+
+@dataclass
+class ProjectionProcessingResult:
+    """Result of processing a projection with existing column renames.
+
+    Attributes:
+        rebound_columns: Column names translated to original/storage space
+        filtered_rename_map: Rename map filtered to only selected columns
+    """
+
+    rebound_columns: Optional[List[str]]
+    filtered_rename_map: Optional[Dict[str, str]]
 
 
 class _DatasourceProjectionPushdownMixin:
@@ -36,6 +50,118 @@ class _DatasourceProjectionPushdownMixin:
         column_rename_map: Optional[Dict[str, str]],
     ) -> "Datasource":
         return self
+
+    @staticmethod
+    def _apply_column_mapping(
+        columns: List[str],
+        mapping: Dict[str, str],
+    ) -> List[str]:
+        """Apply a column name mapping, keeping unmapped columns as-is.
+
+        Args:
+            columns: List of column names to map
+            mapping: Dictionary mapping from one name to another
+
+        Returns:
+            List of column names with mapping applied
+        """
+        return [mapping.get(col, col) for col in columns]
+
+    @staticmethod
+    def _process_projection_with_renames(
+        columns: Optional[List[str]],
+        existing_rename_map: Optional[Dict[str, str]],
+    ) -> ProjectionProcessingResult:
+        """Process column projection accounting for existing renames.
+
+        When columns have been renamed, this handles:
+        1. Translating column names from renamed space back to original names
+        2. Filtering the rename map to only include selected columns
+
+        Args:
+            columns: Columns to select (in renamed space if rename_map exists)
+            existing_rename_map: Current rename mapping (original -> renamed)
+
+        Returns:
+            ProjectionProcessingResult containing:
+            - rebound_columns: Column names in original/storage space
+            - filtered_rename_map: Rename map containing only selected columns
+        """
+        if not existing_rename_map or not columns:
+            # No renames to process
+            return ProjectionProcessingResult(
+                rebound_columns=columns,
+                filtered_rename_map=existing_rename_map,
+            )
+
+        # Create reverse mapping: renamed -> original
+        reverse_map = {
+            renamed: original for original, renamed in existing_rename_map.items()
+        }
+
+        # Translate columns to original space
+        rebound_columns = _DatasourceProjectionPushdownMixin._apply_column_mapping(
+            columns, reverse_map
+        )
+
+        # Filter rename map to only selected columns (where renamed name is in columns)
+        filtered_rename_map = {
+            original: renamed
+            for original, renamed in existing_rename_map.items()
+            if renamed in columns
+        }
+
+        return ProjectionProcessingResult(
+            rebound_columns=rebound_columns,
+            filtered_rename_map=filtered_rename_map or None,
+        )
+
+    @staticmethod
+    def _combine_rename_map(
+        prev_column_rename_map: Optional[Dict[str, str]],
+        new_column_rename_map: Optional[Dict[str, str]],
+    ) -> Optional[Dict[str, str]]:
+        """Combine two column rename maps, handling transitive renames.
+
+        Args:
+            prev_column_rename_map: Previous rename map (original -> renamed)
+            new_column_rename_map: New rename map to apply (original -> renamed)
+
+        Returns:
+            Combined rename map with transitive mappings collapsed
+        """
+        from ray.data._internal.collections import collapse_transitive_map
+
+        if not prev_column_rename_map:
+            combined = new_column_rename_map
+        elif not new_column_rename_map:
+            combined = prev_column_rename_map
+        else:
+            combined = prev_column_rename_map | new_column_rename_map
+
+        return collapse_transitive_map(combined) if combined else None
+
+    @staticmethod
+    def _apply_rename(
+        table: "Schema",
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "Schema":
+        """Apply column renaming to a PyArrow table.
+
+        Args:
+            table: PyArrow table to rename
+            column_rename_map: Mapping from old column names to new names
+
+        Returns:
+            Table with renamed columns
+        """
+        if not column_rename_map:
+            return table
+
+        new_names = _DatasourceProjectionPushdownMixin._apply_column_mapping(
+            table.schema.names, column_rename_map
+        )
+        return table.rename_columns(new_names)
 
 
 class _DatasourcePredicatePushdownMixin:

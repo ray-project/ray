@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tupl
 import pyarrow as pa
 from packaging import version
 
-from ray.data._internal.collections import collapse_transitive_map
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -44,6 +43,8 @@ def _get_read_task(
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
 
+    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
+
     if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
         # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
         from pyiceberg.io.pyarrow import ArrowScan
@@ -65,11 +66,10 @@ def _get_read_task(
         for batch in result_table.to_batches():
             table = pa.Table.from_batches([batch])
 
-            # Apply column renames if present
-            if column_rename_map:
-                table = table.rename_columns(
-                    [column_rename_map.get(col, col) for col in table.schema.names]
-                )
+            # Apply column renames using shared helper
+            table = _DatasourceProjectionPushdownMixin._apply_rename(
+                table, column_rename_map
+            )
 
             yield table
 
@@ -91,11 +91,10 @@ def _get_read_task(
             limit=limit,
         )
 
-        # Apply column renames if present
-        if column_rename_map:
-            table = table.rename_columns(
-                [column_rename_map.get(col, col) for col in table.schema.names]
-            )
+        # Apply column renames using shared helper
+        table = _DatasourceProjectionPushdownMixin._apply_rename(
+            table, column_rename_map
+        )
 
         yield table
 
@@ -191,8 +190,13 @@ class IcebergDatasource(Datasource):
         combined_filter = self._row_filter
 
         if self._predicate_expr is not None:
-            # Convert Ray Data expression to PyIceberg expression
-            iceberg_filter = self._predicate_expr.to_iceberg()
+            # Convert Ray Data expression to PyIceberg expression using internal visitor
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                _IcebergExpressionVisitor,
+            )
+
+            visitor = _IcebergExpressionVisitor()
+            iceberg_filter = visitor.visit(self._predicate_expr)
 
             # Combine with existing row_filter using AND
             from pyiceberg.expressions import AlwaysTrue, And
@@ -283,7 +287,8 @@ class IcebergDatasource(Datasource):
         """Apply a projection to this datasource.
 
         Args:
-            columns: List of columns to select, or None to select all columns.
+            columns: List of columns to select (in renamed space if existing renames),
+                     or None to select all columns.
             column_rename_map: Dictionary mapping old column names to new names,
                 or None if no renaming is needed.
 
@@ -294,14 +299,17 @@ class IcebergDatasource(Datasource):
 
         clone = copy.copy(self)
 
-        # Combine projections
+        # Process projection with existing renames
+        result = self._process_projection_with_renames(columns, self._column_rename_map)
+
+        # Combine projections (now in original column space)
         clone._selected_fields = self._combine_projection(
-            self._selected_fields, columns
+            self._selected_fields, result.rebound_columns
         )
 
         # Combine rename maps
         clone._column_rename_map = self._combine_rename_map(
-            self._column_rename_map, column_rename_map
+            result.filtered_rename_map, column_rename_map
         )
 
         # Invalidate cached plan_files and table so they get recalculated
@@ -379,29 +387,6 @@ class IcebergDatasource(Datasource):
                 )
 
             return tuple(new_projected_cols)
-
-    @staticmethod
-    def _combine_rename_map(
-        prev_column_rename_map: Optional[Dict[str, str]],
-        new_column_rename_map: Optional[Dict[str, str]],
-    ) -> Optional[Dict[str, str]]:
-        """Combine two column rename maps, handling transitive renames.
-
-        Args:
-            prev_column_rename_map: Previous rename map
-            new_column_rename_map: New rename map
-
-        Returns:
-            Combined rename map with transitive mappings collapsed
-        """
-        if not prev_column_rename_map:
-            combined = new_column_rename_map
-        elif not new_column_rename_map:
-            combined = prev_column_rename_map
-        else:
-            combined = prev_column_rename_map | new_column_rename_map
-
-        return collapse_transitive_map(combined) if combined else None
 
     def get_read_tasks(
         self, parallelism: int, per_task_row_limit: Optional[int] = None

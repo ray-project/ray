@@ -26,7 +26,6 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
-from ray.data._internal.collections import collapse_transitive_map
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -452,9 +451,19 @@ class ParquetDatasource(Datasource):
     ) -> "ParquetDatasource":
         clone = copy.copy(self)
 
-        clone._data_columns = _combine_projection(self._data_columns, columns)
-        clone._data_columns_rename_map = _combine_rename_map(
-            self._data_columns_rename_map, column_rename_map
+        # Process projection with existing renames
+        result = self._process_projection_with_renames(
+            columns, self._data_columns_rename_map
+        )
+
+        # Combine projections (now in original column space)
+        clone._data_columns = _combine_projection(
+            self._data_columns, result.rebound_columns
+        )
+
+        # Combine rename maps using shared helper
+        clone._data_columns_rename_map = self._combine_rename_map(
+            result.filtered_rename_map, column_rename_map
         )
 
         return clone
@@ -531,6 +540,8 @@ def _read_batches_from(
 
     import pyarrow as pa
 
+    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
+
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
 
@@ -591,13 +602,10 @@ def _read_batches_from(
                     _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
                 )
 
-            if data_columns_rename_map is not None:
-                table = table.rename_columns(
-                    [
-                        data_columns_rename_map.get(col, col)
-                        for col in table.schema.names
-                    ]
-                )
+            # Apply column renames using shared helper
+            table = _DatasourceProjectionPushdownMixin._apply_rename(
+                table, data_columns_rename_map
+            )
 
             yield table
 
@@ -883,20 +891,6 @@ def _combine_projection(
             )
 
         return new_projected_cols
-
-
-def _combine_rename_map(
-    prev_column_rename_map: Optional[Dict[str, str]],
-    new_column_rename_map: Optional[Dict[str, str]],
-):
-    if not prev_column_rename_map:
-        combined = new_column_rename_map
-    elif not new_column_rename_map:
-        combined = prev_column_rename_map
-    else:
-        combined = prev_column_rename_map | new_column_rename_map
-
-    return collapse_transitive_map(combined)
 
 
 def _get_partition_columns_schema(

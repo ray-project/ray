@@ -437,8 +437,8 @@ class TestToPyArrow:
             udf_expr.to_pyarrow()
 
 
-class TestToIceberg:
-    """Test conversion of Ray Data expressions to PyIceberg expressions."""
+class TestIcebergExpressionVisitor:
+    """Test conversion of Ray Data expressions to PyIceberg expressions via internal visitor."""
 
     @pytest.mark.parametrize(
         "ray_expr, equivalent_iceberg_expr, description",
@@ -577,7 +577,7 @@ class TestToIceberg:
             "alias",
         ],
     )
-    def test_to_iceberg_equivalence(
+    def test_iceberg_visitor_equivalence(
         self, ray_expr, equivalent_iceberg_expr, description
     ):
         """Test that Ray Data expressions convert to equivalent PyIceberg expressions.
@@ -585,8 +585,13 @@ class TestToIceberg:
         This test documents the expected PyIceberg expression for each Ray Data expression
         and verifies the conversion produces the correct type.
         """
-        # Convert Ray expression to Iceberg
-        converted = ray_expr.to_iceberg()
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IcebergExpressionVisitor,
+        )
+
+        # Convert Ray expression to Iceberg using internal visitor
+        visitor = _IcebergExpressionVisitor()
+        converted = visitor.visit(ray_expr)
         expected = equivalent_iceberg_expr()
 
         # Verify they're the same type
@@ -595,38 +600,49 @@ class TestToIceberg:
             f"got {converted}, expected {expected}"
         )
 
-    def test_to_iceberg_unsupported_arithmetic(self):
+    def test_iceberg_visitor_unsupported_arithmetic(self):
         """Test that arithmetic operations raise appropriate errors."""
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IcebergExpressionVisitor,
+        )
+
+        visitor = _IcebergExpressionVisitor()
+
         # Arithmetic operations are not supported in Iceberg filters
         with pytest.raises(
             ValueError, match="Unsupported binary operation for Iceberg"
         ):
-            (col("price") + 10).to_iceberg()
+            visitor.visit(col("price") + 10)
 
         with pytest.raises(
             ValueError, match="Unsupported binary operation for Iceberg"
         ):
-            (col("quantity") * 2).to_iceberg()
+            visitor.visit(col("quantity") * 2)
 
         with pytest.raises(
             ValueError, match="Unsupported binary operation for Iceberg"
         ):
-            (col("total") - col("discount")).to_iceberg()
+            visitor.visit(col("total") - col("discount"))
 
         with pytest.raises(
             ValueError, match="Unsupported binary operation for Iceberg"
         ):
-            (col("revenue") / col("count")).to_iceberg()
+            visitor.visit(col("revenue") / col("count"))
 
         with pytest.raises(
             ValueError, match="Unsupported binary operation for Iceberg"
         ):
-            (col("items") // 5).to_iceberg()
+            visitor.visit(col("items") // 5)
 
-    def test_to_iceberg_unsupported_expressions(self):
+    def test_iceberg_visitor_unsupported_expressions(self):
         """Test that unsupported expression types raise appropriate errors."""
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IcebergExpressionVisitor,
+        )
         from ray.data.datatype import DataType
         from ray.data.expressions import UDFExpr, download, star
+
+        visitor = _IcebergExpressionVisitor()
 
         # UDF expressions
         def dummy_fn(x):
@@ -642,25 +658,31 @@ class TestToIceberg:
         with pytest.raises(
             TypeError, match="UDF expressions cannot be converted to Iceberg"
         ):
-            udf_expr.to_iceberg()
+            visitor.visit(udf_expr)
 
         # Download expressions
         with pytest.raises(
             TypeError, match="Download expressions cannot be converted to Iceberg"
         ):
-            download("uri").to_iceberg()
+            visitor.visit(download("uri"))
 
         # Star expressions
         with pytest.raises(
             TypeError, match="Star expressions cannot be converted to Iceberg"
         ):
-            star().to_iceberg()
+            visitor.visit(star())
 
-    def test_to_iceberg_in_requires_literal_list(self):
+    def test_iceberg_visitor_in_requires_literal_list(self):
         """Test that IN/NOT_IN operations require literal lists."""
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IcebergExpressionVisitor,
+        )
+
+        visitor = _IcebergExpressionVisitor()
+
         # This should work - literal list
         expr = col("status").is_in(["active", "pending"])
-        result = expr.to_iceberg()
+        result = visitor.visit(expr)
         assert isinstance(result, In)
 
         # This should fail - column reference on right side
@@ -671,7 +693,7 @@ class TestToIceberg:
         ):
             # Create a BinaryExpr directly to bypass col.is_in() validation
             invalid_expr = BinaryExpr(Operation.IN, col("a"), col("b"))
-            invalid_expr.to_iceberg()
+            visitor.visit(invalid_expr)
 
 
 def _build_complex_expr():
