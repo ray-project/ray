@@ -13,8 +13,8 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
-from ray.data.dataset import EXPRESSION_API_GROUP, Dataset
-from ray.data.expressions import DownloadExpr, Expr, StarExpr
+from ray.data.dataset import Dataset, EXPRESSION_API_GROUP
+from ray.data.expressions import Expr, StarExpr
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
@@ -338,11 +338,6 @@ class GroupedData:
             raise TypeError(
                 "expr must be a Ray Data expression created via the expression API."
             )
-        if isinstance(expr, DownloadExpr):
-            raise TypeError(
-                "GroupedData.with_column does not yet support download expressions."
-            )
-
         aliased_expr = expr.alias(column_name)
         projection_exprs = [StarExpr(), aliased_expr]
 
