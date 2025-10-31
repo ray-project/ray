@@ -142,18 +142,6 @@ class IcebergDatasource(Datasource):
         self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
 
-        # Deprecation warning for row_filter parameter
-        if row_filter is not None:
-            import warnings
-
-            warnings.warn(
-                "The 'row_filter' parameter is deprecated and will be removed in a "
-                "future release. Use the .filter() method on the dataset instead. "
-                "For example: ds = ray.data.read_iceberg(...).filter(expr=col('column') > 5)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
         else:
