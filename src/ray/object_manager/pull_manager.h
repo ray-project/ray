@@ -27,6 +27,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/metrics.h"
 #include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 
@@ -511,6 +512,21 @@ class PullManager {
   int64_t num_retries_total_ = 0;
   int64_t num_succeeded_pins_total_ = 0;
   int64_t num_failed_pins_total_ = 0;
+
+  mutable ray::stats::Gauge pull_manager_usage_bytes_gauge_{
+      GetPullManagerUsageBytesGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_requested_bundles_gauge_{
+      GetPullManagerRequestedBundlesGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_requests_gauge_{
+      GetPullManagerRequestsGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_active_bundles_gauge_{
+      GetPullManagerActiveBundlesGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_retries_total_gauge_{
+      GetPullManagerRetriesTotalGaugeMetric()};
+  mutable ray::stats::Gauge pull_manager_num_object_pins_gauge_{
+      GetPullManagerNumObjectPinsGaugeMetric()};
+  mutable ray::stats::Histogram pull_manager_object_request_time_ms_histogram_{
+      GetPullManagerObjectRequestTimeMsHistogramMetric()};
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

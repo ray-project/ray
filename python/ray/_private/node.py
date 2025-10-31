@@ -22,7 +22,12 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_ipv6,
+    parse_address,
+)
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
@@ -140,7 +145,7 @@ class Node:
         )
 
         self._resource_and_label_spec = None
-        self._localhost = socket.gethostbyname("localhost")
+        self._localhost = get_localhost_ip()
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
 
@@ -882,7 +887,10 @@ class Node:
         if allocated_ports is None:
             allocated_ports = set()
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(
+            socket.AF_INET6 if is_ipv6(self._node_ip_address) else socket.AF_INET,
+            socket.SOCK_STREAM,
+        )
         s.bind(("", 0))
         port = s.getsockname()[1]
 
@@ -895,7 +903,10 @@ class Node:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
                 continue
-            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_s = socket.socket(
+                socket.AF_INET6 if is_ipv6(self._node_ip_address) else socket.AF_INET,
+                socket.SOCK_STREAM,
+            )
             try:
                 new_s.bind(("", new_port))
             except OSError:
