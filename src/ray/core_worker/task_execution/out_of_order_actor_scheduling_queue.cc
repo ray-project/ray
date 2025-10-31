@@ -56,7 +56,11 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
-  if (fiber_state_manager_) {
+  // For asyncio actors, don't call Stop() on fiber executor.
+  // Calling Stop() would freeze the fiber scheduler, preventing
+  // inflight fibers from completing and sending their task replies.
+  // The fiber thread will cleanup on process exit.
+  if (fiber_state_manager_ && !is_asyncio_) {
     fiber_state_manager_->Stop();
   }
   CancelAllPending(Status::SchedulingCancelled(
