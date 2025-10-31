@@ -1,4 +1,6 @@
 import sys
+from contextlib import contextmanager
+from typing import Any
 
 import pytest
 
@@ -12,6 +14,27 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
 from ray.serve.llm import LLMConfig
 
 
+@contextmanager
+def registered_backend(name: str, backend_class_or_path: Any):
+    """Context manager that registers a backend and cleans it up automatically.
+
+    Args:
+        name: The name of the backend to register
+        backend_class_or_path: The backend class or module path string
+
+    Example:
+        with registered_backend("MyBackend", MyBackendClass):
+            # Use the registered backend
+            backend = KVConnectorBackendFactory.get_backend_class("MyBackend")
+    """
+    KVConnectorBackendFactory.register_backend(name, backend_class_or_path)
+    try:
+        yield
+    finally:
+        if KVConnectorBackendFactory.is_registered(name):
+            KVConnectorBackendFactory.unregister_backend(name)
+
+
 @pytest.fixture
 def test_deployment_handle():
     """Fixture that creates a Serve deployment for testing cross-process registry access."""
@@ -21,35 +44,33 @@ def test_deployment_handle():
         def setup(self):
             pass
 
-    # Register the backend in the driver process
-    KVConnectorBackendFactory.register_backend(
-        "TestCrossProcessConnector",
-        TestCrossProcessConnector,
-    )
+    # Register the backend in the driver process and ensure cleanup
+    with registered_backend("TestCrossProcessConnector", TestCrossProcessConnector):
+        # Create a Serve deployment that will run in a different process than the
+        # driver process
+        @serve.deployment
+        class TestDeployment:
+            def __init__(self):
+                # This runs in a child process - should be able to access the registered backend
+                self.connector_class = KVConnectorBackendFactory.get_backend_class(
+                    "TestCrossProcessConnector"
+                )
 
-    # Create a Serve deployment that will run in a different process than the
-    # driver process
-    @serve.deployment
-    class TestDeployment:
-        def __init__(self):
-            # This runs in a child process - should be able to access the registered backend
-            self.connector_class = KVConnectorBackendFactory.get_backend_class(
-                "TestCrossProcessConnector"
-            )
+            def __call__(self):
+                """Return the connector class to verify it's correct."""
+                return self.connector_class
 
-        def __call__(self):
-            """Return the connector class to verify it's correct."""
-            return self.connector_class
-
-    # Deploy and yield the handle and connector class
-    app = TestDeployment.bind()
-    handle = serve.run(app)
-    yield handle, TestCrossProcessConnector
-    try:
-        serve.shutdown()
-    except RuntimeError:
-        # Handle case where event loop is already closed
-        pass
+        # Deploy and yield the handle and connector class
+        app = TestDeployment.bind()
+        handle = serve.run(app)
+        try:
+            yield handle, TestCrossProcessConnector
+        finally:
+            try:
+                serve.shutdown()
+            except RuntimeError:
+                # Handle case where event loop is already closed
+                pass
 
 
 class TestKVConnectorBackendFactory:
@@ -101,15 +122,11 @@ class TestKVConnectorBackendFactory:
     def test_get_backend_class_import_error_handling(self):
         """Test that ImportError during backend loading is handled with clear message."""
         # Register a backend with a non-existent module path
-        KVConnectorBackendFactory.register_backend(
-            "BadBackend",
-            "non.existent.module:NonExistentClass",
-        )
-
-        with pytest.raises(
-            ImportError, match="Failed to load connector backend 'BadBackend'"
-        ):
-            KVConnectorBackendFactory.get_backend_class("BadBackend")
+        with registered_backend("BadBackend", "non.existent.module:NonExistentClass"):
+            with pytest.raises(
+                ImportError, match="Failed to load connector backend 'BadBackend'"
+            ):
+                KVConnectorBackendFactory.get_backend_class("BadBackend")
 
     def test_register_backend_with_class_directly(self):
         """Test registering a backend class directly."""
@@ -118,22 +135,24 @@ class TestKVConnectorBackendFactory:
             def setup(self):
                 pass
 
-        KVConnectorBackendFactory.register_backend("CustomBackend", CustomBackend)
-        assert KVConnectorBackendFactory.is_registered("CustomBackend")
-        retrieved = KVConnectorBackendFactory.get_backend_class("CustomBackend")
-        assert retrieved == CustomBackend
+        with registered_backend("CustomBackend", CustomBackend):
+            assert KVConnectorBackendFactory.is_registered("CustomBackend")
+            retrieved = KVConnectorBackendFactory.get_backend_class("CustomBackend")
+            assert retrieved == CustomBackend
 
     def test_register_backend_with_module_path(self):
         """Test registering a backend via module path string."""
         # Register using module:class format
-        KVConnectorBackendFactory.register_backend(
+        with registered_backend(
             "LMCacheViaPath",
             "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",
-        )
-        assert KVConnectorBackendFactory.is_registered("LMCacheViaPath")
-        backend_class = KVConnectorBackendFactory.get_backend_class("LMCacheViaPath")
-        assert backend_class is not None
-        assert issubclass(backend_class, BaseConnectorBackend)
+        ):
+            assert KVConnectorBackendFactory.is_registered("LMCacheViaPath")
+            backend_class = KVConnectorBackendFactory.get_backend_class(
+                "LMCacheViaPath"
+            )
+            assert backend_class is not None
+            assert issubclass(backend_class, BaseConnectorBackend)
 
     def test_unregistered_connector_with_llm_config_setup(self):
         """Test that unregistered connectors work with LLMConfig.setup_engine_backend()."""

@@ -102,6 +102,17 @@ class KVConnectorBackendFactory:
         """Check if a connector backend is registered."""
         return _kv_backend_registry.contains(name)
 
+    @classmethod
+    def unregister_backend(cls, name: str) -> None:
+        """Unregister a connector backend.
+
+        Removes the backend from the registry across all Ray processes.
+
+        Args:
+            name: The name of the connector backend to unregister
+        """
+        _kv_backend_registry.unregister(name)
+
 
 BUILTIN_BACKENDS = {
     "LMCacheConnectorV1": "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",

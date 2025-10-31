@@ -63,7 +63,23 @@ class TestComponentRegistry:
         assert registry1.category == "category1"
         assert registry2.category == "category2"
 
+    def test_unregister(self):
+        """Test unregistering a component."""
+        registry = ComponentRegistry("test_category")
+        test_class = type("TestClass", (), {})
+
+        # Register and verify it exists
+        registry.register("test_component", test_class)
+        assert registry.contains("test_component")
+
+        # Unregister and verify it's removed
+        registry.unregister("test_component")
+        assert not registry.contains("test_component")
+
+        # Verify get raises ValueError
+        with pytest.raises(ValueError, match="not found"):
+            registry.get("test_component")
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
-

@@ -13,6 +13,8 @@ from typing import Any, Callable
 import ray._private.worker as worker
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
+    _internal_kv_del,
+    _internal_kv_exists,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
@@ -133,10 +135,7 @@ class ComponentRegistry:
         loader = _create_loader(value)
 
         # Serialize the loader callable
-        try:
-            serialized = pickle.dumps_debug(loader)
-        except AttributeError:
-            serialized = pickle.dumps(loader)
+        serialized = pickle.dumps(loader)
 
         # Store in local cache for immediate use
         # Store the loader so we can call it later if needed
@@ -175,8 +174,13 @@ class ComponentRegistry:
         if name in self._local_cache:
             cached = self._local_cache[name]
             # If it's a loader callable, call it to get the actual value
+            # and cache the resolved value for future gets
             if callable(cached) and not isinstance(cached, type):
-                return cached()
+                value = cached()
+                # Cache the resolved value for future gets
+                self._local_cache[name] = value
+                return value
+            # It's already a resolved value
             return cached
 
         # Try to fetch from KV store
@@ -218,7 +222,7 @@ class ComponentRegistry:
         if _internal_kv_initialized():
             try:
                 key = _make_key(self.category, name)
-                return _internal_kv_get(key) is not None
+                return _internal_kv_exists(key)
             except Exception as e:
                 logger.warning(
                     f"Failed to check if {self.category} '{name}' exists in KV store: {e}",
@@ -227,6 +231,34 @@ class ComponentRegistry:
                 return False
 
         return False
+
+    def unregister(self, name: str) -> None:
+        """Unregister a component.
+
+        Removes the component from local cache, pending registrations, and KV store.
+
+        Args:
+            name: The name of the component to unregister
+        """
+        # Remove from local cache
+        if name in self._local_cache:
+            del self._local_cache[name]
+
+        # Remove from pending if present
+        if name in self._pending:
+            del self._pending[name]
+
+        # Remove from KV store if Ray is initialized
+        if _internal_kv_initialized():
+            try:
+                key = _make_key(self.category, name)
+                _internal_kv_del(key)
+                logger.debug(f"Unregistered {self.category} '{name}' from KV store")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to unregister {self.category} '{name}' from KV store: {e}",
+                    exc_info=True,
+                )
 
     def flush_pending(self) -> None:
         """Flush pending registrations to KV store.
