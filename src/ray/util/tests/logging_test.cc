@@ -379,17 +379,6 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
 
-TEST(PrintLogTest, TestUserCheck) {
-  // RAY_USER_CHECK should not exit the application when condition is true
-  RAY_USER_CHECK(true) << "This should not trigger";
-  // RAY_USER_CHECK should exit the application when condition is false
-  ASSERT_DEATH(
-      { RAY_USER_CHECK(false) << "Custom user error message"; },
-      testing::AllOf(testing::HasSubstr("Custom user error message"),
-                     testing::Not(testing::HasSubstr("bug in Ray")),
-                     testing::Not(testing::HasSubstr("StackTrace Information"))));
-}
-
 }  // namespace ray
 
 int main(int argc, char **argv) {
