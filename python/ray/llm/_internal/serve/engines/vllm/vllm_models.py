@@ -129,10 +129,15 @@ class VLLMEngineConfig(BaseModelExtended):
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
-            if engine_kwargs["distributed_executor_backend"] == "mp":
+            if not self.use_gpu:
+                engine_kwargs["distributed_executor_backend"] == "mp"
                 logger.warning(
                 "install vllm package for cpu to ensure seamless execution"
                 )
+            else:
+                raise ValueError(
+            "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
+            )
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
