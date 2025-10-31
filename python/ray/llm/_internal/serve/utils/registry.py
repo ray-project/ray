@@ -150,7 +150,8 @@ class ComponentRegistry:
                 logger.debug(f"Registered {self.category} '{name}' in KV store")
             except Exception as e:
                 logger.warning(
-                    f"Failed to register {self.category} '{name}' in KV store: {e}"
+                    f"Failed to register {self.category} '{name}' in KV store: {e}",
+                    exc_info=True,
                 )
                 self._pending[name] = serialized
         else:
@@ -192,7 +193,8 @@ class ComponentRegistry:
                     return value
             except Exception as e:
                 logger.warning(
-                    f"Failed to load {self.category} '{name}' from KV store: {e}"
+                    f"Failed to load {self.category} '{name}' from KV store: {e}",
+                    exc_info=True,
                 )
 
         # Not found
@@ -217,7 +219,11 @@ class ComponentRegistry:
             try:
                 key = _make_key(self.category, name)
                 return _internal_kv_get(key) is not None
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    f"Failed to check if {self.category} '{name}' exists in KV store: {e}",
+                    exc_info=True,
+                )
                 return False
 
         return False
@@ -238,17 +244,11 @@ class ComponentRegistry:
                     f"Flushed pending registration for {self.category} '{name}'"
                 )
             except Exception as e:
-                logger.warning(f"Failed to flush {self.category} '{name}': {e}")
+                logger.warning(
+                    f"Failed to flush {self.category} '{name}': {e}", exc_info=True
+                )
 
         self._pending.clear()
-
-    def list_registered(self) -> list[str]:
-        """List all registered component names.
-
-        Returns:
-            List of registered names (from local cache)
-        """
-        return list(self._local_cache.keys())
 
 
 # Global registry instances for different component categories

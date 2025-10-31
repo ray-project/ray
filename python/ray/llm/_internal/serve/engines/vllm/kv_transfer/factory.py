@@ -74,12 +74,13 @@ class KVConnectorBackendFactory:
         except ValueError:
             logger.warning(
                 f"Unsupported connector backend: {name}. "
-                f"Registered: {_kv_backend_registry.list_registered()}. "
                 f"Using default: {BaseConnectorBackend.__name__}."
             )
             return BaseConnectorBackend
         except Exception as e:
-            raise ImportError(f"Failed to load connector backend '{name}': {e}") from e
+            raise ImportError(
+                f"Failed to load connector backend '{name}': {type(e).__name__}: {e}"
+            ) from e
 
     @classmethod
     def create_backend(
@@ -100,11 +101,6 @@ class KVConnectorBackendFactory:
     def is_registered(cls, name: str) -> bool:
         """Check if a connector backend is registered."""
         return _kv_backend_registry.contains(name)
-
-    @classmethod
-    def list_registered_backends(cls) -> list[str]:
-        """List all registered connector backend names."""
-        return _kv_backend_registry.list_registered()
 
 
 BUILTIN_BACKENDS = {
