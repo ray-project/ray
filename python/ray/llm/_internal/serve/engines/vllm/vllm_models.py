@@ -129,10 +129,10 @@ class VLLMEngineConfig(BaseModelExtended):
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
-            logger.warning(
+            if engine_kwargs["distributed_executor_backend"] == "mp":
+                logger.warning(
                 "install vllm package for cpu to ensure seamless execution"
-            )
-            engine_kwargs["distributed_executor_backend"] = "mp"
+                )
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
