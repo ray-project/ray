@@ -227,9 +227,7 @@ class SubmissionClient:
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers or {}
-
-        # Add authentication token if token auth is enabled
-        self._set_auth_header_if_enabled()
+        self._headers.update(**self._get_auth_headers())
 
         # Set SSL verify parameter for the requests library and create an ssl_context
         # object when needed for the aiohttp library.
@@ -250,9 +248,35 @@ class SubmissionClient:
             else:
                 self._ssl_context = None
 
-    def _set_auth_header_if_enabled(self):
-        """Add authentication token to headers if token auth is enabled."""
-        inject_auth_token_if_enabled(self._headers)
+    def _get_auth_headers(self) -> Dict[str, str]:
+        """Get authentication headers if token auth is enabled.
+
+        Returns:
+            dict: Authentication headers to merge with request headers.
+                  Empty dict if no auth needed or token unavailable.
+        """
+        if not is_token_auth_enabled():
+            return {}
+
+        # Check if user provided their own Authorization header (case-insensitive)
+        has_user_auth = any(
+            key.lower() == "authorization" for key in self._headers.keys()
+        )
+        if has_user_auth:
+            # User has provided their own auth header, don't override
+            return {}
+
+        token_loader = AuthenticationTokenLoader.instance()
+        auth_headers = token_loader.get_token_for_http_header()
+
+        if not auth_headers:
+            # Token auth enabled but no token found
+            logger.warning(
+                "Token authentication is enabled but no token was found. "
+                "Requests to authenticated clusters will fail."
+            )
+
+        return auth_headers
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
