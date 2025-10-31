@@ -1,8 +1,8 @@
-from collections import defaultdict
 import pickle
 import socket
 import threading
 import time
+from collections import defaultdict
 from typing import Collection, DefaultDict, List, Optional, Union
 
 from ray.rllib.core import (
@@ -12,13 +12,13 @@ from ray.rllib.core import (
 )
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.external.rllink import (
+    RLlink,
     get_rllink_message,
     send_rllink_message,
-    RLlink,
 )
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch

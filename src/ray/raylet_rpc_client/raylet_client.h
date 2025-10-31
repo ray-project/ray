@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/gcs_callback_types.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
@@ -43,9 +44,9 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet.
   ///
   /// \param address The IP address of the worker.
-  /// \param port The port that the worker should listen on for gRPC requests. If
-  /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
+  /// \param raylet_unavailable_timeout_callback callback to be called when the raylet is
+  /// unavailable for a certain period of time.
   explicit RayletClient(const rpc::Address &address,
                         rpc::ClientCallManager &client_call_manager,
                         std::function<void()> raylet_unavailable_timeout_callback);
@@ -163,7 +164,13 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
- private:
+  /// Get the worker pids from raylet.
+  /// \param callback The callback to set the worker pids.
+  /// \param timeout_ms The timeout in milliseconds.
+  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+                     int64_t timeout_ms);
+
+ protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
 
