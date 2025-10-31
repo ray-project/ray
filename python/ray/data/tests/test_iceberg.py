@@ -206,8 +206,9 @@ def test_read_basic():
     )
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
+    # string -> large_string because pyiceberg by default chooses large_string
     expected_schema = pa.schema(
-        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.string())]
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
     )
     assert table.schema.equals(expected_schema)
 
