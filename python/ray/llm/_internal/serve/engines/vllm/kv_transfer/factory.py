@@ -8,11 +8,16 @@ This avoids circular import issues and improves startup performance.
 import importlib
 from typing import TYPE_CHECKING, Callable, Type
 
+from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+    BaseConnectorBackend,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-    from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-        BaseConnectorBackend,
-    )
+
+
+logger = get_logger(__name__)
 
 
 class KVConnectorBackendFactory:
@@ -42,6 +47,11 @@ class KVConnectorBackendFactory:
     def get_backend_class(cls, name: str) -> Type["BaseConnectorBackend"]:
         """Get the connector backend class by name.
 
+        For registered connectors, returns the registered backend class.
+        For unregistered connectors, returns BaseConnectorBackend which has
+        a no-op setup() method, allowing connectors that don't require
+        Ray Serve orchestration to work without registration.
+
         Args:
             name: The name of the connector backend
 
@@ -49,14 +59,15 @@ class KVConnectorBackendFactory:
             The connector backend class
 
         Raises:
-            ValueError: If the connector backend isn't registered
-            ImportError: If the backend fails to load
+            ImportError: If a registered backend fails to load
         """
         if name not in cls._registry:
-            raise ValueError(
+            logger.warning(
                 f"Unsupported connector backend: {name}. "
-                f"Registered backends: {list(cls._registry.keys())}"
+                f"Registered backends: {list(cls._registry.keys())}."
+                f"Using default backend: {BaseConnectorBackend.__name__}."
             )
+            return BaseConnectorBackend
         try:
             return cls._registry[name]()
         except (ImportError, AttributeError) as e:
