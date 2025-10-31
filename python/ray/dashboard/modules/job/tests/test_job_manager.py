@@ -1041,7 +1041,7 @@ class TestTailLogs:
         i = 0
         async for lines in job_manager.tail_job_logs(job_id):
             assert all(
-                s == expected_log or "Runtime env" in s
+                s == expected_log or "Runtime env" in s or "Running entrypoint for job" in s
                 for s in lines.strip().split("\n")
             )
             print(lines, end="")
