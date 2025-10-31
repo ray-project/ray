@@ -39,7 +39,7 @@ class StreamingRepartitionContributorSpec:
     end_offset: int
 
     @property
-    def slice_rows(self) -> int:
+    def num_rows_in_slice(self) -> int:
         """Number of rows contributed by this slice."""
         return self.end_offset - self.start_offset
 
@@ -260,14 +260,18 @@ def streaming_repartition_block_fn(
         yield built_block
 
 
-def _slice_block_metadata(metadata: BlockMetadata, slice_rows: int) -> BlockMetadata:
-    assert slice_rows > 0, "slice_rows must be positive for streaming repartition."
+def _slice_block_metadata(
+    metadata: BlockMetadata, num_rows_in_slice: int
+) -> BlockMetadata:
+    assert (
+        num_rows_in_slice > 0
+    ), "num_rows_in_slice must be positive for streaming repartition."
     size_bytes = metadata.size_bytes
     if metadata.size_bytes is not None and metadata.num_rows:
         per_row = metadata.size_bytes / metadata.num_rows
-        size_bytes = max(1, int(math.ceil(per_row * slice_rows)))
+        size_bytes = max(1, int(math.ceil(per_row * num_rows_in_slice)))
     return BlockMetadata(
-        num_rows=slice_rows if metadata.num_rows is not None else None,
+        num_rows=num_rows_in_slice if metadata.num_rows is not None else None,
         size_bytes=size_bytes,
         exec_stats=None,
         input_files=list(metadata.input_files),
