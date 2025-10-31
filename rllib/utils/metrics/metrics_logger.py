@@ -57,7 +57,7 @@ def stats_from_legacy_state(state: Dict[str, Any], is_root: bool = False) -> Sta
             # lifetime sum
             if is_root:
                 # With the new stats, only the root logger tracks values for lifetime sum.
-                new_state["lifetime_sum"] = (np.nansum(state["values"]),)
+                new_state["lifetime_sum"] = np.nansum(state["values"])
             else:
                 new_state["lifetime_sum"] = 0.0
 
