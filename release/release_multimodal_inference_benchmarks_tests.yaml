@@ -71,6 +71,7 @@
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
+      type: gpu
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: audio_transcription_py3.10.lock
 
