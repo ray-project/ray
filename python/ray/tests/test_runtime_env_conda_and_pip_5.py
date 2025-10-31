@@ -64,7 +64,7 @@ def test_runtime_env_with_conflict_pip_version(start_cluster):
 def test_runtime_env_cache_with_pip_check(start_cluster):
 
     # moto require requests>=2.5
-    conflict_packages = ["moto==3.0.5", "requests==2.4.0"]
+    conflict_packages = ["botocore==1.31.83", "urllib3==2.2.3"]
     runtime_env = {
         "pip": {
             "packages": conflict_packages,
@@ -86,8 +86,8 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
         ray.get(f.options(runtime_env=runtime_env).remote())
 
     assert "The conflict is caused by:" in str(error.value)
-    assert "The user requested requests==2.4.0" in str(error.value)
-    assert "moto 3.0.5 depends on requests>=2.5" in str(error.value)
+    assert "The user requested urllib==2.2.3" in str(error.value)
+    assert "botocore 1.31.83 depends on urllib3>=2.1 and >=1.25.4" in str(error.value)
 
     runtime_env["pip"]["pip_check"] = True
     runtime_env["pip"]["pip_version"] = "==20.2.3"

@@ -146,19 +146,25 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --only-tags doctest
         --parallelism-per-worker 3
+        --build-name corebuild-py3.10
+        --python-version 3.10
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --install-mask all-ray-libraries
         --except-tags doctest,post_wheel_build,gpu,multi_gpu,mem_pressure
         --parallelism-per-worker 3
-        --skip-ray-installation
+        --build-name corebuild-py3.10
         --python-version 3.10
+        --skip-ray-installation
       # doc memory pressure example
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --only-tags mem_pressure
         --except-tags gpu
-        --skip-ray-installation
+        --build-name corebuild-py3.10
         --python-version 3.10
+        --skip-ray-installation
+    depends_on:
+      - corebuild-multipy
 
   - label: ":ray: core: dask tests"
     tags:
