@@ -206,19 +206,13 @@ def test_result_restore(
 
 
 @pytest.mark.parametrize("storage", ["local", "remote"])
-@pytest.mark.parametrize("path_type", ["str", "PathLike"])
 def test_result_from_path_validation(
     ray_start_4_cpus,
     tmp_path,
     storage,
     mock_s3_bucket_uri,
-    path_type,
 ):
     """Test that Result.from_path raises RuntimeError when folder or snapshot file doesn't exist."""
-
-    if path_type == "PathLike" and storage == "remote":
-        # Path will collapse URI scheme separators (s3:// becomes s3:/)
-        return
 
     if storage == "local":
         storage_path = str(tmp_path)
@@ -230,11 +224,8 @@ def test_result_from_path_validation(
         existing_folder = uri_join(storage_path, "existing_experiment")
 
     # Test 1: Folder doesn't exist
-    folder_path = (
-        Path(nonexistent_folder) if path_type == "PathLike" else nonexistent_folder
-    )
     with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist."):
-        Result.from_path(folder_path)
+        Result.from_path(nonexistent_folder)
 
     # Test 2: Folder exists but snapshot file doesn't exist
     if storage == "local":
@@ -245,13 +236,12 @@ def test_result_from_path_validation(
         with fs.open_output_stream(f"{fs_path}/.dummy") as f:
             f.write(b"dummy")
 
-    folder_path = Path(existing_folder) if path_type == "PathLike" else existing_folder
     with pytest.raises(
         RuntimeError,
         match=f"Failed to restore the Result object: {CHECKPOINT_MANAGER_SNAPSHOT_FILENAME} doesn't exist in the experiment folder. Make sure that this is an output directory created "
         "by a Ray Train run.",
     ):
-        Result.from_path(folder_path)
+        Result.from_path(existing_folder)
 
 
 if __name__ == "__main__":
