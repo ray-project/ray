@@ -1126,6 +1126,8 @@ def start(
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
+        logs_dir = node.get_logs_dir_path()
+        process_exit_log_path = os.path.join(logs_dir, "ray_process_exit.log")
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
@@ -1137,6 +1139,17 @@ def start(
                 "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
+            process_exit_logger = logging.getLogger("ray.process_exit")
+            process_exit_logger.setLevel(logging.INFO)
+            process_exit_logger.propagate = False
+            try:
+                os.makedirs(os.path.dirname(process_exit_log_path), exist_ok=True)
+                if not process_exit_logger.handlers:
+                    h = logging.FileHandler(process_exit_log_path, encoding="utf-8")
+                    h.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
+                    process_exit_logger.addHandler(h)
+            except Exception as e:
+                cli_logger.warning("Failed to init process-exit logger: {}", e)
 
         while True:
             time.sleep(1)
@@ -1163,6 +1176,7 @@ def start(
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
+                lines_for_file = []
                 with cli_logger.indented():
                     for process_type, process in unexpected_deceased:
                         cli_logger.error(
@@ -1170,9 +1184,25 @@ def start(
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
+                        rc = getattr(process, "returncode", None)
+                        rc_str = (
+                            f"{rc} (signal {-rc})"
+                            if isinstance(rc, int) and rc < 0
+                            else str(rc)
+                        )
+                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+                try:
+                    file_msg = (
+                        "Some Ray subprocesses exited unexpectedly:\n"
+                        + "\n".join(lines_for_file)
+                    )
+                    process_exit_logger.error("%s", file_msg)
+                except Exception as e:
+                    cli_logger.warning("Failed to write process-exit log: {}", e)
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
