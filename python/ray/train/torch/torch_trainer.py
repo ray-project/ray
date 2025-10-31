@@ -184,6 +184,33 @@ class TorchTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        # Auto-resume from latest checkpoint if enabled via environment
+        if resume_from_checkpoint is None:
+            import os
+
+            auto_resume = os.getenv("RAY_TRAIN_AUTO_RESUME", "").lower() == "true"
+
+            if (
+                auto_resume
+                and run_config
+                and run_config.storage_path
+                and run_config.name
+            ):
+                from ray.train.torch.auto_resume import (
+                    get_latest_checkpoint_for_auto_resume,
+                )
+
+                checkpoint_path = get_latest_checkpoint_for_auto_resume(
+                    run_config.storage_path, run_config.name
+                )
+                if checkpoint_path:
+                    resume_from_checkpoint = Checkpoint.from_directory(checkpoint_path)
+                    import logging
+
+                    logging.getLogger(__name__).info(
+                        f"Auto-resume enabled: Loading checkpoint from {checkpoint_path}"
+                    )
+
         if not torch_config:
             torch_config = TorchConfig()
 
