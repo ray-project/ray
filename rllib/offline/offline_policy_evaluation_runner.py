@@ -1,32 +1,32 @@
-import gymnasium as gym
 import math
-import numpy
-import ray
-
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Collection,
     Dict,
     Iterable,
     List,
     Optional,
-    TYPE_CHECKING,
     Union,
 )
 
+import gymnasium as gym
+import numpy
+
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
     ALL_MODULES,
-    DEFAULT_AGENT_ID,
-    DEFAULT_MODULE_ID,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_RL_MODULE,
+    DEFAULT_AGENT_ID,
+    DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -102,9 +102,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # TODO (simon): Refactor into a single code block for both cases.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -131,9 +133,11 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
             # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
+                batch_length_T=(
+                    self.config.model_config.get("max_seq_len", 0)
+                    if self._module.is_stateful()
+                    else None
+                ),
                 n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
@@ -241,14 +245,14 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         # Define the collate function that converts the flattened dictionary
         # to a `MultiAgentBatch` with Tensors.
         def _collate_fn(
-            _batch: Dict[str, numpy.ndarray]
+            _batch: Dict[str, numpy.ndarray],
         ) -> Dict[EpisodeID, Dict[str, numpy.ndarray]]:
 
             return _batch["episodes"]
 
         # Define the finalize function that makes the host-to-device transfer.
         def _finalize_fn(
-            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]]
+            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
         ) -> Dict[EpisodeID, Dict[str, TensorType]]:
 
             return [
@@ -556,9 +560,11 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -613,7 +619,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property

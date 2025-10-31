@@ -50,3 +50,5 @@ set -euo pipefail
 } > "$HOME"/.bazelrc
 
 EOF
+
+# last kick: 2025-10-08

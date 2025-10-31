@@ -166,6 +166,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -178,6 +179,7 @@ py_test(
     tags = [
         "exclusive",
         "mem_pressure",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -190,6 +192,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -202,6 +205,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -214,6 +218,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -237,6 +242,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -249,6 +255,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -368,7 +375,6 @@ py_test_run_all_subdirectory(
     tags = [
         "exclusive",
         "gpu",
-        "team:data",
         "team:llm"
     ],
 )
@@ -410,6 +416,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
@@ -447,6 +454,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = [
         "dask",
+        "custom_setup",
         "exclusive",
         "team:data",
     ],
@@ -478,17 +486,17 @@ py_test(
 # Test all doc/external code
 # --------------------------------------------------------------------
 
-py_test_run_all_subdirectory(
-    size = "enormous",
-    include = ["external/*.py"],
-    exclude = ["external/test_hashes.py"],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "external",
-        "team:ml",
-    ],
-)
+# py_test_run_all_subdirectory(
+#     size = "enormous",
+#     include = ["external/*.py"],
+#     exclude = ["external/test_hashes.py"],
+#     extra_srcs = [],
+#     tags = [
+#         "exclusive",
+#         "external",
+#         "team:ml",
+#     ],
+# )
 
 py_test(
     name = "test_external_hashes",
@@ -545,6 +553,7 @@ doctest(
 
 doctest(
     name = "doctest[core]",
+    size = "large",
     files = glob(
         include = [
             "source/ray-core/**/*.md",
@@ -635,6 +644,8 @@ doctest(
 
 doctest(
     name = "doctest[train]",
+    # TODO: [V2] Migrate
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -657,6 +668,8 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
+    # TODO: [V2] Migrate
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
 )

@@ -63,7 +63,7 @@ def get_priority(priority_str: str) -> Priority:
     return priority_str_to_enum[priority_str]
 
 
-def get_test_filters(filters_str: str) -> Dict[str, str]:
+def get_test_filters(filters_str: str) -> Dict[str, list]:
     if not filters_str:
         return {}
 
@@ -77,7 +77,10 @@ def get_test_filters(filters_str: str) -> Dict[str, str]:
             raise ReleaseTestConfigError(
                 f"Invalid test filter: {line}. " "Should be of the form attr:value"
             )
-        test_filters[parts[0]] = parts[1]
+        # Support multiple values for the same attribute (OR logic)
+        if parts[0] not in test_filters:
+            test_filters[parts[0]] = []
+        test_filters[parts[0]].append(parts[1])
     return test_filters
 
 

@@ -60,8 +60,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             for _, op_state in self._topology.items()
         )
         any_has_input = any(
-            op_state._pending_dispatch_input_bundles_count() > 0
-            for _, op_state in self._topology.items()
+            op_state.has_pending_bundles() for _, op_state in self._topology.items()
         )
         if not (no_runnable_op and any_has_input):
             return
@@ -86,7 +85,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             resource_request.extend([task_bundle] * op.num_active_tasks())
             # Only include incremental resource usage for ops that are ready for
             # dispatch.
-            if state._pending_dispatch_input_bundles_count() > 0:
+            if state.has_pending_bundles():
                 # TODO(Clark): Scale up more aggressively by adding incremental resource
                 # usage for more than one bundle in the queue for this op?
                 resource_request.append(task_bundle)

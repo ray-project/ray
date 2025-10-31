@@ -54,8 +54,7 @@ EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_EXPOSABLE_EVENT_TYPES = (
-    "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
-    "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
+    "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,"
     "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,"
     "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,"
     "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT,"
@@ -66,6 +65,12 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
+)
+# flag to control whether preserve the proto field name when converting the events to
+# JSON. If True, the proto field name will be preserved. If False, the proto field name
+# will be converted to camel case.
+PRESERVE_PROTO_FIELD_NAME = ray_constants.env_bool(
+    f"{env_var_prefix}_PRESERVE_PROTO_FIELD_NAME", False
 )
 
 
@@ -125,6 +130,7 @@ class AggregatorAgent(
                     endpoint=self._events_export_addr,
                     executor=self._executor,
                     events_filter_fn=self._can_expose_event,
+                    preserve_proto_field_name=PRESERVE_PROTO_FIELD_NAME,
                 ),
                 event_buffer=self._event_buffer,
                 common_metric_tags=self._common_tags,

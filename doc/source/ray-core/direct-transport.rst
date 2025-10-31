@@ -298,6 +298,13 @@ For collective-based tensor transports (Gloo and NCCL):
    * Any unexpected system bugs
 
 
+Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
+
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_limitations_start__
+   :end-before: __nixl_limitations_end__
+
 Advanced: RDT Internals
 =======================
 

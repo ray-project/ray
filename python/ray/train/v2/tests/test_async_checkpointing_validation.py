@@ -1,13 +1,13 @@
 import os
+import shutil
 from unittest.mock import create_autospec
 
 import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray.air.config import CheckpointConfig
-from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train.tests.util import create_dict_checkpoint
+from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.report_config import CheckpointUploadMode
@@ -328,6 +328,41 @@ def test_report_validate_fn_error():
     assert result.error is None
     assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
+
+
+def test_report_checkpoint_upload_fn(tmp_path):
+    def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
+        full_checkpoint_path = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(checkpoint_dir_name)
+        )
+        shutil.copytree(checkpoint.path, full_checkpoint_path)
+        return Checkpoint.from_directory(full_checkpoint_path)
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            with create_dict_checkpoint(
+                {"checkpoint_key": "checkpoint_value"}
+            ) as checkpoint:
+                ray.train.report(
+                    metrics={},
+                    checkpoint=checkpoint,
+                    checkpoint_dir_name="my_checkpoint_dir_name",
+                    checkpoint_upload_fn=checkpoint_upload_fn,
+                )
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+    assert load_dict_checkpoint(result.checkpoint) == {
+        "checkpoint_key": "checkpoint_value"
+    }
 
 
 if __name__ == "__main__":
