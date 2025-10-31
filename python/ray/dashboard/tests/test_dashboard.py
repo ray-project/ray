@@ -457,6 +457,50 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
 
+def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 30
+    start_time = time.time()
+    while True:
+        time.sleep(3)
+        try:
+            # Starting and getting jobs should be fine from API clients
+            response = requests.post(
+                webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+            )
+            response.raise_for_status()
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+
+            # Starting job should be blocked for browsers
+            response = requests.post(
+                webui_url + "/api/jobs/",
+                json={"entrypoint": "ls"},
+                headers={
+                    "User-Agent": (
+                        "Spurious User Agent"
+                    ),
+                    "Sec-Fetch-Site": (
+                        "cross-site"
+                    )
+                },
+            )
+            with pytest.raises(HTTPError):
+                response.raise_for_status()
+
+            # Getting jobs should be fine for browsers
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
