@@ -963,8 +963,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         shuffle_name = f"{self._name}_shuffle"
         finalize_name = f"{self._name}_finalize"
 
-        self.shuffle_metrics.as_dict()
-
         return {
             shuffle_name: self.shuffle_metrics.as_dict(),
             finalize_name: self.reduce_metrics.as_dict(),

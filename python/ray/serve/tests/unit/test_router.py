@@ -766,7 +766,7 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
         node_id="node_id",
         node_ip="node_ip",
         availability_zone="some-az",
-        actor_handle=Mock(),
+        actor_name=replica_id.to_full_id_str(),
         max_ongoing_requests=1,
     )
 

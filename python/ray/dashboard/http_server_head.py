@@ -20,6 +20,7 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
+from ray.dashboard import authentication_utils as auth_utils
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -164,6 +165,30 @@ class HttpServerDashboardHead:
         return self.http_host, self.http_port
 
     @aiohttp.web.middleware
+    async def auth_middleware(self, request, handler):
+        """Authenticate requests when token auth is enabled."""
+
+        # Skip if auth not enabled
+        if not auth_utils.is_token_auth_enabled():
+            return await handler(request)
+
+        # Extract and validate token
+        auth_header = request.headers.get("Authorization", "")
+
+        if not auth_header:
+            return aiohttp.web.Response(
+                status=401, text="Unauthorized: Missing authentication token"
+            )
+
+        # Validate token
+        if not auth_utils.validate_request_token(auth_header):
+            return aiohttp.web.Response(
+                status=403, text="Forbidden: Invalid authentication token"
+            )
+
+        return await handler(request)
+
+    @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
             parent = pathlib.PurePosixPath(
@@ -252,6 +277,7 @@ class HttpServerDashboardHead:
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
+                self.auth_middleware,
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
                 self.cache_control_static_middleware,
