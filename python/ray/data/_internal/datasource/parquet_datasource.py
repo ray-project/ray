@@ -190,6 +190,7 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
+        super().__init__()
         _check_pyarrow_version()
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -284,7 +285,6 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
         elif isinstance(shuffle, FileShuffleConfig):
@@ -352,6 +352,12 @@ class ParquetDatasource(Datasource):
         )
 
         read_tasks = []
+        filter_expr = (
+            self._predicate_expr.to_pyarrow()
+            if self._predicate_expr is not None
+            else None
+        )
+
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
             np.array_split(pq_paths, parallelism),
@@ -401,6 +407,7 @@ class ParquetDatasource(Datasource):
                         f,
                         include_paths,
                         partitioning,
+                        filter_expr,
                     ),
                     meta,
                     schema=target_schema,
@@ -424,6 +431,9 @@ class ParquetDatasource(Datasource):
     def supports_projection_pushdown(self) -> bool:
         return True
 
+    def supports_predicate_pushdown(self) -> bool:
+        return True
+
     def get_current_projection(self) -> Optional[List[str]]:
         # NOTE: In case there's no projection both file and partition columns
         #       will be none
@@ -431,6 +441,9 @@ class ParquetDatasource(Datasource):
             return None
 
         return (self._data_columns or []) + (self._partition_columns or [])
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self._data_columns_rename_map if self._data_columns_rename_map else None
 
     def apply_projection(
         self,
@@ -463,6 +476,7 @@ def read_fragments(
     fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
+    filter_expr: Optional["pyarrow.dataset.Expression"] = None,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -484,6 +498,7 @@ def read_fragments(
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                filter_expr=filter_expr,
                 batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
@@ -522,7 +537,14 @@ def _read_batches_from(
     # NOTE: Passed in kwargs overrides always take precedence
     # TODO deprecate to_batches_kwargs
     use_threads = to_batches_kwargs.pop("use_threads", use_threads)
-    filter_expr = to_batches_kwargs.pop("filter", filter_expr)
+    # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
+    filter_from_kwargs = to_batches_kwargs.pop("filter", None)
+    if filter_from_kwargs is not None:
+        filter_expr = (
+            filter_from_kwargs
+            if filter_expr is None
+            else filter_expr & filter_from_kwargs
+        )
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
