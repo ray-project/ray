@@ -29,20 +29,31 @@ async def token_auth_middleware(request: web.Request, handler):
     return await handler(request)
 
 
-def inject_auth_token_if_enabled(headers: Dict[str, str]) -> bool:
-    """Inject Authorization header when token auth is enabled."""
-
-    if headers is None:
-        raise ValueError("headers must be provided")
-
-    if authentication_constants.AUTHORIZATION_HEADER_NAME in headers:
-        return False
+def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
     if not auth_utils.is_token_auth_enabled():
-        return False
+        return {}
+
+    # Check if user provided their own Authorization header (case-insensitive)
+    has_user_auth = any(
+        key.lower() == authentication_constants.AUTHORIZATION_HEADER_NAME
+        for key in user_headers.keys()
+    )
+    if has_user_auth:
+        # User has provided their own auth header, don't override
+        return {}
 
     token_loader = AuthenticationTokenLoader.instance()
-    return token_loader.set_token_for_http_header(headers)
+    auth_headers = token_loader.get_token_for_http_header()
+
+    if not auth_headers:
+        # Token auth enabled but no token found
+        logger.warning(
+            "Token authentication is enabled but no token was found. "
+            "Requests to authenticated clusters will fail."
+        )
+
+    return auth_headers
 
 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:

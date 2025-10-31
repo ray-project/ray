@@ -91,4 +91,4 @@ class AuthenticationTokenLoader:
         if not token_opt.has_value() or token_opt.value().empty():
             return {}
 
-        return {_AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
+        return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}

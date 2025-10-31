@@ -21,7 +21,7 @@ import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import build_address, is_localhost
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
-    inject_auth_token_if_enabled,
+    get_auth_headers_if_auth_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
@@ -256,7 +256,7 @@ class ProxyManager:
                 )
                 data = create_env_request.SerializeToString()
                 headers = {"Content-Type": "application/octet-stream"}
-                inject_auth_token_if_enabled(headers)
+                headers.update(**get_auth_headers_if_auth_enabled(headers))
                 req = urllib.request.Request(
                     url, data=data, method="POST", headers=headers
                 )

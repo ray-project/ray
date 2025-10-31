@@ -14,7 +14,7 @@ import yaml
 import ray
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
-    inject_auth_token_if_enabled,
+    get_auth_headers_if_auth_enabled,
 )
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -255,28 +255,7 @@ class SubmissionClient:
             dict: Authentication headers to merge with request headers.
                   Empty dict if no auth needed or token unavailable.
         """
-        if not is_token_auth_enabled():
-            return {}
-
-        # Check if user provided their own Authorization header (case-insensitive)
-        has_user_auth = any(
-            key.lower() == "authorization" for key in self._headers.keys()
-        )
-        if has_user_auth:
-            # User has provided their own auth header, don't override
-            return {}
-
-        token_loader = AuthenticationTokenLoader.instance()
-        auth_headers = token_loader.get_token_for_http_header()
-
-        if not auth_headers:
-            # Token auth enabled but no token found
-            logger.warning(
-                "Token authentication is enabled but no token was found. "
-                "Requests to authenticated clusters will fail."
-            )
-
-        return auth_headers
+        return get_auth_headers_if_auth_enabled(self._headers)
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None

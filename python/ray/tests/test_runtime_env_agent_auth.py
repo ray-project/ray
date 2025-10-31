@@ -10,7 +10,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
-    inject_auth_token_if_enabled,
+    get_auth_headers_if_auth_enabled,
 )
 from ray.core.generated import runtime_env_agent_pb2
 from ray.tests.authentication_test_utils import (
@@ -124,10 +124,10 @@ def test_inject_token_if_enabled_adds_header(cleanup_auth_token_env):
     reset_auth_token_state()
 
     headers = {}
-    added = inject_auth_token_if_enabled(headers)
+    headers_to_add = get_auth_headers_if_auth_enabled(headers)
 
-    assert added is True
-    auth_header = headers["Authorization"]
+    assert headers_to_add != {}
+    auth_header = headers_to_add["authorization"]
     if isinstance(auth_header, bytes):
         auth_header = auth_header.decode("utf-8")
     assert auth_header == "Bearer apptoken1234567890"
@@ -138,11 +138,10 @@ def test_inject_token_if_enabled_respects_existing_header(cleanup_auth_token_env
     set_env_auth_token("apptoken1234567890")
     reset_auth_token_state()
 
-    headers = {"Authorization": "Bearer custom"}
-    added = inject_auth_token_if_enabled(headers)
+    headers = {"authorization": "Bearer custom"}
+    headers_to_add = get_auth_headers_if_auth_enabled(headers)
 
-    assert added is False
-    assert headers["Authorization"] == "Bearer custom"
+    assert headers_to_add == {}
 
 
 def test_format_authentication_http_error_non_auth_status():
