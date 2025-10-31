@@ -7,9 +7,9 @@ FROM $DOCKER_IMAGE_RAY_DASHBOARD AS ray_dashboard
 
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-SHELL ["/bin/bash", "-ice"]
-
 COPY . .
+
+SHELL ["/bin/bash", "-ice"]
 
 RUN --mount=type=bind,from=ray_core,target=/mnt/ray-core \
     --mount=type=bind,from=ray_dashboard,target=/mnt/ray-dashboard \
@@ -24,6 +24,6 @@ cp /mnt/ray-core/ray_pkg.zip /opt/ray-build/ray_pkg.zip
 cp /mnt/ray-core/ray_py_proto.zip /opt/ray-build/ray_py_proto.zip
 cp /mnt/ray-dashboard/dashboard.tar.gz /opt/ray-build/dashboard.tar.gz
 
-pip install -r doc/requirements-doc.txt
+pip install -r python/deplocks/docs/docbuild_depset_py${PYTHON}.lock
 
 EOF

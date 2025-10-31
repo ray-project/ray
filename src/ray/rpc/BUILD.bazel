@@ -15,11 +15,13 @@ ray_cc_library(
         "//src/ray/core_worker:__pkg__",
     ],
     deps = [
+        ":metrics",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -98,12 +100,14 @@ ray_cc_library(
     hdrs = ["server_call.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":metrics",
         ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -120,6 +124,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:network_util",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
@@ -137,6 +142,7 @@ ray_cc_library(
     deps = [
         ":grpc_server",
         "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -152,6 +158,7 @@ ray_cc_library(
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",
         "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -173,5 +180,13 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_metric",
     ],
 )

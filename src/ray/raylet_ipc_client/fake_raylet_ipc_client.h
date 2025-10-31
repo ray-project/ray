@@ -53,9 +53,10 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
 
   Status ActorCreationTaskDone() override { return Status::OK(); }
 
-  Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                         const std::vector<rpc::Address> &owner_addresses) override {
-    return Status::OK();
+  StatusOr<ScopedResponse> AsyncGetObjects(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses) override {
+    return ScopedResponse();
   }
 
   StatusOr<absl::flat_hash_set<ObjectID>> Wait(
@@ -66,7 +67,7 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
     return absl::flat_hash_set<ObjectID>();
   }
 
-  Status CancelGetRequest() override { return Status::OK(); }
+  Status CancelGetRequest(int64_t request_id) override { return Status::OK(); }
 
   Status NotifyWorkerBlocked() override { return Status::OK(); }
 

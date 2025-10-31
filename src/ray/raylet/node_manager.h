@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,7 +30,6 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
@@ -39,6 +39,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_lease_manager.h"
@@ -402,21 +403,29 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
                             const RayLease &lease);
 
-  /// Start a get or wait request for the requested objects.
+  /// Start a wait request for the requested objects.
   ///
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
-  /// \param is_get_request If this is a get request, else it's a wait request.
-  void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
-                      const std::vector<rpc::ObjectReference> &object_refs,
-                      bool is_get_request);
+  void AsyncWait(const std::shared_ptr<ClientConnection> &client,
+                 const std::vector<rpc::ObjectReference> &object_refs);
+
+  /// Start a get request for the requested objects.
+  ///
+  /// \param client The client that is requesting the objects.
+  /// \param object_refs The objects that are requested.
+  ///
+  /// \return the request_id that will be used to cancel the get request.
+  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                   std::vector<rpc::ObjectReference> &object_refs);
 
   /// Cancel all ongoing get requests from the client.
   ///
   /// This does *not* cancel ongoing wait requests.
   ///
   /// \param client The client whose get requests will be canceled.
-  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
+  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
+                        const uint8_t *message_data);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -509,7 +518,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Handle client request AsyncGetObjects.
+  /// Pull Objects to the local plasma in the background and return immediately.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
@@ -647,6 +656,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GetWorkerPIDs` request.
+  void HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
+                           rpc::GetWorkerPIDsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
