@@ -113,11 +113,11 @@ build_wheel_windows() {
     fi
 
     # build ray wheel
-    python -m pip wheel -vv -w dist . --no-deps --debug
+    python -m pip wheel -v -w dist . --no-deps --debug --no-use-pep517
     # Pack any needed system dlls like msvcp140.dll
     delvewheel repair dist/ray-*.whl
     # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps
+    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps --no-use-pep517
   )
 }
 
