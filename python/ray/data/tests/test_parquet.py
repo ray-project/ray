@@ -617,9 +617,14 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     assert ds._plan.explain().strip() == (
         "-------- Logical Plan --------\n"
-        "Project\n"
-        "+- ReadParquet\n"
-        "-------- Physical Plan --------\n"
+        "Project[Project]\n"
+        "+- Read[ReadParquet]\n"
+        "\n-------- Logical Plan (Optimized) --------\n"
+        "Read[ReadParquet]\n"
+        "\n-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]\n"
+        "\n-------- Physical Plan (Optimized) --------\n"
         "TaskPoolMapOperator[ReadParquet]\n"
         "+- InputDataBuffer[Input]"
     )
