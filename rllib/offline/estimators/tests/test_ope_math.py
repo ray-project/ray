@@ -51,7 +51,7 @@ class FakePolicy(TorchPolicyV2):
 
         # add 0.5 to the action that gave a good reward (2) and subtract 0.5 from the
         # action that gave a bad reward (1)
-        # to acheive this I can just subtract 1.5 from old_reward
+        # to achieve this I can just subtract 1.5 from old_reward
         delta = old_rewards - 1.5
         if not self.improved:
             # reverse the logic for a worse policy
