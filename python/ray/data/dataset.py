@@ -2892,7 +2892,7 @@ class Dataset:
 
         if broadcast:
             # Validate that the join type is supported for broadcast joins
-            # Note: full_outer is not included as it always falls back to hash shuffle
+            # Note: full_outer is not supported for broadcast joins
             supported_broadcast_join_types = {
                 "inner",
                 "left_outer",
@@ -2989,66 +2989,38 @@ class Dataset:
                 large_table_suffix = left_suffix  # large table is original left
                 small_table_suffix = right_suffix  # small table is original right
 
-            # For full_outer joins with broadcast, we need a special two-phase approach:
-            # Phase 1: left_outer join to get all large rows with matches
-            # Phase 2: anti-join to get unmatched small rows and union them
-            if join_type == "full_outer":
-                # Phase 1: Perform left_outer join
-                left_outer_join_type = JoinType.LEFT_OUTER
-                join_fn = BroadcastJoinFunction(
-                    small_table_dataset=small_ds,
-                    join_type=left_outer_join_type,
-                    large_table_key_columns=large_key_columns,
-                    small_table_key_columns=small_key_columns,
-                    large_table_columns_suffix=large_table_suffix,
-                    small_table_columns_suffix=small_table_suffix,
-                    datasets_swapped=datasets_swapped,
-                )
+            # Create the broadcast join function - PyArrow will handle the supported join types natively
+            # Note: left_suffix and right_suffix always refer to the original left and right datasets
+            # regardless of which one is larger/smaller
+            join_type_enum = JoinType(join_type)
 
-                # Full outer join implementation is complex with broadcast
-                # (requires tracking matched keys and computing anti-joins)
-                # Fall back to hash join for full_outer since it handles this naturally
-                return self.join(
-                    ds,
-                    join_type=join_type,
-                    num_partitions=num_partitions or 16,  # Use default if not specified
-                    on=on,
-                    right_on=right_on,
-                    left_suffix=left_suffix,
-                    right_suffix=right_suffix,
-                    broadcast=False,  # Use hash join instead
-                    partition_size_hint=partition_size_hint,
-                    aggregator_ray_remote_args=aggregator_ray_remote_args,
-                    validate_schemas=False,  # Already validated
+            # For inner, left_outer, and right_outer joins
+            join_fn = BroadcastJoinFunction(
+                small_table_dataset=small_ds,
+                join_type=join_type_enum,
+                large_table_key_columns=large_key_columns,
+                small_table_key_columns=small_key_columns,
+                large_table_columns_suffix=large_table_suffix,
+                small_table_columns_suffix=small_table_suffix,
+                datasets_swapped=datasets_swapped,
+            )
+
+            # For broadcast joins, use map_batches with appropriate concurrency
+            # If num_partitions is specified, use it; otherwise use default concurrency behavior
+            if num_partitions is not None:
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
+                    concurrency=num_partitions,
                 )
             else:
-                # For inner, left_outer, and right_outer joins
-                join_fn = BroadcastJoinFunction(
-                    small_table_dataset=small_ds,
-                    join_type=join_type_enum,
-                    large_table_key_columns=large_key_columns,
-                    small_table_key_columns=small_key_columns,
-                    large_table_columns_suffix=large_table_suffix,
-                    small_table_columns_suffix=small_table_suffix,
-                    datasets_swapped=datasets_swapped,
+                # Let map_batches determine the concurrency based on the dataset structure
+                result = large_ds.map_batches(
+                    join_fn,
+                    batch_format="pyarrow",
                 )
 
-                # For broadcast joins, use map_batches with appropriate concurrency
-                # If num_partitions is specified, use it; otherwise use default concurrency behavior
-                if num_partitions is not None:
-                    result = large_ds.map_batches(
-                        join_fn,
-                        batch_format="pyarrow",
-                        concurrency=num_partitions,
-                    )
-                else:
-                    # Let map_batches determine the concurrency based on the dataset structure
-                    result = large_ds.map_batches(
-                        join_fn,
-                        batch_format="pyarrow",
-                    )
-
-                return result
+            return result
         else:
             op = Join(
                 left_input_op=self._logical_plan.dag,

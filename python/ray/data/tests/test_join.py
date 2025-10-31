@@ -435,7 +435,6 @@ def test_default_shuffle_aggregator_args():
         "inner",
         "left_outer",
         "right_outer",
-        "full_outer",
     ],
 )
 def test_broadcast_join_basic(
@@ -527,7 +526,6 @@ def test_broadcast_join_dataset_swapping(
         "inner",
         "left_outer",
         "right_outer",
-        "full_outer",
     ],
 )
 @pytest.mark.parametrize(
@@ -615,7 +613,6 @@ def test_broadcast_join_left_smaller(
         "inner",
         "left_outer",
         "right_outer",
-        "full_outer",
     ],
 )
 def test_broadcast_join_with_different_key_names_and_swapping(
@@ -904,19 +901,6 @@ def test_broadcast_join_expected_outputs(ray_start_regular_shared_2_cpus):
     unmatched_right = right_outer_df[right_outer_df["id"].isin([6, 7])]
     assert unmatched_right["left_value"].isna().all()
     assert unmatched_right["left_only"].isna().all()
-
-    # Test full outer join
-    full_outer_result = left_ds.join(
-        right_ds,
-        join_type="full_outer",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    full_outer_df = pd.DataFrame(full_outer_result.take_all())
-    assert len(full_outer_df) == 7  # All left + all right + matches
-    assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6, 7}
 
 
 def test_broadcast_join_error_handling(ray_start_regular_shared_2_cpus):
@@ -1216,19 +1200,6 @@ def test_broadcast_join_dataset_swapping_validation(ray_start_regular_shared_2_c
     # Check that unmatched right rows have NULL left values
     unmatched_right = right_outer_df[right_outer_df["id"].isin([4, 5, 6])]
     assert unmatched_right["left_value"].isna().all()
-
-    # Test full outer join with swapped datasets
-    full_outer_result = left_ds.join(
-        right_ds,
-        join_type="full_outer",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    full_outer_df = pd.DataFrame(full_outer_result.take_all())
-    assert len(full_outer_df) == 6  # All left + all right + matches
-    assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6}
 
 
 def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_cpus):
@@ -1618,18 +1589,6 @@ def test_broadcast_join_no_matching_keys(ray_start_regular_shared_2_cpus):
     assert set(result_df["id"].tolist()) == {10, 20}
     assert result_df["left_value"].isna().all()
 
-    # Test full outer join - should return all rows from both sides
-    full_outer_result = left_ds.join(
-        right_ds,
-        join_type="full_outer",
-        on=("id",),
-        broadcast=True,
-    )
-
-    assert full_outer_result.count() == 5
-    result_df = pd.DataFrame(full_outer_result.take_all())
-    assert set(result_df["id"].tolist()) == {1, 2, 3, 10, 20}
-
 
 def test_broadcast_join_schema_mismatch_keys(ray_start_regular_shared_2_cpus):
     """Test broadcast join with mismatched key column types."""
@@ -1746,17 +1705,6 @@ def test_broadcast_join_empty_table_semantics_with_swapping(
     assert (
         right_outer_result.count() == 3
     ), "Right outer join with empty left should return all right rows"
-
-    # Full outer join: should return all right rows with null left columns
-    full_outer_result = empty_left.join(
-        large_right,
-        join_type="full_outer",
-        on=("id",),
-        broadcast=True,
-    )
-    assert (
-        full_outer_result.count() == 3
-    ), "Full outer join with empty left should return all right rows"
 
     # Test case 2: Right dataset smaller and empty - no swapping needed
     large_left = ray.data.from_items(
